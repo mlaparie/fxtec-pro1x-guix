@@ -57,10 +57,10 @@
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/linux-msm/qrtr")
-             (commit "29e36ae16438a6c86e8f1f28b8c4b08a8f7bc5e5")))
+             (commit "29e36ae164389580a0f8ea7a7fdb728140ae978d")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "0vg5d1jkfy1530jsl4l1x1lvn3hzf3nz0m9351nblf19l4byflax"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (arguments (list #:tests? #f))
