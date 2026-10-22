@@ -41,6 +41,7 @@
             hexagonrpcd
             libcamera-pro1x
             cameractrl
+            gmobile-0.7
             phoc
             phoc-pro1x))
 
@@ -272,6 +273,24 @@ camera hardware.  Run as: cameractr")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
+;;; gmobile-0.7 — newer gmobile required by phoc >= 0.45
+;;; Guix ships 0.2.1; phoc 0.58.0 needs >= 0.6.0.
+;;; ---------------------------------------------------------------------------
+(define-public gmobile-0.7
+  (package
+    (inherit gmobile)
+    (version "0.7.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.gnome.org/World/Phosh/gmobile")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name "gmobile" version))
+       (sha256
+        (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))))
+
+;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
 ;;; ---------------------------------------------------------------------------
 (define-public phoc
@@ -292,7 +311,7 @@ camera hardware.  Run as: cameractr")
      (list gettext-minimal gobject-introspection pkg-config))
     (inputs
      (list wlroots glib json-glib mesa
-           gnome-desktop gsettings-desktop-schemas gmobile
+           gnome-desktop gsettings-desktop-schemas gmobile-0.7
            libinput eudev libdrm pixman
            wayland wayland-protocols libxkbcommon))
     (arguments
