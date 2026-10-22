@@ -310,7 +310,7 @@ camera hardware.  Run as: cameractr")
 (define-public phoc
   (package
     (name "phoc")
-    (version "0.58.0")
+    (version "0.56.0")
     (source
      (origin
        (method git-fetch)
@@ -319,7 +319,7 @@ camera hardware.  Run as: cameractr")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0xz5gxxpxm77padj98n3zgif8nvj5danvn2cfb1k56bvv1ws7azc"))))
+        (base32 "1g83lm6k4f4v37hqrj9rrf8hcrrh0hd9gn7kgjz38xjsqq5zndjz"))))
     (build-system meson-build-system)
     (native-inputs
      (list gettext-minimal gobject-introspection pkg-config
@@ -341,7 +341,7 @@ camera hardware.  Run as: cameractr")
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
-     "phoc is a Wayland compositor for phones, based on wlroots 0.20.
+     "phoc is a Wayland compositor for phones, based on unpatched wlroots 0.20.
 Used as the compositor for the Phosh mobile shell.")
     (license license:gpl3+)))
 
