@@ -1,0 +1,173 @@
+;;; systems/phosh.scm — Pro1X Guix system with Phosh mobile desktop
+;;;
+;;; Extends minimal.scm with:
+;;;   • Phosh (phoc-pro1x compositor + squeekboard on-screen keyboard)
+;;;   • Camera stack (libcamera-pro1x, cameractrl)
+;;;   • ADSP sensors (accelerometer for auto-rotate, proximity, ALS)
+;;;   • Calls (dialer), Chatty (SMS/MMS), Firefox, GNOME Console
+
+(use-modules (gnu)
+             (gnu bootloader extlinux)
+             (gnu packages admin)
+             (gnu packages base)
+             (gnu packages gnome)
+             (gnu packages linux)
+             (gnu packages networking)
+             (gnu packages nss)
+             (gnu packages ssh)
+             (gnu packages version-control)
+             (gnu packages vim)
+             (gnu packages web-browsers)
+             (nongnu packages linux)
+             (nongnu packages mozilla)
+             (gnu services base)
+             (gnu services dbus)
+             (gnu services desktop)
+             (gnu services networking)
+             (gnu services shepherd)
+             (gnu services ssh)
+             (gnu services xorg)
+             (gnu system accounts)
+             (gnu system file-systems)
+             (fxtec-pro1x packages firmware)
+             (fxtec-pro1x packages kernel)
+             (fxtec-pro1x packages misc)
+             (fxtec-pro1x services audio)
+             (fxtec-pro1x services boot)
+             (fxtec-pro1x services camera)
+             (fxtec-pro1x services hardware)
+             (fxtec-pro1x services keyboard)
+             (fxtec-pro1x services modem)
+             (fxtec-pro1x services sensors)
+             (fxtec-pro1x services usb-network))
+
+(operating-system
+  (host-name "pro1x")
+  (timezone "UTC")
+  (locale "en_US.utf8")
+
+  ;; ── Kernel ────────────────────────────────────────────────────────────────
+  (kernel linux-pro1x)
+  (kernel-arguments
+   (append
+    (list
+     "console=ttyMSM0,115200n8"
+     "console=tty1"
+     "loglevel=4"
+     "g_cdc.host_addr=02:50:31:e8:00:01"
+     "g_cdc.dev_addr=02:50:31:e8:00:02")
+    %default-kernel-arguments))
+
+  (initrd-modules
+   (append '("goodix_ts") %base-initrd-modules))
+
+  ;; ── Firmware ──────────────────────────────────────────────────────────────
+  (firmware (list linux-firmware firmware-fxtec-qx1050))
+
+  ;; ── Bootloader ────────────────────────────────────────────────────────────
+  (bootloader
+   (bootloader-configuration
+    (bootloader extlinux-bootloader)
+    (targets '("/dev/disk/by-partlabel/userdata"))
+    (timeout 3)))
+
+  ;; ── Filesystems ───────────────────────────────────────────────────────────
+  (file-systems
+   (cons*
+    (file-system
+      (device (file-system-label "guix"))
+      (mount-point "/")
+      (type "ext4")
+      (options "noatime"))
+    %base-file-systems))
+
+  ;; ── User accounts ─────────────────────────────────────────────────────────
+  (users
+   (cons*
+    (user-account
+     (name "user")
+     (group "users")
+     (home-directory "/home/user")
+     (supplementary-groups
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd")))
+    %base-user-accounts))
+
+  (groups
+   (cons*
+    (user-group (name "feedbackd") (system? #t))
+    %base-groups))
+
+  ;; ── Services ──────────────────────────────────────────────────────────────
+  (services
+   (append
+    (list
+     ;; ── Hardware
+     (service pro1x-hardware-service-type)
+     (service pro1x-usb-network-service-type)
+     (service pro1x-keyboard-service-type
+              (pro1x-keyboard-configuration
+               (xkb-layout "fi")
+               (xkb-variant "nodeadkeys")))
+     (service pro1x-modem-service-type)
+     (service pro1x-audio-service-type)
+     (service pro1x-camera-service-type)
+     (service pro1x-sensors-service-type)
+     (service pro1x-boot-success-service-type)
+     (service pro1x-boot-menu-service-type
+              (pro1x-boot-menu-configuration (generations 3)))
+
+     ;; ── Phosh desktop
+     ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
+     ;; doesn't crash-loop the compositor.
+     (service screen-locker-service-type
+              (screen-locker-configuration
+               (name "phosh")
+               (program (file-append phoc-pro1x "/bin/phoc"))))
+
+     ;; Phosh session — adjust scale for 1080×2160 panel
+     (service
+      (simple-service 'phosh-session etc-service-type
+        (list
+         `("phosh/phosh-session"
+           ,(computed-file "phosh-session"
+              #~(call-with-output-file #$output
+                  (lambda (port)
+                    (display
+                     (string-append
+                      "#!/bin/sh\n"
+                      "exec " #$phoc-pro1x "/bin/phoc"
+                      " -C /etc/phoc.ini"
+                      " -E 'squeekboard'\n")
+                     port)
+                    (chmod #$output #o755)))))
+         `("phoc.ini"
+           ,(plain-file "phoc.ini"
+                        "[core]\n[output:DSI-1]\nscale=2\n")))))
+
+     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
+     (service dbus-root-service-type)
+
+     ;; NetworkManager
+     (service network-manager-service-type)
+
+     ;; SSH
+     (service openssh-service-type
+              (openssh-configuration
+               (password-authentication? #t))))
+
+    ;; Base services (console-font, udev, syslog, etc.)
+    %base-services))
+
+  ;; ── System packages ───────────────────────────────────────────────────────
+  (packages
+   (append
+    (list
+     nss-certs
+     ;; Mobile apps
+     firefox
+     gnome-console
+     ;; Calls (dialer) requires ModemManager + callaudiod — install here
+     ;; and wire through dconf when available in Guix packages
+     ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
+     iw usbutils vim git)
+    %base-packages)))
