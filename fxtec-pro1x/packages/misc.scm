@@ -265,7 +265,7 @@ camera hardware.  Run as: cameractr")
            wayland wayland-protocols libxkbcommon))
     (arguments
      (list #:tests? #f
-           #:configure-flags #~(list "-Dtests=disabled" "-Ddocs=disabled")))
+           #:configure-flags #~(list "-Dtests=false")))
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
