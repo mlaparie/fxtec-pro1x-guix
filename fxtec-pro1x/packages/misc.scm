@@ -19,13 +19,14 @@
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
+  #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages python)
   #:use-module (gnu packages telephony)
   #:use-module (gnu packages photo)
   #:use-module (gnu packages video)
-  #:use-module (gnu packages wm)
+  #:use-module (gnu packages window-management)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix gexp)
@@ -87,28 +88,20 @@ the ABL from reverting to fastboot after a hard reboot.")
              (commit "0bf5b98c24229b0042554d99bb1509d813219f36")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))
-       (patches
-        (list
-         ;; Redirect firmware lookups from /lib/firmware/ to the Guix store
-         ;; path where firmware-fxtec-qx1050 installs its files.
-         (computed-file "tqftpserv-firmware-path.patch"
-           #~(call-with-output-file #$output
-               (lambda (port)
-                 (display
-                  (string-append
-                   "--- a/translate.c\n"
-                   "+++ b/translate.c\n"
-                   "@@ -1,4 +1,4 @@\n"
-                   "-\t\"/lib/firmware/\"\n"
-                   "+\t\"/run/current-system/firmware/\"\n")
-                  port))))))))
+        (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))))
     (build-system gnu-build-system)
     (inputs (list libqrtr-glib))
     (arguments
      (list #:tests? #f
            #:make-flags #~(list (string-append "PREFIX=" #$output))
-           #:phases #~(modify-phases %standard-phases (delete 'configure))))
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (add-before 'build 'fix-firmware-path
+                 (lambda _
+                   (substitute* "translate.c"
+                     (("\"/lib/firmware/\"")
+                      "\"/run/current-system/firmware/\"")))))))
     (home-page "https://github.com/andersson/tqftpserv")
     (synopsis "TFTP server that delivers modem firmware over QRTR")
     (description
@@ -270,12 +263,14 @@ camera hardware.  Run as: cameractr")
        (sha256
         (base32 "1k7fv1anhx5qw6h664yi0yk5hv0sbfvirhqjfbnn69bw9lv53hmp"))))
     (build-system meson-build-system)
-    (native-inputs (list pkg-config))
+    (native-inputs
+     (list gettext-minimal gobject-introspection pkg-config))
     (inputs
-     (list wlroots glib gobject-introspection json-glib
-           wayland wayland-protocols libxkbcommon libinput))
+     (list wlroots glib json-glib
+           wayland wayland-protocols libxkbcommon))
     (arguments
-     (list #:tests? #f))
+     (list #:tests? #f
+           #:configure-flags #~(list "-Dtests=disabled" "-Ddocs=disabled")))
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
