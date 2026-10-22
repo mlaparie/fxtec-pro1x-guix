@@ -54,7 +54,7 @@
        (file-name (git-file-name name version))
        ;; Fill this in: `guix build` will print the right hash on first run.
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))
+        (base32 "19bmxwbg8d985l3w5lvcbcgy8744xlgqv93chz62kijs90f2593c"))
        (patches %pro1x-patches)))
     (supported-systems '("aarch64-linux"))
     (arguments
