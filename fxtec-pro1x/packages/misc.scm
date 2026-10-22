@@ -293,6 +293,17 @@ camera hardware.  Run as: cameractr")
      (modify-inputs (package-native-inputs gmobile)
        (append vala)))))
 
+;;; gvdb is an unconditional meson subproject of phoc; pre-seed the dir.
+(define phoc-gvdb-source
+  (origin
+    (method git-fetch)
+    (uri (git-reference
+          (url "https://gitlab.gnome.org/GNOME/gvdb")
+          (commit "4758f6fb7f889e074e13df3f914328f3eecb1fd3")))
+    (file-name "gvdb-checkout")
+    (sha256
+     (base32 "129ln7rldafdkcf2kxdazckyp3xzxnk0xw33l2kzfc3bz4fahsp2"))))
+
 ;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
 ;;; ---------------------------------------------------------------------------
@@ -319,7 +330,13 @@ camera hardware.  Run as: cameractr")
            wayland wayland-protocols libxkbcommon))
     (arguments
      (list #:tests? #f
-           #:configure-flags #~(list "-Dtests=false")))
+           #:configure-flags #~(list "-Dtests=false")
+           #:phases
+           #~(modify-phases %standard-phases
+               (add-after 'unpack 'seed-gvdb-subproject
+                 (lambda _
+                   (copy-recursively #$phoc-gvdb-source
+                                     "subprojects/gvdb"))))))
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
