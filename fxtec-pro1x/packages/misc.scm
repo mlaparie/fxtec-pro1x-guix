@@ -159,7 +159,7 @@ inter-processor bus, serving firmware blobs from the firmware directory.")
     (arguments
      (list #:tests? #f
            #:make-flags #~(list "CC=gcc"
-                                (string-append "PREFIX=" #$output))
+                                (string-append "prefix=" #$output))
            #:phases #~(modify-phases %standard-phases (delete 'configure))))
     (home-page "https://github.com/andersson/rmtfs")
     (synopsis "Qualcomm remote filesystem service (modemst1/2, fsg, fsc)")
