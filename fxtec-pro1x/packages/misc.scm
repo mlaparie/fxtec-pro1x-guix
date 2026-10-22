@@ -292,7 +292,12 @@ camera hardware.  Run as: cameractr")
         (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))
     (native-inputs
      (modify-inputs (package-native-inputs gmobile)
-       (append vala)))))
+       (delete "gobject-introspection")
+       (append vala)))
+    (arguments
+     (substitute-keyword-arguments (package-arguments gmobile)
+       ((#:configure-flags flags #~'())
+        #~(append #$flags (list "-Dintrospection=false")))))))
 
 ;;; gvdb is an unconditional meson subproject of phoc; pre-seed the dir.
 (define phoc-gvdb-source
