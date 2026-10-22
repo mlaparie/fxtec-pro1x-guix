@@ -10,8 +10,14 @@
 
 (define-module (fxtec-pro1x packages uboot)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages bison)
   #:use-module (gnu packages bootloaders)
+  #:use-module (gnu packages cross-base)
+  #:use-module (gnu packages compiler-tools)
   #:use-module (gnu packages perl)
+  #:use-module (gnu packages python)
+  #:use-module (gnu packages tls)
+  #:use-module (gnu packages vim)
   #:use-module (guix build-system gnu)
   #:use-module (guix gexp)
   #:use-module (guix git-download)
@@ -45,7 +51,7 @@
                (commit "f8eb3469e1a17c79b047b3fd38ae820e8816a115")))
          (file-name (git-file-name name version))
          (sha256
-          (base32 "0000000000000000000000000000000000000000000000000000"))))
+          (base32 "0vfryrywjwxvd1iddyx6hzc3c7mxxvci44853wrpnff1c0sx64jk"))))
       (build-system gnu-build-system)
       (native-inputs
        (list bison flex openssl perl python-minimal-wrapper xxd
