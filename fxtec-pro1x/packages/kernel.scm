@@ -56,9 +56,9 @@
     (supported-systems '("aarch64-linux"))
     (arguments
      (substitute-keyword-arguments (package-arguments linux)
-       ;; Replace the configure phase: drop in the pre-built config (same
-       ;; approach as `linuxKernel.manualConfig` in the NixOS port), then
-       ;; refresh it so new Kconfig symbols from our patches get defaults.
+       ((#:make-flags _)
+        #~(list "ARCH=arm64"
+                "CROSS_COMPILE=aarch64-linux-gnu-"))
        ((#:phases phases)
         #~(modify-phases #$phases
             (replace 'configure
