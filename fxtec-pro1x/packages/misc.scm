@@ -89,14 +89,13 @@ the ABL from reverting to fastboot after a hard reboot.")
        (file-name (git-file-name name version))
        (sha256
         (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))))
-    (build-system gnu-build-system)
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config))
     (inputs (list libqrtr-glib))
     (arguments
      (list #:tests? #f
-           #:make-flags #~(list (string-append "PREFIX=" #$output))
            #:phases
            #~(modify-phases %standard-phases
-               (delete 'configure)
                (add-before 'build 'fix-firmware-path
                  (lambda _
                    (substitute* "translate.c"
@@ -160,14 +159,10 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
         (list
          (local-file "../../packages/hexagonrpc-sns-registry.patch"
                      "hexagonrpc-sns-registry.patch")))))
-    (build-system gnu-build-system)
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config))
     (inputs (list libqrtr-glib))
-    (arguments
-     (list #:tests? #f
-           #:make-flags
-           #~(list (string-append "PREFIX=" #$output))
-           #:phases
-           #~(modify-phases %standard-phases (delete 'configure))))
+    (arguments (list #:tests? #f))
     (home-page "https://github.com/linux-msm/hexagonrpc")
     (synopsis "Serve ADSP sensor configuration via FastRPC (hexagonrpcd)")
     (description

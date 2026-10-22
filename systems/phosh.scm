@@ -13,7 +13,6 @@
              (gnu packages gnome)
              (gnu packages linux)
              (gnu packages networking)
-             (gnu packages nss)
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages vim)
@@ -26,7 +25,6 @@
              (gnu services networking)
              (gnu services shepherd)
              (gnu services ssh)
-             (gnu services xorg)
              (gnu system accounts)
              (gnu system file-systems)
              (fxtec-pro1x packages firmware)
@@ -92,10 +90,7 @@
       '("wheel" "netdev" "video" "input" "audio" "feedbackd")))
     %base-user-accounts))
 
-  (groups
-   (cons*
-    (user-group (name "feedbackd") (system? #t))
-    %base-groups))
+  ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
@@ -118,37 +113,40 @@
 
      ;; ── Phosh desktop
      ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
-     ;; doesn't crash-loop the compositor.
-     (service screen-locker-service-type
-              (screen-locker-configuration
-               (name "phosh")
-               (program (file-append phoc-pro1x "/bin/phoc"))))
+     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on
+     ;; VT1; XDG_RUNTIME_DIR is set up inline (no elogind needed).
+     (simple-service 'phosh shepherd-root-service-type
+       (list
+        (shepherd-service
+         (provision '(phosh))
+         (requirement '(user-processes udev dbus-system file-systems))
+         (documentation "Phosh mobile shell (phoc + squeekboard)")
+         (start
+          #~(make-forkexec-constructor
+             (list #$(file-append shadow "/bin/su") "-l" "user"
+                   "-s" "/bin/sh" "-c"
+                   (string-append
+                    "mkdir -p /run/user/1000 && chmod 0700 /run/user/1000 && "
+                    "exec env XDG_RUNTIME_DIR=/run/user/1000 "
+                    #$(file-append phoc-pro1x "/bin/phoc")
+                    " -C /etc/phoc.ini -E squeekboard"))
+             #:log-file "/var/log/phosh.log"))
+         (stop #~(make-kill-destructor))
+         (respawn? #t))))
 
-     ;; Phosh session — adjust scale for 1080×2160 panel
-     (service
-      (simple-service 'phosh-session etc-service-type
-        (list
-         `("phosh/phosh-session"
-           ,(computed-file "phosh-session"
-              #~(call-with-output-file #$output
-                  (lambda (port)
-                    (display
-                     (string-append
-                      "#!/bin/sh\n"
-                      "exec " #$phoc-pro1x "/bin/phoc"
-                      " -C /etc/phoc.ini"
-                      " -E 'squeekboard'\n")
-                     port)
-                    (chmod #$output #o755)))))
-         `("phoc.ini"
-           ,(plain-file "phoc.ini"
-                        "[core]\n[output:DSI-1]\nscale=2\n")))))
+     ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
+     (simple-service 'phosh-config etc-service-type
+       (list
+        `("phoc.ini"
+          ,(plain-file "phoc.ini"
+                       "[core]\n[output:DSI-1]\nscale=2\n"))))
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
 
-     ;; NetworkManager
+     ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type)
+     (service wpa-supplicant-service-type)
 
      ;; SSH
      (service openssh-service-type
@@ -162,7 +160,6 @@
   (packages
    (append
     (list
-     nss-certs
      ;; Mobile apps
      firefox
      gnome-console

@@ -16,7 +16,6 @@
 (define-module (fxtec-pro1x services hardware)
   #:use-module (gnu services)
   #:use-module (gnu services base)
-  #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
   #:use-module (guix gexp)
@@ -41,33 +40,28 @@
   (console-rotation   pro1x-hardware-console-rotation   (default #f)))
 
 (define (pro1x-udev-rules config)
+  ;; Returns a file-like object: the base rules optionally extended with a
+  ;; touch calibration matrix rule when display gaps are configured.
   (let* ((top    (pro1x-hardware-display-top-gap    config))
          (bottom (pro1x-hardware-display-bottom-gap config))
          (gap?   (> (+ top bottom) 0))
-         ;; Touch calibration matrix: maps raw 0..2159 rows onto the active area.
-         (even   (lambda (g) (- g (modulo g 2))))
-         (gtop   (even top))
-         (gbot   (even bottom))
-         (active (- 2160 gtop gbot))
-         (scale  (exact->inexact (/ 2160 active)))
-         (offset (exact->inexact (/ (- gtop) active)))
-         (touch-rule
-          (if gap?
-              (string-append
-               "ACTION!=\"remove\", SUBSYSTEM==\"input\","
-               " ENV{ID_INPUT_TOUCHSCREEN}==\"1\","
-               " ENV{LIBINPUT_CALIBRATION_MATRIX}=\""
-               "1 0 0 0 " (number->string scale) " " (number->string offset) "\"\n")
-              "")))
-    (udev-rules-service
-     'pro1x
-     (plain-file "60-pro1x.rules"
-                 (string-append
-                  (call-with-input-file
-                      (string-append (dirname (current-filename))
-                                     "/../../device/udev/60-pro1x.rules")
-                    read-string)
-                  touch-rule)))))
+         (base   (local-file "../../device/udev/60-pro1x.rules"
+                             "60-pro1x.rules")))
+    (if gap?
+        (let* ((even   (lambda (g) (- g (modulo g 2))))
+               (gtop   (even top))
+               (gbot   (even bottom))
+               (active (- 2160 gtop gbot))
+               (scale  (exact->inexact (/ 2160 active)))
+               (offset (exact->inexact (/ (- gtop) active)))
+               (touch-rule
+                (string-append
+                 "ACTION!=\"remove\", SUBSYSTEM==\"input\","
+                 " ENV{ID_INPUT_TOUCHSCREEN}==\"1\","
+                 " ENV{LIBINPUT_CALIBRATION_MATRIX}=\""
+                 "1 0 0 0 " (number->string scale) " " (number->string offset) "\"\n")))
+          (mixed-text-file "60-pro1x.rules" base touch-rule))
+        base)))
 
 (define (pro1x-hardware-account-groups config)
   (list (user-group (name "feedbackd") (system? #t))))
@@ -85,11 +79,7 @@
      ;; udev rules: dma-buf, haptics, slider symlink, optional touch matrix
      (service-extension udev-service-type
                         (lambda (config)
-                          (list
-                           (udev-rules-service
-                            'pro1x
-                            (local-file "../../device/udev/60-pro1x.rules"
-                                        "60-pro1x.rules")))))
+                          (list (pro1x-udev-rules config))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)))

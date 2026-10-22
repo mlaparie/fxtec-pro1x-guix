@@ -116,20 +116,16 @@
 (define (pro1x-sensors-udev-rules config)
   (let ((matrix (pro1x-sensors-accel-mount-matrix config)))
     (list
-     (udev-rules-service
-      'pro1x-sensors
-      (computed-file "90-pro1x-sensors.rules"
-        #~(call-with-output-file #$output
-            (lambda (port)
-              (display
-               (string-append
-                ;; Accel mount matrix for iio-sensor-proxy
-                "SUBSYSTEM==\"misc\", KERNEL==\"fastrpc-*\","
-                " ENV{ACCEL_MOUNT_MATRIX}+=\"" #$matrix "\"\n"
-                ;; Enable accelerometer and proximity on the ADSP device
-                "SUBSYSTEM==\"misc\", KERNEL==\"fastrpc-adsp\","
-                " ENV{IIO_SENSOR_PROXY_TYPE}+=\"ssc-accel ssc-proximity\"\n")
-               port))))))))
+     (computed-file "90-pro1x-sensors.rules"
+       #~(call-with-output-file #$output
+           (lambda (port)
+             (display
+              (string-append
+               "SUBSYSTEM==\"misc\", KERNEL==\"fastrpc-*\","
+               " ENV{ACCEL_MOUNT_MATRIX}+=\"" #$matrix "\"\n"
+               "SUBSYSTEM==\"misc\", KERNEL==\"fastrpc-adsp\","
+               " ENV{IIO_SENSOR_PROXY_TYPE}+=\"ssc-accel ssc-proximity\"\n")
+              port)))))))
 
 (define (pro1x-sensors-packages config)
   (list iio-sensor-proxy
