@@ -23,7 +23,6 @@
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages python)
-  #:use-module (gnu packages telephony)
   #:use-module (gnu packages photo)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
@@ -35,7 +34,8 @@
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
-  #:export (qbootctl
+  #:export (libqrtr
+            qbootctl
             tqftpserv
             rmtfs
             hexagonrpcd
@@ -43,6 +43,34 @@
             cameractrl
             phoc
             phoc-pro1x))
+
+;;; ---------------------------------------------------------------------------
+;;; libqrtr — Qualcomm IPC Router userspace library
+;;; Provides libqrtr.so and qrtr.pc (needed by rmtfs, tqftpserv, hexagonrpcd).
+;;; ---------------------------------------------------------------------------
+(define-public libqrtr
+  (package
+    (name "libqrtr")
+    (version "unstable-29e36ae")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/linux-msm/qrtr")
+             (commit "29e36ae16438a6c86e8f1f28b8c4b08a8f7bc5e5")))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0000000000000000000000000000000000000000000000000000"))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config))
+    (arguments (list #:tests? #f))
+    (home-page "https://github.com/linux-msm/qrtr")
+    (synopsis "Qualcomm IPC Router userspace library")
+    (description
+     "libqrtr provides a C API to the Linux kernel's QRTR (Qualcomm IPC Router)
+socket layer, used by rmtfs, tqftpserv and hexagonrpcd to communicate with
+Qualcomm modem and ADSP subsystems.")
+    (license license:bsd-3)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; qbootctl — Qualcomm A/B boot slot control
@@ -92,7 +120,7 @@ the ABL from reverting to fastboot after a hard reboot.")
         (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
-    (inputs (list libqrtr-glib))
+    (inputs (list libqrtr))
     (arguments
      (list #:tests? #f
            #:phases
@@ -126,10 +154,11 @@ inter-processor bus, serving firmware blobs from the firmware directory.")
        (sha256
         (base32 "0hjp0lzv2hkbawjrbnkk98rrrfb1g3x1iifbilbkcabrik7smpcg"))))
     (build-system gnu-build-system)
-    (inputs (list libqrtr-glib))
+    (inputs (list libqrtr eudev))
     (arguments
      (list #:tests? #f
-           #:make-flags #~(list (string-append "PREFIX=" #$output))
+           #:make-flags #~(list "CC=gcc"
+                                (string-append "PREFIX=" #$output))
            #:phases #~(modify-phases %standard-phases (delete 'configure))))
     (home-page "https://github.com/andersson/rmtfs")
     (synopsis "Qualcomm remote filesystem service (modemst1/2, fsg, fsc)")
@@ -162,7 +191,7 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
                      "hexagonrpc-sns-registry.patch")))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
-    (inputs (list libqrtr-glib))
+    (inputs (list libqrtr))
     (arguments (list #:tests? #f))
     (home-page "https://github.com/linux-msm/hexagonrpc")
     (synopsis "Serve ADSP sensor configuration via FastRPC (hexagonrpcd)")
