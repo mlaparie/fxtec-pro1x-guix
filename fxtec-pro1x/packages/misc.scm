@@ -25,6 +25,7 @@
   #:use-module (gnu packages python)
   #:use-module (gnu packages telephony)
   #:use-module (gnu packages photo)
+  #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
   #:use-module (guix build-system gnu)
@@ -247,7 +248,7 @@ camera hardware.  Run as: cameractr")
 (define-public phoc
   (package
     (name "phoc")
-    (version "0.45.0")
+    (version "0.58.0")
     (source
      (origin
        (method git-fetch)
@@ -256,12 +257,14 @@ camera hardware.  Run as: cameractr")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1k7fv1anhx5qw6h664yi0yk5hv0sbfvirhqjfbnn69bw9lv53hmp"))))
+        (base32 "0xz5gxxpxm77padj98n3zgif8nvj5danvn2cfb1k56bvv1ws7azc"))))
     (build-system meson-build-system)
     (native-inputs
      (list gettext-minimal gobject-introspection pkg-config))
     (inputs
-     (list wlroots glib json-glib
+     (list wlroots glib json-glib mesa
+           gnome-desktop gsettings-desktop-schemas gmobile
+           libinput eudev libdrm pixman
            wayland wayland-protocols libxkbcommon))
     (arguments
      (list #:tests? #f
@@ -269,8 +272,8 @@ camera hardware.  Run as: cameractr")
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
-     "phoc is a Wayland compositor for phones, based on wlroots.  It is used
-as the compositor for the Phosh mobile shell.")
+     "phoc is a Wayland compositor for phones, based on wlroots 0.20.
+Used as the compositor for the Phosh mobile shell.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
