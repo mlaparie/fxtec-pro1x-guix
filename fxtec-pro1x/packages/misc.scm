@@ -288,7 +288,10 @@ camera hardware.  Run as: cameractr")
              (commit (string-append "v" version))))
        (file-name (git-file-name "gmobile" version))
        (sha256
-        (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))))
+        (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))
+    (native-inputs
+     (modify-inputs (package-native-inputs gmobile)
+       (append vala)))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
