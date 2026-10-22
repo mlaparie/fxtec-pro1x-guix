@@ -18,9 +18,12 @@
   #:export (linux-pro1x))
 
 ;;; The 14 device patches, applied in the same order as the NixOS port.
+(define %pro1x-patch-dir
+  (string-append (dirname (current-filename)) "/../../device/kernel/patches/"))
+
 (define %pro1x-patches
   (map (lambda (n)
-         (local-file (string-append "../../device/kernel/patches/pro1x-" n ".patch")
+         (local-file (string-append %pro1x-patch-dir "pro1x-" n ".patch")
                      (string-append "pro1x-" n ".patch")))
        '("touch"
          "egpio"
@@ -64,7 +67,8 @@
             (replace 'configure
               (lambda _
                 (install-file
-                 #$(local-file "../../device/kernel/config.aarch64"
+                 #$(local-file (string-append (dirname (current-filename))
+                                              "/../../device/kernel/config.aarch64")
                                "pro1x.config")
                  ".config")
                 (invoke "make" "ARCH=arm64" "olddefconfig")))))))
