@@ -17,7 +17,6 @@
              (gnu packages networking)
              (nongnu packages linux)
              (gnu packages ssh)
-             (gnu packages nss)
              (gnu packages version-control)
              (gnu packages vim)
              (gnu services dbus)
@@ -103,10 +102,7 @@
      (password (crypt "user" "$6$abc")))
     %base-user-accounts))
 
-  (groups
-   (cons*
-    (user-group (name "feedbackd") (system? #t))
-    %base-groups))
+  ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
@@ -137,14 +133,15 @@
               (pro1x-boot-menu-configuration
                (generations 3)))
 
-     ;; NetworkManager for Wi-Fi and mobile data
+     ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type)
+     (service wpa-supplicant-service-type)
 
      ;; SSH for USB-ethernet access
      (service openssh-service-type
               (openssh-configuration
                (password-authentication? #t)   ; tighten after adding keys
-               (permit-root-login 'without-password))))
+               (permit-root-login 'prohibit-password))))
 
     ;; Base Guix services
     %base-services))
@@ -153,6 +150,5 @@
   (packages
    (append
     (list
-     ;; Essentials for first-boot and development
-     nss-certs vim git iw usbutils)
+     vim git iw usbutils)
     %base-packages)))
