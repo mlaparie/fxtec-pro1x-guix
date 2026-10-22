@@ -60,7 +60,7 @@
    (append
     ;; Everything to reach UFS is built-in; pull in touchscreen for FDE.
     '("goodix_ts")
-    %base-initrd-modules))
+    (base-initrd-modules linux-pro1x)))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   ;; linux-firmware for Wi-Fi (ath10k), BT (qca); pro1x firmware for

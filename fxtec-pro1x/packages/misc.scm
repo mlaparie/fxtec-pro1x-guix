@@ -48,16 +48,16 @@
 (define-public qbootctl
   (package
     (name "qbootctl")
-    (version "0.1.0")
+    (version "unstable-39a6e6d")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/calebccff/qbootctl")
-             (commit "HEAD")))   ; pin to a real commit once known
+             (url "https://github.com/linux-msm/qbootctl")
+             (commit "39a6e6daaf029fb0a083777679a15ea2c18f72de")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "01hm5f50z31mqdyg4rvqp4bnqiq8rrbi07bym6zr5qj9si9w544n"))))
     (build-system gnu-build-system)
     (arguments
      (list #:tests? #f
@@ -65,7 +65,7 @@
            #:phases
            #~(modify-phases %standard-phases
                (delete 'configure))))
-    (home-page "https://github.com/calebccff/qbootctl")
+    (home-page "https://github.com/linux-msm/qbootctl")
     (synopsis "Mark Qualcomm A/B boot slots successful")
     (description
      "qbootctl marks the active A/B boot slot as successfully booted, preventing
@@ -78,16 +78,16 @@ the ABL from reverting to fastboot after a hard reboot.")
 (define-public tqftpserv
   (package
     (name "tqftpserv")
-    (version "1.0.0")
+    (version "unstable-0bf5b98")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/andersson/tqftpserv")
-             (commit "HEAD")))
+             (commit "0bf5b98c24229b0042554d99bb1509d813219f36")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))
+        (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))
        (patches
         (list
          ;; Redirect firmware lookups from /lib/firmware/ to the Guix store
@@ -122,16 +122,16 @@ inter-processor bus, serving firmware blobs from the firmware directory.")
 (define-public rmtfs
   (package
     (name "rmtfs")
-    (version "1.0.0")
+    (version "unstable-b30a3eb")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/andersson/rmtfs")
-             (commit "HEAD")))
+             (commit "b30a3eb38f9af283f18dbd3c7755653efc52c094")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "0hjp0lzv2hkbawjrbnkk98rrrfb1g3x1iifbilbkcabrik7smpcg"))))
     (build-system gnu-build-system)
     (inputs (list libqrtr-glib))
     (arguments
@@ -162,9 +162,7 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
              (commit "40e50412812adce9dddc2be9a4510ebce05eef89")))
        (file-name (git-file-name name version))
        (sha256
-        ;; sha256-+VbVvPfKLgNrg3tliUFWG32Y/HPdNpD6XkaCHsU+DiY= (SRI)
-        ;; Convert with: nix-hash --type sha256 --to-base32 <sha256-hex>
-        (base32 "0000000000000000000000000000000000000000000000000000"))
+        (base32 "09hf7v2ix0j6bvx90dnxfgy9hz8var0qjrbvhdmh6bnayyydampr"))
        (patches
         (list
          (local-file "../../packages/hexagonrpc-sns-registry.patch"
@@ -237,8 +235,7 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
              (commit "4c8ac34295df52c5f887a9e51ec64f54ef26c636")))
        (file-name (git-file-name name version))
        (sha256
-        ;; sha256-4op0Cz/2+DtIBevnI+2KlrdCDTubQZKQSJh6asRzLTk= (SRI)
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "0f9dfg26lylq92894hcv7c6l5dwnibnj7rzb0m43py7n7w5p92p2"))))
     (build-system meson-build-system)
     (native-inputs
      (list pkg-config vala blueprint-compiler
@@ -271,7 +268,7 @@ camera hardware.  Run as: cameractr")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "1k7fv1anhx5qw6h664yi0yk5hv0sbfvirhqjfbnn69bw9lv53hmp"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (inputs

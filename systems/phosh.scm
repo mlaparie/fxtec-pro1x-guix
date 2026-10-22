@@ -59,7 +59,7 @@
     %default-kernel-arguments))
 
   (initrd-modules
-   (append '("goodix_ts") %base-initrd-modules))
+   (append '("goodix_ts") (base-initrd-modules linux-pro1x)))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   (firmware (list linux-firmware firmware-fxtec-qx1050))

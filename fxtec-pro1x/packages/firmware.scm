@@ -20,7 +20,7 @@
              (commit "6c1ef5bce85750688f789bc6e232ca8237b24713")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0000000000000000000000000000000000000000000000000000"))))
+        (base32 "0bx6vagc0fa833rdisyyqv03nj1fjb6jxjfb5l14dfa4cw4halmq"))))
     (build-system copy-build-system)
     (arguments
      (list #:install-plan
