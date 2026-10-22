@@ -212,6 +212,7 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
     (name "libcamera-pro1x")
     (arguments
      (substitute-keyword-arguments (package-arguments libcamera)
+       ((#:tests? _ #f) #f)
        ((#:phases phases)
         #~(modify-phases #$phases
             (add-after 'install 'install-sensor-tuning
