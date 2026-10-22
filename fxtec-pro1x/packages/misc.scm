@@ -322,7 +322,8 @@ camera hardware.  Run as: cameractr")
         (base32 "0xz5gxxpxm77padj98n3zgif8nvj5danvn2cfb1k56bvv1ws7azc"))))
     (build-system meson-build-system)
     (native-inputs
-     (list gettext-minimal gobject-introspection pkg-config))
+     (list gettext-minimal gobject-introspection pkg-config
+           `(,glib "bin")))
     (inputs
      (list wlroots glib json-glib mesa
            gnome-desktop gsettings-desktop-schemas gmobile-0.7
