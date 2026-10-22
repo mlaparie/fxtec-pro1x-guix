@@ -126,7 +126,7 @@ the ABL from reverting to fastboot after a hard reboot.")
      (list #:tests? #f
            #:phases
            #~(modify-phases %standard-phases
-               (add-before 'build 'fix-firmware-path
+               (add-before 'configure 'fix-firmware-path
                  (lambda _
                    (substitute* "translate.c"
                      (("\"/lib/firmware/\"")
