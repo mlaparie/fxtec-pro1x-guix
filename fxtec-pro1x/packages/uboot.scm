@@ -54,15 +54,16 @@
           (base32 "0vfryrywjwxvd1iddyx6hzc3c7mxxvci44853wrpnff1c0sx64jk"))))
       (build-system gnu-build-system)
       (native-inputs
-       (list bison flex openssl perl python-minimal-wrapper xxd
+       (list bison flex gnutls openssl perl python-minimal-wrapper xxd
              (cross-gcc "aarch64-linux-gnu")
              (cross-binutils "aarch64-linux-gnu")))
       (arguments
        (list
         #:make-flags
-        #~(list "ARCH=arm64"
+        #~(list "ARCH=arm"
                 "CROSS_COMPILE=aarch64-linux-gnu-"
-                "DEVICE_TREE=qcom/sm6115-fxtec-pro1x")
+                "DEVICE_TREE=qcom/sm6115-fxtec-pro1x"
+                "HOSTCC=gcc")
         #:tests? #f
         #:phases
         #~(modify-phases %standard-phases
@@ -70,9 +71,10 @@
               (lambda* (#:key make-flags #:allow-other-keys)
                 ;; qcom_defconfig then apply qcom-phone.config overlay
                 (apply invoke "make" "qcom_defconfig" make-flags)
-                (apply invoke "make" "scripts/kconfig/merge_config.sh" make-flags)
-                (invoke "sh" "-c"
-                        "scripts/kconfig/merge_config.sh .config configs/qcom-phone.config")))
+                (when (file-exists? "configs/qcom-phone.config")
+                  (apply invoke "make" "scripts/kconfig/merge_config.sh" make-flags)
+                  (invoke "sh" "-c"
+                          "scripts/kconfig/merge_config.sh .config configs/qcom-phone.config"))))
 
             (add-after 'configure 'patch-boot-env
               (lambda _
@@ -103,11 +105,8 @@
 
                 ;; 3. USB gadget: high-speed only + UTMI pipe clock.
                 (let ((dts "dts/upstream/src/arm64/qcom/sm6115-fxtec-pro1x.dts"))
-                  (call-with-output-file dts
-                    (lambda (port)
-                      (let ((orig (with-input-from-file dts read-string)))
-                        (display orig port)
-                        (display "\n&usb_dwc3 {\n\
+                  (let ((port (open-file dts "a")))
+                    (display "\n&usb_dwc3 {\n\
 \t/delete-property/ usb-role-switch;\n\
 \tmaximum-speed = \"high-speed\";\n\
 \tdr_mode = \"peripheral\";\n\
@@ -115,12 +114,13 @@
 \tphy-names = \"usb2-phy\";\n\
 };\n\
 &usb { qcom,select-utmi-as-pipe-clk; };\n"
-                              port)))))
+                            port)
+                    (close-port port)))
 
                 ;; 4. UFS GDSC entry in the SM6115 clock driver.
                 (substitute* "drivers/clk/qcom/clock-sm6115.c"
-                  (("(\t\\[GCC_USB30_PRIM_GDSC\\] = \\{ 0x1a004 \\},)")
-                   "\t[GCC_UFS_PHY_GDSC] = { 0x45004 },\n\\1"))))
+                  (("\t\\[GCC_USB30_PRIM_GDSC\\] = \\{ 0x1a004 \\},")
+                   "\t[GCC_UFS_PHY_GDSC] = { 0x45004 },\n\t[GCC_USB30_PRIM_GDSC] = { 0x1a004 },"))))
 
             (replace 'build
               (lambda* (#:key make-flags parallel-build? #:allow-other-keys)
