@@ -27,6 +27,19 @@
   #:export (make-u-boot-pro1x
             u-boot-pro1x))
 
+;; (cross-gcc "aarch64-linux-gnu") fails to build from source in the Guix
+;; sandbox: the stmp-fixinc Makefile rule exits 1 when /usr/include doesn't
+;; exist and doesn't match the cross sys-include path.  --disable-fixincludes
+;; skips that target entirely.
+(define cross-gcc-aarch64
+  (let ((base (cross-gcc "aarch64-linux-gnu")))
+    (package
+      (inherit base)
+      (arguments
+       (substitute-keyword-arguments (package-arguments base)
+         ((#:configure-flags flags)
+          #~(cons "--disable-fixincludes" #$flags)))))))
+
 (define* (make-u-boot-pro1x #:key (previous-generations 3))
   (let* ((n previous-generations)
          ;; "bootmenu_1=Boot previous generation 1=sysboot …\n" × n
@@ -55,7 +68,7 @@
       (build-system gnu-build-system)
       (native-inputs
        (list bison flex gnutls openssl perl python-minimal-wrapper xxd
-             (cross-gcc "aarch64-linux-gnu")
+             cross-gcc-aarch64
              (cross-binutils "aarch64-linux-gnu")))
       (arguments
        (list
