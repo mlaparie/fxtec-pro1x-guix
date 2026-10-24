@@ -66,10 +66,14 @@ channels.scm            Channel pins for reproducible builds
 ## Prerequisites
 
 - GNU Guix with the [nonguix](https://gitlab.com/nonguix/nonguix) channel
-  (needed for `linux-firmware` and `firefox`).
+  (needed for `linux-firmware`).
 - aarch64-linux build support: either a native aarch64 machine, or an x86_64
   host with QEMU user-mode emulation configured for Guix offloading.
-- `fastboot` and `mkbootimg` (android-tools) on the build/flash machine.
+- `fastboot` and `mkbootimg` on the build/flash machine — on Guix these are
+  **separate packages** (not `android-tools`); invoke flash scripts via:
+  ```
+  guix shell mkbootimg fastboot -- bash scripts/flash.sh systems/phosh.scm
+  ```
 - `e2label` (e2fsprogs) on the build/flash machine.
 - An unlocked bootloader on the Pro1X.
 

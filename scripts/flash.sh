@@ -12,8 +12,8 @@
 #
 # Requirements on the build machine:
 #   • Guix (with the fxtec-pro1x and nonguix channels in channels.scm)
-#   • fastboot (android-tools)
-#   • mkbootimg (android-tools)
+#   • fastboot (guix shell fastboot -- bash scripts/flash.sh …)
+#   • mkbootimg (guix shell mkbootimg fastboot -- bash scripts/flash.sh …)
 #   • aarch64-linux cross-compilation support or an aarch64 offload machine
 
 set -euo pipefail
@@ -38,7 +38,7 @@ echo "==> Building U-Boot …"
 UBOOT=$(guix build u-boot-pro1x \
     --system="$ARCH" \
     -L . \
-    --no-grafts 2>&1 | tail -1)
+    2>&1 | tee /dev/stderr | tail -1)
 echo "    $UBOOT"
 
 UBOOT_BIN="$UBOOT/libexec/u-boot.bin"
@@ -70,7 +70,7 @@ DISK_IMAGE=$(guix system image \
     --image-type=efi-raw \
     --system="$ARCH" \
     -L . \
-    "$SYSTEM" 2>&1 | tail -1)
+    "$SYSTEM" 2>&1 | tee /dev/stderr | tail -1)
 echo "    $DISK_IMAGE"
 
 # Extract the root ext4 partition (partition 2 in efi-raw GPT layout) so we
