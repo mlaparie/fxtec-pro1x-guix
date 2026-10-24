@@ -39,6 +39,15 @@ UBOOT=$(guix build u-boot-pro1x \
     --system="$ARCH" \
     -L . \
     --no-grafts 2>&1 | tee /dev/stderr | tail -1)
+# Fallback: if build failed (cross-gcc stmp-fixinc issue on non-FHS hosts),
+# use any already-built u-boot-pro1x output from the store.
+if [ ! -d "$UBOOT" ]; then
+    echo "    Build failed; falling back to cached store output …"
+    UBOOT=$(find /gnu/store -maxdepth 1 -name "*-u-boot-pro1x-*" \
+        ! -name "*.drv" ! -name "*-checkout" ! -name "*-builder" ! -name "*lock*" \
+        2>/dev/null | sort | tail -1)
+    [ -d "$UBOOT" ] || die "U-Boot not in store and build failed — see scripts/flash.sh"
+fi
 echo "    $UBOOT"
 
 UBOOT_BIN="$UBOOT/libexec/u-boot.bin"
