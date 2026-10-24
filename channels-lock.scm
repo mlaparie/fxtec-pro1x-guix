@@ -2,7 +2,7 @@
 ;;;
 ;;; Use with:
 ;;;   guix pull -C channels-lock.scm
-;;;   guix system -C channels-lock.scm reconfigure systems/phosh.scm
+;;;   guix system -C channels-lock.scm reconfigure systems/mobile.scm
 ;;;
 ;;; Regenerate with:
 ;;;   guix describe --format=channels > channels-lock.scm

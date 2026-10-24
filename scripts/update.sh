@@ -3,7 +3,7 @@
 #
 # Usage:
 #   bash scripts/update.sh systems/minimal.scm
-#   bash scripts/update.sh systems/phosh.scm [user@host]
+#   bash scripts/update.sh systems/mobile.scm [user@host]
 #
 # The phone must be reachable at 172.16.42.1 (USB gadget Ethernet).
 # The Guix store closure is copied over SSH then activated.

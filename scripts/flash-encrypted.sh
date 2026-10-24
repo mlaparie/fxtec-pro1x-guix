@@ -2,7 +2,7 @@
 # scripts/flash-encrypted.sh — flash a LUKS2-encrypted Guix system onto the Pro1X
 #
 # Usage (from repo root, device in fastboot mode):
-#   bash scripts/flash-encrypted.sh systems/phosh-encrypted.scm
+#   bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
 #
 # Partition layout written to /dev/disk/by-partlabel/userdata:
 #   [0,  256 MiB) : plain ext4 "guixboot" — U-Boot reads extlinux.conf + kernel here
@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-SYSTEM="${1:-systems/phosh-encrypted.scm}"
+SYSTEM="${1:-systems/mobile-encrypted.scm}"
 ARCH="aarch64-linux"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 

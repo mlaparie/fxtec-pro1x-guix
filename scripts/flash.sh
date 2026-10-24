@@ -3,7 +3,7 @@
 #
 # Usage (from repo root, device in fastboot mode):
 #   bash scripts/flash.sh systems/minimal.scm
-#   bash scripts/flash.sh systems/phosh.scm
+#   bash scripts/flash.sh systems/mobile.scm
 #
 # What it does:
 #   1. Builds U-Boot (wrapped as an Android boot image for the ABL)

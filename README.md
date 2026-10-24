@@ -2,7 +2,7 @@
 
 Mainline Linux (plus a set of small device patches) and U-Boot for the
 F(x)tec Pro1X (Snapdragon 662 / SM6115), packaged as a GNU Guix channel. Use
-it as a ready-made Phosh system (`systems/phosh.scm`) or adapt `systems/minimal.scm`
+it as a ready-made Phosh system (`systems/mobile.scm`) or adapt `systems/minimal.scm`
 into your own configuration.
 
 This is a port of [nyymi609/fxtec-pro1x-nixos](https://github.com/nyymi609/fxtec-pro1x-nixos)
@@ -39,7 +39,7 @@ Vibration motor                  Expected
 Battery / charging               Expected
 Suspend                          Untested
 GPS, NFC, video codecs           Untested
-Full-disk encryption             systems/phosh-encrypted.scm + flash-encrypted.sh
+Full-disk encryption             systems/mobile-encrypted.scm + flash-encrypted.sh
 ```
 
 ## Layout
@@ -49,8 +49,8 @@ fxtec-pro1x/packages/   kernel, u-boot, firmware, audio, misc (phoc, cameractrl,
 fxtec-pro1x/services/   Shepherd services: audio, boot, camera, fde, hardware, keyboard,
                         modem, sensors, usb-network
 systems/minimal.scm     Console + SSH system (baseline)
-systems/phosh.scm       Phosh mobile desktop
-systems/phosh-encrypted.scm  Phosh with LUKS2 full-disk encryption
+systems/mobile.scm       Phosh mobile desktop
+systems/mobile-encrypted.scm  Phosh with LUKS2 full-disk encryption
 device/                 Distro-independent: kernel patches + config, UCM2 profiles,
                         libcamera patches + tuning files, hexagonfs sensor config,
                         phoc patch, keyd config, udev rules, FDE helpers (xts-encrypt.c)
@@ -74,7 +74,7 @@ manifest.scm            Flash tooling manifest — use with guix shell -m manife
 - Flash tooling on the build/flash machine: `fastboot`, `mkbootimg`,
   `e2fsprogs`, `util-linux` — on Guix use the provided manifest:
   ```
-  guix shell -m manifest.scm -- bash scripts/flash.sh systems/phosh.scm
+  guix shell -m manifest.scm -- bash scripts/flash.sh systems/mobile.scm
   ```
 - An unlocked bootloader on the Pro1X.
 
@@ -103,7 +103,7 @@ From the repository root, with aarch64 cross-compilation or an offload machine:
 ```sh
 guix system build --system=aarch64-linux systems/minimal.scm
 # or for the Phosh desktop:
-guix system build --system=aarch64-linux systems/phosh.scm
+guix system build --system=aarch64-linux systems/mobile.scm
 ```
 
 The flash script builds everything automatically, so you do not need to run
@@ -130,7 +130,7 @@ fastboot flashing unlock
 **Step 3 — flash**. Put the phone in fastboot mode, then from the repo root:
 
 ```sh
-guix shell -m manifest.scm -- bash scripts/flash.sh systems/phosh.scm
+guix shell -m manifest.scm -- bash scripts/flash.sh systems/mobile.scm
 # or:
 guix shell -m manifest.scm -- bash scripts/flash.sh systems/minimal.scm
 ```
@@ -151,7 +151,7 @@ ssh user@172.16.42.1
 After the first flash, subsequent updates do not need fastboot:
 
 ```sh
-guix system build --system=aarch64-linux systems/phosh.scm
+guix system build --system=aarch64-linux systems/mobile.scm
 bash scripts/update.sh
 ```
 
@@ -160,7 +160,7 @@ from the U-Boot menu (hold volume-down at power-on).
 
 ## Full-disk encryption (LUKS2)
 
-`systems/phosh-encrypted.scm` uses the same configuration as `phosh.scm` but adds
+`systems/mobile-encrypted.scm` uses the same configuration as `mobile.scm` but adds
 LUKS2 encryption. The userdata partition is split:
 
 ```
@@ -175,7 +175,7 @@ so no root access or device-mapper is needed on the build machine.
 
 **First flash:**
 ```sh
-guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/phosh-encrypted.scm
+guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
 ```
 
 The script builds U-Boot and the system image, prompts for a passphrase, creates
@@ -189,6 +189,20 @@ bash scripts/update-encrypted-boot.sh
 
 This copies the new kernel and initrd to the plain `/boot` area so U-Boot can
 load them without decrypting. Then reboot.
+
+## Using sway instead of Phosh
+
+`systems/mobile.scm` starts Phosh by default but also ships `foot` and `sway`
+for cases where Phosh is unavailable or you prefer a tiling compositor. To
+switch to sway for the current session:
+
+```sh
+herd stop phosh
+XDG_RUNTIME_DIR=/run/user/1000 sway
+```
+
+`foot` is the recommended terminal when running under sway. Both are included in
+the system packages so no extra install step is needed.
 
 ## Services
 

@@ -1,10 +1,15 @@
-;;; systems/phosh.scm — Pro1X Guix system with Phosh mobile desktop
+;;; systems/mobile-encrypted.scm — Pro1X mobile system with LUKS2 full-disk encryption
 ;;;
-;;; Extends minimal.scm with:
-;;;   • Phosh (phoc-pro1x compositor + squeekboard on-screen keyboard)
-;;;   • Camera stack (libcamera-pro1x, cameractrl)
-;;;   • ADSP sensors (accelerometer for auto-rotate, proximity, ALS)
-;;;   • Calls (dialer), Chatty (SMS/MMS), IceCat browser, GNOME Console
+;;; Partition layout of /dev/disk/by-partlabel/userdata:
+;;;   [0,  256 MiB) : plain ext4 "guixboot" — U-Boot reads kernel + extlinux.conf from here
+;;;   [256 MiB, …)  : LUKS2 container — passphrase entered in initrd, root mounted from here
+;;;
+;;; First flash:
+;;;   bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
+;;;
+;;; After guix system reconfigure:
+;;;   bash scripts/update-encrypted-boot.sh
+;;;   (copies new kernel/initrd to the plain /boot area)
 
 (use-modules (gnu)
              (gnu bootloader extlinux)
@@ -17,9 +22,7 @@
              (gnu packages version-control)
              (gnu packages vim)
              (gnu packages gnuzilla)
-             (gnu packages terminals)
              (gnu packages web-browsers)
-             (gnu packages window-management)
              (nongnu packages linux)
              (gnu services base)
              (gnu services dbus)
@@ -35,11 +38,20 @@
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
              (fxtec-pro1x services camera)
+             (fxtec-pro1x services fde)
              (fxtec-pro1x services hardware)
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services usb-network))
+
+;; Defined here so both mapped-devices and file-systems can reference it.
+(define %fde-mapped-devices
+  (list
+   (mapped-device
+    (source "/dev/disk/by-partlabel/userdata")
+    (targets '("pro1x-crypt"))
+    (type luks-pro1x-device-mapping))))
 
 (operating-system
   (host-name "pro1x")
@@ -65,20 +77,36 @@
   (firmware (list linux-firmware firmware-fxtec-qx1050))
 
   ;; ── Bootloader ────────────────────────────────────────────────────────────
+  ;; U-Boot reads extlinux.conf from the plain "guixboot" ext4 at the start of
+  ;; userdata.  flash-encrypted.sh writes the kernel and initrd there at
+  ;; /vmlinuz and /initrd.img with a matching extlinux.conf.
+  ;; After guix system reconfigure, run scripts/update-encrypted-boot.sh to
+  ;; copy the new kernel/initrd to the plain area.
   (bootloader
    (bootloader-configuration
     (bootloader extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
     (timeout 3)))
 
-  ;; ── Filesystems ───────────────────────────────────────────────────────────
+  ;; ── Encrypted device + filesystems ────────────────────────────────────────
+  (mapped-devices %fde-mapped-devices)
+
   (file-systems
    (cons*
+    ;; Plain 256 MiB boot area — U-Boot reads kernel + extlinux.conf from here.
+    (file-system
+      (device (file-system-label "guixboot"))
+      (mount-point "/boot")
+      (type "ext4")
+      (check? #f)
+      (options "noatime"))
+    ;; Encrypted root on the LUKS2 device.
     (file-system
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime"))
+      (options "noatime")
+      (dependencies %fde-mapped-devices))
     %base-file-systems))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────
@@ -90,17 +118,13 @@
      (home-directory "/home/user")
      (supplementary-groups
       '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
-     ;; Change this before relying on it.
      (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
-
-  ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
    (append
     (list
-     ;; ── Hardware
      (service pro1x-hardware-service-type)
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
@@ -115,10 +139,6 @@
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))
 
-     ;; ── Phosh desktop
-     ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
-     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on
-     ;; VT1; XDG_RUNTIME_DIR is set up inline (no elogind needed).
      (simple-service 'phosh shepherd-root-service-type
        (list
         (shepherd-service
@@ -138,38 +158,27 @@
          (stop #~(make-kill-destructor))
          (respawn? #t))))
 
-     ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
      (simple-service 'phosh-config etc-service-type
        (list
         `("phoc.ini"
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
-     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
-
-     ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)
 
-     ;; SSH
      (service openssh-service-type
               (openssh-configuration
                (password-authentication? #t))))
 
-    ;; Base services (console-font, udev, syslog, etc.)
     %base-services))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
    (append
     (list
-     ;; Mobile apps
      icecat
      gnome-console
-     foot sway
-     ;; Calls (dialer) requires ModemManager + callaudiod — install here
-     ;; and wire through dconf when available in Guix packages
-     ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
      iw usbutils vim git)
     %base-packages)))
