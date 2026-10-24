@@ -39,21 +39,25 @@ Vibration motor                  Expected
 Battery / charging               Expected
 Suspend                          Untested
 GPS, NFC, video codecs           Untested
-Full-disk encryption             Not ported
+Full-disk encryption             systems/phosh-encrypted.scm + flash-encrypted.sh
 ```
 
 ## Layout
 
 ```
 fxtec-pro1x/packages/   kernel, u-boot, firmware, audio, misc (phoc, cameractrl, …)
-fxtec-pro1x/services/   Shepherd services: audio, boot, camera, hardware, keyboard,
+fxtec-pro1x/services/   Shepherd services: audio, boot, camera, fde, hardware, keyboard,
                         modem, sensors, usb-network
 systems/minimal.scm     Console + SSH system (baseline)
 systems/phosh.scm       Phosh mobile desktop
+systems/phosh-encrypted.scm  Phosh with LUKS2 full-disk encryption
 device/                 Distro-independent: kernel patches + config, UCM2 profiles,
                         libcamera patches + tuning files, hexagonfs sensor config,
-                        phoc patch, keyd config, udev rules
-scripts/                flash.sh, backup-stock.sh, update.sh, deploy.sh, …
+                        phoc patch, keyd config, udev rules, FDE helpers (xts-encrypt.c)
+scripts/backup-stock.sh Back up modem EFS and boot partitions before flashing
+scripts/flash.sh        Initial flash (plain/unencrypted)
+scripts/flash-encrypted.sh  Initial flash with LUKS2 encryption
+scripts/update-encrypted-boot.sh  Copy new kernel/initrd to plain boot area after reconfigure
 tools/                  On-device diagnostics (haptics-tune, cam-focus, sensors-check, …)
 channels.scm            Channel pins for reproducible builds
 .guix-channel           Channel descriptor for use as a Guix channel
@@ -143,6 +147,38 @@ bash scripts/update.sh
 
 Reboot to switch to the new generation. Previous generations remain selectable
 from the U-Boot menu (hold volume-down at power-on).
+
+## Full-disk encryption (LUKS2)
+
+`systems/phosh-encrypted.scm` uses the same configuration as `phosh.scm` but adds
+LUKS2 encryption. The userdata partition is split:
+
+```
+[0, 256 MiB)  plain ext4 "guixboot"  — kernel, initrd, extlinux.conf (U-Boot reads this)
+[256 MiB, …)  LUKS2 header + encrypted ext4 root
+```
+
+The initrd opens the LUKS2 container (passphrase entered at boot), then mounts
+the decrypted ext4 as root. Encryption is done on the host during flash using
+`device/fde/xts-encrypt.c` (AES-256-XTS-plain64, same algorithm as dm-crypt),
+so no root access or device-mapper is needed on the build machine.
+
+**First flash:**
+```sh
+bash scripts/flash-encrypted.sh systems/phosh-encrypted.scm
+```
+
+The script builds U-Boot and the system image, prompts for a passphrase, creates
+the LUKS2 container with the encrypted root, and flashes the assembled userdata
+image over fastboot.
+
+**After `guix system reconfigure`** (run on the device):
+```sh
+bash scripts/update-encrypted-boot.sh
+```
+
+This copies the new kernel and initrd to the plain `/boot` area so U-Boot can
+load them without decrypting. Then reboot.
 
 ## Services
 

@@ -1,13 +1,14 @@
 ;;; fxtec-pro1x/packages/misc.scm — small Qualcomm userspace tools + patched packages
 ;;;
 ;;; Packages:
-;;;   qbootctl         — mark A/B boot slot as successful
-;;;   tqftpserv        — deliver modem firmware over QRTR/TFTP
-;;;   rmtfs            — Qualcomm remote filesystem (modemst1/2, fsg, fsc)
-;;;   hexagonrpcd      — serve ADSP sensor config over FastRPC
-;;;   libcamera-pro1x  — libcamera patched for IMX582 + S5K4H7
-;;;   cameractrl       — V4L2 camera controls GUI (focus/exposure)
-;;;   phoc-pro1x       — phoc patched to ignore SW_KEYPAD_SLIDE
+;;;   qbootctl          — mark A/B boot slot as successful
+;;;   tqftpserv         — deliver modem firmware over QRTR/TFTP
+;;;   rmtfs             — Qualcomm remote filesystem (modemst1/2, fsg, fsc)
+;;;   hexagonrpcd       — serve ADSP sensor config over FastRPC
+;;;   pro1x-xts-encrypt — host tool: offline AES-XTS-plain64 encryption for FDE images
+;;;   libcamera-pro1x   — libcamera patched for IMX582 + S5K4H7
+;;;   cameractrl        — V4L2 camera controls GUI (focus/exposure)
+;;;   phoc-pro1x        — phoc patched to ignore SW_KEYPAD_SLIDE
 
 (define-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages base)
@@ -21,6 +22,7 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages tls)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages python)
   #:use-module (gnu packages photo)
@@ -29,6 +31,7 @@
   #:use-module (gnu packages window-management)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
+  #:use-module (guix build-system trivial)
   #:use-module (guix gexp)
   #:use-module (guix git-download)
   #:use-module (guix packages)
@@ -39,6 +42,7 @@
             tqftpserv
             rmtfs
             hexagonrpcd
+            pro1x-xts-encrypt
             libcamera-pro1x
             cameractrl
             gmobile-0.7
@@ -198,6 +202,48 @@ to fetch sensor configuration and registry files from the Linux filesystem.
 This version includes the sns_registry interface required by the Pro1X ADSP
 sensor stack (linux-msm/hexagonrpc pull request 27).")
     (license license:bsd-3)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-xts-encrypt — host tool: offline AES-XTS-plain64 for FDE image creation
+;;; Encrypts a disk image the same way dm-crypt does for a LUKS2 volume, without
+;;; needing root or device-mapper.  Used by scripts/flash-encrypted.sh.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-xts-encrypt
+  (package
+    (name "pro1x-xts-encrypt")
+    (version "0.1")
+    (source (local-file "../../device/fde/xts-encrypt.c"
+                        "xts-encrypt.c"))
+    (build-system trivial-build-system)
+    ;; Host tool: compiled for the build machine (x86_64 or whatever the host is).
+    (native-inputs
+     (list (@ (gnu packages commencement) gcc-toolchain) openssl))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let* ((src   #$source)
+                 (tc    #$(this-package-native-input "gcc-toolchain"))
+                 (ssl   #$(this-package-native-input "openssl"))
+                 (out   #$output)
+                 (bin   (string-append out "/bin")))
+            (mkdir-p bin)
+            (setenv "PATH" (string-append tc "/bin"))
+            (invoke "gcc" "-O2" "-o" (string-append bin "/pro1x-xts-encrypt")
+                    src
+                    (string-append "-I" ssl "/include")
+                    (string-append "-L" ssl "/lib")
+                    "-lcrypto")))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Offline AES-XTS-plain64 encryption for LUKS2 image creation")
+    (description
+     "pro1x-xts-encrypt encrypts a disk image sector-by-sector using
+AES-256-XTS-plain64 with the same tweak convention as dm-crypt, without
+needing root or device-mapper.  It is used by scripts/flash-encrypted.sh
+to build an FDE userdata image on the host before flashing.")
+    (license license:gpl2+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libcamera-pro1x — libcamera + S5K4H7 and IMX582 sensor patches
