@@ -37,18 +37,19 @@
 ;;; profiles so PipeWire/WirePlumber can find both.
 (define (pro1x-ucm-dir audio-pkg)
   (computed-file "alsa-ucm2-pro1x"
-    #~(begin
-        (use-modules (guix build utils))
-        (mkdir-p #$output)
-        ;; Stock profiles first, then ours (ours win on conflicts)
-        (copy-recursively
-         (string-append #$alsa-ucm-conf "/share/alsa/ucm2")
-         #$output
-         #:log (%make-void-port "w"))
-        (copy-recursively
-         (string-append #$audio-pkg "/share/alsa/ucm2")
-         #$output
-         #:log (%make-void-port "w")))))
+    (with-imported-modules '((guix build utils))
+      #~(begin
+          (use-modules (guix build utils))
+          (mkdir-p #$output)
+          ;; Stock profiles first, then ours (ours win on conflicts)
+          (copy-recursively
+           (string-append #$alsa-ucm-conf "/share/alsa/ucm2")
+           #$output
+           #:log (%make-void-port "w"))
+          (copy-recursively
+           (string-append #$audio-pkg "/share/alsa/ucm2")
+           #$output
+           #:log (%make-void-port "w"))))))
 
 ;;; /etc entries: WirePlumber conf fragment and environment for ALSA_CONFIG_UCM2
 (define (pro1x-audio-etc config)
