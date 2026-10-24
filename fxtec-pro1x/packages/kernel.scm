@@ -64,9 +64,14 @@
                 "CROSS_COMPILE=aarch64-linux-gnu-"))
        ((#:phases phases)
         #~(modify-phases #$phases
+            (add-after 'unpack 'fix-hardcoded-bin-sh
+              (lambda _
+                (substitute* "arch/arm64/tools/Makefile"
+                  (("/bin/sh") "sh"))))
+
             (replace 'configure
               (lambda _
-                (install-file
+                (copy-file
                  #$(local-file (string-append (dirname (current-filename))
                                               "/../../device/kernel/config.aarch64")
                                "pro1x.config")
