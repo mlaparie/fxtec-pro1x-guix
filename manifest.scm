@@ -5,6 +5,8 @@
 ;;;
 ;;; Provides: fastboot, mkbootimg, partx (util-linux), e2label (e2fsprogs)
 
+(use-modules (guix profiles))
+
 (specifications->manifest
  '("fastboot"
    "mkbootimg"
