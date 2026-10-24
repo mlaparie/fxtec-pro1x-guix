@@ -89,13 +89,9 @@ Qualcomm modem and ADSP subsystems.")
        (file-name (git-file-name name version))
        (sha256
         (base32 "01hm5f50z31mqdyg4rvqp4bnqiq8rrbi07bym6zr5qj9si9w544n"))))
-    (build-system gnu-build-system)
-    (arguments
-     (list #:tests? #f
-           #:make-flags #~(list (string-append "PREFIX=" #$output))
-           #:phases
-           #~(modify-phases %standard-phases
-               (delete 'configure))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config))
+    (arguments (list #:tests? #f))
     (home-page "https://github.com/linux-msm/qbootctl")
     (synopsis "Mark Qualcomm A/B boot slots successful")
     (description
@@ -258,13 +254,10 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
         (base32 "0f9dfg26lylq92894hcv7c6l5dwnibnj7rzb0m43py7n7w5p92p2"))))
     (build-system meson-build-system)
     (native-inputs
-     (list pkg-config vala blueprint-compiler
+     (list pkg-config vala blueprint-compiler gettext-minimal
            `(,glib "bin") desktop-file-utils))
     (inputs
-     (list glib gtk libadwaita libgudev
-           ;; gtk4-layer-shell not yet in Guix; add when available:
-           ;; gtk4-layer-shell
-           ))
+     (list glib gtk libadwaita libgudev gtk4-layer-shell))
     (synopsis "Camera focus/exposure controls for V4L2 sub-devices on mobile Linux")
     (description
      "cameractrl provides a Libadwaita/GTK4 GUI for adjusting V4L2 sub-device
