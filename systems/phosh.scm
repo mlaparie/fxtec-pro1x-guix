@@ -4,7 +4,7 @@
 ;;;   • Phosh (phoc-pro1x compositor + squeekboard on-screen keyboard)
 ;;;   • Camera stack (libcamera-pro1x, cameractrl)
 ;;;   • ADSP sensors (accelerometer for auto-rotate, proximity, ALS)
-;;;   • Calls (dialer), Chatty (SMS/MMS), Firefox, GNOME Console
+;;;   • Calls (dialer), Chatty (SMS/MMS), IceCat browser, GNOME Console
 
 (use-modules (gnu)
              (gnu bootloader extlinux)
@@ -16,9 +16,9 @@
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages vim)
+             (gnu packages gnuzilla)
              (gnu packages web-browsers)
              (nongnu packages linux)
-             (nongnu packages mozilla)
              (gnu services base)
              (gnu services dbus)
              (gnu services desktop)
@@ -163,7 +163,7 @@
    (append
     (list
      ;; Mobile apps
-     firefox
+     icecat
      gnome-console
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages

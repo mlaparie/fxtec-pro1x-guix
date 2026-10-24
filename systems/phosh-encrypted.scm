@@ -21,9 +21,9 @@
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages vim)
+             (gnu packages gnuzilla)
              (gnu packages web-browsers)
              (nongnu packages linux)
-             (nongnu packages mozilla)
              (gnu services base)
              (gnu services dbus)
              (gnu services desktop)
@@ -178,7 +178,7 @@
   (packages
    (append
     (list
-     firefox
+     icecat
      gnome-console
      iw usbutils vim git)
     %base-packages)))

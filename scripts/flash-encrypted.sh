@@ -213,15 +213,10 @@ unset PASSPHRASE1 PASSPHRASE2
 
 # ── Build pro1x-xts-encrypt ──────────────────────────────────────────────────
 echo "==> Building pro1x-xts-encrypt …"
-SSL_PATH=$(guix build openssl -L "$REPO_ROOT" 2>&1 | tail -1)
-XTS_ENC="$TMPDIR/pro1x-xts-encrypt"
-guix shell openssl gcc-toolchain -- \
-    gcc -O2 \
-    -o "$XTS_ENC" \
-    "$REPO_ROOT/device/fde/xts-encrypt.c" \
-    "-I$SSL_PATH/include" \
-    "-L$SSL_PATH/lib" \
-    -lcrypto
+XTS_PKG=$(guix build pro1x-xts-encrypt \
+    -L "$REPO_ROOT" \
+    --no-grafts 2>&1 | tail -1)
+XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 echo "    $XTS_ENC"
 
 # ── Create LUKS2 container ────────────────────────────────────────────────────
