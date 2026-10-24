@@ -56,10 +56,10 @@
   ;; The Pro1X kernel selects the DTB at build time; extlinux passes it via
   ;; the FDT directive automatically when the DTB is next to the kernel.
   (initrd-modules
-   (append
-    ;; Everything to reach UFS is built-in; pull in touchscreen for FDE.
-    '("goodix_ts")
-    (base-initrd-modules linux-pro1x)))
+   ;; UFS storage and ext4 are built-in; base-initrd-modules pulls in
+   ;; x86/generic modules (hid-apple, uas, serpent_generic…) absent from
+   ;; this ARM kernel.  List only what actually exists.
+   '("goodix_ts" "hid-multitouch"))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   ;; linux-firmware for Wi-Fi (ath10k), BT (qca); pro1x firmware for
@@ -99,7 +99,7 @@
      (supplementary-groups
       '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
      ;; Change this before relying on it.
-     (password (crypt "user" "$6$abc")))
+     (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
 
   ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type

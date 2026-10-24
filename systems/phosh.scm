@@ -57,7 +57,7 @@
     %default-kernel-arguments))
 
   (initrd-modules
-   (append '("goodix_ts") (base-initrd-modules linux-pro1x)))
+   '("goodix_ts" "hid-multitouch"))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   (firmware (list linux-firmware firmware-fxtec-qx1050))
@@ -87,7 +87,9 @@
      (group "users")
      (home-directory "/home/user")
      (supplementary-groups
-      '("wheel" "netdev" "video" "input" "audio" "feedbackd")))
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
+     ;; Change this before relying on it.
+     (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
 
   ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
