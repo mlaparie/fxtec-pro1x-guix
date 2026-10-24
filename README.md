@@ -69,12 +69,11 @@ channels.scm            Channel pins for reproducible builds
   (needed for `linux-firmware`).
 - aarch64-linux build support: either a native aarch64 machine, or an x86_64
   host with QEMU user-mode emulation configured for Guix offloading.
-- `fastboot` and `mkbootimg` on the build/flash machine — on Guix these are
-  **separate packages** (not `android-tools`); invoke flash scripts via:
+- Flash tooling on the build/flash machine: `fastboot`, `mkbootimg`,
+  `e2fsprogs`, `util-linux` — on Guix use the provided manifest:
   ```
-  guix shell mkbootimg fastboot -- bash scripts/flash.sh systems/phosh.scm
+  guix shell -m manifest.scm -- bash scripts/flash.sh systems/phosh.scm
   ```
-- `e2label` (e2fsprogs) on the build/flash machine.
 - An unlocked bootloader on the Pro1X.
 
 Add the channel to your `~/.config/guix/channels.scm` (or copy `channels.scm`
