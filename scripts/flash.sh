@@ -38,7 +38,7 @@ echo "==> Building U-Boot …"
 UBOOT=$(guix build u-boot-pro1x \
     --system="$ARCH" \
     -L . \
-    2>&1 | tee /dev/stderr | tail -1)
+    --no-grafts 2>&1 | tee /dev/stderr | tail -1)
 echo "    $UBOOT"
 
 UBOOT_BIN="$UBOOT/libexec/u-boot.bin"
