@@ -41,7 +41,7 @@
      ;; rmtfs: wait for modem remoteproc, then serve EFS partitions
      (shepherd-service
       (provision '(rmtfs))
-      (requirement '(udev tqftpserv))
+      (requirement '(udev tqftpserv pro1x-modem-ready))
       (documentation "Qualcomm remote filesystem service (modemst1/2, fsg, fsc)")
       (start
        #~(make-forkexec-constructor
@@ -90,7 +90,8 @@
                           (display "  done\n" port)
                           (display "  i=$((i+1)); sleep 1\n" port)
                           (display "done\n" port)
-                          (display "echo 'modem remoteproc not found' >&2; exit 1\n" port))))))
+                          (display "echo 'modem remoteproc not found' >&2; exit 1\n" port)))
+                      (chmod #$output #o755))))
         #:log-file "/var/log/pro1x-modem-wait.log"))
     (stop #~(make-kill-destructor)))))
 
@@ -103,7 +104,9 @@
    (extensions
     (list
      (service-extension shepherd-root-service-type
-                        pro1x-modem-shepherd-services)
+                        (lambda (config)
+                          (append (pro1x-modem-rmtfs-wait config)
+                                  (pro1x-modem-shepherd-services config))))
      (service-extension profile-service-type
                         pro1x-modem-packages)))
    (default-value (pro1x-modem-configuration))
