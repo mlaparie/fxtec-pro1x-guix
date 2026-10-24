@@ -16,23 +16,22 @@
 
 (define-record-type* <pro1x-camera-configuration>
   pro1x-camera-configuration make-pro1x-camera-configuration
-  pro1x-camera-configuration?
-  ;; User account to create XDG dirs for
-  (user pro1x-camera-user (default "user")))
+  pro1x-camera-configuration?)
 
-;;; XDG user dirs are created at login by xdg-user-dirs-update; we place a
-;;; seed config in /etc/skel so new users get Pictures/Videos from the start.
+;;; /etc/xdg/user-dirs.defaults — system-wide FreeDesktop default XDG dirs.
+;;; xdg-user-dirs-update reads this on first login to initialise ~/.config/user-dirs.dirs.
+;;; NixOS equivalent: environment.etc."xdg/user-dirs.defaults".text = ...
+;;; Using xdg/ (not skel/) because in Guix, /etc/skel is an immutable store symlink.
 (define (pro1x-camera-etc config)
   (list
-   `("skel/.config/user-dirs.dirs"
-     ,(plain-file "user-dirs.dirs"
-                  "XDG_DESKTOP_DIR=\"$HOME/Desktop\"
-XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"
-XDG_DOCUMENTS_DIR=\"$HOME/Documents\"
-XDG_MUSIC_DIR=\"$HOME/Music\"
-XDG_PICTURES_DIR=\"$HOME/Pictures\"
-XDG_VIDEOS_DIR=\"$HOME/Videos\"
-"))))
+   `("xdg/user-dirs.defaults"
+     ,(plain-file "user-dirs.defaults"
+                  "DESKTOP=Desktop\n\
+DOWNLOAD=Downloads\n\
+DOCUMENTS=Documents\n\
+MUSIC=Music\n\
+PICTURES=Pictures\n\
+VIDEOS=Videos\n"))))
 
 ;;; WirePlumber needs to find our patched libcamera at runtime.
 ;;; We set LD_LIBRARY_PATH via /etc/environment.d/ which is read by PAM.
@@ -65,4 +64,4 @@ XDG_VIDEOS_DIR=\"$HOME/Videos\"
                         pro1x-camera-packages)))
    (default-value (pro1x-camera-configuration))
    (description "Camera support for the F(x)tec Pro1X: libcamera with IMX582/S5K4H7
-patches, cameractrl for manual focus/exposure, v4l-utils, and XDG user dirs.")))
+patches, cameractrl for manual focus/exposure, v4l-utils, and XDG user dir defaults.")))
