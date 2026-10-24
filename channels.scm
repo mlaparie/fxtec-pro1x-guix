@@ -22,4 +22,4 @@
  (channel
   (name 'fxtec-pro1x)
   (url "file:///home/mat/Projects/fxtec-pro1x-guix")
-  (branch "guix")))
+  (branch "main")))

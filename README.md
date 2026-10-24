@@ -85,7 +85,7 @@ from this repo):
 (cons* (channel
         (name 'fxtec-pro1x)
         (url "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-        (branch "guix"))
+        (branch "main"))
        %default-channels)
 ```
 

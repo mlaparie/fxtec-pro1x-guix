@@ -34,5 +34,5 @@
  (channel
   (name 'fxtec-pro1x)
   (url "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-  (branch "guix")
+  (branch "main")
   (commit "e81e5deea0389f1b2aa84494778349289ce65f38")))

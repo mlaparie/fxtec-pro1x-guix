@@ -2,7 +2,7 @@ name: Build Pro1X images
 
 on:
   push:
-    branches: [guix]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
