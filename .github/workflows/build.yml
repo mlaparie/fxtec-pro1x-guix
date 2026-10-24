@@ -1,0 +1,118 @@
+name: Build Pro1X images
+
+on:
+  push:
+    branches: [guix]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Host tools needed for image extraction ────────────────────────────
+      - name: Install host tools
+        run: sudo apt-get install -y --no-install-recommends util-linux e2fsprogs
+
+      # ── Install Guix ──────────────────────────────────────────────────────
+      - name: Install Guix
+        run: |
+          curl -fsSL https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh \
+            -o /tmp/guix-install.sh
+          chmod +x /tmp/guix-install.sh
+          echo | sudo -E /tmp/guix-install.sh
+
+      - name: Authorize nonguix substitute server
+        run: |
+          # Key from https://gitlab.com/nonguix/nonguix (README §Substitutes)
+          sudo guix archive --authorize <<'EOF'
+          (public-key
+           (ecc
+            (curve Ed25519)
+            (q #09A31B99DC4F83B72D9F12E3A37E2D24EF3E4EC7AEFDE2B7DAE2574EF8AA285#)))
+          EOF
+          # Append nonguix substitute URL to the daemon's known servers
+          sudo mkdir -p /etc/guix
+          printf '\nhttps://substitutes.nonguix.org' | sudo tee -a /etc/guix/acl >/dev/null || true
+          # Restart daemon so it picks up the new key + URL
+          sudo systemctl restart guix-daemon
+
+      # ── Restore / seed the Guix store ─────────────────────────────────────
+      - name: Cache Guix store
+        uses: actions/cache@v4
+        with:
+          path: /gnu/store
+          key: guix-store-${{ hashFiles('channels-lock.scm') }}
+          restore-keys: guix-store-
+
+      # ── Pull pinned channels ──────────────────────────────────────────────
+      - name: Pull pinned channels
+        run: |
+          sudo guix pull -C channels-lock.scm
+          # Make pulled guix the default for subsequent steps
+          sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
+
+      # ── Build U-Boot ──────────────────────────────────────────────────────
+      # Running natively on aarch64 — no cross-compiler, no stmp-fixinc issue.
+      - name: Build u-boot-pro1x
+        run: |
+          sudo guix build u-boot-pro1x \
+            -L . \
+            --fallback \
+            2>&1 | tee /tmp/uboot.log
+          UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
+          [ -d "$UBOOT" ] || { echo "U-Boot build failed"; cat /tmp/uboot.log; exit 1; }
+          cp "$UBOOT/libexec/u-boot.bin"                  u-boot.bin
+          cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
+          echo "Built: $UBOOT"
+
+      # ── Build system image ────────────────────────────────────────────────
+      - name: Build system image (mobile)
+        run: |
+          sudo guix system image \
+            --image-type=efi-raw \
+            -L . \
+            systems/mobile.scm \
+            2>&1 | tee /tmp/image.log
+          IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
+          [ -f "$IMG" ] || { echo "Image build failed"; cat /tmp/image.log; exit 1; }
+          echo "Built: $IMG"
+          # Extract root ext4 partition (partition 2 in GPT efi-raw layout)
+          PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
+          PART_START=$(echo "$PART_INFO" | awk '{print $1}')
+          PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
+          sudo dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
+          LABEL=$(sudo e2label rootfs.img 2>/dev/null || true)
+          [ "$LABEL" = "guix" ] || sudo e2label rootfs.img guix
+          echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
+
+      # ── Upload artifacts ──────────────────────────────────────────────────
+      - name: Upload u-boot
+        uses: actions/upload-artifact@v4
+        with:
+          name: u-boot-pro1x
+          path: |
+            u-boot.bin
+            sm6115-fxtec-pro1x.dtb
+          retention-days: 30
+
+      - name: Upload rootfs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-mobile
+          path: rootfs.img
+          retention-days: 30
+
+      # ── Cut a release when a tag is pushed ───────────────────────────────
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            u-boot.bin
+            sm6115-fxtec-pro1x.dtb
+            rootfs.img
