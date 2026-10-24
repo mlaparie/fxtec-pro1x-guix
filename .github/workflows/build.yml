@@ -21,7 +21,7 @@ jobs:
       # ── Install Guix ──────────────────────────────────────────────────────
       - name: Install Guix
         run: |
-          curl -fsSL https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh \
+          curl -fsSL https://codeberg.org/guix/guix/raw/branch/master/etc/guix-install.sh \
             -o /tmp/guix-install.sh
           chmod +x /tmp/guix-install.sh
           echo | sudo -E /tmp/guix-install.sh
