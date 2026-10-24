@@ -42,19 +42,21 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
 
-      # ── Restore / seed the Guix store ─────────────────────────────────────
+      # ── Cache Guix store + pulled profile ────────────────────────────────
       - name: Cache Guix store
         uses: actions/cache@v4
         with:
-          path: /gnu/store
-          key: guix-store-${{ hashFiles('channels-lock.scm') }}
-          restore-keys: guix-store-
+          path: |
+            /gnu/store
+            /root/.config/guix
+            /var/guix/profiles/per-user/root
+          key: guix-${{ hashFiles('channels-ci.scm') }}
+          restore-keys: guix-
 
-      # ── Pull pinned channels ──────────────────────────────────────────────
+      # ── Pull pinned channels (guix + nonguix only; fxtec-pro1x via -L .) ─
       - name: Pull pinned channels
         run: |
-          sudo guix pull --disable-authentication -C channels-lock.scm
-          # Make pulled guix the default for subsequent steps
+          sudo guix pull --disable-authentication -C channels-ci.scm
           sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
 
       # ── Build U-Boot ──────────────────────────────────────────────────────

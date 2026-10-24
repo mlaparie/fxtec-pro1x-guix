@@ -1,4 +1,3 @@
 (channel
   (version 0)
-  (directory ".")
-  (news-file "etc/news.scm"))
+  (directory "."))
