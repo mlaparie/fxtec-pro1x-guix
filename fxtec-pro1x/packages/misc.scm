@@ -217,7 +217,9 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
     (build-system trivial-build-system)
     ;; Host tool: compiled for the build machine (x86_64 or whatever the host is).
     (native-inputs
-     (list (@ (gnu packages commencement) gcc-toolchain) openssl))
+     (list (@ (gnu packages commencement) gcc-toolchain)
+           linux-libre-headers
+           openssl))
     (arguments
      (list
       #:modules '((guix build utils))
@@ -226,6 +228,7 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
           (use-modules (guix build utils))
           (let* ((src   #$source)
                  (tc    #$(this-package-native-input "gcc-toolchain"))
+                 (khdrs #$(this-package-native-input "linux-libre-headers"))
                  (ssl   #$(this-package-native-input "openssl"))
                  (out   #$output)
                  (bin   (string-append out "/bin")))
@@ -234,6 +237,7 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
             (invoke "gcc" "-O2" "-o" (string-append bin "/pro1x-xts-encrypt")
                     src
                     (string-append "-I" ssl "/include")
+                    (string-append "-I" khdrs "/include")
                     (string-append "-L" ssl "/lib")
                     "-lcrypto")))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
