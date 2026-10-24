@@ -19,6 +19,7 @@
              (gnu packages gnuzilla)
              (gnu packages terminals)
              (gnu packages web-browsers)
+             (gnu packages window-management)
              (nongnu packages linux)
              (gnu services base)
              (gnu services dbus)
@@ -166,7 +167,7 @@
      ;; Mobile apps
      icecat
      gnome-console
-     foot
+     foot sway
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
