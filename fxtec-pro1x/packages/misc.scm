@@ -301,7 +301,7 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
     (build-system meson-build-system)
     (native-inputs
      (list pkg-config vala blueprint-compiler gettext-minimal
-           `(,glib "bin") desktop-file-utils))
+           `(,glib "bin") `(,gtk "bin") desktop-file-utils))
     (inputs
      (list glib gtk libadwaita libgudev gtk4-layer-shell))
     (synopsis "Camera focus/exposure controls for V4L2 sub-devices on mobile Linux")
