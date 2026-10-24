@@ -66,31 +66,44 @@ mkbootimg \
     --output "$TMPDIR/boot.img"
 
 echo "==> Building Guix system image for $SYSTEM …"
-IMAGE=$(guix system image \
-    --image-type=ext4 \
+DISK_IMAGE=$(guix system image \
+    --image-type=efi-raw \
     --system="$ARCH" \
     -L . \
     "$SYSTEM" 2>&1 | tail -1)
-echo "    $IMAGE"
+echo "    $DISK_IMAGE"
+
+# Extract the root ext4 partition (partition 2 in efi-raw GPT layout) so we
+# can flash just the filesystem — no partition table — to the userdata slot.
+echo "==> Extracting root partition from disk image …"
+PART_INFO=$(partx -o START,SECTORS -g -n 2 "$DISK_IMAGE")
+PART_START=$(echo "$PART_INFO" | awk '{print $1}')
+PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
+dd if="$DISK_IMAGE" of="$TMPDIR/rootfs.img" \
+    bs=512 skip="$PART_START" count="$PART_SECTORS" 2>/dev/null
+echo "    $TMPDIR/rootfs.img ($(( PART_SECTORS / 2048 )) MiB)"
 
 echo ""
 echo "==> Ready to flash.  Device must be in fastboot mode."
 echo "    boot.img:  $TMPDIR/boot.img"
-echo "    rootfs:    $IMAGE"
+echo "    rootfs:    $TMPDIR/rootfs.img"
 echo ""
 read -r -p "Flash now? [y/N] " CONFIRM
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+
+echo "==> Erasing dtbo_a (clears Android DT overlay that can prevent boot) …"
+fastboot erase dtbo_a
 
 echo "==> Flashing U-Boot to boot_a …"
 fastboot flash boot_a "$TMPDIR/boot.img"
 
 echo "==> Disabling vbmeta verification …"
-fastboot flash vbmeta_a \
-    <(printf '\x41\x56\x42\x30\x00\x00\x01\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00' | \
-     dd bs=4096 count=1 conv=sync 2>/dev/null)
+printf '\x41\x56\x42\x30\x00\x00\x01\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00' | \
+    dd bs=4096 count=1 conv=sync 2>/dev/null > "$TMPDIR/vbmeta.img"
+fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
 
 echo "==> Flashing rootfs to userdata …"
-fastboot flash userdata "$IMAGE"
+fastboot flash userdata "$TMPDIR/rootfs.img"
 
 echo "==> Setting active slot to A …"
 fastboot set_active a
