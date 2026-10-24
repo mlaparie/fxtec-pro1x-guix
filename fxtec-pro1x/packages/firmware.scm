@@ -24,7 +24,8 @@
     (build-system copy-build-system)
     (arguments
      (list #:install-plan
-           #~'(("lib" "lib"))))
+           #~'(("lib" "lib"))
+           #:validate-runpath? #f))
     (home-page "https://github.com/sm6115-mainline/firmware-fxtec-qx1050")
     (synopsis "Proprietary firmware for the F(x)tec Pro1X (QX1050)")
     (description
