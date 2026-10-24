@@ -53,7 +53,7 @@ jobs:
       # ── Pull pinned channels ──────────────────────────────────────────────
       - name: Pull pinned channels
         run: |
-          sudo guix pull -C channels-lock.scm
+          sudo guix pull --disable-authentication -C channels-lock.scm
           # Make pulled guix the default for subsequent steps
           sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
 
