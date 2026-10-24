@@ -33,12 +33,13 @@ jobs:
           (public-key
            (ecc
             (curve Ed25519)
-            (q #09A31B99DC4F83B72D9F12E3A37E2D24EF3E4EC7AEFDE2B7DAE2574EF8AA285#)))
+            (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))
           EOF
-          # Append nonguix substitute URL to the daemon's known servers
-          sudo mkdir -p /etc/guix
-          printf '\nhttps://substitutes.nonguix.org' | sudo tee -a /etc/guix/acl >/dev/null || true
-          # Restart daemon so it picks up the new key + URL
+          # Pass nonguix substitute URL to the daemon via its environment
+          sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
+          printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\n' \
+            | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
+          sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
 
       # ── Restore / seed the Guix store ─────────────────────────────────────
