@@ -83,6 +83,14 @@ dd if="$DISK_IMAGE" of="$TMPDIR/rootfs.img" \
     bs=512 skip="$PART_START" count="$PART_SECTORS" 2>/dev/null
 echo "    $TMPDIR/rootfs.img ($(( PART_SECTORS / 2048 )) MiB)"
 
+# The system config mounts by label "guix"; ensure the extracted partition
+# carries that label (Guix's image builder should set it, but verify).
+ACTUAL_LABEL=$(e2label "$TMPDIR/rootfs.img" 2>/dev/null || true)
+if [ "$ACTUAL_LABEL" != "guix" ]; then
+    echo "==> Relabelling root partition 'guix' (was: '${ACTUAL_LABEL:-<none>}') …"
+    e2label "$TMPDIR/rootfs.img" guix
+fi
+
 echo ""
 echo "==> Ready to flash.  Device must be in fastboot mode."
 echo "    boot.img:  $TMPDIR/boot.img"
@@ -113,4 +121,4 @@ fastboot reboot
 
 echo ""
 echo "Done.  First boot initialises the Guix store; allow ~2 minutes."
-echo "SSH: ssh user@172.16.42.1  (password: user — change it!)"
+echo "SSH: ssh user@172.16.42.1  (password: 123456 — change it!)"
