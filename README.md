@@ -59,7 +59,9 @@ scripts/flash.sh        Initial flash (plain/unencrypted)
 scripts/flash-encrypted.sh  Initial flash with LUKS2 encryption
 scripts/update-encrypted-boot.sh  Copy new kernel/initrd to plain boot area after reconfigure
 tools/                  On-device diagnostics (haptics-tune, cam-focus, sensors-check, …)
-channels.scm            Channel pins for reproducible builds
+channels.scm            Channel descriptor (unpinned) — add fxtec-pro1x + nonguix to your Guix
+channels-lock.scm       Pinned channel commits — reproducible builds; regenerate with guix describe
+manifest.scm            Flash tooling manifest — use with guix shell -m manifest.scm
 .guix-channel           Channel descriptor for use as a Guix channel
 ```
 
@@ -87,7 +89,12 @@ from this repo):
        %default-channels)
 ```
 
-Then `guix pull` to fetch it.
+Then `guix pull` to fetch it. For a fully reproducible build against pinned
+channel commits, use `channels-lock.scm` instead:
+
+```sh
+guix pull -C channels-lock.scm
+```
 
 ## Building
 
@@ -95,7 +102,7 @@ From the repository root, with aarch64 cross-compilation or an offload machine:
 
 ```sh
 guix system build --system=aarch64-linux systems/minimal.scm
-# or for the Phosh desktop (builds Firefox — allow several hours on aarch64):
+# or for the Phosh desktop:
 guix system build --system=aarch64-linux systems/phosh.scm
 ```
 
@@ -123,9 +130,9 @@ fastboot flashing unlock
 **Step 3 — flash**. Put the phone in fastboot mode, then from the repo root:
 
 ```sh
-bash scripts/flash.sh systems/phosh.scm
+guix shell -m manifest.scm -- bash scripts/flash.sh systems/phosh.scm
 # or:
-bash scripts/flash.sh systems/minimal.scm
+guix shell -m manifest.scm -- bash scripts/flash.sh systems/minimal.scm
 ```
 
 The script builds U-Boot and the system image, wraps U-Boot as an Android boot
@@ -168,7 +175,7 @@ so no root access or device-mapper is needed on the build machine.
 
 **First flash:**
 ```sh
-bash scripts/flash-encrypted.sh systems/phosh-encrypted.scm
+guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/phosh-encrypted.scm
 ```
 
 The script builds U-Boot and the system image, prompts for a passphrase, creates
