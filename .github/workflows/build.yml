@@ -134,9 +134,9 @@ jobs:
             --image-type=efi-raw \
             -L . \
             systems/mobile.scm \
-            2>&1 | tee /tmp/image.log
+            2>&1 | tee /tmp/image.log || true
           IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
-          [ -f "$IMG" ] || { echo "Image build failed"; cat /tmp/image.log; exit 1; }
+          [ -f "$IMG" ] || { echo "==> Image build failed — log:"; cat /tmp/image.log; exit 1; }
           echo "Built: $IMG"
           # Extract root ext4 partition (partition 2 in GPT efi-raw layout)
           PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
