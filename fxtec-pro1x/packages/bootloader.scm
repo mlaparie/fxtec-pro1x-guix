@@ -29,9 +29,10 @@
     (arguments
      (list #:builder
            #~(begin
-               (use-modules (guix build utils))
-               (mkdir-p (string-append #$output "/share/syslinux"))
-               (mkdir-p (string-append #$output "/bin"))
+               (mkdir #$output)
+               (mkdir (string-append #$output "/share"))
+               (mkdir (string-append #$output "/share/syslinux"))
+               (mkdir (string-append #$output "/bin"))
                ;; No-op extlinux binary: U-Boot reads extlinux.conf itself.
                (let ((bin (string-append #$output "/bin/extlinux")))
                  (call-with-output-file bin
