@@ -6,10 +6,14 @@
 ;;; disk at all.  This module provides:
 ;;;
 ;;;   syslinux-stub        — a trivial package with the directory layout that
-;;;                          extlinux-bootloader expects, plus a no-op extlinux
-;;;                          binary so the install step silently succeeds.
+;;;                          extlinux-bootloader expects (share/syslinux, bin,
+;;;                          sbin directories).
 ;;;   pro1x-extlinux-bootloader — extlinux-bootloader with syslinux-stub as its
-;;;                          package; otherwise identical.
+;;;                          package and a no-op installer.  The upstream
+;;;                          installer calls extlinux --install and writes an
+;;;                          MBR, neither of which is needed or possible: U-Boot
+;;;                          reads extlinux.conf natively, and the build sandbox
+;;;                          has no /bin/sh for the shell-script stub to use.
 
 (define-module (fxtec-pro1x packages bootloader)
   #:use-module (gnu bootloader)
@@ -33,16 +37,7 @@
                (mkdir (string-append #$output "/share"))
                (mkdir (string-append #$output "/share/syslinux"))
                (mkdir (string-append #$output "/bin"))
-               (mkdir (string-append #$output "/sbin"))
-               ;; extlinux-bootloader's installer looks for sbin/extlinux
-               ;; (gnu/bootloader/extlinux.scm install-extlinux).  U-Boot reads
-               ;; extlinux.conf natively so this just needs to exit 0.
-               (let ((write-stub (lambda (path)
-                                   (call-with-output-file path
-                                     (lambda (p) (display "#!/bin/sh\nexit 0\n" p)))
-                                   (chmod path #o755))))
-                 (write-stub (string-append #$output "/sbin/extlinux"))
-                 (write-stub (string-append #$output "/bin/extlinux"))))))
+               (mkdir (string-append #$output "/sbin")))))
     (home-page "https://wiki.syslinux.org/")
     (synopsis "Syslinux stub (U-Boot reads extlinux.conf natively)")
     (description "Stub package: no x86 BIOS build, just the directory layout
@@ -53,4 +48,7 @@ directly, so the syslinux MBR installer is never invoked.")
 (define-public pro1x-extlinux-bootloader
   (bootloader
    (inherit extlinux-bootloader)
-   (package syslinux-stub)))
+   (package syslinux-stub)
+   (installer
+    ;; U-Boot reads extlinux.conf natively; skip the BIOS MBR install entirely.
+    #~(lambda (bootloader device mount-point) #t))))
