@@ -34,10 +34,11 @@ guix_build_path() {
 
 show_help() {
     cat <<EOF
-Usage: bash scripts/flash.sh [OPTIONS]
+Usage: sudo bash scripts/flash.sh [OPTIONS]
 
 Flash U-Boot and a Guix root filesystem onto the F(x)tec Pro1X via fastboot.
 The device must be in fastboot mode (hold Vol-Down at power-on).
+Run as root (sudo) unless you have a udev rule granting your user fastboot access.
 
 Options:
   --uboot FILE     Path to u-boot-nodtb.bin
@@ -57,13 +58,13 @@ Artifact discovery order (tried in sequence for both U-Boot and rootfs):
 
 Examples:
   # Use pre-downloaded GitHub release artifacts in the current directory:
-  bash scripts/flash.sh
+  sudo bash scripts/flash.sh
 
   # Explicit paths:
-  bash scripts/flash.sh --uboot ~/Downloads/u-boot.bin --rootfs ~/Downloads/rootfs.img
+  sudo bash scripts/flash.sh --uboot ~/Downloads/u-boot.bin --rootfs ~/Downloads/rootfs.img
 
   # Force a fresh build of a specific system:
-  bash scripts/flash.sh --system systems/minimal.scm
+  sudo guix shell fastboot mkbootimg -- bash scripts/flash.sh --system systems/minimal.scm
 EOF
 }
 
