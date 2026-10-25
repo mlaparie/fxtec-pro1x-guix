@@ -33,11 +33,16 @@
                (mkdir (string-append #$output "/share"))
                (mkdir (string-append #$output "/share/syslinux"))
                (mkdir (string-append #$output "/bin"))
-               ;; No-op extlinux binary: U-Boot reads extlinux.conf itself.
-               (let ((bin (string-append #$output "/bin/extlinux")))
-                 (call-with-output-file bin
-                   (lambda (p) (display "#!/bin/sh\nexit 0\n" p)))
-                 (chmod bin #o755)))))
+               (mkdir (string-append #$output "/sbin"))
+               ;; extlinux-bootloader's installer looks for sbin/extlinux
+               ;; (gnu/bootloader/extlinux.scm install-extlinux).  U-Boot reads
+               ;; extlinux.conf natively so this just needs to exit 0.
+               (let ((write-stub (lambda (path)
+                                   (call-with-output-file path
+                                     (lambda (p) (display "#!/bin/sh\nexit 0\n" p)))
+                                   (chmod path #o755))))
+                 (write-stub (string-append #$output "/sbin/extlinux"))
+                 (write-stub (string-append #$output "/bin/extlinux"))))))
     (home-page "https://wiki.syslinux.org/")
     (synopsis "Syslinux stub (U-Boot reads extlinux.conf natively)")
     (description "Stub package: no x86 BIOS build, just the directory layout
