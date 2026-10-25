@@ -25,15 +25,24 @@
   (let ((verbose-flag (if (pro1x-modem-verbose? config) '("-v") '())))
     (list
 
-     ;; tqftpserv: deliver modem firmware over QRTR
+     ;; tqftpserv: deliver modem firmware over QRTR.
+     ;; The binary is patched to look for firmware at /run/current-system/firmware.
+     ;; Guix's activate-firmware sets firmware_class.path in sysfs but does not
+     ;; create that symlink; we create it here at service-start time, after the
+     ;; activation scripts have already run.
      (shepherd-service
       (provision '(tqftpserv))
       (requirement '(udev))
       (documentation "TFTP server for Qualcomm modem firmware (QRTR)")
       (start
        #~(make-forkexec-constructor
-          (append (list #$(file-append tqftpserv "/bin/tqftpserv"))
-                  '#$verbose-flag)
+          (list "/bin/sh" "-c"
+                (string-append
+                 "fw=$(cat /sys/module/firmware_class/parameters/path 2>/dev/null);"
+                 "[ -n \"$fw\" ] && [ ! -e /run/current-system/firmware ]"
+                 " && ln -sf \"$fw\" /run/current-system/firmware;"
+                 "exec " #$(file-append tqftpserv "/bin/tqftpserv")
+                 #$(if (pro1x-modem-verbose? config) " -v" "")))
           #:log-file "/var/log/tqftpserv.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t))

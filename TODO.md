@@ -51,20 +51,22 @@ fields) so the dconf db is generated from that config.
 
 ---
 
-## 3. Firmware compression  [MEDIUM — modem/ADSP remoteproc may need uncompressed]
+## 3. Firmware path for tqftpserv  [FIXED — symlink created at service start]
 
-NixOS sets `firmwareCompression = "none"` so all firmware blobs are stored
-uncompressed.  Our kernel `CONFIG_FW_LOADER_COMPRESS_ZSTD=y` (added this session)
-makes the **kernel** fw_loader decompress `.zst` files, which fixes ath10k Wi-Fi.
+NixOS patches tqftpserv to use `/run/current-system/firmware/` and NixOS creates
+that symlink during activation.
 
-However, Qualcomm **remoteproc** loaders (modem, ADSP, SLPI) bypass the kernel
-fw_loader and read firmware via tqftpserv/rmtfs — those may also need uncompressed
-blobs.
+Guix's `activate-firmware` only writes to `/sys/module/firmware_class/parameters/path`
+— no symlink.  `misc.scm` patches tqftpserv to `/run/current-system/firmware/` but
+that path doesn't exist.
 
-**Check**: after booting with the new kernel, verify modem remoteproc starts
-(`herd status rmtfs`, `dmesg | grep remoteproc`).  If it still fails, add a
-`(arguments (list #:strip-binaries? #f))` pass or a post-install `unzstd` step in
-`firmware-fxtec-qx1050` to decompress everything.
+**Fixed**: `modem.scm` tqftpserv start now creates the symlink at service-start
+time by reading `firmware_class.path` from sysfs — no hardcoded store paths.
+
+Modem remoteproc was verified starting OK in the old system (`.zst` decompression
+wasn't needed by remoteproc — it loads via the kernel's own fw_loader).
+ath10k Wi-Fi still needs the new kernel with `CONFIG_FW_LOADER_COMPRESS_ZSTD=y`
+to decompress `board-2.bin.zst`.
 
 ---
 
