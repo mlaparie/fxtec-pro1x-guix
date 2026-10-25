@@ -95,21 +95,26 @@ jobs:
         with:
           path: |
             /gnu/store
-            /root/.config/guix
-            /var/guix/profiles/per-user/root
+            /home/runner/.config/guix
+            /var/guix/profiles/per-user/runner
           key: guix-${{ hashFiles('channels-ci.scm') }}
           restore-keys: guix-
 
       # ── Pull pinned channels (guix + nonguix only; fxtec-pro1x via -L .) ─
+      # Run as the runner user (not root) so the pulled profile lands in
+      # /home/runner/.config/guix/current — where the symlink will point.
+      # sudo preserves HOME=/home/runner on GitHub Actions, causing the pull
+      # to install to /home/runner even with sudo, but then the symlink was
+      # pointing to /root/.config/guix/current (the old binary without nonguix).
       - name: Pull pinned channels
         run: |
-          sudo guix pull --disable-authentication -C channels-ci.scm
-          sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
+          guix pull --disable-authentication -C channels-ci.scm
+          sudo ln -sf /home/runner/.config/guix/current/bin/guix /usr/local/bin/guix
           sudo systemctl restart guix-daemon
           echo "==> guix binary: $(which guix) -> $(readlink -f $(which guix))"
-          sudo guix describe
+          guix describe
           echo "==> nonguix module check:"
-          find /root/.config/guix/current -path "*/nongnu/packages/linux*" 2>/dev/null \
+          find /home/runner/.config/guix/current -path "*/nongnu/packages/linux*" 2>/dev/null \
             | head -5 || echo "WARNING: nonguix modules not found in profile"
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
