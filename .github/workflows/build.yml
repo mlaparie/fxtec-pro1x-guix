@@ -100,7 +100,6 @@ jobs:
       # from source in CI (see TODO.md §6).  The system-image step must not be
       # gated on u-boot until that is fixed.
       - name: Build u-boot-pro1x
-        continue-on-error: true
         run: |
           sudo guix build u-boot-pro1x \
             -L . \
