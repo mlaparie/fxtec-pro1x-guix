@@ -11,8 +11,12 @@
 ;;;   bash scripts/update-encrypted-boot.sh
 ;;;   (copies new kernel/initrd to the plain /boot area)
 
+(define-module (systems mobile-encrypted))
+
 (use-modules (gnu)
              (fxtec-pro1x packages bootloader)
+             (gnu packages fonts)
+             (ice-9 match)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages gnome)
@@ -126,6 +130,11 @@
    (append
     (list
      (service pro1x-hardware-service-type)
+
+     (simple-service 'nm-unmanaged-usb0 etc-service-type
+       (list `("NetworkManager/conf.d/unmanaged.conf"
+               ,(plain-file "nm-unmanaged.conf"
+                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
@@ -147,13 +156,16 @@
          (documentation "Phosh mobile shell (phoc + squeekboard)")
          (start
           #~(make-forkexec-constructor
-             (list #$(file-append shadow "/bin/su") "-l" "user"
-                   "-s" "/bin/sh" "-c"
+             (list "/bin/sh" "-c"
                    (string-append
-                    "mkdir -p /run/user/1000 && chmod 0700 /run/user/1000 && "
-                    "exec env XDG_RUNTIME_DIR=/run/user/1000 "
+                    "mkdir -p /run/user/1000"
+                    " && chown 1000:1000 /run/user/1000"
+                    " && chmod 0700 /run/user/1000"
+                    " && exec " #$(file-append shadow "/bin/su")
+                    " -l user -s /bin/sh -c"
+                    " 'exec env XDG_RUNTIME_DIR=/run/user/1000 "
                     #$(file-append phoc-pro1x "/bin/phoc")
-                    " -C /etc/phoc.ini -E squeekboard"))
+                    " -C /etc/phoc.ini -E squeekboard'"))
              #:log-file "/var/log/phosh.log"))
          (stop #~(make-kill-destructor))
          (respawn? #t))))
@@ -172,7 +184,13 @@
               (openssh-configuration
                (password-authentication? #t))))
 
-    %base-services))
+    (modify-services %base-services
+      (console-font-service-type config =>
+        (map (match-lambda
+               ((tty . _)
+                (cons tty (file-append font-terminus
+                                       "/share/consolefonts/ter-128n.psf.gz"))))
+             config)))))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
@@ -180,5 +198,5 @@
     (list
      icecat
      gnome-console
-     iw usbutils vim git)
+     iw usbutils vim git font-terminus)
     %base-packages)))

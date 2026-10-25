@@ -9,8 +9,13 @@
 ;;; Flash (after building u-boot-pro1x separately):
 ;;;   See scripts/flash.sh
 
+(define-module (systems minimal))
+
 (use-modules (gnu)
              (fxtec-pro1x packages bootloader)
+             (gnu packages fonts)
+             (gnu services desktop)
+             (ice-9 match)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages linux)
@@ -50,7 +55,11 @@
      "loglevel=4"
      ;; USB CDC gadget with fixed MACs for stable PC interface name
      "g_cdc.host_addr=02:50:31:e8:00:01"
-     "g_cdc.dev_addr=02:50:31:e8:00:02")
+     "g_cdc.dev_addr=02:50:31:e8:00:02"
+     ;; Nord palette in the framebuffer TTY
+     "vt.default_red=0x3b,0xbf,0xa3,0xeb,0x81,0xb4,0x88,0xe5,0x4c,0xbf,0xa3,0xeb,0x81,0xb4,0x8f,0xec"
+     "vt.default_grn=0x3b,0x61,0xbe,0xcb,0xa1,0x88,0xc0,0xe5,0x56,0x61,0xbe,0xcb,0xa1,0x88,0xbc,0xef"
+     "vt.default_blu=0x3b,0x61,0x8c,0x8b,0xc1,0xe8,0xd3,0xe5,0x66,0x61,0x8c,0x8b,0xc1,0xe8,0xbb,0xf4")
     %default-kernel-arguments))
 
   ;; The Pro1X kernel selects the DTB at build time; extlinux passes it via
@@ -111,6 +120,13 @@
      ;; Hardware baseline: udev rules, feedbackd group
      (service pro1x-hardware-service-type)
 
+     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
+     ;; assign the static IP and run dnsmasq without interference.
+     (simple-service 'nm-unmanaged-usb0 etc-service-type
+       (list `("NetworkManager/conf.d/unmanaged.conf"
+               ,(plain-file "nm-unmanaged.conf"
+                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
+
      ;; USB gadget Ethernet + DHCP server
      (service pro1x-usb-network-service-type)
 
@@ -140,15 +156,48 @@
      ;; SSH for USB-ethernet access
      (service openssh-service-type
               (openssh-configuration
-               (password-authentication? #t)   ; tighten after adding keys
-               (permit-root-login 'prohibit-password))))
+               (password-authentication? #t)
+               (permit-root-login 'prohibit-password)))
 
-    ;; Base Guix services
-    %base-services))
+     ;; tuigreet on tty1; plain agreety on tty2-6
+     (service greetd-service-type
+              (greetd-configuration
+               (terminals
+                (list
+                 (greetd-terminal-configuration
+                  (terminal-vt "1")
+                  (terminal-switch #t)
+                  (default-session-command
+                    (program-file "tuigreet-session"
+                      #~(execl #$(file-append tuigreet "/bin/tuigreet")
+                               "tuigreet"
+                               "--greeting" "F(x)tec Pro1X — GNU Guix"
+                               "--asterisks"
+                               "--time"
+                               "--cmd" "bash -l"
+                               "--remember"
+                               "--power-shutdown" "halt"
+                               "--power-reboot" "reboot"))))
+                 (greetd-terminal-configuration (terminal-vt "2"))
+                 (greetd-terminal-configuration (terminal-vt "3"))
+                 (greetd-terminal-configuration (terminal-vt "4"))
+                 (greetd-terminal-configuration (terminal-vt "5"))
+                 (greetd-terminal-configuration (terminal-vt "6")))))))
+
+    ;; Base Guix services — large font, remove getty (greetd takes over)
+    (modify-services %base-services
+      (console-font-service-type config =>
+        (map (match-lambda
+               ((tty . _)
+                (cons tty (file-append font-terminus
+                                       "/share/consolefonts/ter-128n.psf.gz"))))
+             config))
+      (delete login-service-type)
+      (delete mingetty-service-type))))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
    (append
     (list
-     vim git iw usbutils)
+     vim git iw usbutils font-terminus tuigreet)
     %base-packages)))

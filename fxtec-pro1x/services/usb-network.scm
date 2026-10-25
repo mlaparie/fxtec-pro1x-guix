@@ -11,6 +11,7 @@
 
 (define-module (fxtec-pro1x services usb-network)
   #:use-module (gnu packages dns)
+  #:use-module (gnu packages linux)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services networking)
@@ -53,9 +54,14 @@
           (list "/bin/sh" "-c"
                 (string-append
                  ;; Wait up to 30s for usb0
-                 "i=0; while [ $i -lt 30 ] && ! ip link show usb0 >/dev/null 2>&1; do sleep 1; i=$((i+1)); done; "
-                 "ip addr add " #$cidr " dev usb0 || true; "
-                 "ip link set usb0 up; "
+                 "i=0; while [ $i -lt 30 ]"
+                 " && ! " #$(file-append iproute "/sbin/ip")
+                 " link show usb0 >/dev/null 2>&1"
+                 "; do sleep 1; i=$((i+1)); done; "
+                 #$(file-append iproute "/sbin/ip")
+                 " link set usb0 up; "
+                 #$(file-append iproute "/sbin/ip")
+                 " addr add " #$cidr " dev usb0 || true; "
                  ;; dnsmasq for DHCP only on usb0
                  #$(file-append dnsmasq "/sbin/dnsmasq")
                  " --no-daemon"
@@ -63,6 +69,7 @@
                  " --bind-interfaces"
                  " --no-resolv"
                  " --no-hosts"
+                 " --dhcp-leasefile=/tmp/dnsmasq-usb.leases"
                  " --dhcp-range=" #$pool-start "," #$pool-end ",12h"))
           #:log-file "/var/log/pro1x-usb-network.log"))
       (stop #~(make-kill-destructor))

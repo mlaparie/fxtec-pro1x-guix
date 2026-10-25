@@ -8,8 +8,12 @@
 ;;;   • ADSP sensors (accelerometer for auto-rotate, proximity, ALS)
 ;;;   • IceCat browser, GNOME Console, foot terminal, sway
 
+(define-module (systems mobile))
+
 (use-modules (gnu)
              (fxtec-pro1x packages bootloader)
+             (gnu packages fonts)
+             (ice-9 match)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages gnome)
@@ -104,6 +108,13 @@
     (list
      ;; ── Hardware
      (service pro1x-hardware-service-type)
+
+     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
+     ;; assign the static IP and run dnsmasq without interference.
+     (simple-service 'nm-unmanaged-usb0 etc-service-type
+       (list `("NetworkManager/conf.d/unmanaged.conf"
+               ,(plain-file "nm-unmanaged.conf"
+                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
@@ -129,13 +140,17 @@
          (documentation "Phosh mobile shell (phoc + squeekboard)")
          (start
           #~(make-forkexec-constructor
-             (list #$(file-append shadow "/bin/su") "-l" "user"
-                   "-s" "/bin/sh" "-c"
+             (list "/bin/sh" "-c"
                    (string-append
-                    "mkdir -p /run/user/1000 && chmod 0700 /run/user/1000 && "
-                    "exec env XDG_RUNTIME_DIR=/run/user/1000 "
+                    ;; Create XDG_RUNTIME_DIR as root before dropping privs.
+                    "mkdir -p /run/user/1000"
+                    " && chown 1000:1000 /run/user/1000"
+                    " && chmod 0700 /run/user/1000"
+                    " && exec " #$(file-append shadow "/bin/su")
+                    " -l user -s /bin/sh -c"
+                    " 'exec env XDG_RUNTIME_DIR=/run/user/1000 "
                     #$(file-append phoc-pro1x "/bin/phoc")
-                    " -C /etc/phoc.ini -E squeekboard"))
+                    " -C /etc/phoc.ini -E squeekboard'"))
              #:log-file "/var/log/phosh.log"))
          (stop #~(make-kill-destructor))
          (respawn? #t))))
@@ -159,8 +174,14 @@
               (openssh-configuration
                (password-authentication? #t))))
 
-    ;; Base services (console-font, udev, syslog, etc.)
-    %base-services))
+    ;; Base services — override console font for phone's high-DPI screen
+    (modify-services %base-services
+      (console-font-service-type config =>
+        (map (match-lambda
+               ((tty . _)
+                (cons tty (file-append font-terminus
+                                       "/share/consolefonts/ter-128n.psf.gz"))))
+             config)))))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
@@ -173,5 +194,5 @@
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
-     iw usbutils vim git)
+     iw usbutils vim git font-terminus)
     %base-packages)))

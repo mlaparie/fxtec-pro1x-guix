@@ -103,16 +103,24 @@
         #~(modify-phases %standard-phases
             (replace 'configure
               (lambda* (#:key make-flags #:allow-other-keys)
-                ;; qcom_defconfig then apply qcom-phone.config overlay
+                ;; Mirror NixOS buildUBoot defconfig = "qcom_defconfig qcom-phone.config":
+                ;; 1. apply base defconfig
+                ;; 2. make qcom-phone.config — this runs merge_config.sh -m (finds
+                ;;    board/qualcomm/qcom-phone.config, overrides conflicts including
+                ;;    CONFIG_ENV_DEFAULT_ENV_TEXT_FILE) then `make oldconfig`
+                ;; 3. append extra options + olddefconfig (mirrors NixOS extraConfig)
                 (apply invoke "make" "qcom_defconfig" make-flags)
-                (when (file-exists? "configs/qcom-phone.config")
-                  (apply invoke "make" "scripts/kconfig/merge_config.sh" make-flags)
-                  (invoke "sh" "-c"
-                          "scripts/kconfig/merge_config.sh .config configs/qcom-phone.config"))))
+                (apply invoke "make" "qcom-phone.config" make-flags)
+                ;; Enable sysboot + extras (matches NixOS extraConfig).
+                (invoke "sh" "-c"
+                        "printf 'CONFIG_CMD_SYSBOOT=y\\nCONFIG_CMD_HASH=y\\n' >> .config")
+                (apply invoke "make" "olddefconfig" make-flags)))
 
             (add-after 'configure 'patch-boot-env
               (lambda _
-                ;; 1. Replace UEFI boot with sysboot / extlinux.
+                ;; Patch qcom-phone.env to use sysboot (mirrors NixOS exactly).
+                ;; Do NOT patch default.env — qcom-phone.env IS the DEFAULT_ENV_FILE
+                ;; for phones (CONFIG_PHONE_QCOM) and overrides bootcmd there.
                 (substitute* "board/qualcomm/qcom-phone.env"
                   (("bootcmd=bootefi bootmgr; pause; run menucmd")
                    "bootcmd=sysboot scsi 0#userdata any ${scriptaddr} /boot/extlinux/extlinux.conf; pause; run menucmd")
@@ -167,7 +175,10 @@
             (replace 'install
               (lambda* (#:key outputs #:allow-other-keys)
                 (let ((out (assoc-ref outputs "out")))
-                  (install-file "u-boot.bin"
+                  ;; u-boot-nodtb.bin: U-Boot without appended DTB, used by
+                  ;; flash.sh which appends the DTB explicitly (gz-dtb format).
+                  ;; Using u-boot.bin would embed the DTB twice.
+                  (install-file "u-boot-nodtb.bin"
                                 (string-append out "/libexec"))
                   (install-file
                    "dts/upstream/src/arm64/qcom/sm6115-fxtec-pro1x.dtb"

@@ -40,7 +40,7 @@ Flash U-Boot and a Guix root filesystem onto the F(x)tec Pro1X via fastboot.
 The device must be in fastboot mode (hold Vol-Down at power-on).
 
 Options:
-  --uboot FILE     Path to u-boot.bin
+  --uboot FILE     Path to u-boot-nodtb.bin
   --dtb FILE       Path to sm6115-fxtec-pro1x.dtb (default: same dir as --uboot)
   --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
   --system FILE    Guix system .scm to build if rootfs is not found
@@ -50,7 +50,7 @@ Options:
 Artifact discovery order (tried in sequence for both U-Boot and rootfs):
   1. Explicit flag (--uboot / --rootfs)
   2. Local files in the current directory:
-       u-boot.bin + sm6115-fxtec-pro1x.dtb   (as downloaded from GitHub releases)
+       u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb   (as downloaded from GitHub releases)
        rootfs.img
   3. Guix store (/gnu/store) — offered interactively if Guix is installed
   4. Build with Guix  — offered interactively (U-Boot: ~2 h; rootfs: ~30 min)
@@ -95,8 +95,8 @@ if [[ -n "$OPT_UBOOT" ]]; then
     UBOOT_BIN="$OPT_UBOOT"
     UBOOT_DTB="${OPT_DTB:-$(dirname "$OPT_UBOOT")/sm6115-fxtec-pro1x.dtb}"
     echo "    Using: $UBOOT_BIN"
-elif [[ -f "u-boot.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
-    UBOOT_BIN="u-boot.bin"
+elif [[ -f "u-boot-nodtb.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
+    UBOOT_BIN="u-boot-nodtb.bin"
     UBOOT_DTB="sm6115-fxtec-pro1x.dtb"
     echo "    Found local files."
 elif command -v guix >/dev/null 2>&1; then
@@ -106,17 +106,17 @@ elif command -v guix >/dev/null 2>&1; then
     BUILT=$(guix_build_path guix time-machine --disable-authentication -C channels-ci.scm -- \
         build u-boot-pro1x -L . --no-grafts)
     [[ -d "$BUILT" ]] || die "U-Boot build failed"
-    UBOOT_BIN="$BUILT/libexec/u-boot.bin"
+    UBOOT_BIN="$BUILT/libexec/u-boot-nodtb.bin"
     UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
 else
-    die "u-boot.bin not found and Guix is not installed.
-Download u-boot.bin + sm6115-fxtec-pro1x.dtb from the GitHub releases page
+    die "u-boot-nodtb.bin not found and Guix is not installed.
+Download u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb from the GitHub releases page
 and place them in the current directory, or pass --uboot / --dtb."
 fi
 
-[[ -f "$UBOOT_BIN" ]]  || die "u-boot.bin not found at: $UBOOT_BIN"
+[[ -f "$UBOOT_BIN" ]]  || die "u-boot-nodtb.bin not found at: $UBOOT_BIN"
 [[ -f "$UBOOT_DTB" ]]  || die "DTB not found at: $UBOOT_DTB"
-echo "    u-boot.bin: $UBOOT_BIN"
+echo "    u-boot-nodtb.bin: $UBOOT_BIN"
 echo "    DTB:        $UBOOT_DTB"
 
 # ── Find rootfs ───────────────────────────────────────────────────────────────
@@ -150,9 +150,10 @@ echo "==> Wrapping U-Boot as boot.img …"
 # Zero the field so ABL sees offset=0 (same as Linux) and accepts the image.
 # Gzip-compress and append the DTB so ABL extracts it and passes it in x0.
 cp "$UBOOT_BIN" "$TMPDIR/u-boot.bin"
+chmod +w "$TMPDIR/u-boot.bin"
 printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
     | dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc 2>/dev/null
-gzip -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
+gzip --no-name -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
 cat "$TMPDIR/u-boot.bin.gz" "$UBOOT_DTB" > "$TMPDIR/u-boot.bin.gz-dtb"
 mkbootimg \
     --kernel  "$TMPDIR/u-boot.bin.gz-dtb" \
@@ -185,15 +186,32 @@ if [[ "$ACTUAL_LABEL" != "guix" ]]; then
 fi
 
 echo "==> Generating vbmeta with verification disabled …"
-# AVB vbmeta header: magic "AVB0", version 1, flags=3 at offset 120 (big-endian).
-# Flags 0x3 = HASHTREE_DISABLED|VERIFICATION_DISABLED so ABL boots unsigned images.
+# Proper AvbVBMetaImageHeader (256 bytes, big-endian) padded to 4096 bytes.
+# flags=2 (VERIFICATION_DISABLED) matches the NixOS port; no keys, algorithm NONE.
 python3 -c "
 import struct, sys
-hdr = bytearray(4096)
-hdr[0:4] = b'AVB0'
-struct.pack_into('>I', hdr, 4, 1)   # required_libavb_version_major = 1
-struct.pack_into('>I', hdr, 120, 3) # flags: VERIFICATION_DISABLED|HASHTREE_DISABLED
-sys.stdout.buffer.write(hdr)
+HEADER = (
+    '>4s'   # magic
+    'II'    # required libavb version major, minor
+    'Q'     # authentication data block size
+    'Q'     # auxiliary data block size
+    'I'     # algorithm type (0 = NONE)
+    'QQ'    # hash offset, size
+    'QQ'    # signature offset, size
+    'QQ'    # public key offset, size
+    'QQ'    # public key metadata offset, size
+    'QQ'    # descriptors offset, size
+    'Q'     # rollback index
+    'I'     # flags
+    'I'     # rollback index location
+    '48s'   # release string
+    '80x'   # reserved
+)
+hdr = struct.pack(HEADER,
+    b'AVB0', 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    2,  # VERIFICATION_DISABLED
+    0, b'pro1x-guix'.ljust(48, b'\x00'))
+sys.stdout.buffer.write(hdr.ljust(4096, b'\x00'))
 " > "$TMPDIR/vbmeta.img"
 
 # ── Verify ────────────────────────────────────────────────────────────────────
@@ -213,14 +231,16 @@ read -r -p "Flash now? [y/N] " CONFIRM
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
 # ── Flash ─────────────────────────────────────────────────────────────────────
-echo "==> Erasing dtbo_a …"
-fastboot erase dtbo_a
+echo "==> Erasing dtbo …"
+fastboot erase dtbo
 
-echo "==> Flashing U-Boot to boot_a …"
+echo "==> Flashing U-Boot to both slots (prevents A/B bootloop) …"
 fastboot flash boot_a "$TMPDIR/boot.img"
+fastboot flash boot_b "$TMPDIR/boot.img"
 
-echo "==> Disabling vbmeta verification …"
+echo "==> Disabling vbmeta verification on both slots …"
 fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
+fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 
 echo "==> Flashing rootfs to userdata …"
 fastboot flash userdata "$ROOTFS_FLASH"
