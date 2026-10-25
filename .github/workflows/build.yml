@@ -37,7 +37,7 @@ jobs:
           EOF
           # Pass nonguix substitute URL to the daemon via its environment
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\n' \
+          printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\nPrivateTmp=no\n' \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
