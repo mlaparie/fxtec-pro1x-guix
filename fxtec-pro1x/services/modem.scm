@@ -51,8 +51,7 @@
                   '#$verbose-flag)
           #:environment-variables
           '("PATH=/run/current-system/profile/bin")
-          #:log-file "/var/log/rmtfs.log"
-          #:pid-file "/var/run/rmtfs.pid"))
+          #:log-file "/var/log/rmtfs.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t))
 

@@ -199,5 +199,6 @@
      icecat
      gnome-console
      iw usbutils vim git font-terminus
-     gsettings-desktop-schemas)
+     gsettings-desktop-schemas
+     phoc-pro1x)
     %base-packages)))

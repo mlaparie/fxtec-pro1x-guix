@@ -195,5 +195,6 @@
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
      iw usbutils vim git font-terminus
-     gsettings-desktop-schemas)
+     gsettings-desktop-schemas
+     phoc-pro1x)
     %base-packages)))
