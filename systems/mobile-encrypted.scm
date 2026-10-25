@@ -84,7 +84,7 @@
   ;; copy the new kernel/initrd to the plain area.
   (bootloader
    (bootloader-configuration
-    (bootloader extlinux-bootloader)
+    (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
     (timeout 3)))
 

@@ -28,23 +28,38 @@
             u-boot-pro1x))
 
 ;; (cross-gcc "aarch64-linux-gnu") fails to build from source in the Guix
-;; sandbox: the stmp-fixinc Makefile rule exits 1 when /usr/include doesn't
-;; exist (non-FHS sandbox).  Patch the Makefile check to continue instead of
-;; exit 1 — fixincludes still runs but skips the missing directory cleanly,
-;; leaving include-fixed/ correctly populated (empty).
+;; sandbox because the stmp-fixinc Makefile target exits 1 when
+;; BUILD_SYSTEM_HEADER_DIR (/usr/include) doesn't exist (non-FHS sandbox).
+;;
+;; The phase-based fix (substitute-keyword-arguments on #:phases) silently
+;; fails for cross-gcc because the phases gexp isn't substitutable that way.
+;; Instead, patch gcc/Makefile.in in the source origin snippet so the fix
+;; applies to both the full and sans-libc cross-gcc variants (they share the
+;; same source origin).
+;;
+;; The snippet must also reproduce the original cross-gcc-snippet substitution
+;; (the TOOLDIR_BASE_PREFIX fix) because we replace the snippet field entirely.
 (define cross-gcc-aarch64
   (let ((base (cross-gcc "aarch64-linux-gnu")))
     (package
       (inherit base)
-      (arguments
-       (substitute-keyword-arguments (package-arguments base)
-         ((#:phases phases)
-          #~(modify-phases #$phases
-              (add-after 'unpack 'allow-missing-usr-include
-                (lambda _
-                  (substitute* "gcc/Makefile.in"
-                    (("else exit 1; fi")
-                     "else true; fi")))))))))))
+      (source
+       (origin
+         (inherit (package-source base))
+         (snippet
+          '(begin
+             ;; Reproduced from cross-gcc-snippet: fix TOOLDIR_BASE_PREFIX so
+             ;; GCC finds its shared libraries in the separate "lib" output.
+             (substitute* "gcc/Makefile.in"
+               (("-DTOOLDIR_BASE_PREFIX=[^ ]*")
+                "-DTOOLDIR_BASE_PREFIX=\\\"../../../../\\\""))
+             ;; stmp-fixinc exits 1 when /usr/include is absent (Guix sandbox).
+             ;; Change to `true` so the step continues with an empty
+             ;; include-fixed/ instead of aborting.
+             (substitute* "gcc/Makefile.in"
+               (("then sleep 1; else exit 1; fi")
+                "then sleep 1; else true; fi"))
+             #t)))))))
 
 (define* (make-u-boot-pro1x #:key (previous-generations 3))
   (let* ((n previous-generations)
