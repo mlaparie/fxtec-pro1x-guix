@@ -145,16 +145,21 @@ fi
 
 # ── Prepare artifacts ─────────────────────────────────────────────────────────
 echo "==> Wrapping U-Boot as boot.img …"
-# u-boot.bin has a native ARM64 Image header (ARMd magic at offset 56);
-# use it directly — no patching needed.
+# U-Boot's ARM64 Image header has text_offset = -0x80000000 (bytes 8-15).
+# The Qualcomm ABL rejects that and falls straight back to fastboot.
+# Zero the field so ABL sees offset=0 (same as Linux) and accepts the image.
+# Gzip-compress and append the DTB so ABL extracts it and passes it in x0.
+cp "$UBOOT_BIN" "$TMPDIR/u-boot.bin"
+printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
+    | dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc 2>/dev/null
+gzip -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
+cat "$TMPDIR/u-boot.bin.gz" "$UBOOT_DTB" > "$TMPDIR/u-boot.bin.gz-dtb"
 mkbootimg \
-    --kernel  "$UBOOT_BIN" \
-    --second  "$UBOOT_DTB" \
+    --kernel  "$TMPDIR/u-boot.bin.gz-dtb" \
     --pagesize  $PAGESIZE \
     --base      $BASE \
     --kernel_offset  $KERNEL_OFFSET \
     --ramdisk_offset $RAMDISK_OFFSET \
-    --second_offset  $SECOND_OFFSET \
     --tags_offset    $TAGS_OFFSET \
     --output "$TMPDIR/boot.img"
 
