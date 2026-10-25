@@ -88,6 +88,7 @@ jobs:
           # Create per-user profile dir expected by guix on ubuntu-24.04
           # (missing by default; fix from SystemCrafters/guix-installer).
           sudo mkdir -p /var/guix/profiles/per-user/runner
+          sudo chown runner:runner /var/guix/profiles/per-user/runner
 
       # ── Cache Guix store + pulled profile ────────────────────────────────
       - name: Cache Guix store
