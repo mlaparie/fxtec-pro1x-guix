@@ -228,6 +228,7 @@ echo ""
 echo "    Flashing will erase userdata and replace the bootloader on slot A."
 echo ""
 read -r -p "Flash now? [y/N] " CONFIRM
+CONFIRM="${CONFIRM//$'\r'/}"
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
 # ── Flash ─────────────────────────────────────────────────────────────────────
