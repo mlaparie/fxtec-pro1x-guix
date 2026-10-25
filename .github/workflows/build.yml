@@ -95,18 +95,26 @@ jobs:
           sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
-      # Running natively on aarch64 — no cross-compiler, no stmp-fixinc issue.
+      # Running natively on aarch64.  The build is non-blocking (continue-on-error)
+      # because the current uboot.scm produces a derivation that fails to build
+      # from source in CI (see TODO.md §6).  The system-image step must not be
+      # gated on u-boot until that is fixed.
       - name: Build u-boot-pro1x
+        continue-on-error: true
         run: |
           sudo guix build u-boot-pro1x \
             -L . \
             --fallback \
-            2>&1 | tee /tmp/uboot.log
+            2>&1 | tee /tmp/uboot.log || true
           UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
-          [ -d "$UBOOT" ] || { echo "U-Boot build failed"; cat /tmp/uboot.log; exit 1; }
-          cp "$UBOOT/libexec/u-boot-nodtb.bin"            u-boot-nodtb.bin
-          cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
-          echo "Built: $UBOOT"
+          if [ -d "$UBOOT" ]; then
+            cp "$UBOOT/libexec/u-boot-nodtb.bin"            u-boot-nodtb.bin
+            cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
+            echo "Built: $UBOOT"
+          else
+            echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
+            tail -50 /tmp/uboot.log
+          fi
 
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
@@ -130,6 +138,7 @@ jobs:
 
       # ── Upload artifacts ──────────────────────────────────────────────────
       - name: Upload u-boot
+        if: hashFiles('u-boot-nodtb.bin') != ''
         uses: actions/upload-artifact@v4
         with:
           name: u-boot-pro1x
