@@ -104,7 +104,7 @@ jobs:
             2>&1 | tee /tmp/uboot.log
           UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
           [ -d "$UBOOT" ] || { echo "U-Boot build failed"; cat /tmp/uboot.log; exit 1; }
-          cp "$UBOOT/libexec/u-boot.bin"                  u-boot.bin
+          cp "$UBOOT/libexec/u-boot-nodtb.bin"            u-boot-nodtb.bin
           cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
           echo "Built: $UBOOT"
 
@@ -134,7 +134,7 @@ jobs:
         with:
           name: u-boot-pro1x
           path: |
-            u-boot.bin
+            u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
           retention-days: 30
 
@@ -151,6 +151,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            u-boot.bin
+            u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
             rootfs.img

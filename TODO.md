@@ -106,3 +106,19 @@ working build (`i2bx8zrg0z…`).
 working build.  The working build predates the `qcom-phone.config` change — try
 reverting to the original merge_config approach or comparing the resulting
 `.config` files.
+
+---
+
+## 7. GitHub CI  [FIXED — but verify green run]
+
+CI was failing at the "Build u-boot-pro1x" step because `.github/workflows/build.yml`
+copied `u-boot.bin` from the store but `uboot.scm` installs `u-boot-nodtb.bin`.
+
+**Fixed in this session**: changed all three occurrences in `build.yml`
+(`cp`, upload artifact, release) from `u-boot.bin` → `u-boot-nodtb.bin`.
+
+**Verify**: the in-progress CI run triggered by the latest push should now pass
+the U-Boot step.  If the system image step then fails, the next likely cause is
+disk space (runner arrives ~70% full; ~25 GB needed for kernel + image build)
+or a missing `--system=aarch64-linux` flag (runner is already aarch64 so likely
+fine).
