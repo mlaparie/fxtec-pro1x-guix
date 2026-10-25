@@ -91,23 +91,14 @@ elif [[ -f "u-boot.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
     UBOOT_DTB="sm6115-fxtec-pro1x.dtb"
     echo "    Found local files."
 elif command -v guix >/dev/null 2>&1; then
-    STORE_UBOOT=$(find /gnu/store -maxdepth 1 -name "*-u-boot-pro1x-*" \
-        ! -name "*.drv" ! -name "*-checkout" ! -name "*-builder" ! -name "*lock*" \
-        2>/dev/null | sort | tail -1)
-    if [[ -d "${STORE_UBOOT:-}" ]]; then
-        echo "    Found in Guix store: $STORE_UBOOT"
-        ask "    Use it?" || die "Aborted."
-        UBOOT_BIN="$STORE_UBOOT/libexec/u-boot.bin"
-        UBOOT_DTB="$STORE_UBOOT/libexec/sm6115-fxtec-pro1x.dtb"
-    else
-        echo "    Not found locally or in store."
-        ask "    Build with Guix? (requires cross-compiler, ~2 h)" || die "Aborted."
-        BUILT=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
-            build u-boot-pro1x -L . --no-grafts 2>&1 | tee /dev/stderr | tail -1)
-        [[ -d "$BUILT" ]] || die "U-Boot build failed"
-        UBOOT_BIN="$BUILT/libexec/u-boot.bin"
-        UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
-    fi
+    # guix time-machine returns the store path instantly if already built,
+    # or builds it — either way it's the exact derivation for this device.
+    ask "    Not found locally. Use Guix to find/build u-boot-pro1x?" || die "Aborted."
+    BUILT=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
+        build u-boot-pro1x -L . --no-grafts 2>&1 | tee /dev/stderr | tail -1)
+    [[ -d "$BUILT" ]] || die "U-Boot build failed"
+    UBOOT_BIN="$BUILT/libexec/u-boot.bin"
+    UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
 else
     die "u-boot.bin not found and Guix is not installed.
 Download u-boot.bin + sm6115-fxtec-pro1x.dtb from the GitHub releases page
@@ -132,22 +123,12 @@ elif [[ -f "rootfs.img" ]]; then
     ROOTFS_FLASH="rootfs.img"
     echo "    Found local file: rootfs.img"
 elif command -v guix >/dev/null 2>&1; then
-    STORE_DISK=$(find /gnu/store -maxdepth 1 -name "*-disk-image" \
-        ! -name "*.drv" 2>/dev/null | sort | tail -1)
-    if [[ -f "${STORE_DISK:-}" ]]; then
-        echo "    Found disk image in Guix store: $STORE_DISK"
-        ask "    Use it?" || die "Aborted."
-        DISK_IMAGE="$STORE_DISK"
-        NEED_EXTRACT=true
-    else
-        echo "    Not found locally or in store."
-        ask "    Build with Guix? (~30 min)" || die "Aborted."
-        DISK_IMAGE=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
-            system image --image-type=efi-raw --system="$ARCH" -L . \
-            "$SYSTEM" 2>&1 | tee /dev/stderr | tail -1)
-        [[ -f "$DISK_IMAGE" ]] || die "System image build failed"
-        NEED_EXTRACT=true
-    fi
+    ask "    Not found locally. Use Guix to find/build system image?" || die "Aborted."
+    DISK_IMAGE=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
+        system image --image-type=efi-raw --system="$ARCH" -L . \
+        "$SYSTEM" 2>&1 | tee /dev/stderr | tail -1)
+    [[ -f "$DISK_IMAGE" ]] || die "System image build failed"
+    NEED_EXTRACT=true
 else
     die "rootfs.img not found and Guix is not installed.
 Download rootfs.img from the GitHub releases page and place it in the
