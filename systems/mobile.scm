@@ -9,7 +9,7 @@
 ;;;   • IceCat browser, GNOME Console, foot terminal, sway
 
 (use-modules (gnu)
-             (gnu bootloader extlinux)
+             (fxtec-pro1x packages bootloader)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages gnome)
@@ -69,7 +69,7 @@
   ;; ── Bootloader ────────────────────────────────────────────────────────────
   (bootloader
    (bootloader-configuration
-    (bootloader extlinux-bootloader)
+    (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
     (timeout 3)))
 

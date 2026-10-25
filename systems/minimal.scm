@@ -10,7 +10,7 @@
 ;;;   See scripts/flash.sh
 
 (use-modules (gnu)
-             (gnu bootloader extlinux)
+             (fxtec-pro1x packages bootloader)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages linux)
@@ -71,7 +71,7 @@
   ;; from the ext4 rootfs.  The target device is the userdata partition.
   (bootloader
    (bootloader-configuration
-    (bootloader extlinux-bootloader)
+    (bootloader pro1x-extlinux-bootloader)
     ;; U-Boot looks for extlinux.conf via sysboot on the ext4 userdata partition.
     (targets '("/dev/disk/by-partlabel/userdata"))
     (menu-entries '())           ; extra entries managed by pro1x-boot-menu

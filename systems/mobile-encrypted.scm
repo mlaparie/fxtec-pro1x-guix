@@ -12,7 +12,7 @@
 ;;;   (copies new kernel/initrd to the plain /boot area)
 
 (use-modules (gnu)
-             (gnu bootloader extlinux)
+             (fxtec-pro1x packages bootloader)
              (gnu packages admin)
              (gnu packages base)
              (gnu packages gnome)
