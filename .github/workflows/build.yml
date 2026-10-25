@@ -39,13 +39,21 @@ jobs:
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
           printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\nPrivateTmp=no\n' \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
-          # Also patch the unit file directly — drop-in override of PrivateTmp may not apply
-          # because systemd PrivateTmp=yes creates a 0700 tmpfs; guixbuild users can't write it
+          # Patch unit file directly (drop-in alone is unreliable)
           SERVICE_FILE=$(systemctl show guix-daemon -p FragmentPath --value)
           echo "Patching $SERVICE_FILE"
           sudo sed -i 's/^PrivateTmp=yes/PrivateTmp=no/' "$SERVICE_FILE"
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
+          # Enter the daemon's mount namespace and chmod /tmp there — the daemon
+          # may still have inherited a private tmpfs; nsenter fixes it directly.
+          DAEMON_PID=$(systemctl show guix-daemon -p MainPID --value)
+          echo "Daemon PID: $DAEMON_PID  PrivateTmp: $(systemctl show guix-daemon -p PrivateTmp --value)"
+          sudo nsenter -t "$DAEMON_PID" -m -- chmod 1777 /tmp
+          sudo nsenter -t "$DAEMON_PID" -m -- ls -ld /tmp
+          # Also fix host /tmp and /etc/gitconfig (git inside sandbox can't read it)
+          sudo chmod 1777 /tmp
+          sudo chmod 644 /etc/gitconfig 2>/dev/null || true
 
       # ── Cache Guix store + pulled profile ────────────────────────────────
       - name: Cache Guix store
