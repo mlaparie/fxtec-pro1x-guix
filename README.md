@@ -1,3 +1,7 @@
+> **Work in progress — not yet functional.**
+> The system boots but audio, modem, and several hardware features are unverified or broken.
+> Do not flash this on a device you depend on.
+
 # Guix System on the F(x)tec Pro1X (QX1050)
 
 Mainline Linux and U-Boot for the F(x)tec Pro1X (SM6115 / Snapdragon 662),
