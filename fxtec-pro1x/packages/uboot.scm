@@ -29,16 +29,22 @@
 
 ;; (cross-gcc "aarch64-linux-gnu") fails to build from source in the Guix
 ;; sandbox: the stmp-fixinc Makefile rule exits 1 when /usr/include doesn't
-;; exist and doesn't match the cross sys-include path.  --disable-fixincludes
-;; skips that target entirely.
+;; exist (non-FHS sandbox).  Patch the Makefile check to continue instead of
+;; exit 1 — fixincludes still runs but skips the missing directory cleanly,
+;; leaving include-fixed/ correctly populated (empty).
 (define cross-gcc-aarch64
   (let ((base (cross-gcc "aarch64-linux-gnu")))
     (package
       (inherit base)
       (arguments
        (substitute-keyword-arguments (package-arguments base)
-         ((#:configure-flags flags)
-          #~(cons "--disable-fixincludes" #$flags)))))))
+         ((#:phases phases)
+          #~(modify-phases #$phases
+              (add-after 'unpack 'allow-missing-usr-include
+                (lambda _
+                  (substitute* "gcc/Makefile.in"
+                    (("else exit 1; fi")
+                     "else true; fi")))))))))))
 
 (define* (make-u-boot-pro1x #:key (previous-generations 3))
   (let* ((n previous-generations)
