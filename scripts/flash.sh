@@ -10,6 +10,7 @@ SYSTEM="systems/mobile.scm"
 OPT_UBOOT=""
 OPT_DTB=""
 OPT_ROOTFS=""
+VERBOSE=false
 
 # ── Boot image parameters (Qualcomm SM6115) ──────────────────────────────────
 PAGESIZE=4096
@@ -22,6 +23,8 @@ TAGS_OFFSET=0x00000100
 die()  { echo "error: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found — run: guix shell fastboot mkbootimg -- bash $0"; }
 ask()  { local yn; read -r -p "$1 [Y/n] " yn; [[ "${yn:-Y}" =~ ^[Yy]$ ]]; }
+# Run a command, suppressing stderr unless --verbose was passed.
+quiet() { if [[ "$VERBOSE" == true ]]; then "$@"; else "$@" 2>/dev/null; fi; }
 
 # Run CMD, stream output live to stderr, return the last /gnu/store path found.
 # Avoids the pipe-buffering that silences guix progress when capturing via $().
@@ -46,6 +49,7 @@ Options:
   --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
   --system FILE    Guix system .scm to build if rootfs is not found
                    (default: systems/mobile.scm)
+  -v, --verbose    Show all dd progress and suppress no stderr output
   -h, --help       Show this help
 
 Artifact discovery order (tried in sequence for both U-Boot and rootfs):
@@ -71,12 +75,13 @@ EOF
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --uboot)   OPT_UBOOT="$2";  shift 2 ;;
-        --dtb)     OPT_DTB="$2";    shift 2 ;;
-        --rootfs)  OPT_ROOTFS="$2"; shift 2 ;;
-        --system)  SYSTEM="$2";     shift 2 ;;
-        -h|--help) show_help; exit 0 ;;
-        *.scm)     SYSTEM="$1"; shift ;;
+        --uboot)        OPT_UBOOT="$2";  shift 2 ;;
+        --dtb)          OPT_DTB="$2";    shift 2 ;;
+        --rootfs)       OPT_ROOTFS="$2"; shift 2 ;;
+        --system)       SYSTEM="$2";     shift 2 ;;
+        -v|--verbose)   VERBOSE=true;    shift ;;
+        -h|--help)      show_help; exit 0 ;;
+        *.scm)          SYSTEM="$1"; shift ;;
         *) die "Unknown argument: $1  (try --help)" ;;
     esac
 done
@@ -150,7 +155,7 @@ echo "==> Wrapping U-Boot as boot.img …"
 cp "$UBOOT_BIN" "$TMPDIR/u-boot.bin"
 chmod +w "$TMPDIR/u-boot.bin"
 printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
-    | dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc 2>/dev/null
+    | quiet dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc
 gzip --no-name -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
 cat "$TMPDIR/u-boot.bin.gz" "$UBOOT_DTB" > "$TMPDIR/u-boot.bin.gz-dtb"
 mkbootimg \
@@ -169,15 +174,16 @@ if [[ "$NEED_EXTRACT" == true ]]; then
     PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
     [[ -n "$PART_START" && -n "$PART_SECTORS" ]] \
         || die "Could not read partition table from disk image"
+    DD_PROGRESS=(); [[ "$VERBOSE" == true ]] && DD_PROGRESS=(status=progress)
     dd if="$DISK_IMAGE" of="$TMPDIR/rootfs.img" \
-        bs=512 skip="$PART_START" count="$PART_SECTORS" 2>/dev/null
+        bs=512 skip="$PART_START" count="$PART_SECTORS" "${DD_PROGRESS[@]}"
     ROOTFS_FLASH="$TMPDIR/rootfs.img"
     ROOTFS_MIB=$(( PART_SECTORS / 2048 ))
 else
     ROOTFS_MIB=$(( $(wc -c < "$ROOTFS_FLASH") / 1024 / 1024 ))
 fi
 
-ACTUAL_LABEL=$(e2label "$ROOTFS_FLASH" 2>/dev/null || true)
+ACTUAL_LABEL=$(quiet e2label "$ROOTFS_FLASH" || true)
 if [[ "$ACTUAL_LABEL" != "guix" ]]; then
     echo "    Relabelling root partition 'guix' (was: '${ACTUAL_LABEL:-<none>}') …"
     e2label "$ROOTFS_FLASH" guix
