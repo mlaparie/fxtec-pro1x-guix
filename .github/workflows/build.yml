@@ -105,6 +105,7 @@ jobs:
           sudo guix pull --disable-authentication -C channels-ci.scm
           sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
           sudo systemctl restart guix-daemon
+          sudo guix describe
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)

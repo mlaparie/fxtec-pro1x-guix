@@ -22,6 +22,6 @@
   (commit "19a133327ef425d1294406c83ffc23484fb399f0")
   (introduction
    (make-channel-introduction
-    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+    "897c1a470da759236cc11798f4e0a5f7d4d796ab"
     (openpgp-fingerprint
      "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5")))))
