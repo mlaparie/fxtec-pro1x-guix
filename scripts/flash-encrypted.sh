@@ -302,9 +302,15 @@ fastboot erase dtbo_a
 echo "==> Flashing U-Boot to boot_a …"
 fastboot flash boot_a "$TMPDIR/boot.img"
 
-echo "==> Disabling vbmeta verification …"
-printf '\x41\x56\x42\x30\x00\x00\x01\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00' | \
-    dd bs=4096 count=1 conv=sync 2>/dev/null > "$TMPDIR/vbmeta.img"
+echo "==> Generating vbmeta with verification disabled …"
+python3 -c "
+import struct, sys
+hdr = bytearray(4096)
+hdr[0:4] = b'AVB0'
+struct.pack_into('>I', hdr, 4, 1)
+struct.pack_into('>I', hdr, 120, 3)
+sys.stdout.buffer.write(hdr)
+" > "$TMPDIR/vbmeta.img"
 fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
 
 echo "==> Flashing userdata …"

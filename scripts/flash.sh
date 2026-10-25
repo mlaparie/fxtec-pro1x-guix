@@ -181,9 +181,17 @@ if [[ "$ACTUAL_LABEL" != "guix" ]]; then
     e2label "$ROOTFS_FLASH" guix
 fi
 
-echo "==> Generating zeroed vbmeta …"
-printf '\x41\x56\x42\x30\x00\x00\x01\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00' \
-    | dd bs=4096 count=1 conv=sync 2>/dev/null > "$TMPDIR/vbmeta.img"
+echo "==> Generating vbmeta with verification disabled …"
+# AVB vbmeta header: magic "AVB0", version 1, flags=3 at offset 120 (big-endian).
+# Flags 0x3 = HASHTREE_DISABLED|VERIFICATION_DISABLED so ABL boots unsigned images.
+python3 -c "
+import struct, sys
+hdr = bytearray(4096)
+hdr[0:4] = b'AVB0'
+struct.pack_into('>I', hdr, 4, 1)   # required_libavb_version_major = 1
+struct.pack_into('>I', hdr, 120, 3) # flags: VERIFICATION_DISABLED|HASHTREE_DISABLED
+sys.stdout.buffer.write(hdr)
+" > "$TMPDIR/vbmeta.img"
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 BOOT_SIZE=$(wc -c < "$TMPDIR/boot.img")
