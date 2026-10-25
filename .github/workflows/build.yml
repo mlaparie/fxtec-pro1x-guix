@@ -50,6 +50,7 @@ jobs:
             -o /tmp/guix-install.sh
           chmod +x /tmp/guix-install.sh
           echo | sudo -E /tmp/guix-install.sh
+          sudo guix --version
 
       - name: Authorize nonguix substitute server
         run: |
@@ -105,7 +106,11 @@ jobs:
           sudo guix pull --disable-authentication -C channels-ci.scm
           sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
           sudo systemctl restart guix-daemon
+          echo "==> guix binary: $(which guix) -> $(readlink -f $(which guix))"
           sudo guix describe
+          echo "==> nonguix module check:"
+          find /root/.config/guix/current -path "*/nongnu/packages/linux*" 2>/dev/null \
+            | head -5 || echo "WARNING: nonguix modules not found in profile"
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
@@ -131,6 +136,7 @@ jobs:
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
         run: |
+          echo "==> disk space before build:"; df -h /
           sudo guix system image \
             --image-type=efi-raw \
             -L . \
@@ -147,6 +153,7 @@ jobs:
           LABEL=$(sudo e2label rootfs.img 2>/dev/null || true)
           [ "$LABEL" = "guix" ] || sudo e2label rootfs.img guix
           echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
+          echo "==> disk space after extraction:"; df -h /
 
       # ── Upload artifacts ──────────────────────────────────────────────────
       - name: Upload u-boot
