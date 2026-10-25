@@ -36,31 +36,37 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found — run: guix shel
 need fastboot
 need mkbootimg
 
-# ── Phase 1: Build ────────────────────────────────────────────────────────────
-echo "==> [1/2] Building U-Boot …"
-UBOOT=$(guix build u-boot-pro1x \
-    --system="$ARCH" \
-    -L . \
-    --no-grafts 2>&1 | tee /dev/stderr | tail -1)
-if [ ! -d "$UBOOT" ]; then
-    echo "    Build failed; falling back to cached store output …"
-    UBOOT=$(find /gnu/store -maxdepth 1 -name "*-u-boot-pro1x-*" \
-        ! -name "*.drv" ! -name "*-checkout" ! -name "*-builder" ! -name "*lock*" \
-        2>/dev/null | sort | tail -1)
-    [ -d "$UBOOT" ] || die "U-Boot not in store and build failed — cannot flash"
+# ── Phase 1: Find or build artifacts ─────────────────────────────────────────
+# Check the store first — avoids triggering a cross-gcc rebuild when the
+# output is already there (e.g. built via guix time-machine separately).
+echo "==> [1/2] Finding U-Boot …"
+UBOOT=$(find /gnu/store -maxdepth 1 -name "*-u-boot-pro1x-*" \
+    ! -name "*.drv" ! -name "*-checkout" ! -name "*-builder" ! -name "*lock*" \
+    2>/dev/null | sort | tail -1)
+if [ -d "$UBOOT" ]; then
+    echo "    Using cached: $UBOOT"
+else
+    echo "    Not found in store — building …"
+    UBOOT=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
+        build u-boot-pro1x -L . --no-grafts 2>&1 | tee /dev/stderr | tail -1)
+    [ -d "$UBOOT" ] || die "U-Boot build failed — cannot flash"
 fi
 [ -f "$UBOOT/libexec/u-boot.bin" ]              || die "u-boot.bin missing from store output"
 [ -f "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb" ] || die "DTB missing from store output"
 echo "    $UBOOT"
 
-echo "==> [2/2] Building Guix system image ($SYSTEM) …"
-DISK_IMAGE=$(guix system image \
-    --image-type=efi-raw \
-    --system="$ARCH" \
-    -L . \
-    "$SYSTEM" 2>&1 | tee /dev/stderr | tail -1)
-[ -f "$DISK_IMAGE" ] || die "System image build failed — cannot flash"
-echo "    $DISK_IMAGE"
+echo "==> [2/2] Finding system image ($SYSTEM) …"
+DISK_IMAGE=$(find /gnu/store -maxdepth 1 -name "*-disk-image" \
+    ! -name "*.drv" 2>/dev/null | sort | tail -1)
+if [ -f "$DISK_IMAGE" ]; then
+    echo "    Using cached: $DISK_IMAGE"
+else
+    echo "    Not found in store — building …"
+    DISK_IMAGE=$(guix time-machine --disable-authentication -C channels-ci.scm -- \
+        system image --image-type=efi-raw --system="$ARCH" -L . \
+        "$SYSTEM" 2>&1 | tee /dev/stderr | tail -1)
+    [ -f "$DISK_IMAGE" ] || die "System image build failed — cannot flash"
+fi
 
 # ── Phase 2: Prepare artifacts ───────────────────────────────────────────────
 TMPDIR=$(mktemp -d)
