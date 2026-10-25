@@ -124,7 +124,7 @@ jobs:
       # gated on u-boot until that is fixed.
       - name: Build u-boot-pro1x
         run: |
-          sudo guix build u-boot-pro1x \
+          guix build u-boot-pro1x \
             -L . \
             --fallback \
             2>&1 | tee /tmp/uboot.log || true
