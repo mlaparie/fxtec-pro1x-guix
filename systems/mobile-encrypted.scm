@@ -198,5 +198,6 @@
     (list
      icecat
      gnome-console
-     iw usbutils vim git font-terminus)
+     iw usbutils vim git font-terminus
+     gsettings-desktop-schemas)
     %base-packages)))

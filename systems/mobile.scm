@@ -194,5 +194,6 @@
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
-     iw usbutils vim git font-terminus)
+     iw usbutils vim git font-terminus
+     gsettings-desktop-schemas)
     %base-packages)))

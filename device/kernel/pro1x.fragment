@@ -70,6 +70,11 @@ CONFIG_ATH10K=m
 CONFIG_ATH10K_SNOC=m
 CONFIG_BT_QCA=m
 
+# ath10k ships board-2.bin.zst / firmware-5.bin.zst; the kernel must be able
+# to decompress .zst firmware or the WCN3990 Wi-Fi adapter won't load.
+CONFIG_FW_LOADER_COMPRESS=y
+CONFIG_FW_LOADER_COMPRESS_ZSTD=y
+
 # --- required by NixOS/systemd but not in arm64 defconfig ---------------------
 CONFIG_CRYPTO_USER_API_HASH=y
 
