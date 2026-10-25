@@ -128,10 +128,13 @@
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))
 
+     ;; elogind: provides org.freedesktop.login1 D-Bus interface that
+     ;; wlroots/libseat uses to open a DRM session (needed by phoc and sway).
+     (service elogind-service-type)
+
      ;; ── Phosh desktop
      ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
-     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on
-     ;; VT1; XDG_RUNTIME_DIR is set up inline (no elogind needed).
+     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on VT1.
      (simple-service 'phosh shepherd-root-service-type
        (list
         (shepherd-service

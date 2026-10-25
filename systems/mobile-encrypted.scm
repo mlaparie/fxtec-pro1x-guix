@@ -176,6 +176,7 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
+     (service elogind-service-type)
      (service dbus-root-service-type)
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)
