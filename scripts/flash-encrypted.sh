@@ -70,12 +70,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 # ── Wrap U-Boot as boot.img ──────────────────────────────────────────────────
 echo "==> Wrapping U-Boot as boot.img …"
-cp "$UBOOT_BIN" "$TMPDIR/uboot-patched.bin"
-printf '\x00\x00\x00\x00\x00\x00\x00\x00' | \
-    dd of="$TMPDIR/uboot-patched.bin" bs=1 seek=0 conv=notrunc 2>/dev/null
-
 mkbootimg \
-    --kernel "$TMPDIR/uboot-patched.bin" \
+    --kernel "$UBOOT_BIN" \
     --second "$UBOOT_DTB" \
     --pagesize $PAGESIZE \
     --base $BASE \

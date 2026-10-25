@@ -145,12 +145,10 @@ fi
 
 # ── Prepare artifacts ─────────────────────────────────────────────────────────
 echo "==> Wrapping U-Boot as boot.img …"
-cp "$UBOOT_BIN" "$TMPDIR/uboot-patched.bin"
-# Zero EFI stub magic so the Qualcomm ABL falls through to the raw image.
-printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
-    | dd of="$TMPDIR/uboot-patched.bin" bs=1 seek=0 conv=notrunc 2>/dev/null
+# u-boot.bin has a native ARM64 Image header (ARMd magic at offset 56);
+# use it directly — no patching needed.
 mkbootimg \
-    --kernel  "$TMPDIR/uboot-patched.bin" \
+    --kernel  "$UBOOT_BIN" \
     --second  "$UBOOT_DTB" \
     --pagesize  $PAGESIZE \
     --base      $BASE \
