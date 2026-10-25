@@ -101,11 +101,9 @@ elif [[ -f "u-boot-nodtb.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
     UBOOT_DTB="sm6115-fxtec-pro1x.dtb"
     echo "    Found local files."
 elif command -v guix >/dev/null 2>&1; then
-    # guix time-machine returns the store path instantly if already built,
-    # or builds it — either way it's the exact derivation for this device.
+    # guix build returns the store path instantly if already built, or builds it.
     ask "    Not found locally. Use Guix to find/build u-boot-pro1x?" || die "Aborted."
-    BUILT=$(guix_build_path guix time-machine --disable-authentication -C channels-ci.scm -- \
-        build u-boot-pro1x -L . --no-grafts)
+    BUILT=$(guix_build_path guix build u-boot-pro1x -L . --fallback)
     [[ -d "$BUILT" ]] || die "U-Boot build failed"
     UBOOT_BIN="$BUILT/libexec/u-boot-nodtb.bin"
     UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
@@ -134,8 +132,7 @@ elif [[ -f "rootfs.img" ]]; then
     echo "    Found local file: rootfs.img"
 elif command -v guix >/dev/null 2>&1; then
     ask "    Not found locally. Use Guix to find/build system image?" || die "Aborted."
-    DISK_IMAGE=$(guix_build_path guix time-machine --disable-authentication -C channels-ci.scm -- \
-        system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
+    DISK_IMAGE=$(guix_build_path guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
     [[ -f "$DISK_IMAGE" ]] || die "System image build failed"
     NEED_EXTRACT=true
 else
