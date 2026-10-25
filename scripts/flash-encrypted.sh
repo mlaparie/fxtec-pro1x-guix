@@ -40,6 +40,16 @@ BOOT_SECTORS=$(( BOOT_MIB * 2048 ))   # = 524288
 
 die()  { echo "error: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found"; }
+
+# Run CMD, stream output live to stderr, return the last /gnu/store path found.
+# Avoids the pipe-buffering that silences guix progress when capturing via $().
+guix_build_path() {
+    local log; log=$(mktemp)
+    "$@" 2>&1 | tee /dev/stderr > "$log"
+    grep '^/gnu/store' "$log" | grep -v '\.drv' | tail -1
+    rm -f "$log"
+}
+
 need fastboot
 need mkbootimg
 need partx
@@ -48,10 +58,8 @@ need debugfs
 need cryptsetup
 
 echo "==> Building U-Boot …"
-UBOOT=$(guix build u-boot-pro1x \
-    --system="$ARCH" \
-    -L "$REPO_ROOT" \
-    --no-grafts 2>&1 | tail -1)
+UBOOT=$(guix_build_path guix time-machine --disable-authentication -C "$REPO_ROOT/channels-ci.scm" -- \
+    build u-boot-pro1x -L "$REPO_ROOT" --no-grafts)
 echo "    $UBOOT"
 
 UBOOT_BIN="$UBOOT/libexec/u-boot.bin"
@@ -79,11 +87,8 @@ mkbootimg \
 
 # ── Build Guix system image ──────────────────────────────────────────────────
 echo "==> Building Guix system image for $SYSTEM …"
-DISK_IMAGE=$(guix system image \
-    --image-type=efi-raw \
-    --system="$ARCH" \
-    -L "$REPO_ROOT" \
-    "$SYSTEM" 2>&1 | tail -1)
+DISK_IMAGE=$(guix_build_path guix time-machine --disable-authentication -C "$REPO_ROOT/channels-ci.scm" -- \
+    system image --image-type=efi-raw --system="$ARCH" -L "$REPO_ROOT" "$SYSTEM")
 echo "    $DISK_IMAGE"
 
 # ── Extract root partition (partition 2 in efi-raw GPT) ──────────────────────
@@ -132,8 +137,8 @@ fi
 
 # Fall back to the known store path symlinks in the system build.
 if [ ! -s "$TMPDIR/vmlinuz" ]; then
-    SYSTEM_PATH=$(guix system build --system="$ARCH" -L "$REPO_ROOT" \
-        "$SYSTEM" 2>&1 | tail -1)
+    SYSTEM_PATH=$(guix_build_path guix time-machine --disable-authentication -C "$REPO_ROOT/channels-ci.scm" -- \
+        system build --system="$ARCH" -L "$REPO_ROOT" "$SYSTEM")
     KERNEL_PROF=$(readlink -f "$SYSTEM_PATH/kernel")
     for name in Image Image.gz bzImage; do
         if [ -f "$KERNEL_PROF/$name" ]; then
@@ -155,8 +160,8 @@ if [ -n "$INITRD_STORE_PATH" ]; then
 fi
 
 if [ ! -s "$TMPDIR/initrd.img" ]; then
-    SYSTEM_PATH=${SYSTEM_PATH:-$(guix system build --system="$ARCH" \
-        -L "$REPO_ROOT" "$SYSTEM" 2>&1 | tail -1)}
+    SYSTEM_PATH=${SYSTEM_PATH:-$(guix_build_path guix time-machine --disable-authentication -C "$REPO_ROOT/channels-ci.scm" -- \
+        system build --system="$ARCH" -L "$REPO_ROOT" "$SYSTEM")}
     INITRD_PATH=$(readlink -f "$SYSTEM_PATH/initrd")
     cp "$INITRD_PATH" "$TMPDIR/initrd.img"
     echo "    initrd: $INITRD_PATH"
@@ -213,9 +218,8 @@ unset PASSPHRASE1 PASSPHRASE2
 
 # ── Build pro1x-xts-encrypt ──────────────────────────────────────────────────
 echo "==> Building pro1x-xts-encrypt …"
-XTS_PKG=$(guix build pro1x-xts-encrypt \
-    -L "$REPO_ROOT" \
-    --no-grafts 2>&1 | tail -1)
+XTS_PKG=$(guix_build_path guix time-machine --disable-authentication -C "$REPO_ROOT/channels-ci.scm" -- \
+    build pro1x-xts-encrypt -L "$REPO_ROOT" --no-grafts)
 XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 echo "    $XTS_ENC"
 
