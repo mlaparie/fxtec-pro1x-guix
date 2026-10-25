@@ -28,9 +28,12 @@ quiet() { if [[ "$VERBOSE" == true ]]; then "$@"; else "$@" 2>/dev/null; fi; }
 
 # Run CMD, stream output live to stderr, return the last /gnu/store path found.
 # Avoids the pipe-buffering that silences guix progress when capturing via $().
+# With --verbose, injects --verbosity=3 after 'guix' to stream compile logs.
 guix_build_path() {
     local log; log=$(mktemp)
-    "$@" 2>&1 | tee /dev/stderr > "$log"
+    local cmd=("$@")
+    [[ "$VERBOSE" == true ]] && cmd=("${cmd[0]}" "--verbosity=3" "${cmd[@]:1}")
+    "${cmd[@]}" 2>&1 | tee /dev/stderr > "$log"
     grep '^/gnu/store' "$log" | grep -v '\.drv' | tail -1
     rm -f "$log"
 }
