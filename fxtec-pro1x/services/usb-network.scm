@@ -70,6 +70,7 @@
                  " --no-resolv"
                  " --no-hosts"
                  " --dhcp-leasefile=/tmp/dnsmasq-usb.leases"
+                 " --dhcp-option=3"
                  " --dhcp-range=" #$pool-start "," #$pool-end ",12h"))
           #:log-file "/var/log/pro1x-usb-network.log"))
       (stop #~(make-kill-destructor))
