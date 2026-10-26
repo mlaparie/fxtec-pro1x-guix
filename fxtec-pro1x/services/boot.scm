@@ -139,16 +139,26 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
    (shepherd-service
     (provision '(pro1x-rootfs-resize))
     (requirement '(file-systems))
-    (documentation "Expand the root ext4 filesystem to fill its partition (runs once)")
+    (documentation "Expand the root ext4 filesystem to fill its partition if needed")
     (one-shot? #t)
     (start
      #~(make-forkexec-constructor
         (list "/bin/sh" "-c"
               (string-append
-               "[ -f /var/lib/pro1x-rootfs-resized ] && exit 0; "
-               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) && "
-               #$(file-append e2fsprogs "/sbin/resize2fs") " \"$dev\" && "
-               "touch /var/lib/pro1x-rootfs-resized"))
+               ;; Locate root device.
+               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) || exit 1; "
+               ;; Partition size in 1 KiB blocks (from /proc/partitions).
+               "devname=${dev##*/}; "
+               "pblocks=$(awk -v d=\"$devname\" '$4==d {print $3}' /proc/partitions); "
+               ;; Filesystem block count (4 KiB blocks, from tune2fs).
+               "fsblocks=$("
+               #$(file-append e2fsprogs "/sbin/tune2fs") " -l \"$dev\""
+               " | awk '/^Block count:/ {print $3}'); "
+               ;; Mirror Droidian's threshold: resize if gap > 10000 * 4 KiB (~40 MiB).
+               "diff=$((pblocks - 4 * fsblocks)); "
+               "if [ \"$diff\" -gt 10000 ]; then "
+               #$(file-append e2fsprogs "/sbin/resize2fs") " -f \"$dev\"; "
+               "fi"))
         #:log-file "/var/log/pro1x-rootfs-resize.log"))
     (stop #~(make-kill-destructor)))))
 
@@ -160,6 +170,6 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
      (service-extension shepherd-root-service-type
                         pro1x-rootfs-resize-shepherd-services)))
    (default-value #f)
-   (description "Expand the root ext4 filesystem to fill its partition once
-after flashing.  A flag file /var/lib/pro1x-rootfs-resized is created on
-success so the resize is never attempted again.")))
+   (description "Expand the root ext4 filesystem to fill its partition when
+the gap between partition size and filesystem size exceeds ~40 MiB.  Mirrors
+the resize_userdata_if_needed logic from Droidian's initramfs-tools-halium.")))
