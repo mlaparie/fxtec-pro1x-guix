@@ -26,7 +26,6 @@
              (gnu packages terminals)
              (gnu packages web-browsers)
              (gnu packages emacs)
-             (gnu packages file-managers)
              (gnu packages video)
              (gnu packages window-management)
              (nongnu packages linux)

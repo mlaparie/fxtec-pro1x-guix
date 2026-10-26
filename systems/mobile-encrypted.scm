@@ -25,7 +25,6 @@
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages emacs)
-             (gnu packages file-managers)
              (gnu packages video)
              (gnu packages vim)
              (gnu packages gnuzilla)
