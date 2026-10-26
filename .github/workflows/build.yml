@@ -61,35 +61,24 @@ jobs:
             (curve Ed25519)
             (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))
           EOF
-          # Pass nonguix substitute URL to the daemon via its environment
-          sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          # OOMPolicy and TasksMax from guix-install-action (PromyLOPh/guix-install-action):
-          # OOMPolicy=continue prevents systemd killing the whole daemon cgroup on a
-          # child OOM; TasksMax=8192 raises the default 1024-task limit that some
-          # large builds hit.  LANG=en_US.utf8 matches the job env (C.UTF-8 breaks
-          # glibc inside the sandbox).
-          printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
-            | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
-          # Patch unit file directly (drop-in alone is unreliable).
-          # --no-sandbox: GitHub Actions runners can't create isolated mount
-          # namespaces for build sandboxes (restricted capabilities), causing
-          # git source fetches to fail with "/tmp: Permission denied" inside the
-          # sandbox.  With --no-sandbox, builds run in the daemon's own namespace
-          # where /tmp is already 1777.  Fine for CI; not a security concern here.
-          SERVICE_FILE=$(systemctl show guix-daemon -p FragmentPath --value)
-          echo "Patching $SERVICE_FILE"
-          sudo sed -i 's/^PrivateTmp=yes/PrivateTmp=no/' "$SERVICE_FILE"
           # guix-install.sh now runs the daemon as User=guix-daemon (unprivileged).
-          # --no-sandbox needs root to setuid to guixbuilder users, so strip
-          # User=/Group= to make the daemon run as root again.
-          sudo sed -i '/^User=guix-daemon$/d; /^Group=guix-daemon$/d' "$SERVICE_FILE"
-          sudo sed -i 's|^\(ExecStart=.*\)|\1 --no-sandbox|' "$SERVICE_FILE"
+          # --no-sandbox requires root (needs to setuid to guixbuilder users), so we
+          # use a systemd drop-in to:
+          #   User=/Group= (empty) — reset to root (same as guix-install-action@v1.6)
+          #   ExecStart= (empty) + ExecStart=... — replace with --no-sandbox + subs
+          # --no-sandbox is required: ARM runners lack CAP_SYS_ADMIN for the sandbox
+          # namespace mounts that guix-daemon sets up for build isolation.
+          DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
+          SUBS="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"
+          sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
+          printf '[Service]\nUser=\nGroup=\nExecStart=\nExecStart=%s --build-users-group=guixbuild --no-sandbox --substitute-urls=%s\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+            "$DAEMON" "$SUBS" \
+            | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
-          sudo systemctl restart guix-daemon
-          DAEMON_PID=$(systemctl show guix-daemon -p MainPID --value)
-          echo "Daemon PID: $DAEMON_PID  PrivateTmp: $(systemctl show guix-daemon -p PrivateTmp --value)"
-          sudo nsenter -t "$DAEMON_PID" -m -- chmod 1777 /tmp
-          # Also fix host /tmp and /etc/gitconfig (git inside sandbox can't read it)
+          sudo systemctl restart guix-daemon || {
+            echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
+          }
+          echo "Daemon PID: $(systemctl show guix-daemon -p MainPID --value)"
           sudo chmod 1777 /tmp
           sudo chmod 644 /etc/gitconfig 2>/dev/null || true
           # Create per-user profile dir expected by guix on ubuntu-24.04
