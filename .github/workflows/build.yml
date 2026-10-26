@@ -70,18 +70,21 @@ jobs:
           # glibc inside the sandbox).
           printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
-          # Patch unit file directly (drop-in alone is unreliable)
+          # Patch unit file directly (drop-in alone is unreliable).
+          # --no-sandbox: GitHub Actions runners can't create isolated mount
+          # namespaces for build sandboxes (restricted capabilities), causing
+          # git source fetches to fail with "/tmp: Permission denied" inside the
+          # sandbox.  With --no-sandbox, builds run in the daemon's own namespace
+          # where /tmp is already 1777.  Fine for CI; not a security concern here.
           SERVICE_FILE=$(systemctl show guix-daemon -p FragmentPath --value)
           echo "Patching $SERVICE_FILE"
           sudo sed -i 's/^PrivateTmp=yes/PrivateTmp=no/' "$SERVICE_FILE"
+          sudo sed -i 's|^\(ExecStart=.*\)|\1 --no-sandbox|' "$SERVICE_FILE"
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
-          # Enter the daemon's mount namespace and chmod /tmp there — the daemon
-          # may still have inherited a private tmpfs; nsenter fixes it directly.
           DAEMON_PID=$(systemctl show guix-daemon -p MainPID --value)
           echo "Daemon PID: $DAEMON_PID  PrivateTmp: $(systemctl show guix-daemon -p PrivateTmp --value)"
           sudo nsenter -t "$DAEMON_PID" -m -- chmod 1777 /tmp
-          sudo nsenter -t "$DAEMON_PID" -m -- ls -ld /tmp
           # Also fix host /tmp and /etc/gitconfig (git inside sandbox can't read it)
           sudo chmod 1777 /tmp
           sudo chmod 644 /etc/gitconfig 2>/dev/null || true
