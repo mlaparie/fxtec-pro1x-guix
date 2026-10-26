@@ -90,46 +90,28 @@ jobs:
           sudo mkdir -p /var/guix/profiles/per-user/runner
           sudo chown runner:runner /var/guix/profiles/per-user/runner
 
-      # ── Cache Guix store + pulled profile ────────────────────────────────
+      # ── Cache Guix store + time-machine cache ─────────────────────────────
       - name: Cache Guix store
         uses: actions/cache@v4
         with:
           path: |
             /gnu/store
-            /home/runner/.config/guix
-            /var/guix/profiles/per-user/runner
+            ~/.cache/guix
           key: guix-${{ hashFiles('channels-ci.scm') }}
           restore-keys: guix-
-
-      # ── Pull pinned channels (guix + nonguix only; fxtec-pro1x via -L .) ─
-      # Run as the runner user (not root) so the pulled profile lands in
-      # /home/runner/.config/guix/current — where the symlink will point.
-      # sudo preserves HOME=/home/runner on GitHub Actions, causing the pull
-      # to install to /home/runner even with sudo, but then the symlink was
-      # pointing to /root/.config/guix/current (the old binary without nonguix).
-      - name: Pull pinned channels
-        run: |
-          guix pull --disable-authentication -C channels-ci.scm
-          sudo ln -sf /home/runner/.config/guix/current/bin/guix /usr/local/bin/guix
-          sudo systemctl restart guix-daemon
-          echo "==> guix binary: $(which guix) -> $(readlink -f $(which guix))"
-          guix describe
-          echo "==> profile top-level:"
-          ls /home/runner/.config/guix/current/ 2>/dev/null || echo "(empty)"
-          echo "==> profile share/guile/site/3.0 dirs:"
-          ls /home/runner/.config/guix/current/share/guile/site/3.0/ 2>/dev/null | head -20 || echo "(none)"
-          echo "==> nonguix module check (any linux.scm in profile):"
-          find /home/runner/.config/guix/current -name "linux.scm" 2>/dev/null \
-            | head -5 || echo "WARNING: no linux.scm found in profile"
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
       # because the current uboot.scm produces a derivation that fails to build
       # from source in CI (see TODO.md §6).  The system-image step must not be
       # gated on u-boot until that is fixed.
+      #
+      # guix time-machine handles channel module loading (including nonguix)
+      # automatically — no guix pull + GUILE_LOAD_PATH juggling needed.
       - name: Build u-boot-pro1x
         run: |
-          guix build u-boot-pro1x \
+          guix time-machine --disable-authentication -C channels-ci.scm -- \
+            build u-boot-pro1x \
             -L . \
             --fallback \
             2>&1 | tee /tmp/uboot.log || true
@@ -146,13 +128,9 @@ jobs:
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
         run: |
-          # Source the pulled profile so GUILE_LOAD_PATH includes nonguix modules;
-          # sudo -E forwards the environment so root's guix sees the same paths.
-          GUIX_PROFILE="/home/runner/.config/guix/current"
-          . "$GUIX_PROFILE/etc/profile"
-          echo "==> GUILE_LOAD_PATH: $GUILE_LOAD_PATH"
           echo "==> disk space before build:"; df -h /
-          sudo -E guix system image \
+          guix time-machine --disable-authentication -C channels-ci.scm -- \
+            system image \
             --image-type=efi-raw \
             -L . \
             systems/mobile.scm \
@@ -164,9 +142,9 @@ jobs:
           PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
           PART_START=$(echo "$PART_INFO" | awk '{print $1}')
           PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
-          sudo dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
-          LABEL=$(sudo e2label rootfs.img 2>/dev/null || true)
-          [ "$LABEL" = "guix" ] || sudo e2label rootfs.img guix
+          dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
+          LABEL=$(e2label rootfs.img 2>/dev/null || true)
+          [ "$LABEL" = "guix" ] || e2label rootfs.img guix
           echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
           echo "==> disk space after extraction:"; df -h /
 
