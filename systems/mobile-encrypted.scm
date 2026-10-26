@@ -24,6 +24,9 @@
              (gnu packages networking)
              (gnu packages ssh)
              (gnu packages version-control)
+             (gnu packages emacs)
+             (gnu packages file-managers)
+             (gnu packages video)
              (gnu packages vim)
              (gnu packages gnuzilla)
              (gnu packages web-browsers)
@@ -186,6 +189,9 @@
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)
 
+     ;; NTP — no hardware RTC; sync time on every boot
+     (service openntpd-service-type)
+
      (service openssh-service-type
               (openssh-configuration
                (password-authentication? #t))))
@@ -206,5 +212,6 @@
      gnome-console
      iw usbutils vim git font-terminus
      gsettings-desktop-schemas
-     phoc-pro1x)
+     phoc-pro1x
+     emacs mpv nnn)
     %base-packages)))

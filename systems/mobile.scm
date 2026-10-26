@@ -25,6 +25,9 @@
              (gnu packages gnuzilla)
              (gnu packages terminals)
              (gnu packages web-browsers)
+             (gnu packages emacs)
+             (gnu packages file-managers)
+             (gnu packages video)
              (gnu packages window-management)
              (nongnu packages linux)
              (gnu services base)
@@ -177,6 +180,9 @@
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)
 
+     ;; NTP — no hardware RTC; sync time on every boot
+     (service openntpd-service-type)
+
      ;; SSH
      (service openssh-service-type
               (openssh-configuration
@@ -204,5 +210,6 @@
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
      iw usbutils vim git font-terminus
      gsettings-desktop-schemas
-     phoc-pro1x)
+     phoc-pro1x
+     emacs mpv nnn)
     %base-packages)))
