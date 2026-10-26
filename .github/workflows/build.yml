@@ -61,17 +61,15 @@ jobs:
             (curve Ed25519)
             (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))
           EOF
-          # guix-install.sh now runs the daemon as User=guix-daemon (unprivileged).
-          # --no-sandbox requires root (needs to setuid to guixbuilder users), so we
-          # use a systemd drop-in to:
-          #   User=/Group= (empty) — reset to root (same as guix-install-action@v1.6)
-          #   ExecStart= (empty) + ExecStart=... — replace with --no-sandbox + subs
-          # --no-sandbox is required: ARM runners lack CAP_SYS_ADMIN for the sandbox
-          # namespace mounts that guix-daemon sets up for build isolation.
+          # ARM runners lack CAP_SYS_ADMIN for build namespace mounts, so disable
+          # the chroot/sandbox entirely (--disable-chroot, the current Guix flag;
+          # --no-sandbox was removed in a recent guix-daemon version).
+          # Override ExecStart via drop-in; quote the substitute-urls value so
+          # systemd treats the space-separated list as one argument.
           DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
           SUBS="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          printf '[Service]\nUser=\nGroup=\nExecStart=\nExecStart=%s --build-users-group=guixbuild --no-sandbox --substitute-urls=%s\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+          printf '[Service]\nExecStart=\nExecStart=%s --build-users-group=guixbuild --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
             "$DAEMON" "$SUBS" \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
