@@ -3,10 +3,8 @@
 ;;; Does NOT include fxtec-pro1x — the CI workflow uses -L . instead
 ;;; so it always builds the current checkout, not a pinned commit.
 ;;;
-;;; guix is pinned for reproducibility.  nonguix is NOT pinned because
-;;; the upstream repo has had force-pushes; a stale commit pin causes
-;;; guix pull / time-machine to silently drop the channel.
-
+;;; Update commits with: git ls-remote <url> refs/heads/master
+;;;
 (list
  (channel
   (name 'guix)
@@ -23,6 +21,7 @@
   (name 'nonguix)
   (url "https://gitlab.com/nonguix/nonguix")
   (branch "master")
+  (commit "c241d19ff840dc75556f722b231760d119b6adea")
   (introduction
    (make-channel-introduction
     "897c1a470da759236cc11798f4e0a5f7d4d796ab"
