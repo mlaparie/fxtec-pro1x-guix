@@ -7,6 +7,10 @@ modules/modem.nix, modules/sensors.nix, hosts/*/default.nix)
 
 ## 1. PipeWire / audio stack  [HIGH — audio broken]
 
+Reference: the NixOS port (`nyymi609/fxtec-pro1x-nixos`, listed in README credits)
+is the authoritative reference for hardware-specific config.  Clone it to `/tmp` if
+needed: `git clone https://github.com/nyymi609/fxtec-pro1x-nixos /tmp/fxtec-pro1x-nixos`
+
 NixOS enables:
 ```nix
 services.pipewire.enable = true;
