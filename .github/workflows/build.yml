@@ -71,6 +71,12 @@ jobs:
           # systemd treats the space-separated list as one argument.
           DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
           SUBS="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"
+          # Remount /tmp as a fresh writable tmpfs BEFORE restarting the daemon
+          # so it inherits the new mount.  guix perform-download calls mkdtemp("/tmp/...")
+          # which fails if the daemon was started before this remount.
+          sudo mount -t tmpfs -o mode=1777,size=4G tmpfs /tmp
+          # Ensure git-minimal (used by git-fetch builders) can read gitconfig.
+          sudo touch /etc/gitconfig && sudo chmod 644 /etc/gitconfig
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
           printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
             "$DAEMON" "$SUBS" \
@@ -80,13 +86,6 @@ jobs:
             echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
           }
           echo "Daemon PID: $(systemctl show guix-daemon -p MainPID --value)"
-          # Remount /tmp as a fresh writable tmpfs so guix perform-download
-          # can call mkdtemp.  A plain chmod is not enough on ARM runners
-          # where /tmp may be in a different mount namespace from systemd units.
-          sudo mount -t tmpfs -o mode=1777,size=4G tmpfs /tmp
-          # Disable any AppArmor profile for guix-daemon (Ubuntu 24.04 default).
-          sudo aa-disable /etc/apparmor.d/usr.sbin.guix-daemon 2>/dev/null || true
-          sudo chmod 644 /etc/gitconfig 2>/dev/null || true
           # Create per-user profile dir expected by guix on ubuntu-24.04
           # (missing by default; fix from SystemCrafters/guix-installer).
           sudo mkdir -p /var/guix/profiles/per-user/runner
@@ -119,6 +118,7 @@ jobs:
           guix time-machine --disable-authentication -C channels-ci.scm -- \
             build u-boot-pro1x \
             -L . \
+            --no-grafts \
             --fallback \
             2>&1 | tee /tmp/uboot.log || true
           UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
@@ -150,6 +150,7 @@ jobs:
           guix time-machine --disable-authentication -C channels-ci.scm -- \
             system image \
             --image-type=efi-raw \
+            --no-grafts \
             -L . \
             systems/mobile.scm \
             2>&1 | tee /tmp/image.log || true
