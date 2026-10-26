@@ -115,6 +115,10 @@
        (list `("NetworkManager/conf.d/unmanaged.conf"
                ,(plain-file "nm-unmanaged.conf"
                             "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
+     (simple-service 'nm-connections-dir etc-service-type
+       (list `("NetworkManager/conf.d/connections.conf"
+               ,(plain-file "nm-connections.conf"
+                            "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
