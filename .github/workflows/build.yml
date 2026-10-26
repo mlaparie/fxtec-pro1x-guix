@@ -91,6 +91,9 @@ jobs:
           sudo chown runner:runner /var/guix/profiles/per-user/runner
 
       # ── Cache Guix store + time-machine cache ─────────────────────────────
+      # To update channel pins in channels-ci.scm:
+      #   git ls-remote https://codeberg.org/guix/guix refs/heads/master
+      #   git ls-remote https://gitlab.com/nonguix/nonguix refs/heads/master
       - name: Cache Guix store
         uses: actions/cache@v4
         with:
