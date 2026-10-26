@@ -79,6 +79,10 @@ jobs:
           SERVICE_FILE=$(systemctl show guix-daemon -p FragmentPath --value)
           echo "Patching $SERVICE_FILE"
           sudo sed -i 's/^PrivateTmp=yes/PrivateTmp=no/' "$SERVICE_FILE"
+          # guix-install.sh now runs the daemon as User=guix-daemon (unprivileged).
+          # --no-sandbox needs root to setuid to guixbuilder users, so strip
+          # User=/Group= to make the daemon run as root again.
+          sudo sed -i '/^User=guix-daemon$/d; /^Group=guix-daemon$/d' "$SERVICE_FILE"
           sudo sed -i 's|^\(ExecStart=.*\)|\1 --no-sandbox|' "$SERVICE_FILE"
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon
