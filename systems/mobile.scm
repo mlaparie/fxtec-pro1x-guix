@@ -128,6 +128,7 @@
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
      (service pro1x-sensors-service-type)
+     (service pro1x-rootfs-resize-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))

@@ -5,6 +5,7 @@
   #:use-module (fxtec-pro1x packages misc)   ; qbootctl
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
+  #:use-module (gnu packages linux)          ; e2fsprogs
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -17,7 +18,8 @@
             pro1x-boot-success-configuration
             pro1x-boot-success-configuration?
             make-pro1x-boot-success-configuration
-            pro1x-boot-success-service-type))
+            pro1x-boot-success-service-type
+            pro1x-rootfs-resize-service-type))
 
 ;;; ── Boot menu ───────────────────────────────────────────────────────────────
 
@@ -129,3 +131,33 @@ into U-Boot via make-u-boot-pro1x.")))
    (default-value (pro1x-boot-success-configuration))
    (description "Mark the active A/B boot slot as successfully booted.
 Without this, the ABL falls back to fastboot after a hard reboot.")))
+
+;;; ── Rootfs resize ───────────────────────────────────────────────────────────
+
+(define (pro1x-rootfs-resize-shepherd-services _)
+  (list
+   (shepherd-service
+    (provision '(pro1x-rootfs-resize))
+    (requirement '(file-systems))
+    (documentation "Expand the root ext4 filesystem to fill its partition")
+    (one-shot? #t)
+    (start
+     #~(make-forkexec-constructor
+        (list "/bin/sh" "-c"
+              (string-append
+               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) && "
+               #$(file-append e2fsprogs "/sbin/resize2fs") " \"$dev\""))
+        #:log-file "/var/log/pro1x-rootfs-resize.log"))
+    (stop #~(make-kill-destructor)))))
+
+(define pro1x-rootfs-resize-service-type
+  (service-type
+   (name 'pro1x-rootfs-resize)
+   (extensions
+    (list
+     (service-extension shepherd-root-service-type
+                        pro1x-rootfs-resize-shepherd-services)))
+   (default-value #f)
+   (description "Expand the root ext4 filesystem to fill its partition on
+each boot.  resize2fs is idempotent when the filesystem already fills the
+partition, so this is safe to run unconditionally.")))
