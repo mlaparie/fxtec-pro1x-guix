@@ -98,16 +98,19 @@ all three services together, but worth verifying.
 
 ---
 
-## 6. u-boot-pro1x broken build  [MEDIUM — can't rebuild U-Boot]
+## 6. u-boot-pro1x broken build  [LIKELY FIXED]
 
-The current `uboot.scm` produces a broken U-Boot binary (`6z3lqjf327…`); flashing
-it causes a bootloop before U-Boot is shown.  We currently rely on the cached
-working build (`i2bx8zrg0z…`).
+The bootloop ("before U-Boot is shown") was most likely caused by incorrect boot
+image wrapping in `flash.sh`, not the U-Boot binary itself:
 
-**Fix**: bisect the uboot.scm changes (configure phase, nodtb install) against the
-working build.  The working build predates the `qcom-phone.config` change — try
-reverting to the original merge_config approach or comparing the resulting
-`.config` files.
+- `d37efec` — fixed ARM64 `text_offset` so ABL accepts the image
+- `df1f4ca` — stopped zeroing the U-Boot header bytes
+- `d49ea04` — fixed vbmeta flags offset
+
+The phone now boots into U-Boot successfully.  **Verify**: confirm a fresh CI build
+of `u-boot-pro1x` (not a cached substitute) produces a working binary by checking
+the store path in the CI log against `i2bx8zrg0z…` (old working) vs `6z3lqjf327…`
+(old broken).
 
 ---
 
