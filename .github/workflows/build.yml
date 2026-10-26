@@ -99,6 +99,7 @@ jobs:
             ~/.cache/guix
           key: guix-${{ hashFiles('channels-ci.scm') }}
           restore-keys: guix-
+          save-always: true
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
