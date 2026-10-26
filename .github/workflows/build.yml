@@ -124,6 +124,8 @@ jobs:
           else
             echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
             tail -50 /tmp/uboot.log
+            echo "==> glib build log (if present):"
+            sudo zcat /var/log/guix/drvs/cw/hw7gfqdmkcj4n5m9z2ffd364q4vzd2-glib-2.86.5.drv.gz 2>/dev/null | tail -50 || echo "(log not found)"
           fi
 
       # ── Diagnose git-fetch network access ────────────────────────────────
