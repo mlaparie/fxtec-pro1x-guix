@@ -126,6 +126,16 @@ jobs:
             tail -50 /tmp/uboot.log
           fi
 
+      # ── Diagnose git-fetch network access ────────────────────────────────
+      - name: Test network access from guix build user
+        run: |
+          # guix-daemon builds run as the guix-daemon user; confirm it can reach GitHub
+          sudo -u guix-daemon curl -sI https://github.com/sm6115-mainline/linux \
+            | head -5 || echo "WARNING: guix-daemon user cannot reach GitHub"
+          # Show daemon service (check for PrivateNetwork or other net restrictions)
+          systemctl cat guix-daemon || true
+          cat /etc/systemd/system/guix-daemon.service.d/ci.conf || true
+
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
         run: |
@@ -137,7 +147,12 @@ jobs:
             systems/mobile.scm \
             2>&1 | tee /tmp/image.log || true
           IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
-          [ -f "$IMG" ] || { echo "==> Image build failed — log:"; cat /tmp/image.log; exit 1; }
+          if [ ! -f "$IMG" ]; then
+            echo "==> Image build failed — log:"; cat /tmp/image.log
+            echo "==> Kernel checkout drv log (if present):"
+            sudo zcat /var/log/guix/drvs/2i/clarxfa2qlsnjihqhmr0cc6arx9z7g-linux-pro1x-7.1.0-checkout.drv.gz 2>/dev/null || echo "(log not found)"
+            exit 1
+          fi
           echo "Built: $IMG"
           # Extract root ext4 partition (partition 2 in GPT efi-raw layout)
           PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
