@@ -80,7 +80,12 @@ jobs:
             echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
           }
           echo "Daemon PID: $(systemctl show guix-daemon -p MainPID --value)"
-          sudo chmod 1777 /tmp
+          # Remount /tmp as a fresh writable tmpfs so guix perform-download
+          # can call mkdtemp.  A plain chmod is not enough on ARM runners
+          # where /tmp may be in a different mount namespace from systemd units.
+          sudo mount -t tmpfs -o mode=1777,size=4G tmpfs /tmp
+          # Disable any AppArmor profile for guix-daemon (Ubuntu 24.04 default).
+          sudo aa-disable /etc/apparmor.d/usr.sbin.guix-daemon 2>/dev/null || true
           sudo chmod 644 /etc/gitconfig 2>/dev/null || true
           # Create per-user profile dir expected by guix on ubuntu-24.04
           # (missing by default; fix from SystemCrafters/guix-installer).
@@ -125,7 +130,7 @@ jobs:
             echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
             tail -50 /tmp/uboot.log
             echo "==> glib build log (if present):"
-            sudo zcat /var/log/guix/drvs/cw/hw7gfqdmkcj4n5m9z2ffd364q4vzd2-glib-2.86.5.drv.gz 2>/dev/null | tail -50 || echo "(log not found)"
+            sudo zcat /var/log/guix/drvs/cw/hw7gfqdmkcj4n5m9z2ffd364q4vzd2-glib-2.86.5.drv.gz 2>/dev/null | grep -v '^$' | tail -80 || echo "(log not found)"
           fi
 
       # ── Diagnose git-fetch network access ────────────────────────────────
