@@ -139,14 +139,16 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
    (shepherd-service
     (provision '(pro1x-rootfs-resize))
     (requirement '(file-systems))
-    (documentation "Expand the root ext4 filesystem to fill its partition")
+    (documentation "Expand the root ext4 filesystem to fill its partition (runs once)")
     (one-shot? #t)
     (start
      #~(make-forkexec-constructor
         (list "/bin/sh" "-c"
               (string-append
+               "[ -f /var/lib/pro1x-rootfs-resized ] && exit 0; "
                "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) && "
-               #$(file-append e2fsprogs "/sbin/resize2fs") " \"$dev\""))
+               #$(file-append e2fsprogs "/sbin/resize2fs") " \"$dev\" && "
+               "touch /var/lib/pro1x-rootfs-resized"))
         #:log-file "/var/log/pro1x-rootfs-resize.log"))
     (stop #~(make-kill-destructor)))))
 
@@ -158,6 +160,6 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
      (service-extension shepherd-root-service-type
                         pro1x-rootfs-resize-shepherd-services)))
    (default-value #f)
-   (description "Expand the root ext4 filesystem to fill its partition on
-each boot.  resize2fs is idempotent when the filesystem already fills the
-partition, so this is safe to run unconditionally.")))
+   (description "Expand the root ext4 filesystem to fill its partition once
+after flashing.  A flag file /var/lib/pro1x-rootfs-resized is created on
+success so the resize is never attempted again.")))
