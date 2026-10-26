@@ -111,7 +111,19 @@ reverting to the original merge_config approach or comparing the resulting
 
 ---
 
-## 7. GitHub CI  [FIXED — but verify green run]
+## 7. Package emacs and nnn in the image  [LOW — quality of life]
+
+Neither `emacs` nor `nnn` (terminal file manager) is included in the default
+`systems/mobile.scm`.  Both should be added to the system packages list so
+they are available without a separate `guix install` step.
+
+`nnn` is in `(gnu packages file-managers)` and `emacs` in `(gnu packages emacs)`.
+Add them to the `%base-packages` append or the `packages` field of the system
+declaration in `systems/mobile.scm` (and optionally `systems/minimal.scm`).
+
+---
+
+## 8. GitHub CI  [FIXED — but verify green run]
 
 CI was failing at the "Build u-boot-pro1x" step because `.github/workflows/build.yml`
 copied `u-boot.bin` from the store but `uboot.scm` installs `u-boot-nodtb.bin`.

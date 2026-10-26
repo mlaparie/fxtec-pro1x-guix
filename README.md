@@ -1,5 +1,6 @@
-> **Work in progress — not yet functional.**
-> The system boots but audio, modem, and several hardware features are unverified or broken.
+> **Work in progress — partially functional.**
+> Boot, display, hardware keyboard, and USB SSH work.
+> Audio, modem, and several other features are unverified or broken.
 > Do not flash this on a device you depend on.
 
 # Guix System on the F(x)tec Pro1X (QX1050)
@@ -15,29 +16,28 @@ kernel patches, firmware, and flash approach originate there.
 
 ## Port status
 
-Initial port. Items marked *untested* have not been verified on a Guix-flashed device.
-
 ```
-Display (BOE AMOLED, 60 Hz)      Expected
-GPU (Adreno 610)                 Expected
-Touchscreen                      Expected
-Hardware keyboard                Expected   AW9523B driver, backlight, Fn layer via keyd
-Keyboard slider switch           Expected   phoc patched to not crash on this switch
-Wi-Fi                            Expected   firmware via tqftpserv over QRTR
-Bluetooth                        Expected
-USB gadget (Ethernet)            Expected   172.16.42.1, SSH access
-Speaker / earpiece / headphones  Expected
-Microphones                      Expected
+Display (BOE AMOLED, 60 Hz)      Working
+GPU (Adreno 610)                 Untested
+Touchscreen                      Untested
+Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
+Keyboard backlight               Broken     not yet working
+Keyboard slider switch           Untested
+Wi-Fi                            Untested   firmware via tqftpserv over QRTR
+Bluetooth                        Untested
+USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
+Speaker / earpiece / headphones  Untested   audio stack incomplete (see TODO §1)
+Microphones                      Untested
+Vibration motor                  Untested   (only verified in Phosh, not TTY)
 Calls                            Untested
 SMS / mobile data                Untested
 Rear camera (IMX582)             Untested   libcamera-pro1x with sensor patches
 Front camera (S5K4H7)            Untested
 Sensors (accel, gyro, ALS, prox) Untested   ADSP via hexagonrpcd + iio-sensor-proxy
-Vibration motor                  Expected
-Battery / charging               Expected
+Battery / charging               Untested
 Suspend                          Untested
 GPS, NFC, video codecs           Untested
-Full-disk encryption             systems/mobile-encrypted.scm + flash-encrypted.sh
+Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash-encrypted.sh
 ```
 
 ## Layout
