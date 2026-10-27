@@ -185,22 +185,21 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
 
 ;;; ---------------------------------------------------------------------------
 ;;; hexagonrpcd — serve ADSP sensor configuration via FastRPC
-;;; The version used here is the linux-msm PR #27 branch which adds the
-;;; sns_registry interface needed for sensor initialisation on the Pro1X.
+;;; PR #27 (sns_registry interface) was never merged; apply it as a patch.
+;;; The upstream repo was force-pushed; switched to url-fetch tarball.
 ;;; ---------------------------------------------------------------------------
 (define-public hexagonrpcd
   (package
     (name "hexagonrpcd")
-    (version "0.5.0-unstable-pr27")
+    (version "0.5.0-unstable-da7a374")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/hexagonrpc")
-             (commit "40e50412812adce9dddc2be9a4510ebce05eef89")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/hexagonrpc/archive/"
+             "da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz"))
        (sha256
-        (base32 "09hf7v2ix0j6bvx90dnxfgy9hz8var0qjrbvhdmh6bnayyydampr"))
+        (base32 "0df4af0n2fx3bx6b24ajva177mnvrk1clhpclrmpd8ljrwyva6k5"))
        (patches
         (list
          (local-file "../../packages/hexagonrpc-sns-registry.patch"
