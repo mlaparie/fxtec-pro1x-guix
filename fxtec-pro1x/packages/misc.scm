@@ -446,9 +446,10 @@ Used as the compositor for the Phosh mobile shell.")
         (base32 "14whz2d0b1h2ska89pn7b5zlhqk68fp74vbf28kqm9qnv7yzlm72"))))
     (arguments
      (list #:configure-flags
-           #~(list "-Dmbim_qmux=false"  ; no newer mbim needed; Pro1X uses native QMI
-                   "-Dtests=false"
-                   "-Dman=false")))))
+           #~(list "-Dmbim_qmux=false"  ; Pro1X uses native QMI, not QMI-over-MBIM
+                   "-Dman=false"
+                   "-Dintrospection=false"
+                   "-Dfuzzer=false")))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; modem-manager-1.24 — ModemManager >= 1.24 required by phosh 0.56+
