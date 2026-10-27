@@ -536,7 +536,7 @@ required by Phosh 0.56+.")
            evolution-data-server
            feedbackd-0.8
            fribidi
-           gcr
+           gcr-3
            glib
            gmobile-0.7
            gnome-bluetooth
