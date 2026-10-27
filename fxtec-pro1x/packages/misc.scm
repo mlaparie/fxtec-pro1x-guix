@@ -450,7 +450,9 @@ Used as the compositor for the Phosh mobile shell.")
                 "-Dsystemdsystemunitdir=no"
                 "-Dvapi=false"
                 "-Dtests=false"
-                "-Dman=false"))))))
+                "-Dman=false"
+                "-Dmbim=false"          ; Pro1X uses QMI/QRTR, not MBIM; avoids mbim-glib >= 1.32 req
+                "-Dplugin_qcom_soc=enabled"))))))
 
 ;;; callaudiod — call audio routing daemon
 ;;; Required at build time by the libcall-ui subproject embedded in Phosh.
