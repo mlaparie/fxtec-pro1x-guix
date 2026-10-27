@@ -19,6 +19,7 @@
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages aidc)
   #:use-module (gnu packages fribidi)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
@@ -604,6 +605,7 @@ required by Phosh 0.56+.")
            libsoup
            linux-pam
            modem-manager-1.24
+           qrcodegen-cpp
            network-manager
            polkit
            pulseaudio
@@ -622,8 +624,7 @@ required by Phosh 0.56+.")
                    "-Dman=false"
                    "-Dintrospection=false"
                    "-Dcallui-i18n=false"
-                   "-Dlockscreen-plugins=false"
-                   "-Dquick-setting-plugins=false")
+                   "-Dlockscreen-plugins=false")
            #:phases
            #~(modify-phases %standard-phases
                (add-after 'unpack 'seed-subprojects
@@ -662,6 +663,5 @@ It runs on top of the Phoc compositor.")
                 "-Dman=false"
                 "-Dintrospection=false"
                 "-Dcallui-i18n=false"
-                "-Dlockscreen-plugins=false"
-                "-Dquick-setting-plugins=false"))))
+                "-Dlockscreen-plugins=false"))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
