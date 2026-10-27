@@ -42,7 +42,6 @@
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
   #:use-module (guix gexp)
-  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
@@ -74,13 +73,12 @@
     (version "unstable-29e36ae")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/qrtr")
-             (commit "29e36ae164389580a0f8ea7a7fdb728140ae978d")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/qrtr/archive/"
+             "29e36ae164389580a0f8ea7a7fdb728140ae978d.tar.gz"))
        (sha256
-        (base32 "0vg5d1jkfy1530jsl4l1x1lvn3hzf3nz0m9351nblf19l4byflax"))))
+        (base32 "0kmfvm2lr69rxfwpns841c882l4l7064bdfrglp318508z24dy36"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (arguments (list #:tests? #f))
@@ -101,13 +99,12 @@ Qualcomm modem and ADSP subsystems.")
     (version "unstable-39a6e6d")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/qbootctl")
-             (commit "39a6e6daaf029fb0a083777679a15ea2c18f72de")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/qbootctl/archive/"
+             "39a6e6daaf029fb0a083777679a15ea2c18f72de.tar.gz"))
        (sha256
-        (base32 "01hm5f50z31mqdyg4rvqp4bnqiq8rrbi07bym6zr5qj9si9w544n"))))
+        (base32 "0yxnx26mni9h712nayp3pi51qlrzcwydhxshmznsr79h03f8zilx"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (arguments (list #:tests? #f))
@@ -127,13 +124,12 @@ the ABL from reverting to fastboot after a hard reboot.")
     (version "unstable-0bf5b98")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/andersson/tqftpserv")
-             (commit "0bf5b98c24229b0042554d99bb1509d813219f36")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/andersson/tqftpserv/archive/"
+             "0bf5b98c24229b0042554d99bb1509d813219f36.tar.gz"))
        (sha256
-        (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))))
+        (base32 "0n6b7qxzqrjkbn55y6c98bxvl29z96jgy4rjzj3nka39b9x4vyg0"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (inputs (list libqrtr))
@@ -162,13 +158,12 @@ inter-processor bus, serving firmware blobs from the firmware directory.")
     (version "unstable-b30a3eb")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/andersson/rmtfs")
-             (commit "b30a3eb38f9af283f18dbd3c7755653efc52c094")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/andersson/rmtfs/archive/"
+             "b30a3eb38f9af283f18dbd3c7755653efc52c094.tar.gz"))
        (sha256
-        (base32 "0hjp0lzv2hkbawjrbnkk98rrrfb1g3x1iifbilbkcabrik7smpcg"))))
+        (base32 "09sbikvzm8j7nmbrg8idr75sq5h96gj04k29wz04gcj8mhfab385"))))
     (build-system gnu-build-system)
     (inputs (list libqrtr eudev))
     (arguments
