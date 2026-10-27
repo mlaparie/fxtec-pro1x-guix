@@ -188,8 +188,10 @@
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)
 
-     ;; NTP — no hardware RTC; sync time on every boot
-     (service openntpd-service-type)
+     ;; NTP — no hardware RTC; -g allows stepping the clock from 1970
+     (service ntp-service-type
+              (ntp-configuration
+               (allow-large-adjustment? #t)))
 
      (service openssh-service-type
               (openssh-configuration
