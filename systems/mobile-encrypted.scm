@@ -22,6 +22,7 @@
              (gnu packages gnome)
              (gnu packages linux)
              (gnu packages networking)
+             (gnu packages ntp)
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages emacs)
@@ -211,7 +212,7 @@
     (list
      icecat
      gnome-console
-     iw usbutils vim git font-terminus
+     iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas
      phoc-pro1x
      emacs mpv nnn)

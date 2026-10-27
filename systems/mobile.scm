@@ -19,6 +19,7 @@
              (gnu packages gnome)
              (gnu packages linux)
              (gnu packages networking)
+             (gnu packages ntp)
              (gnu packages ssh)
              (gnu packages version-control)
              (gnu packages vim)
@@ -209,7 +210,7 @@
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
-     iw usbutils vim git font-terminus
+     iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas
      phoc-pro1x
      emacs mpv nnn)
