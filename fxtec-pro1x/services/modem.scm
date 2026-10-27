@@ -65,14 +65,22 @@
       (stop #~(make-kill-destructor))
       (respawn? #t))
 
-     ;; ModemManager: the high-level modem manager
+     ;; ModemManager: the high-level modem manager.
+     ;; Before starting, re-trigger net udev events so rmnet_ipa0 gets tagged
+     ;; with ID_MM_PHYSDEV_UID=qcom-soc (race: IPA driver may fire its ADD
+     ;; event before our udev rules are installed on first boot).
      (shepherd-service
       (provision '(modem-manager))
       (requirement '(dbus-system tqftpserv rmtfs))
       (documentation "ModemManager")
       (start
        #~(make-forkexec-constructor
-          (list #$(file-append modem-manager "/sbin/ModemManager"))
+          (list "/bin/sh" "-c"
+                (string-append
+                 "udevadm trigger --subsystem-match=net --action=add"
+                 " && udevadm settle --timeout=5"
+                 " && exec " #$(file-append modem-manager "/sbin/ModemManager")))
+          #:environment-variables '("PATH=/run/current-system/profile/bin")
           #:log-file "/var/log/ModemManager.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t)))))
