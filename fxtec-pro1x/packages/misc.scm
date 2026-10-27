@@ -307,16 +307,16 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
 (define-public cameractrl
   (package
     (name "cameractrl")
-    (version "unstable-4c8ac34")
+    (version "unstable-17f1b82")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.com/NekoCWD/cameractrl")
-             (commit "4c8ac34295df52c5f887a9e51ec64f54ef26c636")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.com/NekoCWD/cameractrl/-/archive/"
+             "17f1b82d5dbe05abf7ccc1f9dd52d6cc23e48230"
+             "/cameractrl-17f1b82d5dbe05abf7ccc1f9dd52d6cc23e48230.tar.gz"))
        (sha256
-        (base32 "0f9dfg26lylq92894hcv7c6l5dwnibnj7rzb0m43py7n7w5p92p2"))))
+        (base32 "13w0v4vmx7pd3pdyp8xsxd8vik5xli8w23mqfvmkq64gd6w40q7c"))))
     (build-system meson-build-system)
     (native-inputs
      (list pkg-config vala blueprint-compiler gettext-minimal
