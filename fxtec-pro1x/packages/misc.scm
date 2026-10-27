@@ -652,9 +652,9 @@ It runs on top of the Phoc compositor.")
        (patches
         (append (origin-patches (package-source phosh))
                 (list (local-file "../../device/phosh/fix-home-bar-height.patch"))))))
-    (inputs
-     (append (list gnome-settings-daemon)
-             (package-inputs phosh)))
+    (native-inputs
+     (cons `("glib:bin" ,glib "bin")
+           (package-native-inputs phosh)))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -670,18 +670,18 @@ It runs on top of the Phoc compositor.")
        ((#:phases phases)
         #~(modify-phases #$phases
             (add-after 'install 'install-missing-schemas
-              (lambda* (#:key outputs #:allow-other-keys)
+              (lambda* (#:key native-inputs outputs #:allow-other-keys)
                 (let* ((out (assoc-ref outputs "out"))
-                       (schema-dir (string-append out "/share/glib-2.0/schemas")))
+                       (schema-dir (string-append out "/share/glib-2.0/schemas"))
+                       (glib-bin (assoc-ref native-inputs "glib:bin")))
                   (for-each
-                   (lambda (f)
-                     (copy-file f (string-append schema-dir "/" (basename f))))
-                   (find-files
-                    #$(file-append gnome-settings-daemon "/share/glib-2.0/schemas")
-                    "\\.xml$"))
-                  (copy-file
-                   #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")
-                   (string-append schema-dir "/org.gnome.shell.keybindings.gschema.xml"))
-                  (invoke #$(file-append `(,glib "bin") "/bin/glib-compile-schemas")
+                   (lambda (src)
+                     (copy-file src (string-append schema-dir "/" (basename src))))
+                   (list
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.peripherals.gschema.xml")
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.gschema.xml")
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml")
+                    #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")))
+                  (invoke (string-append glib-bin "/bin/glib-compile-schemas")
                           schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
