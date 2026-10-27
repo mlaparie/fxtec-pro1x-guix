@@ -622,7 +622,8 @@ required by Phosh 0.56+.")
                    "-Dman=false"
                    "-Dintrospection=false"
                    "-Dcallui-i18n=false"
-                   "-Dlockscreen-plugins=false")
+                   "-Dlockscreen-plugins=false"
+                   "-Dquick-setting-plugins=false")
            #:phases
            #~(modify-phases %standard-phases
                (add-after 'unpack 'seed-subprojects
@@ -661,5 +662,6 @@ It runs on top of the Phoc compositor.")
                 "-Dman=false"
                 "-Dintrospection=false"
                 "-Dcallui-i18n=false"
-                "-Dlockscreen-plugins=false"))))
+                "-Dlockscreen-plugins=false"
+                "-Dquick-setting-plugins=false"))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
