@@ -621,7 +621,8 @@ required by Phosh 0.56+.")
                    "-Dgtk_doc=false"
                    "-Dman=false"
                    "-Dintrospection=false"
-                   "-Dcallui-i18n=false")
+                   "-Dcallui-i18n=false"
+                   "-Dlockscreen-plugins=false")
            #:phases
            #~(modify-phases %standard-phases
                (add-after 'unpack 'seed-subprojects
