@@ -79,7 +79,7 @@
                 (string-append
                  "udevadm trigger --subsystem-match=net --action=add"
                  " && udevadm settle --timeout=5"
-                 " && exec " #$(file-append modem-manager "/sbin/ModemManager")))
+                 " && exec " #$(file-append modem-manager-1.24 "/sbin/ModemManager")))
           #:environment-variables '("PATH=/run/current-system/profile/bin")
           #:log-file "/var/log/ModemManager.log"))
       (stop #~(make-kill-destructor))
@@ -113,7 +113,7 @@
     (stop #~(make-kill-destructor)))))
 
 (define (pro1x-modem-packages config)
-  (list tqftpserv rmtfs modem-manager))
+  (list tqftpserv rmtfs modem-manager-1.24))
 
 (define pro1x-modem-service-type
   (service-type
@@ -125,7 +125,7 @@
                           (append (pro1x-modem-rmtfs-wait config)
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
-                        (lambda (_) (list modem-manager)))
+                        (lambda (_) (list modem-manager-1.24)))
      (service-extension profile-service-type
                         pro1x-modem-packages)))
    (default-value (pro1x-modem-configuration))

@@ -56,6 +56,7 @@
             gmobile-0.7
             phoc
             phoc-pro1x
+            modem-manager-1.24
             callaudiod
             feedbackd-0.8
             phosh
@@ -427,6 +428,30 @@ Used as the compositor for the Phosh mobile shell.")
     (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
 
 ;;; ---------------------------------------------------------------------------
+;;; modem-manager-1.24 — ModemManager >= 1.24 required by phosh 0.56+
+;;; Guix ships 1.22.0; phosh's mm-glib dependency needs >= 1.24.
+;;; ---------------------------------------------------------------------------
+(define-public modem-manager-1.24
+  (package
+    (inherit modem-manager)
+    (version "1.24.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
+             "/-/archive/" version "/ModemManager-" version ".tar.gz"))
+       (sha256
+        (base32 "1ix74pj05isl9fbyxyi4ainv5igv1n986i41xp50pc5c4jxndqah"))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments modem-manager)
+       ((#:configure-flags flags)
+        #~(list (string-append "-Dudevdir=" #$output "/lib/udev")
+                "-Dsystemdsystemunitdir=no"
+                "-Dvapi=false"
+                "-Dtests=false"
+                "-Dman=false"))))))
+
 ;;; callaudiod — call audio routing daemon
 ;;; Required at build time by the libcall-ui subproject embedded in Phosh.
 ;;; ---------------------------------------------------------------------------
@@ -547,7 +572,7 @@ required by Phosh 0.56+.")
            libhandy
            libsecret
            libsoup
-           modem-manager
+           modem-manager-1.24
            network-manager
            polkit
            pulseaudio
