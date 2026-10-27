@@ -341,13 +341,12 @@ camera hardware.  Run as: cameractr")
     (version "0.7.4")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.gnome.org/World/Phosh/gmobile")
-             (commit (string-append "v" version))))
-       (file-name (git-file-name "gmobile" version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/gmobile/-/archive/v"
+             version "/gmobile-v" version ".tar.gz"))
        (sha256
-        (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))
+        (base32 "1mhb34xw58cblw8v5w0a17309fcpn439bl0rad21nq11iyh76wsr"))))
     (native-inputs
      (modify-inputs (package-native-inputs gmobile)
        (delete "gobject-introspection")
@@ -360,13 +359,13 @@ camera hardware.  Run as: cameractr")
 ;;; gvdb is an unconditional meson subproject of phoc; pre-seed the dir.
 (define phoc-gvdb-source
   (origin
-    (method git-fetch)
-    (uri (git-reference
-          (url "https://gitlab.gnome.org/GNOME/gvdb")
-          (commit "4758f6fb7f889e074e13df3f914328f3eecb1fd3")))
-    (file-name "gvdb-checkout")
+    (method url-fetch)
+    (uri (string-append
+          "https://gitlab.gnome.org/GNOME/gvdb/-/archive/"
+          "4758f6fb7f889e074e13df3f914328f3eecb1fd3"
+          "/gvdb-4758f6fb7f889e074e13df3f914328f3eecb1fd3.tar.gz"))
     (sha256
-     (base32 "129ln7rldafdkcf2kxdazckyp3xzxnk0xw33l2kzfc3bz4fahsp2"))))
+     (base32 "1mnv0mgpffdkq6fxdiyxylps8qy9z1js4pnz2nllci9i72yq0dns"))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
@@ -377,13 +376,12 @@ camera hardware.  Run as: cameractr")
     (version "0.56.0")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.gnome.org/World/Phosh/phoc")
-             (commit (string-append "v" version))))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phoc/-/archive/v"
+             version "/phoc-v" version ".tar.gz"))
        (sha256
-        (base32 "1g83lm6k4f4v37hqrj9rrf8hcrrh0hd9gn7kgjz38xjsqq5zndjz"))))
+        (base32 "02y4zda49rfl7j399c8kvwllw51kfawgm7d4yj715yq50kvk2dr3"))))
     (build-system meson-build-system)
     (native-inputs
      (list gettext-minimal gobject-introspection pkg-config
@@ -400,8 +398,10 @@ camera hardware.  Run as: cameractr")
            #~(modify-phases %standard-phases
                (add-after 'unpack 'seed-gvdb-subproject
                  (lambda _
-                   (copy-recursively #$phoc-gvdb-source
-                                     "subprojects/gvdb"))))))
+                   (mkdir-p "subprojects/gvdb")
+                   (invoke "tar" "xf" #$phoc-gvdb-source
+                           "-C" "subprojects/gvdb"
+                           "--strip-components=1"))))))
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description

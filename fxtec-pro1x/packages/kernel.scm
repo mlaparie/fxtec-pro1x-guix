@@ -10,8 +10,8 @@
   #:use-module (gnu packages linux)
   #:use-module (nongnu packages linux)
   #:use-module (guix build-system gnu)
+  #:use-module (guix download)
   #:use-module (guix gexp)
-  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
@@ -47,14 +47,12 @@
     (version "7.1.0")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/sm6115-mainline/linux")
-             (commit "8cd9520d35a6c38db6567e97dd93b1f11f185dc6")))
-       (file-name (git-file-name name version))
-       ;; Fill this in: `guix build` will print the right hash on first run.
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/sm6115-mainline/linux/archive/"
+             "8cd9520d35a6c38db6567e97dd93b1f11f185dc6.tar.gz"))
        (sha256
-        (base32 "19bmxwbg8d985l3w5lvcbcgy8744xlgqv93chz62kijs90f2593c"))
+        (base32 "0m8fffprbm32y28h878hdvwfi8y0v5xm5vylz9zmmxlclqp9b29v"))
        (patches %pro1x-patches)))
     (supported-systems '("aarch64-linux"))
     (arguments
