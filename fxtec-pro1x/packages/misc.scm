@@ -660,5 +660,6 @@ It runs on top of the Phoc compositor.")
                 "-Dgtk_doc=false"
                 "-Dman=false"
                 "-Dintrospection=false"
-                "-Dcallui-i18n=false"))))
+                "-Dcallui-i18n=false"
+                "-Dlockscreen-plugins=false"))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
