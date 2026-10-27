@@ -1,17 +1,56 @@
-# Remaining work — NixOS parity
+# Status & remaining work
 
-Reference: `/tmp/fxtec-pro1x-nixos/` (modules/hardware.nix, modules/audio.nix,
-modules/modem.nix, modules/sensors.nix, hosts/*/default.nix)
+Last verified: 2026-10-27, on image built from commit a655fdf.
 
 ---
 
-## 1. PipeWire / audio stack  [HIGH — audio broken]
+## Working
 
-Reference: the NixOS port (`nyymi609/fxtec-pro1x-nixos`, listed in README credits)
-is the authoritative reference for hardware-specific config.  Clone it to `/tmp` if
-needed: `git clone https://github.com/nyymi609/fxtec-pro1x-nixos /tmp/fxtec-pro1x-nixos`
+- **Boot chain**: U-Boot + extlinux, A/B slot success marking, boot menu (prev1…3)
+- **Kernel**: linux-pro1x booting, all expected modules loaded
+- **USB networking**: usb0 (RNDIS/g_cdc), 172.16.42.1, SSH access
+- **WiFi**: ath10k_snoc driver working, NetworkManager connects (verified: Livebox-9416, IPv4+IPv6)
+- **Audio hardware**: `/proc/asound/cards` shows `Pro1X` (sm4250); UCM2 paths set up, pro1x-audio-init ran
+- **Camera hardware**: qcom_camss, imx582, s5k4h7, dw9800 modules loaded
+- **Modem firmware services**: rmtfs, tqftpserv, pro1x-hexagonrpcd all running
+- **elogind**: running (pid 519)
+- **D-Bus system**: running
+- **Rootfs resize**: one-shot ran at boot
+- **NetworkManager**: running (nmcli works, confirmed via D-Bus; not visible in `herd status` — likely D-Bus-activated)
 
-NixOS enables:
+---
+
+## 1. Phosh / display  [HIGH — TTY only, no GUI]
+
+**Symptom**: phosh shepherd service stops immediately after starting:
+```
+[backend/session/session.c] Failed to load session backend
+[backend/backend.c] Failed to start a session
+[backend/backend.c] Failed to start a DRM session
+```
+`/dev/dri/card0` and `renderD128` exist, so DRM hardware is fine.
+elogind IS running, but the phoc start script uses `su -l user` from shepherd
+(root), which does not go through PAM and therefore does not create an elogind
+seat session — libseat finds no usable backend and fails.
+
+**Fix options**:
+1. Add `seatd-service-type` and put `user` in the `seat` group — libseat will use
+   the seatd socket instead of elogind, no PAM session needed.  This is the
+   standard approach for Wayland compositors under Guix/shepherd.
+2. Replace the hand-rolled shepherd service with `greetd-service-type` — greetd
+   creates proper PAM sessions before exec-ing the compositor.
+
+Option 1 is the simpler path.
+
+---
+
+## 2. PipeWire / audio daemon  [HIGH — audio hardware detected but silent]
+
+Audio hardware is initialised (ALSA card present, pro1x-audio-init ran).
+Missing: the PipeWire daemon, WirePlumber session manager, PipeWire-Pulse
+bridge, and rtkit for real-time scheduling.
+
+NixOS reference:
 ```nix
 services.pipewire.enable = true;
 services.pipewire.alsa.enable = true;
@@ -20,126 +59,84 @@ services.pipewire.wireplumber.enable = true;
 security.rtkit.enable = true;
 ```
 
-Guix `pro1x-audio-service-type` sets up UCM2 paths, WirePlumber config, and an
-audio-init one-shot, but does **not** start the PipeWire daemon itself, does not
-enable the ALSA or PulseAudio bridges, and has no rtkit service.
-
-**Fix**: extend `pro1x-audio-service-type` (or `systems/mobile.scm`) to start
-`pipewire`, `pipewire-pulse`, and `wireplumber` as Shepherd services, and add the
-`rtkit` daemon with the `audio` group realtime-scheduling rule.  The relevant Guix
-packages are in `(gnu packages pulseaudio)` (`pipewire`) and
-`(gnu packages realtime)` (`rtkit`).
+**Fix**: extend `pro1x-audio-service-type` or `systems/mobile.scm` to start
+`pipewire`, `pipewire-pulse`, and `wireplumber` as per-user Shepherd services
+(or system-wide), and add the `rtkit` daemon.  Packages: `pipewire` in
+`(gnu packages pulseaudio)`, `rtkit` in `(gnu packages realtime)`.
 
 ---
 
-## 2. dconf profiles / keyboard layout  [HIGH — layout lost on reboot]
+## 3. dconf profiles / keyboard layout  [MEDIUM — layout lost on reboot]
 
-NixOS (phosh/default.nix):
-```nix
-programs.dconf.enable = true;
-programs.dconf.profiles.user.databases = [{
-  settings."org/gnome/desktop/input-sources".sources = [
-    (lib.gvariant.mkTuple [ "xkb" "fi+nodeadkeys" ])
-  ];
-}];
-```
+NixOS persists the physical keyboard XKB layout via a dconf profile.  Guix
+only ships `gsettings-desktop-schemas` (prevents crash); no dconf db is written
+so the layout reverts to default after every boot.
 
-Guix only includes the `gsettings-desktop-schemas` package (fixes the crash) but
-has no dconf profile, so the keyboard layout is not persisted.
-
-**Fix**: write a dconf profile to `/etc/dconf/profile/user` and a database to
-`/etc/dconf/db/local.d/` via `etc-service-type`, and run `dconf update` in a
-one-shot Shepherd service after the etc files are in place.  The xkb layout should
-come from `pro1x-keyboard-configuration` (already has `xkb-layout`/`xkb-variant`
-fields) so the dconf db is generated from that config.
+**Fix**: write `/etc/dconf/profile/user` and `/etc/dconf/db/local.d/` via
+`etc-service-type`, run `dconf update` in a one-shot service.  Generate the
+xkb settings from `pro1x-keyboard-configuration` fields.
 
 ---
 
-## 3. Firmware path for tqftpserv  [FIXED — symlink created at service start]
+## 4. ModemManager exits immediately  [MEDIUM — modem/calls broken]
 
-NixOS patches tqftpserv to use `/run/current-system/firmware/` and NixOS creates
-that symlink during activation.
+ModemManager shepherd service exits with code 0 five times at boot (~01:51:04)
+and is then disabled.  No log file is created (exits before writing anything).
+rmtfs, tqftpserv, and hexagonrpcd are all running when MM starts.
 
-Guix's `activate-firmware` only writes to `/sys/module/firmware_class/parameters/path`
-— no symlink.  `misc.scm` patches tqftpserv to `/run/current-system/firmware/` but
-that path doesn't exist.
-
-**Fixed**: `modem.scm` tqftpserv start now creates the symlink at service-start
-time by reading `firmware_class.path` from sysfs — no hardcoded store paths.
-
-Modem remoteproc was verified starting OK in the old system (`.zst` decompression
-wasn't needed by remoteproc — it loads via the kernel's own fw_loader).
-ath10k Wi-Fi still needs the new kernel with `CONFIG_FW_LOADER_COMPRESS_ZSTD=y`
-to decompress `board-2.bin.zst`.
+**Investigate**: start MM manually (`sudo ModemManager --debug`) to capture
+its startup output.  Likely causes: missing D-Bus policy, missing firmware,
+or a missing group/udev rule.
 
 ---
 
-## 4. iio-sensor-proxy D-Bus activation  [LOW — auto-rotate may not work]
+## 5. iio-sensor-proxy  [LOW — no auto-rotate]
 
-NixOS registers `iio-sensor-proxy` as a D-Bus activatable service so it starts
-on demand when Phosh queries it.
+`iio-sensor-proxy` is not registered in Shepherd.  `pro1x-sensors-service-type`
+extends `dbus-root-service-type` but the D-Bus `.service` file for auto-activation
+may be missing, so the daemon is never started.
 
-Guix `pro1x-sensors-service-type` extends `dbus-root-service-type` but may be
-missing the `.service` file that enables D-Bus auto-activation.
-
-**Fix**: ensure `iio-sensor-proxy.service` is installed in the D-Bus system
-services directory, or add it as an `etc-service-type` entry.
+**Fix**: verify `iio-sensor-proxy.service` is in the D-Bus system services
+directory, or add it as an `etc-service-type` entry.
 
 ---
 
-## 5. ModemManager `wants` dependency  [LOW — potential race condition]
+## 6. ModemManager `wants` dependency  [LOW — race condition risk]
 
-NixOS (modem.nix): ModemManager has both `After=` and `Wants=` on rmtfs and
-tqftpserv, so systemd ensures they are started first.
-
-Guix `modem.scm` line 62: ModemManager `(requirement '(dbus-system tqftpserv rmtfs))`
-— Shepherd `requirement` is equivalent to `After=` but not `Wants=`.  In Shepherd,
-if rmtfs is not running, ModemManager will refuse to start rather than triggering
-rmtfs automatically.  This is fine as long as `pro1x-modem-service-type` declares
-all three services together, but worth verifying.
-
-**Fix**: confirm ModemManager starts after rmtfs is up; no code change likely needed.
+Shepherd `requirement` is equivalent to `After=` but not `Wants=` — if rmtfs
+is not already running, ModemManager refuses to start rather than triggering
+it.  Currently `pro1x-modem-service-type` declares all three together so this
+should be fine in practice, but worth confirming once MM startup is fixed.
 
 ---
 
-## 6. u-boot-pro1x broken build  [LIKELY FIXED]
+## 7. NTP clock stepping from 1970  [LOW — fixed in next build]
 
-The bootloop ("before U-Boot is shown") was most likely caused by incorrect boot
-image wrapping in `flash.sh`, not the U-Boot binary itself:
-
-- `d37efec` — fixed ARM64 `text_offset` so ABL accepts the image
-- `df1f4ca` — stopped zeroing the U-Boot header bytes
-- `d49ea04` — fixed vbmeta flags offset
-
-The phone now boots into U-Boot successfully.  **Verify**: confirm a fresh CI build
-of `u-boot-pro1x` (not a cached substitute) produces a working binary by checking
-the store path in the CI log against `i2bx8zrg0z…` (old working) vs `6z3lqjf327…`
-(old broken).
+`openntpd` uses `adjtime()` which rejects the ~56-year offset from 1970.
+Replaced with `ntp-service-type` + `(allow-large-adjustment? #t)` which passes
+`-g` to ntpd, allowing an unconditional clock step.  Will take effect after
+next flash.
 
 ---
 
-## 7. Package emacs and nnn in the image  [LOW — quality of life]
+## 8. GitHub CI  [VERIFY — last known good: a655fdf push]
 
-Neither `emacs` nor `nnn` (terminal file manager) is included in the default
-`systems/mobile.scm`.  Both should be added to the system packages list so
-they are available without a separate `guix install` step.
+CI was failing due to glib graft on cached read-only store path (`--no-grafts`
+fixed), `/tmp` mount inheritance (daemon restart order fixed), and gitconfig
+permissions.  Latest fixes are in `.github/workflows/build.yml`.
 
-`nnn` is in `(gnu packages file-managers)` and `emacs` in `(gnu packages emacs)`.
-Add them to the `%base-packages` append or the `packages` field of the system
-declaration in `systems/mobile.scm` (and optionally `systems/minimal.scm`).
+Verify: confirm the CI run triggered by the most recent push is green end-to-end.
 
 ---
 
-## 8. GitHub CI  [FIXED — but verify green run]
+## Resolved
 
-CI was failing at the "Build u-boot-pro1x" step because `.github/workflows/build.yml`
-copied `u-boot.bin` from the store but `uboot.scm` installs `u-boot-nodtb.bin`.
-
-**Fixed in this session**: changed all three occurrences in `build.yml`
-(`cp`, upload artifact, release) from `u-boot.bin` → `u-boot-nodtb.bin`.
-
-**Verify**: the in-progress CI run triggered by the latest push should now pass
-the U-Boot step.  If the system image step then fails, the next likely cause is
-disk space (runner arrives ~70% full; ~25 GB needed for kernel + image build)
-or a missing `--system=aarch64-linux` flag (runner is already aarch64 so likely
-fine).
+- **§ tqftpserv firmware path**: fixed — `modem.scm` creates the symlink at
+  service-start time by reading `firmware_class.path` from sysfs.
+- **§ u-boot-pro1x build**: fixed — ARM64 `text_offset` zeroed so ABL accepts
+  the image; vbmeta flags offset corrected; phone boots into U-Boot.
+- **§ emacs / nnn / mpv**: added to system packages.
+- **§ rootfs too small**: `pro1x-rootfs-resize-service-type` expands the ext4
+  filesystem to fill the partition on first boot.
+- **§ NM connections not writable**: NM keyfile path redirected to
+  `/var/lib/NetworkManager/system-connections/`.
