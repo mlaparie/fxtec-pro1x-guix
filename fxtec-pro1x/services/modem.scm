@@ -7,6 +7,7 @@
   #:use-module (gnu packages telephony)
   #:use-module (gnu services)
   #:use-module (gnu services base)
+  #:use-module (gnu services dbus)
   #:use-module (gnu services networking)
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
@@ -115,6 +116,8 @@
                         (lambda (config)
                           (append (pro1x-modem-rmtfs-wait config)
                                   (pro1x-modem-shepherd-services config))))
+     (service-extension dbus-root-service-type
+                        (lambda (_) (list modem-manager)))
      (service-extension profile-service-type
                         pro1x-modem-packages)))
    (default-value (pro1x-modem-configuration))
