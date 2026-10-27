@@ -602,6 +602,7 @@ required by Phosh 0.56+.")
            libhandy
            libsecret
            libsoup
+           linux-pam
            modem-manager-1.24
            network-manager
            polkit
