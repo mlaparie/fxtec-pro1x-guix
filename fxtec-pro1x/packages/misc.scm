@@ -9,12 +9,17 @@
 ;;;   libcamera-pro1x   — libcamera patched for IMX582 + S5K4H7
 ;;;   cameractrl        — V4L2 camera controls GUI (focus/exposure)
 ;;;   phoc-pro1x        — phoc patched to ignore SW_KEYPAD_SLIDE
+;;;   callaudiod        — call audio routing daemon (needed by phosh/libcall-ui)
+;;;   feedbackd-0.8     — haptic/audio/visual feedback daemon >= 0.7 (required by phosh 0.56+)
+;;;   phosh             — Phosh mobile shell
+;;;   phosh-pro1x       — Phosh configured to use phoc-pro1x compositor
 
 (define-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages base)
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages fribidi)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gtk)
@@ -22,6 +27,8 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages polkit)
+  #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages python)
@@ -32,6 +39,7 @@
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
+  #:use-module (guix download)
   #:use-module (guix gexp)
   #:use-module (guix git-download)
   #:use-module (guix packages)
@@ -47,7 +55,11 @@
             cameractrl
             gmobile-0.7
             phoc
-            phoc-pro1x))
+            phoc-pro1x
+            callaudiod
+            feedbackd-0.8
+            phosh
+            phosh-pro1x))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libqrtr — Qualcomm IPC Router userspace library
@@ -413,3 +425,183 @@ Used as the compositor for the Phosh mobile shell.")
           (local-file "../../device/phoc/ignore-unknown-switch.patch"
                       "phoc-ignore-unknown-switch.patch"))))))
     (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
+
+;;; ---------------------------------------------------------------------------
+;;; callaudiod — call audio routing daemon
+;;; Required at build time by the libcall-ui subproject embedded in Phosh.
+;;; ---------------------------------------------------------------------------
+(define-public callaudiod
+  (package
+    (name "callaudiod")
+    (version "0.1.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.com/mobian1/callaudiod/-/archive/"
+             version "/callaudiod-" version ".tar.gz"))
+       (sha256
+        (base32 "0jkh9axrcyz920s30z3vfp1rds98dlq18f7wcycrnp7h4vmw0w3y"))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config `(,glib "bin")))
+    (inputs (list alsa-lib glib pulseaudio))
+    (arguments (list #:tests? #f))
+    (home-page "https://gitlab.com/mobian1/callaudiod")
+    (synopsis "Daemon for audio routing during phone calls")
+    (description
+     "callaudiod routes audio between earpiece, speaker and headphones during
+phone calls via ALSA and PulseAudio.  Its library (libcallaudio-0.1) is
+required by the libcall-ui subproject embedded in Phosh.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; feedbackd-0.8 — haptic/audio/visual feedback daemon, >= 0.7 series
+;;; Guix ships 0.6.0; Phosh 0.56+ requires libfeedback >= 0.7.0.
+;;; ---------------------------------------------------------------------------
+(define-public feedbackd-0.8
+  (package
+    (name "feedbackd")
+    (version "0.8.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/feedbackd/feedbackd/-/archive/v"
+             version "/feedbackd-v" version ".tar.gz"))
+       (sha256
+        (base32 "09g953k5jwki6c0nj78xl2alhhkhk3q0dwx6jpxv5dy67i5nkzaa"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config vala gobject-introspection `(,glib "bin")))
+    (inputs (list glib gsound json-glib libgudev gmobile-0.7))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list "-Dintrospection=disabled"
+                   "-Dvapi=false"
+                   "-Dudev=false"
+                   "-Dgtk_doc=false"
+                   "-Dtests=false")))
+    (home-page "https://gitlab.freedesktop.org/feedbackd/feedbackd")
+    (synopsis "Haptic/audio/visual feedback daemon (0.8 series)")
+    (description
+     "feedbackd provides a D-Bus daemon for delivering haptic, audio and
+visual feedback events.  This 0.8 series supplies libfeedback >= 0.7.0 as
+required by Phosh 0.56+.")
+    (license license:lgpl2.1+)))
+
+;;; gvc and libcall-ui tarballs pre-seeded as Phosh meson subprojects.
+(define phosh-gvc-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.gnome.org/GNOME/libgnome-volume-control/-/archive/d2442f455844e5292cb4a74ffc66ecc8d7595a9f/libgnome-volume-control-d2442f455844e5292cb4a74ffc66ecc8d7595a9f.tar.gz")
+    (sha256
+     (base32 "1c6wpymfn5sf609d3nws3hbrxdnww4r8pfhh5i4j2jl93kiwara5"))))
+
+(define phosh-libcall-ui-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.gnome.org/World/Phosh/libcall-ui/-/archive/v0.1.5/libcall-ui-v0.1.5.tar.gz")
+    (sha256
+     (base32 "167hqq4npnyvh6sqhvb7kgwdk29snhnh3hm1lsrik1yxsp8xzais"))))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh — Phosh mobile shell (lock screen, home screen, status bar, OSK)
+;;; ---------------------------------------------------------------------------
+(define-public phosh
+  (package
+    (name "phosh")
+    (version "0.56.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phosh/-/archive/v"
+             version "/phosh-v" version ".tar.gz"))
+       (sha256
+        (base32 "0md2vg9fi3vccjm906w83hj3g7dwwc7b0h2b532cayvkk6hb01m0"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config
+           `(,glib "bin")
+           `(,gtk+ "bin")
+           gettext-minimal
+           python
+           wayland            ; provides wayland-scanner
+           desktop-file-utils))
+    (inputs
+     (list appstream
+           callaudiod
+           elogind
+           evolution-data-server
+           feedbackd-0.8
+           fribidi
+           gcr
+           glib
+           gmobile-0.7
+           gnome-bluetooth
+           gnome-desktop
+           gsettings-desktop-schemas
+           gtk+
+           libgudev
+           libhandy
+           libsecret
+           libsoup
+           modem-manager
+           network-manager
+           polkit
+           pulseaudio
+           upower
+           wayland
+           wayland-protocols
+           libxkbcommon))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list (string-append "-Dcompositor=" #$(file-append phoc "/bin/phoc"))
+                   "-Dtests=false"
+                   "-Dsearchd=false"
+                   "-Dbindings-lib=false"
+                   "-Dgtk_doc=false"
+                   "-Dman=false"
+                   "-Dintrospection=false"
+                   "-Dcallui-i18n=false")
+           #:phases
+           #~(modify-phases %standard-phases
+               (add-after 'unpack 'seed-subprojects
+                 (lambda _
+                   (mkdir-p "subprojects/gvc")
+                   (invoke "tar" "xf" #$phosh-gvc-source
+                           "--strip-components=1" "-C" "subprojects/gvc")
+                   (mkdir-p "subprojects/libcall-ui")
+                   (invoke "tar" "xf" #$phosh-libcall-ui-source
+                           "--strip-components=1" "-C" "subprojects/libcall-ui"))))))
+    (home-page "https://gitlab.gnome.org/World/Phosh/phosh")
+    (synopsis "Phosh mobile shell for Wayland")
+    (description
+     "Phosh is a pure Wayland mobile shell for phones and tablets, providing a
+lock screen, status bar, notification drawer, home screen and app launcher.
+It runs on top of the Phoc compositor.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh-pro1x — Phosh built with phoc-pro1x as the managed compositor
+;;; phoc-pro1x ignores SW_KEYPAD_SLIDE so sliding the keyboard open does not
+;;; crash-loop the compositor when Phosh manages phoc itself.
+;;; ---------------------------------------------------------------------------
+(define-public phosh-pro1x
+  (package
+    (inherit phosh)
+    (name "phosh-pro1x")
+    (arguments
+     (substitute-keyword-arguments (package-arguments phosh)
+       ((#:configure-flags _)
+        #~(list (string-append "-Dcompositor=" #$(file-append phoc-pro1x "/bin/phoc"))
+                "-Dtests=false"
+                "-Dsearchd=false"
+                "-Dbindings-lib=false"
+                "-Dgtk_doc=false"
+                "-Dman=false"
+                "-Dintrospection=false"
+                "-Dcallui-i18n=false"))))
+    (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))

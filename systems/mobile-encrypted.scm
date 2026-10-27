@@ -162,7 +162,7 @@
         (shepherd-service
          (provision '(phosh))
          (requirement '(user-processes udev dbus-system elogind file-systems))
-         (documentation "Phosh mobile shell (phoc + squeekboard)")
+         (documentation "Phosh mobile shell (phoc-pro1x + phosh)")
          (start
           #~(make-forkexec-constructor
              (list "/bin/sh" "-c"
@@ -172,9 +172,12 @@
                     " && chmod 0700 /run/user/1000"
                     " && exec " #$(file-append shadow "/bin/su")
                     " -l user -s /bin/sh -c"
-                    " 'exec env XDG_RUNTIME_DIR=/run/user/1000 "
-                    #$(file-append phoc-pro1x "/bin/phoc")
-                    " -C /etc/phoc.ini -E squeekboard'"))
+                    " 'exec env"
+                    " XDG_RUNTIME_DIR=/run/user/1000"
+                    " WLR_BACKENDS=drm,libinput"
+                    " " #$(file-append phoc-pro1x "/bin/phoc")
+                    " -S -C /etc/phoc.ini -E "
+                    #$(file-append phosh-pro1x "/bin/phosh") "'"))
              #:log-file "/var/log/phosh.log"))
          (stop #~(make-kill-destructor))
          (respawn? #t))))
@@ -217,5 +220,6 @@
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas mutter
      phoc-pro1x
+     phosh-pro1x
      emacs mpv nnn)
     %base-packages)))
