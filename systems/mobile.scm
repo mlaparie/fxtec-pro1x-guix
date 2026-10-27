@@ -21,6 +21,7 @@
              (gnu packages networking)
              (gnu packages ntp)
              (gnu packages ssh)
+             (gnu packages freedesktop)    ; libqmi, libqrtr-glib
              (gnu packages version-control)
              (gnu packages vim)
              (gnu packages gnuzilla)
@@ -125,8 +126,8 @@
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
-               (xkb-layout "fi")
-               (xkb-variant "nodeadkeys")))
+               (xkb-layout "us")
+               (xkb-variant "intl")))
      (service pro1x-modem-service-type)
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
@@ -211,8 +212,9 @@
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
+     libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
-     gsettings-desktop-schemas
+     gsettings-desktop-schemas mutter
      phoc-pro1x
      emacs mpv nnn)
     %base-packages)))
