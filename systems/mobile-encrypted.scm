@@ -124,7 +124,7 @@
      (group "users")
      (home-directory "/home/user")
      (supplementary-groups
-      '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd" "seat"))
      (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
 
@@ -160,7 +160,7 @@
        (list
         (shepherd-service
          (provision '(phosh))
-         (requirement '(user-processes udev dbus-system file-systems))
+         (requirement '(user-processes udev dbus-system elogind file-systems))
          (documentation "Phosh mobile shell (phoc + squeekboard)")
          (start
           #~(make-forkexec-constructor
@@ -184,7 +184,7 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
-     (service elogind-service-type)
+     (service seatd-service-type)
      (service dbus-root-service-type)
      (service network-manager-service-type)
      (service wpa-supplicant-service-type)

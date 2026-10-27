@@ -98,7 +98,7 @@
      (group "users")
      (home-directory "/home/user")
      (supplementary-groups
-      '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd" "seat"))
      ;; Change this before relying on it.
      (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
@@ -136,9 +136,10 @@
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))
 
-     ;; elogind: provides org.freedesktop.login1 D-Bus interface that
-     ;; wlroots/libseat uses to open a DRM session (needed by phoc and sway).
-     (service elogind-service-type)
+     ;; seatd: minimal seat manager; libseat uses its socket to open a DRM
+     ;; session without needing a PAM login.  Provides the 'elogind symbol so
+     ;; services that require elogind also wait for seatd.
+     (service seatd-service-type)
 
      ;; ── Phosh desktop
      ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
@@ -147,7 +148,7 @@
        (list
         (shepherd-service
          (provision '(phosh))
-         (requirement '(user-processes udev dbus-system file-systems))
+         (requirement '(user-processes udev dbus-system elogind file-systems))
          (documentation "Phosh mobile shell (phoc + squeekboard)")
          (start
           #~(make-forkexec-constructor
