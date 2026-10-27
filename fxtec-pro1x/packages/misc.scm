@@ -476,6 +476,7 @@ Used as the compositor for the Phosh mobile shell.")
                 "-Dtests=false"
                 "-Dman=false"
                 "-Dmbim=false"          ; Pro1X uses QMI/QRTR, not MBIM; avoids mbim-glib >= 1.32 req
+                "-Dintrospection=false"
                 "-Dplugin_qcom_soc=enabled"))))
     (inputs
      (modify-inputs (package-inputs modem-manager)
