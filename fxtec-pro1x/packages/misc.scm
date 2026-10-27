@@ -56,6 +56,7 @@
             gmobile-0.7
             phoc
             phoc-pro1x
+            libqmi-1.36
             modem-manager-1.24
             callaudiod
             feedbackd-0.8
@@ -428,6 +429,28 @@ Used as the compositor for the Phosh mobile shell.")
     (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
 
 ;;; ---------------------------------------------------------------------------
+;;; libqmi-1.36 — libqmi >= 1.36 required by ModemManager 1.24
+;;; Guix ships 1.34.0.
+;;; ---------------------------------------------------------------------------
+(define-public libqmi-1.36
+  (package
+    (inherit libqmi)
+    (version "1.36.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/mobile-broadband/libqmi"
+             "/-/archive/" version "/libqmi-" version ".tar.gz"))
+       (sha256
+        (base32 "14whz2d0b1h2ska89pn7b5zlhqk68fp74vbf28kqm9qnv7yzlm72"))))
+    (arguments
+     (list #:configure-flags
+           #~(list "-Dmbim_qmux=false"  ; no newer mbim needed; Pro1X uses native QMI
+                   "-Dtests=false"
+                   "-Dman=false")))))
+
+;;; ---------------------------------------------------------------------------
 ;;; modem-manager-1.24 — ModemManager >= 1.24 required by phosh 0.56+
 ;;; Guix ships 1.22.0; phosh's mm-glib dependency needs >= 1.24.
 ;;; ---------------------------------------------------------------------------
@@ -452,7 +475,10 @@ Used as the compositor for the Phosh mobile shell.")
                 "-Dtests=false"
                 "-Dman=false"
                 "-Dmbim=false"          ; Pro1X uses QMI/QRTR, not MBIM; avoids mbim-glib >= 1.32 req
-                "-Dplugin_qcom_soc=enabled"))))))
+                "-Dplugin_qcom_soc=enabled"))))
+    (inputs
+     (modify-inputs (package-inputs modem-manager)
+       (replace "libqmi" libqmi-1.36)))))
 
 ;;; callaudiod — call audio routing daemon
 ;;; Required at build time by the libcall-ui subproject embedded in Phosh.
