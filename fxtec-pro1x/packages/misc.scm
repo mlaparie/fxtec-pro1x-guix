@@ -646,6 +646,15 @@ It runs on top of the Phoc compositor.")
   (package
     (inherit phosh)
     (name "phosh-pro1x")
+    (source
+     (origin
+       (inherit (package-source phosh))
+       (patches
+        (append (origin-patches (package-source phosh))
+                (list (local-file "../../device/phosh/fix-home-bar-height.patch"))))))
+    (inputs
+     (append (list gnome-settings-daemon)
+             (package-inputs phosh)))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -657,5 +666,22 @@ It runs on top of the Phoc compositor.")
                 "-Dman=false"
                 "-Dintrospection=false"
                 "-Dcallui-i18n=false"
-                "-Dlockscreen-plugins=false"))))
+                "-Dlockscreen-plugins=false"))
+       ((#:phases phases)
+        #~(modify-phases #$phases
+            (add-after 'install 'install-missing-schemas
+              (lambda* (#:key outputs #:allow-other-keys)
+                (let* ((out (assoc-ref outputs "out"))
+                       (schema-dir (string-append out "/share/glib-2.0/schemas")))
+                  (for-each
+                   (lambda (f)
+                     (copy-file f (string-append schema-dir "/" (basename f))))
+                   (find-files
+                    #$(file-append gnome-settings-daemon "/share/glib-2.0/schemas")
+                    "\\.xml$"))
+                  (copy-file
+                   #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")
+                   (string-append schema-dir "/org.gnome.shell.keybindings.gschema.xml"))
+                  (invoke #$(file-append `(,glib "bin") "/bin/glib-compile-schemas")
+                          schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))

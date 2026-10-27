@@ -15,6 +15,7 @@
              (gnu packages fonts)
              (ice-9 match)
              (gnu packages admin)
+             (gnu packages glib)
              (gnu packages base)
              (gnu packages gnome)
              (gnu packages linux)
@@ -159,11 +160,21 @@
                     "mkdir -p /run/user/1000"
                     " && chown 1000:1000 /run/user/1000"
                     " && chmod 0700 /run/user/1000"
+                    ;; Remove stale wayland sockets/locks from a previous run;
+                    ;; phoc doesn't always clean up on SIGTERM.
+                    " && rm -f /run/user/1000/wayland-*"
                     " && exec " #$(file-append shadow "/bin/su")
                     " -l user -s /bin/sh -c"
+                    ;; dbus-run-session starts a private D-Bus session bus and
+                    ;; sets DBUS_SESSION_BUS_ADDRESS before exec-ing phoc.
+                    ;; Without it, g_settings_new() in phoc_desktop_constructed()
+                    ;; blocks indefinitely waiting for the session bus.
                     " 'exec env"
                     " XDG_RUNTIME_DIR=/run/user/1000"
+                    " XDG_DATA_DIRS=/run/current-system/profile/share"
                     " WLR_BACKENDS=drm,libinput"
+                    " " #$(file-append dbus "/bin/dbus-run-session")
+                    " --"
                     " " #$(file-append phoc-pro1x "/bin/phoc")
                     " -S -C /etc/phoc.ini -E "
                     #$(file-append phosh-pro1x "/bin/phosh") "'"))
@@ -218,6 +229,9 @@
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas mutter
+     ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
+     ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
+     gnome-settings-daemon
      phoc-pro1x
      phosh-pro1x
      emacs mpv nnn)

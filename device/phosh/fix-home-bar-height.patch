@@ -1,0 +1,25 @@
+From: fix: set initial layer height for PhoshHome bar
+Subject: [PATCH] home: set layer-surface height to PHOSH_HOME_BAR_HEIGHT
+
+Without an explicit "height" property, PhoshLayerSurface sends
+zwlr_layer_surface_v1.set_size(0, 0) on the first commit.  With
+anchor = BOTTOM|LEFT|RIGHT but no TOP anchor, wlroots correctly
+rejects height=0 with a protocol error, crashing phosh before it
+can display anything.
+
+Set "height" to PHOSH_HOME_BAR_HEIGHT (15 px) so the first commit
+sends a valid set_size(0, 15), allowing phoc to reply with a
+configure event and phosh to proceed with full initialisation.
+
+Fixes: "height 0 requested without setting top and bottom anchors"
+
+--- a/src/home.c
++++ b/src/home.c
+@@ -717,6 +717,7 @@ phosh_home_new (struct zwlr_layer_shell_v1          *layer_shell,
+                        "kbd-interactivity", FALSE,
+                        "exclusive-zone", PHOSH_HOME_BAR_HEIGHT,
+                        "namespace", "phosh home",
++                       "height", (guint) PHOSH_HOME_BAR_HEIGHT,
+                        /* drag-surface */
+                        "layer-shell-effects", layer_shell_effects,
+                        "exclusive", PHOSH_HOME_BAR_HEIGHT,
