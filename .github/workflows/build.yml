@@ -100,7 +100,12 @@ jobs:
             "$DAEMON" "$SUBS" \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
-          sudo systemctl restart guix-daemon || {
+          # The installer's (unprivileged) daemon leaves its socket file
+          # behind, and the root daemon fails to bind over it ("Address
+          # already in use", run 40766643703): stop, remove, start.
+          sudo systemctl stop guix-daemon
+          sudo rm -f /var/guix/daemon-socket/socket
+          sudo systemctl start guix-daemon || {
             echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
           }
           PID=$(systemctl show guix-daemon -p MainPID --value)
