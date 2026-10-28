@@ -1,11 +1,11 @@
 # sway configuration for the F(x)tec Pro1X (keyboard out, landscape).
 #
-# Used by the "Sway" session when ~/.config/sway/config does not exist; copy
-# it there to change it.  Keys: the yellow slant arrows are Super ($mod), the
+# Installed as ~/.config/sway/config for new accounts (skeleton, see
+# systems/mobile.scm); edit it there.  Keys: the yellow slant arrows are Super ($mod), the
 # F(x) key is Fn (F1-F12, media, brightness, PgUp/PgDn/Home/End; see
 # device/input/keyd.conf).  Super+m opens the launcher, Super+Tab the window
-# switcher, Super+Return a terminal, Super+Shift+q closes a window,
-# Super+Shift+e exits.  Launcher, switcher and bar follow mlaparie's
+# switcher, Super+Return a terminal, Super+BackSpace or Super+Shift+q
+# closes a window, Super+Ctrl+h shows the key bindings, Super+Shift+e exits.  Launcher, switcher and bar follow mlaparie's
 # guix-config.
 #
 # State: written 2026-10-28; tested on the phone as noted in TODO.md.
@@ -20,6 +20,17 @@ set $launcher foot --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_W
 
 xwayland disable
 font pango:monospace 9
+
+### Windows: no title bars; colours from mlaparie's guix-config
+default_border pixel 2
+default_floating_border pixel 2
+smart_borders on
+# class                 border  backgr. text    indicator child_border
+client.focused          #404552 #404552 #fafafa #ff5757 #5294E2
+client.focused_inactive #666666 #404552 #eeeeee #666666 #262626
+client.unfocused        #404552 #484b52 #eeeeee #ff5757 #262626
+client.urgent           #ff5757 #404552 #ffffff #555757 #EFEDEC
+client.background       #404552
 
 ### Output: 1080x2160 portrait panel, used in landscape with the keyboard out
 output DSI-1 {
@@ -53,12 +64,18 @@ exec mako
 ### Launcher window
 for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2
 for_window [app_id="^launcher$"] move position center
-for_window [app_id="^windowswitcher$"] floating enable, sticky enable, border pixel 2, move position center
+for_window [app_id="^windowswitcher$"] floating enable, sticky enable, resize set 45 ppt 35 ppt, border pixel 2, move position center
+for_window [app_id="^swayhelp$"] floating enable, sticky enable, resize set 90 ppt 80 ppt, border pixel 2, move position center
+
+########## KEYBINDINGS ##########
+# Super+Ctrl+h shows this section of the loaded config (q closes it).
+bindsym $mod+Ctrl+h exec foot --app-id=swayhelp -e sh -c 'swaymsg -t get_config | jq -r .config | sed -n "/^########## KEYBINDINGS/,/^########## BAR/p" | less'
 
 ### Basics
 bindsym $mod+Return exec $term
 bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
+bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+c reload
 bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -B 'Exit' 'swaymsg exit'
@@ -143,11 +160,12 @@ bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 bindsym $mod+Shift+s exec grim -g "$(slurp)" - | wl-copy
 bindsym $mod+Shift+p exec grim ~/screenshot-$(date +%Y%m%d-%H%M%S).png
 
-### Bar: i3status-rust, user config first, else the Pro1X default
+########## BAR ##########
+### Bar: i3status-rust with ~/.config/i3status-rust/config.toml
 bar {
     position top
     font pango:monospace, FontAwesome 8
-    status_command sh -c 'c=$HOME/.config/i3status-rust/config.toml; [ -f "$c" ] || c=/run/current-system/profile/share/pro1x-sway/i3status-rust.toml; exec i3status-rs "$c"'
+    status_command i3status-rs
     colors {
         statusline #ebdbb2
         background #1d2021

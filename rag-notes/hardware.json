@@ -117,6 +117,14 @@
         "confidence": "reported",
         "date": "2026-10-28",
         "source": "nyymi (NixOS port author), message relayed by the author on 2026-10-28; device/kernel/patches/pro1x-dsi.patch lines 9-15"
+      },
+      {
+        "title": "Reading the panel backlight (actual_brightness) wedges the DSI link; the panel fades to white",
+        "general": "On a DSI panel whose backlight is controlled over DCS, reading actual_brightness makes the driver issue a DCS read (set max return packet size 0x37, then read). In video mode on this SoC that read times out; repeated polling (a status bar block) left the DSI host unable to send even writes, and the AMOLED panel slowly turned fully white. Power-cycling the output through the compositor did not recover it; a reboot did. Do not poll actual_brightness on such panels; reading brightness (the cached value) or writing it is the safe path, but check with dmesg.",
+        "instance": "panel-sw43404-boe-fhd-amoled on 5e94000.dsi, image 6b37ac4, kernel 7.1.0. i3status-rust backlight block on /sys/class/backlight/5e94000.dsi.0, run by hand twice at 19:29 UTC: dmesg from 8604 s on \"dsi_cmds2buf_tx: cmd dma tx failed, type=0x37 ... ret=-110\", \"wait for video done timed out\"; later \"sending DCS SET_DISPLAY_OFF failed: -110\". Panel white; reboot needed. Block removed from device/sway/i3status-rust.toml.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone dmesg 2026-10-28; author observed the white panel"
       }
     ]
   }

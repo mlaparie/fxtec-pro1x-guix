@@ -739,9 +739,9 @@ window opened by a sway key binding.")
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sway-config — sway defaults for the Pro1X, from device/sway/
-;;;   share/pro1x-sway/config            used by the Sway session when the user
-;;;                                      has no ~/.config/sway/config
-;;;   share/pro1x-sway/i3status-rust.toml  bar used when the user has none
+;;;   share/pro1x-sway/config              ~/.config/sway/config (skeleton)
+;;;   share/pro1x-sway/i3status-rust.toml  ~/.config/i3status-rust/config.toml
+;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config

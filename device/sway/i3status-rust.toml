@@ -1,8 +1,11 @@
 # i3status-rust bar for sway on the F(x)tec Pro1X.
 # Based on mlaparie's guix-config (.config/i3status-rust/config.toml), with the
-# PC-specific blocks removed and phone ones added.  Copy it to
-# ~/.config/i3status-rust/config.toml to change it.  Icons need font-awesome.
+# PC-specific blocks removed and phone ones added.  Installed as
+# ~/.config/i3status-rust/config.toml for new accounts.  Icons need font-awesome.
 # No sound block yet: there is no PipeWire/PulseAudio session (TODO.md §2).
+# No backlight block: polling actual_brightness makes the panel driver send
+# DSI reads, which time out in video mode and wedge the panel (it turned
+# white until reboot, 2026-10-28).
 
 [theme]
 theme = "nord-dark"
@@ -40,10 +43,6 @@ format_alt = " $icon $ssid $ip "
 interval = 5
 inactive_format = ""
 missing_format = ""
-
-[[block]]
-block = "backlight"
-device = "5e94000.dsi.0"
 
 [[block]]
 block = "battery"

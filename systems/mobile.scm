@@ -97,17 +97,11 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
-        ;; The user's ~/.config/sway/config wins; otherwise the Pro1X one.
-        ;; A session bus for mako and other clients, as for Phosh.
-        (let ((user-config (string-append (getenv "HOME")
-                                          "/.config/sway/config")))
-          (apply execl #$(file-append dbus "/bin/dbus-run-session")
-                 "dbus-run-session" "--"
-                 #$(file-append sway "/bin/sway")
-                 (if (file-exists? user-config)
-                     '()
-                     (list "-c" #$(file-append pro1x-sway-config
-                                               "/share/pro1x-sway/config"))))))))
+        ;; A session bus for mako and other clients, as for Phosh.  The
+        ;; config is ~/.config/sway/config (skeleton below).
+        (execl #$(file-append dbus "/bin/dbus-run-session")
+               "dbus-run-session" "--"
+               #$(file-append sway "/bin/sway")))))
 
 ;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
 ;; each owner puts their own public key there (README, "Updating without
@@ -147,7 +141,9 @@
    (bootloader-configuration
     (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
@@ -158,6 +154,15 @@
       (type "ext4")
       (options "noatime"))
     %base-file-systems))
+
+  ;; ── Home skeleton: sway and bar configs for new accounts ─────────────────
+  (skeletons
+   (append
+    `((".config/sway/config"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
+      (".config/i3status-rust/config.toml"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml")))
+    (default-skeletons)))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────
   (users

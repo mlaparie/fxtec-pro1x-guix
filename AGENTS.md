@@ -247,6 +247,10 @@ SoCs. Mostly from moWerk's SailfishOS port; the ones not yet seen here are marke
   (`pro1x-dsi.patch`, applied here). If phantom touches return, check the display mode
   before the touch driver. (reported, nyymi)
 
+- Never poll `/sys/class/backlight/*/actual_brightness` (status bars, scripts): it sends DSI
+  reads that time out in video mode, wedge the link, and turn the panel white until reboot.
+  (confirmed, 2026-10-28)
+
 *Sensors*
 - Sensors behind the ADSP (SSC) need `hexagonrpcd` serving the sensor registry and configs,
   then `libssc` (`ssccli --sensor accelerometer` is the first test). The mount matrix from

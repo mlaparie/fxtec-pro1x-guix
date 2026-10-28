@@ -94,7 +94,9 @@
     ;; U-Boot looks for extlinux.conf via sysboot on the ext4 userdata partition.
     (targets '("/dev/disk/by-partlabel/userdata"))
     (menu-entries '())           ; extra entries managed by pro1x-boot-menu
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems

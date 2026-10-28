@@ -104,7 +104,9 @@
    (bootloader-configuration
     (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Encrypted device + filesystems ────────────────────────────────────────
   (mapped-devices %fde-mapped-devices)
