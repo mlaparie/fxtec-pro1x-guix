@@ -1,2 +1,7 @@
 result
 result-*
+
+# Stock partition backups from scripts/backup-stock.sh: they hold the IMEI,
+# MAC addresses and RF calibration. Never commit them.
+backup-*/
+*.img

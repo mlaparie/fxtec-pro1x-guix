@@ -20,7 +20,7 @@ The NixOS `device/` directory is explicitly distro-agnostic (README §Other dist
 - **Boot chain**: U-Boot + extlinux, A/B slot success marking, boot menu (prev1…3)
 - **Kernel**: linux-pro1x booting, all expected modules loaded
 - **USB networking**: usb0 (RNDIS/g_cdc), 172.16.42.1, SSH access
-- **WiFi**: ath10k_snoc driver working, NetworkManager connects (verified: Livebox-9416, IPv4+IPv6)
+- **WiFi**: ath10k_snoc driver working, NetworkManager connects (verified on home Wi-Fi, IPv4+IPv6)
 - **Audio hardware**: `/proc/asound/cards` shows `Pro1X` (sm4250); UCM2 paths set up, pro1x-audio-init ran
 - **Camera hardware**: qcom_camss, imx582, s5k4h7, dw9800 modules loaded
 - **Modem firmware services**: rmtfs, tqftpserv, pro1x-hexagonrpcd all running
@@ -198,6 +198,40 @@ step in `.github/workflows/build.yml`, and rename the artifact path to
 CI was failing due to glib graft on cached store path (`--no-grafts` fixed),
 `/tmp` mount inheritance (daemon restart order fixed), and gitconfig
 permissions.  Verify the CI run triggered by the latest push is green.
+
+---
+
+## 10. scripts/update.sh carries NixOS commands  [MEDIUM — likely broken, unverified]
+
+Not run yet; read in source only.  After `guix copy` it runs, on the device:
+```sh
+sudo guix system reconfigure /run/current-system --no-bootloader && \
+sudo /run/current-system/bin/switch-to-system
+```
+- `switch-to-system` is NixOS's activation script; Guix has no such file
+  (confirm with `ls /run/current-system/` on the device).
+- `guix system reconfigure` takes a config file (`.scm`), not a system
+  directory.
+- `--no-bootloader` would keep the new generation out of extlinux.conf, so
+  the README's "previous generations selectable from the U-Boot menu" would
+  not hold for generations deployed this way.
+
+**Fix candidates**: `guix deploy` with a machine config for 172.16.42.1
+(builds on the host, copies, activates, installs the bootloader), or
+`guix system reconfigure systems/mobile.scm` run on the device from a
+checkout of this channel.  Check that `pro1x-extlinux-bootloader` and the
+boot-menu split still run on that path.
+
+---
+
+## 11. No boot-once / bootcount fallback  [LOW — safety]
+
+A generation that changes the kernel, initrd or USB networking and does not
+boot far enough for SSH can only be recovered by hand (volume-down boot
+menu).  A boot-once or bootcount mechanism in U-Boot (fall back to the
+previous generation after N failed boots, cleared by
+`pro1x-boot-success-service-type`) would let those changes be tested
+without the author at the device.  See AGENTS.md §3.
 
 ---
 
