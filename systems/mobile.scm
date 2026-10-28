@@ -255,6 +255,11 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
+     ;; /etc/pam.d/phosh: the lock screen checks the passcode with PAM
+     ;; service "phosh"; without it PAM falls back to "other" and denies.
+     (simple-service 'phosh-pam pam-root-service-type
+       (list (unix-pam-service "phosh")))
+
      ;; Console font for tuigreet: 16x32, double the kernel's 8x16.  Guix's
      ;; console-font-service-type needs mingetty's term-ttyN, removed here.
      (simple-service 'pro1x-console-font shepherd-root-service-type
