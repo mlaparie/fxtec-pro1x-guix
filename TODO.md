@@ -15,6 +15,39 @@ The NixOS `device/` directory is explicitly distro-agnostic (README §Other dist
 
 ---
 
+## Next steps (plan, 2026-10-28)
+
+The sections below were last checked on a655fdf; about 40 commits have
+landed since (phosh 0.56, MM 1.24, seatd, Sxmo/greetd, ntp -g), none
+verified on the device.  Order:
+
+1. **Re-verify on the device.** Flash the image from the current local
+   build, go through every section here, update or close it.  Needs the
+   author once (flash).
+2. **Deploy without reflashing (§10), then bootcount fallback (§11).**
+   `guix deploy` or reconfigure-on-device, with the extlinux bootloader and
+   boot menu checked on that path.  Then each later step is one generation
+   the agent can deploy and roll back alone.
+3. **Phosh session + keyboard layout (§1, §3).** Phosh starting from greetd,
+   the layout surviving a reboot.
+4. **Audio (§2).** PipeWire, pipewire-pulse, WirePlumber as user services,
+   rtkit, `pro1x-audio-init` before WirePlumber, merged UCM2 tree.  Playback
+   on speaker and headset first.
+5. **Modem (§4, §6).** MM up and seeing the modem, SIM provisioning; SMS,
+   calls and data only with the author's go-ahead each time.
+6. **Voice-call audio.** q6voice patch is in the kernel; userspace
+   `pro1x-voice-call`/`voicepcm` from NixOS still to translate.
+7. **Sensors (§5).** Mount-matrix and SSC udev rules, wait for QRTR 400.
+8. **CI green (§9), artifact size (§8).**
+9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
+   LED (feedbackd), GPS, camera userspace, backlight.  Compare each with
+   the NixOS port before planning.
+10. **Upstreaming candidates** (author's review first): libqmi 1.36,
+    ModemManager 1.24, phosh 0.56, feedbackd, callaudiod to Guix;
+    firmware-dependent parts stay here or go to nonguix.
+
+---
+
 ## Working
 
 - **Boot chain**: U-Boot + extlinux, A/B slot success marking, boot menu (prev1…3)

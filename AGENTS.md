@@ -260,3 +260,6 @@ SoCs. Mostly from moWerk's SailfishOS port; the ones not yet seen here are marke
 - State failures as plainly as successes, with the log line. Say what you did not verify.
 - Correct your own earlier mistakes explicitly when you find them.
 - Keep it short; the details live in the notes and the commits.
+- No fluff, in the terminal or in commit messages: no preamble, no restating the request,
+  no recap of what was just shown, no filler adjectives. Commit messages say what changed,
+  why, and what was tested, in as few lines as that takes.
