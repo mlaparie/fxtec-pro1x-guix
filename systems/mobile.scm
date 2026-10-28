@@ -281,7 +281,7 @@
      calls chatty
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
-     gsettings-desktop-schemas mutter
+     gsettings-desktop-schemas
      ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
      ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
      gnome-settings-daemon)
