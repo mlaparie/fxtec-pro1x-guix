@@ -231,6 +231,14 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "readlink /run/current-system on the phone before and after"
+      },
+      {
+        "title": "guix deploy records the host guix channels as provenance; override current-channels in the deploy file",
+        "general": "machine-operating-system adds provenance from (guix describe) current-channels, i.e. every channel of the guix running guix deploy. To record only the channels the system is meant to follow, module-set! current-channels in (guix describe) from the deploy file; (gnu services) reads the same variable. Separately, guix-configuration channels sets /etc/guix/channels.scm, which guix pull on the target uses.",
+        "instance": "deploy/pro1x.scm (dcb2dec) keeps guix and nonguix from the host and adds fxtec-pro1x at git HEAD. Generation 4 on the phone lists exactly these three; generations 2 and 3 listed all of the host channels.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "gnu/machine.scm, gnu/services.scm provenance-entry, guix/describe.scm (Guix fa73e81); guix system list-generations on the phone"
       }
     ],
     "licensing": [

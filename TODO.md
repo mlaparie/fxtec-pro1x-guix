@@ -62,7 +62,9 @@ verified on the device.  Order:
    (nmcli-fzf for Wi-Fi as a bar click, power menu, clamshell mode), and
    i3status-rust click actions.  Strip PC-specific parts first.
 9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
-   LED (feedbackd), GPS, camera userspace, backlight.  Compare each with
+   LED (feedbackd), GPS, camera userspace, backlight.  Keyboard backlight:
+   pro1x-kbd-backlight (8e5e0a7) running in generation 4, LED on with
+   keyboard out and panel on; slide in/out and power key not tested yet.  Compare each with
    the NixOS port before planning.
 10. **Updates for users** (README, "Updates in the long run"): a
     substitute server for this channel's aarch64 builds, fed by CI, and
@@ -305,8 +307,12 @@ First use 2026-10-28 (image flashed by the author; generation 1 built
   the stale /etc/NetworkManager link: `rm /etc/NetworkManager` then
   reactivate (done on this phone);
 
+- generation 4 (8e5e0a7): provenance lists only guix, nonguix and
+  fxtec-pro1x at the deployed HEAD (dcb2dec); /etc/guix/channels.scm
+  lists the same three (f666fd0), not pulled from yet.
+
 Still to check:
-- reboot into generation 3 (kernel unchanged, so expected to work);
+- reboot into a deployed generation (kernel unchanged, so expected to work);
 - whether the deploy copies only what changed (not measured);
 - `prev*.conf` (boot-menu split, rewritten only at boot) still point at
   bootable generations between deploy and reboot;

@@ -144,6 +144,16 @@
         "date": "2026-10-28",
         "source": "kernel source 8cd9520; Konrad Dybcio, Venus QoL series v4 (LKML 2023-05, names SM6115/QCM2290 AR50 Lite); Jorge Ramirez-Ortiz, QCM2290 AR50 Lite series v7 (2025-07)"
       }
+    ],
+    "keyboard": [
+      {
+        "title": "Keyboard backlight is an on/off GPIO LED; the slider is SW_KEYPAD_SLIDE on gpio-keys, 1 = slid out",
+        "general": "On sliders the keyboard backlight and the slide switch are separate devices: an LED class device and an EV_SW switch. Drive the LED from the switch and the panel state. The DRM connector sysfs dpms attribute follows the compositor output power (atomic ACTIVE) and is a cached value, so it is a safe panel-state source on DSI video-mode panels where backlight actual_brightness reads wedge the link.",
+        "instance": "Pro1X, linux-pro1x 7.1.0: /sys/class/leds/white:kbd_backlight, max_brightness 1, off at boot. gpio-keys (udev symlink /dev/input/pro1x-slider): type 5 code 10, slide in 0, slide out 1. /sys/class/drm/card0-DSI-1/dpms read Off with sway output power off and On after swaymsg output DSI-1 power on.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "event logger on /dev/input/pro1x-slider with the author sliding; swaymsg -t get_outputs vs dpms; echo 1 > brightness lit the keys (author)"
+      }
     ]
   }
 }
