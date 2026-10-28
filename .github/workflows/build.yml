@@ -78,20 +78,23 @@ jobs:
           # systemd treats the space-separated list as one argument.
           DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
           SUBS="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"
-          # Remount /tmp as a fresh writable tmpfs BEFORE restarting the daemon
-          # so it inherits the new mount.  guix perform-download calls mkdtemp("/tmp/...")
-          # which fails if the daemon was started before this remount.
-          sudo mount -t tmpfs -o mode=1777,size=4G tmpfs /tmp
-          # Build directories go to the root disk, not the 4G tmpfs: the
-          # rootfs partition.img builder stages the whole system closure and
-          # then the ext4 image in its build directory, which overflows 4G.
-          BUILD_TMP=/var/tmp/guix-build
-          sudo mkdir -p "$BUILD_TMP" && sudo chmod 1777 "$BUILD_TMP"
+          # Mount a fresh, empty /tmp BEFORE restarting the daemon so it
+          # inherits the new mount.  guix perform-download calls
+          # mkdtemp("/tmp/...") which fails if the daemon was started before
+          # this remount.  It is a bind mount of root-disk space, not a tmpfs:
+          # the daemon builds in /tmp (--disable-chroot), and the rootfs
+          # partition.img builder stages the system closure plus the ext4
+          # image there, which overflowed a 4G tmpfs (run 40702633350).
+          # Building under TMPDIR=/var/tmp instead broke the kernel source
+          # repack (scandir of its build directory returned #f, run
+          # 40741411010), so the path stays /tmp.
+          sudo mkdir -p /var/guix-tmp && sudo chmod 1777 /var/guix-tmp
+          sudo mount --bind /var/guix-tmp /tmp
           # Ensure git-minimal (used by git-fetch builders) can read gitconfig.
           sudo touch /etc/gitconfig && sudo chmod 644 /etc/gitconfig
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nEnvironment="TMPDIR=%s"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
-            "$DAEMON" "$SUBS" "$BUILD_TMP" \
+          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+            "$DAEMON" "$SUBS" \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon || {

@@ -29,8 +29,13 @@ case $cmd in
     mkdir -p "$dir"
     [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
     : > "$dir/items.txt"
+    # Diagnostics: run 40741411010 found no logs here although it built.
+    echo "==> /var/log/guix: $(sudo ls -la /var/log/guix 2>&1 | tr '\n' ' ')"
+    echo "==> build logs: $(sudo find -L /var/log/guix -type f | wc -l)," \
+         "of which > 8 KiB: $(sudo find -L /var/log/guix -type f -size +8k | wc -l)"
+    sudo find -L /var/log/guix -type f | head -3
     # Logs under 8 KiB come from trivial builders (config files, profiles).
-    sudo find /var/log/guix/drvs -name '*.drv.gz' -size +8k | while read -r log; do
+    sudo find -L /var/log/guix/drvs -name '*.drv.gz' -size +8k | while read -r log; do
       rel=${log#/var/log/guix/drvs/}
       drv=/gnu/store/${rel%%/*}${rel#*/}
       drv=${drv%.gz}
