@@ -32,7 +32,9 @@ verified on the device.  Order:
    reboot into a deployed generation not tested yet.
    Then each later step is one generation the agent can deploy and roll
    back alone.
-3. **Phosh session + keyboard layout (§1, §3).** Phosh starting from greetd,
+3. **Phosh session + keyboard layout (§1, §3).** Phosh from tuigreet
+   fails, sway works (author, 2026-10-28); generation 5 logs the Phosh
+   session to /tmp/phosh-UID.log.  Phosh starting from greetd,
    the layout surviving a reboot.
 4. **Guix Home layer, then audio (§2).**  Home services in the channel
    (`fxtec-pro1x home ...`): sway session, i3status-rust, mako/swayidle as
@@ -63,8 +65,9 @@ verified on the device.  Order:
    i3status-rust click actions.  Strip PC-specific parts first.
 9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
    LED (feedbackd), GPS, camera userspace, backlight.  Keyboard backlight:
-   pro1x-kbd-backlight (8e5e0a7) running in generation 4, LED on with
-   keyboard out and panel on; slide in/out and power key not tested yet.  Compare each with
+   pro1x-kbd-backlight: LED follows slide in/out and the power key
+   (generation 4, author).  Generation 5 (850ca36): slide-out wakes the
+   panel in sway, not tested; Phosh not handled.  Compare each with
    the NixOS port before planning.
 10. **Updates for users** (README, "Updates in the long run"): a
     substitute server for this channel's aarch64 builds, fed by CI, and
