@@ -193,11 +193,22 @@ step in `.github/workflows/build.yml`, and rename the artifact path to
 
 ---
 
-## 9. GitHub CI  [VERIFY — last known good push: 64f123d]
+## 9. GitHub CI  [VERIFY — no green run yet]
 
 CI was failing due to glib graft on cached store path (`--no-grafts` fixed),
 `/tmp` mount inheritance (daemon restart order fixed), and gitconfig
-permissions.  Verify the CI run triggered by the latest push is green.
+permissions.  The earlier "last known good push: 64f123d" was wrong:
+`gh run list -s success` shows no successful run among the last 40 (checked
+2026-10-28).
+
+Run 40702633350 (commit 018fa97) built every package and failed only in the
+rootfs `partition.img` builder, with Guix's "lack of free disk space" note.
+Cause (inferred, not measured): with `--disable-chroot` the daemon builds in
+`$TMPDIR`, which was the 4G `/tmp` tmpfs; that builder stages the system
+closure plus the ext4 image there.  Fix: the daemon's `TMPDIR` is now
+`/var/tmp/guix-build` on the root disk; the failure branch now prints each
+failed builder's log.  Verify on the next run.  The previous run (40599232782)
+failed earlier, on webkitgtk.
 
 ---
 

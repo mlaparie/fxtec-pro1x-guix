@@ -173,6 +173,14 @@
         "confidence": "handover",
         "date": "2026-10-25",
         "source": "commit f5fe4c8"
+      },
+      {
+        "title": "With --disable-chroot, guix-daemon builds in its TMPDIR; a small /tmp tmpfs breaks system image builds",
+        "general": "Without chroot, guix-daemon puts build directories under its own TMPDIR (default /tmp). The partition.img builder of guix system image stages the whole system closure and then writes the ext4 image in that directory, so it needs roughly twice the closure size. A size-limited tmpfs on /tmp lets every package build and fails only at the very end, with the note \"build failure may have been caused by lack of free disk space\". Give the daemon a TMPDIR on a disk with room (Environment=TMPDIR=... in its unit).",
+        "instance": "Run 40702633350 (commit 018fa97): /tmp was a 4G tmpfs (added in 9258bcf for mkdtemp), root disk had 120G free; failed in x434...-partition.img.drv. Fixed by TMPDIR=/var/tmp/guix-build. Not yet verified by a green run; the builder log itself was not printed, so the cause is inferred.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "GitHub Actions run 40702633350 log; .github/workflows/build.yml"
       }
     ],
     "deployment": [

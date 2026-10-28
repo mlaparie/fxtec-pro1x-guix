@@ -82,11 +82,16 @@ jobs:
           # so it inherits the new mount.  guix perform-download calls mkdtemp("/tmp/...")
           # which fails if the daemon was started before this remount.
           sudo mount -t tmpfs -o mode=1777,size=4G tmpfs /tmp
+          # Build directories go to the root disk, not the 4G tmpfs: the
+          # rootfs partition.img builder stages the whole system closure and
+          # then the ext4 image in its build directory, which overflows 4G.
+          BUILD_TMP=/var/tmp/guix-build
+          sudo mkdir -p "$BUILD_TMP" && sudo chmod 1777 "$BUILD_TMP"
           # Ensure git-minimal (used by git-fetch builders) can read gitconfig.
           sudo touch /etc/gitconfig && sudo chmod 644 /etc/gitconfig
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
-            "$DAEMON" "$SUBS" \
+          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nEnvironment="TMPDIR=%s"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+            "$DAEMON" "$SUBS" "$BUILD_TMP" \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon || {
@@ -170,8 +175,14 @@ jobs:
           IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
           if [ ! -f "$IMG" ]; then
             echo "==> Image build failed — log:"; cat /tmp/image.log
-            echo "==> Kernel checkout drv log (if present):"
-            sudo zcat /var/log/guix/drvs/2i/clarxfa2qlsnjihqhmr0cc6arx9z7g-linux-pro1x-7.1.0-checkout.drv.gz 2>/dev/null || echo "(log not found)"
+            df -h / /tmp
+            # Print the tail of each failed builder's own log.
+            for drv in $(grep -o "builder for \`[^']*" /tmp/image.log | sed 's/.*`//' | sort -u); do
+              base=$(basename "$drv")
+              echo "==> log of $base:"
+              sudo zcat "/var/log/guix/drvs/${base:0:2}/${base:2}.gz" 2>/dev/null | tail -60 \
+                || echo "(log not found)"
+            done
             exit 1
           fi
           echo "Built: $IMG"
