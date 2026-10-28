@@ -18,6 +18,11 @@
 ;;; the copy for the bootloader step is refused ("unauthorized public key")
 ;;; and extlinux.conf is not updated.
 ;;;
+;;; Provenance: guix deploy records the deploying guix's channels (all of
+;;; the host's, from `guix describe') in the new generation.  Here it records
+;;; only guix and nonguix from the host, plus fxtec-pro1x at this tree's git
+;;; HEAD (uncommitted changes are not visible in it).
+;;;
 ;;; Environment:
 ;;;   PRO1X_SYSTEM  system file to deploy (default systems/mobile.scm)
 ;;;   PRO1X_HOST    phone address (default 172.16.42.1)
@@ -31,11 +36,37 @@
              (gnu services)
              (gnu services base)
              (gnu system)
+             (guix channels)
              (guix gexp)
-             (guix ui))                 ; load*
+             (guix ui)                  ; load*
+             (fxtec-pro1x services channels)
+             (ice-9 popen)
+             (ice-9 rdelim)
+             (srfi srfi-1))
 
 (define %system-file
   (or (getenv "PRO1X_SYSTEM") "systems/mobile.scm"))
+
+(define (git-head)
+  (let* ((port (open-pipe* OPEN_READ "git" "rev-parse" "HEAD"))
+         (commit (read-line port)))
+    (close-pipe port)
+    commit))
+
+(define (deployed-channels channels)
+  "Return guix and nonguix from CHANNELS, the host's, and fxtec-pro1x at
+this tree's HEAD."
+  (append (filter (lambda (c) (memq (channel-name c) '(guix nonguix)))
+                  channels)
+          (list (channel
+                 (inherit %fxtec-pro1x-channel)
+                 (commit (git-head))))))
+
+;; guix deploy calls current-channels when it adds the provenance.
+(let* ((describe (resolve-module '(guix describe)))
+       (host-channels (module-ref describe 'current-channels)))
+  (module-set! describe 'current-channels
+               (lambda () (deployed-channels (host-channels)))))
 
 (define (with-host-signing-key os)
   "Return OS with this host's signing key among the Guix authorized keys."
