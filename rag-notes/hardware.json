@@ -1,0 +1,113 @@
+{
+  "hardware": {
+    "note": "Findings about the F(x)tec Pro1X (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
+    "boot_chain": [
+      {
+        "title": "Qualcomm ABL rejects a U-Boot arm64 Image whose header text_offset is not zero",
+        "general": "The Qualcomm Android bootloader (ABL) checks the arm64 Image header of the kernel in the boot image. A U-Boot binary built with a negative text_offset (bytes 8-15 of the header) is refused and the phone falls straight back to fastboot, with no message. Zero text_offset as Linux does, gzip the image, and append the DTB after the gzip stream so ABL hands it to U-Boot in x0.",
+        "instance": "Pro1X, U-Boot packed as an Android boot image in boot_a/boot_b by scripts/flash.sh. U-Boot's header had text_offset = -0x80000000. The NixOS port already did this; the Guix flash script had missed it. --second was dropped once the DTB was appended.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 869183f (scripts/flash.sh); approach from nyymi609/fxtec-pro1x-nixos"
+      },
+      {
+        "title": "AVB vbmeta flags are at byte offset 120 of the header",
+        "general": "To disable verification with a hand-made vbmeta image, the flags word (value 3: verification and hashtree disabled) goes at byte offset 120 of vbmeta_image_header_t, and the image is zero-padded to 4096 bytes. Writing it anywhere else leaves verification enabled, and ABL rejects the unsigned boot image by falling back to fastboot.",
+        "instance": "scripts/flash.sh first wrote the flag at offset 48 (the signature_offset field). Fixed by building the header with Python struct.pack_into so the offset is explicit (scripts/mkvbmeta.py).",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 310e0b8"
+      },
+      {
+        "title": "Flash U-Boot to both boot slots and set slot A active",
+        "general": "On an A/B Qualcomm phone, if only one boot slot holds the new bootloader, a failed boot can make ABL switch to the other slot and boot the old stock image, or loop between slots. Flashing both slots avoids the loop, but it leaves no stock slot to fall back to: the only way back to Android is a reflash.",
+        "instance": "scripts/flash.sh flashes boot_a, boot_b, vbmeta_a and vbmeta_b, erases dtbo, flashes userdata, then runs set_active a. The README still says 'replaces the bootloader on slot A' only (as of 018fa97).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "scripts/flash.sh at 018fa97, read in source"
+      },
+      {
+        "title": "A one-shot boot entry with a known-good default makes kernel experiments recoverable without hands",
+        "general": "With U-Boot and extlinux, boot the system under test through a one-shot entry while the default stays a known-good system, so any crash or hang comes back to something reachable over ssh after a reset. Without it, a kernel or initrd that does not boot needs a person at the boot menu.",
+        "instance": "moWerk's SailfishOS port keeps NixOS as the default on userdata and enters SailfishOS through a one-shot extlinux entry. This Guix port has no such mechanism yet: recovery is the volume-down boot menu with previous generations (TODO.md section 11).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "moWerk/sailfish-rag Mainline/boot.json, section dual_boot"
+      }
+    ],
+    "kernel": [
+      {
+        "title": "QRTR name service and PD mapper are in the kernel config; no userspace daemons needed for them",
+        "general": "Recent kernels provide the QRTR name service and the protection domain mapper in-kernel (CONFIG_QRTR, CONFIG_QCOM_PD_MAPPER). Guides that list qrtr-ns and pd-mapper daemons are outdated. rmtfs and tqftpserv are still needed.",
+        "instance": "CONFIG_QRTR=y and CONFIG_QCOM_PD_MAPPER=y in device/kernel/config.aarch64. rmtfs, tqftpserv and pro1x-hexagonrpcd run as Shepherd services (seen running on the 2026-10-27 flash, per TODO.md).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "device/kernel/config.aarch64 lines 1645 and 9530 at 018fa97, read in source; sailfish-rag Mainline/firmware_remoteproc.json"
+      },
+      {
+        "title": "Enable zstd firmware decompression when the firmware package ships .zst files",
+        "general": "If the distribution compresses firmware files, the kernel firmware loader needs the matching option (CONFIG_FW_LOADER_COMPRESS_ZSTD or _XZ), or every request_firmware fails as 'file not found' although the file is there.",
+        "instance": "Enabled in device/kernel/config.aarch64 for the Guix build. The reason (linux-firmware from nonguix shipping .zst files) is not written in the commit.",
+        "confidence": "inferred",
+        "date": "2026-10-25",
+        "source": "commits a60b1f2, d58b891; confirm with: ls $(guix build linux-firmware)/lib/firmware/qcom | head"
+      }
+    ],
+    "modem": [
+      {
+        "title": "ModemManager needs udev tags on rmnet_ipa0 to pair the IPA data port with the QRTR control port",
+        "general": "With ModemManager's qcom-soc plugin, the IPA network interface must carry ID_MM_CANDIDATE=1 and ID_MM_PHYSDEV_UID=qcom-soc, or MM never associates it with the modem found over QRTR and mobile data cannot come up. The IPA driver can register the interface before the rule is loaded, so re-trigger udev (udevadm trigger, settle) before starting MM.",
+        "instance": "Rule in device/udev/60-pro1x.rules; modem.scm runs udevadm trigger and settle before exec'ing ModemManager. Not yet verified with a working data session.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 2f30ae4"
+      },
+      {
+        "title": "Build ModemManager for QMI over QRTR only: MBIM is not needed on SoC modems",
+        "general": "Qualcomm SoC modems are reached over QRTR with QMI, not MBIM. If the distribution's libmbim is too old for a newer ModemManager, disable MBIM support rather than packaging a new libmbim.",
+        "instance": "modem-manager 1.24 built without MBIM (needs libmbim >= 1.32) and with the qcom-soc plugin forced on.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 3c94f45"
+      }
+    ],
+    "usb_network": [
+      {
+        "title": "Keep the phone's DHCP server from handing the host a default route",
+        "general": "When the phone serves DHCP on the USB gadget interface, it must not advertise a router (DHCP option 3), or the host replaces its own default route with the phone and loses its network.",
+        "instance": "dnsmasq in usb-network.scm started with --dhcp-option=3 (empty), phone at 172.16.42.1.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 4bffec9"
+      }
+    ],
+    "storage_and_fde": [
+      {
+        "title": "cryptsetup cannot open LUKS2 at an offset; use a loop device with losetup -o",
+        "general": "cryptsetup's --offset applies to plain and loop-AES mappings, not LUKS2. To place a LUKS2 container after an unencrypted region on the same partition, expose the region with losetup -o <bytes> and open LUKS2 on the loop device. The kernel needs CONFIG_BLK_DEV_LOOP=y if this happens in the initrd.",
+        "instance": "userdata keeps a 256 MiB plain area (boot files for U-Boot) followed by LUKS2. fxtec-pro1x/services/fde.scm. FDE as a whole is untested on the device.",
+        "confidence": "handover",
+        "date": "2026-10-24",
+        "source": "commit 7e93326"
+      },
+      {
+        "title": "Grow the root filesystem to the partition on first boot by comparing sizes, not with a flag alone",
+        "general": "A rootfs image smaller than userdata needs resize2fs on the device. Comparing the partition size with the filesystem size (as Droidian does) is idempotent and survives reflashes; a flag file alone can skip a needed resize.",
+        "instance": "pro1x-rootfs-resize-service-type in fxtec-pro1x/services/boot.scm; seen to run on the 2026-10-27 flash.",
+        "confidence": "handover",
+        "date": "2026-10-26",
+        "source": "commits 771c6c8, ad78e29, 09e328d; TODO.md 'Working'"
+      }
+    ],
+    "wifi": [
+      {
+        "title": "Wi-Fi (ath10k_snoc) works once tqftpserv serves the firmware over QRTR",
+        "general": "On SM6115 the WCN3990 Wi-Fi firmware is loaded by the modem DSP through tqftpserv, so Wi-Fi depends on the modem remoteproc and tqftpserv finding the firmware files.",
+        "instance": "ath10k_snoc driver, NetworkManager connected with IPv4 and IPv6 on home Wi-Fi, after the tqftpserv firmware path fix (see guix.json).",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working', commit 972413f"
+      }
+    ]
+  }
+}

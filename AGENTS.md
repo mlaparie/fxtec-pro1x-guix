@@ -28,7 +28,7 @@ assume NixOS and systemd and have to be translated, not copied.
 | How the agent reaches the device | `ssh user@172.16.42.1` over USB gadget Ethernet, then `sudo` |
 | Fallback on the device | previous Guix system generations, in the U-Boot extlinux menu (hold volume-down at power-on; needs the author's hands) |
 | Build host | x86_64 with QEMU binfmt for aarch64 (`--system=aarch64-linux`); GitHub Actions builds natively on aarch64 |
-| Where findings are written | `notes/` in this repository |
+| Where findings are written | `rag-notes/` in this repository (format in `rag-notes/README.md`) |
 | Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed |
 | Standing permissions | see below |
 
@@ -147,14 +147,16 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
    "does X", a previous session's summary: verify before building on it, and say where a claim
    came from when you repeat it. Code carried over from NixOS is an inherited claim too
    (commands like `switch-to-system` do not exist on Guix).
-7. **Label confidence**: confirmed (observed on the device or read in source), inferred,
-   reported (someone else said it, named). Never present an inference as a measurement.
+7. **Label confidence**: confirmed (observed on the device or read in source), handover
+   (from a commit message, TODO.md or another session, not re-checked), reported (someone
+   else said it, named), inferred. Full list in `rag-notes/README.md`. Never present an
+   inference as a measurement.
 8. **One change at a time on the device**, each reversible (a generation), each written down.
 
 ## 5. Writing it down
 
 - `TODO.md` is the **state file**: what works, what is installed on the device, what is
-  pending, with the commit the last image was built from. `notes/` is the **findings corpus**.
+  pending, with the commit the last image was built from. `rag-notes/` is the **findings corpus**.
   Append to both as you go, not at the end.
 - One finding = `title`, `general` (the lesson for any mainline port), `instance` (this device,
   kernel, Guix commit, numbers), `confidence`, `date`, `source` (commit, file, log).

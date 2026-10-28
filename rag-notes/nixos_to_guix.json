@@ -1,0 +1,117 @@
+{
+  "nixos_to_guix": {
+    "note": "Each module of the NixOS port (nyymi609/fxtec-pro1x-nixos, read at commit 579356e) and the Guix code that translates it. Status is from TODO.md (last flash 2026-10-27) and the source at 018fa97. General lessons about the translation go in 'general'; the module-specific differences in 'instance'.",
+    "modules": [
+      {
+        "title": "hardware.nix -> hardware.scm and operating-system fields",
+        "nixos": "modules/hardware.nix",
+        "guix": "fxtec-pro1x/services/hardware.scm, systems/*.scm (kernel, initrd-modules, bootloader, file-systems), device/udev/60-pro1x.rules",
+        "status": "working",
+        "general": "A NixOS hardware module mixes things Guix splits: the kernel, initrd and bootloader are fields of operating-system, udev rules and firmware go through service extensions. Translate each NixOS option to the place Guix expects it, not to one service.",
+        "instance": "Boots, all expected kernel modules load, display and keyboard work (2026-10-27 flash).",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working'; fxtec-pro1x/services/hardware.scm header"
+      },
+      {
+        "title": "boot-menu.nix and boot-success.nix -> boot.scm",
+        "nixos": "modules/boot-menu.nix, modules/boot-success.nix",
+        "guix": "fxtec-pro1x/services/boot.scm (pro1x-boot-menu, pro1x-boot-success, pro1x-rootfs-resize)",
+        "status": "working",
+        "general": "systemd oneshot units become Shepherd services with #:one-shot? #t. 'After=local-fs.target systemd-udev-settle.service' has no direct equivalent: require file-systems and udev and wait explicitly if needed.",
+        "instance": "A/B slot success marking (qbootctl) and the per-generation menu split work. The rootfs resize service is Guix-only (the NixOS image sizes itself differently).",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working'; boot.scm header"
+      },
+      {
+        "title": "usb-network.nix -> usb-network.scm",
+        "nixos": "modules/usb-network.nix",
+        "guix": "fxtec-pro1x/services/usb-network.scm",
+        "status": "working",
+        "general": "Use full store paths for tools called from service code (iproute2, dnsmasq): a Shepherd service does not get the system profile's PATH.",
+        "instance": "usb0 at 172.16.42.1, ssh works. Guix version adds an empty DHCP router option so the host keeps its default route.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working'; commits 4ebf8af, 4bffec9"
+      },
+      {
+        "title": "keyboard.nix -> keyboard.scm",
+        "nixos": "modules/keyboard.nix (keyd), hosts/phosh (dconf input-sources)",
+        "guix": "fxtec-pro1x/services/keyboard.scm",
+        "status": "partial",
+        "general": "NixOS's programs.dconf.profiles has no Guix service: write /etc/dconf/profile/user and /etc/dconf/db/local.d/* through etc-service-type and run 'dconf update' at activation.",
+        "instance": "keyd Fn layer works. Layout default changed to us+intl and persisted via a dconf system database (commit ac2eaa1); persistence across reboots not yet verified on the device. Keyboard backlight broken.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commits ac2eaa1, d9f3e99; README port status"
+      },
+      {
+        "title": "modem.nix -> modem.scm",
+        "nixos": "modules/modem.nix",
+        "guix": "fxtec-pro1x/services/modem.scm, packages modem-manager 1.24 and libqmi 1.36 in the channel",
+        "status": "partial",
+        "general": "networking.modemmanager.enable in NixOS installs D-Bus policy, udev rules and polkit rules implicitly. On Guix each must be wired: dbus-root-service-type, udev-service-type, polkit-service-type extensions.",
+        "instance": "rmtfs and tqftpserv run. tqftpserv is patched (in both ports) to read firmware from /run/current-system/firmware, which Guix does not create: modem.scm creates the symlink from the firmware_class.path sysfs parameter at start. ModemManager exited at boot until the D-Bus extension was added; registration, SMS, calls and data untested.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commits 972413f, 625bfec, 2f30ae4; TODO.md sections 4 and 6"
+      },
+      {
+        "title": "audio.nix -> audio.scm",
+        "nixos": "modules/audio.nix",
+        "guix": "fxtec-pro1x/services/audio.scm, device/audio/",
+        "status": "partial",
+        "general": "services.pipewire.enable in NixOS starts pipewire, pipewire-pulse and wireplumber as systemd user services and enables rtkit. Guix has no system-level PipeWire service equivalent of that: start them per user (home services or the session script), and add rtkit with the audio group realtime rule.",
+        "instance": "ALSA card Pro1X (sm4250) present, UCM2 paths and the WirePlumber Pro1X config installed, pro1x-audio-init runs. Missing: the PipeWire, pipewire-pulse and WirePlumber daemons, and rtkit. Audio silent.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md section 2"
+      },
+      {
+        "title": "sensors.nix -> sensors.scm",
+        "nixos": "modules/sensors.nix",
+        "guix": "fxtec-pro1x/services/sensors.scm",
+        "status": "partial",
+        "general": "NixOS ExecStartPre waits (for /dev/fastrpc-adsp, for QRTR service 400) must become explicit wait loops in the Shepherd start code; Shepherd has no ExecStartPre.",
+        "instance": "pro1x-hexagonrpcd runs. The ACCEL_MOUNT_MATRIX udev rule exists in sensors.scm (line 125), so TODO.md section 5 is partly stale on that point. No wait for QRTR service 400 found before iio-sensor-proxy starts (grep for qrtr-lookup: no match). Auto-rotate not working.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "fxtec-pro1x/services/sensors.scm at 018fa97, read in source; TODO.md section 5"
+      },
+      {
+        "title": "camera.nix -> camera.scm",
+        "nixos": "modules/camera.nix",
+        "guix": "fxtec-pro1x/services/camera.scm",
+        "status": "untested",
+        "general": "NixOS sets environment on a specific systemd user service (systemd.user.services.<name>.environment). Guix has no user-service environment of that kind on a system without systemd; set the variable where the process is actually started, and verify it in /proc/<pid>/environ.",
+        "instance": "NixOS gives wireplumber LD_LIBRARY_PATH=pro1x-libcamera/lib. Guix writes it to /etc/environment.d, which is probably not read (see guix.json, environment.d entry). Camera kernel modules load.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "fxtec-pro1x-nixos modules/camera.nix line 12; fxtec-pro1x/services/camera.scm lines 37-45"
+      },
+      {
+        "title": "encryption.nix -> fde.scm and mobile-encrypted.scm",
+        "nixos": "modules/encryption.nix",
+        "guix": "fxtec-pro1x/services/fde.scm, systems/mobile-encrypted.scm, scripts/flash-encrypted.sh, device/fde/",
+        "status": "untested",
+        "general": "The NixOS module runs in a systemd initrd. Guix's initrd is a Guile program: the unlock steps become a mapped-device with a custom open/close procedure, and every tool used must be in the initrd closure.",
+        "instance": "LUKS2 after a 256 MiB plain area, opened through a losetup offset loop device (see hardware.json). Never booted on the device.",
+        "confidence": "handover",
+        "date": "2026-10-24",
+        "source": "commits 1c66c2f, 7e93326; README port status"
+      },
+      {
+        "title": "hosts/phosh -> systems/mobile.scm",
+        "nixos": "hosts/phosh/default.nix (services.xserver.desktopManager.phosh)",
+        "guix": "systems/mobile.scm, fxtec-pro1x/packages/misc.scm (phosh-pro1x, phoc-pro1x), fxtec-pro1x/packages/sxmo.scm",
+        "status": "partial",
+        "general": "NixOS's phosh desktop manager option hides seat management, the session bus, schema compilation and the greeter. On Guix each one was a separate fix: seatd, dbus-run-session, schemas in the system profile, greetd.",
+        "instance": "Sway (Sxmo) session confirmed working through greetd + tuigreet. Phosh 0.56 packaged; the startup fixes (session bus, schemas, wlroots home-bar size) are in the source but Phosh starting is not confirmed on the device. GPU and touch untested.",
+        "confidence": "handover",
+        "date": "2026-10-28",
+        "source": "commits 1226034, 1b5d016, b62a382, 9ff38c8; README"
+      }
+    ]
+  }
+}
