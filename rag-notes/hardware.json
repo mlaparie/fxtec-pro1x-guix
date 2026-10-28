@@ -108,6 +108,16 @@
         "date": "2026-10-27",
         "source": "TODO.md 'Working', commit 972413f"
       }
+    ],
+    "display": [
+      {
+        "title": "Ghost touches came from the panel running at 61 Hz: set the DSI pixel clock for exactly 60 Hz",
+        "general": "A touch controller can pick up the display scan as touches when the panel refresh rate is off from what the stock firmware uses. Phantom touch events that appear only while the panel is on point at the display mode (pixel clock, porches), not at the touch driver. Compute the refresh rate as clock / (htotal * vtotal) and match the stock fps.",
+        "instance": "BOE BF060Y8M-AJ0 panel (drivers/gpu/drm/panel/panel-boe-bf060y8m-aj0.c), 1236 x 2192 total. Mainline .clock = 165268 kHz gives 61.00 Hz and about 5000 phantom touch events per 10 s with the panel on; 162559 kHz gives 60.00 Hz and none. The fix is in device/kernel/patches/pro1x-dsi.patch, applied by fxtec-pro1x/packages/kernel.scm since the first commit 5ad022d. Arithmetic checked; not yet observed on this port with getevent/libinput.",
+        "confidence": "reported",
+        "date": "2026-10-28",
+        "source": "nyymi (NixOS port author), message relayed by the author on 2026-10-28; device/kernel/patches/pro1x-dsi.patch lines 9-15"
+      }
     ]
   }
 }

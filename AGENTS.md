@@ -228,6 +228,12 @@ SoCs. Mostly from moWerk's SailfishOS port; the ones not yet seen here are marke
   codec back ends (`device/audio/pro1x-voice-call`, `voicepcm.c`). Expect this to be the
   hardest part of the port.
 
+*Display and touch*
+- Ghost touches (about 5000 events/10 s while the panel is on) came from the panel running
+  at 61 Hz: mainline's 165268 kHz pixel clock. 162559 kHz gives 60 Hz and fixes it
+  (`pro1x-dsi.patch`, applied here). If phantom touches return, check the display mode
+  before the touch driver. (reported, nyymi)
+
 *Sensors*
 - Sensors behind the ADSP (SSC) need `hexagonrpcd` serving the sensor registry and configs,
   then `libssc` (`ssccli --sensor accelerometer` is the first test). The mount matrix from

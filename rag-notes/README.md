@@ -13,7 +13,7 @@ so entries can be compared, and sent there as an issue if they correct it.
 
 | file | holds |
 |---|---|
-| `hardware.json` | what holds on this phone under any OS: boot chain, kernel, firmware, modem, FDE, USB networking. Only what this port measured or had to solve; everything else is in sailfish-rag `Mainline/` |
+| `hardware.json` | what holds on this phone under any OS: boot chain, kernel, display and touch, firmware, modem, FDE, USB networking. Only what this port measured or had to solve; everything else is in sailfish-rag `Mainline/` |
 | `guix.json` | what is specific to Guix: Shepherd services, packaging, the build sandbox, CI, deployment, licensing |
 | `nixos_to_guix.json` | each module of the NixOS port, the Guix code that translates it, its state, and what changed or got lost in the translation |
 
