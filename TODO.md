@@ -28,7 +28,8 @@ verified on the device.  Order:
    build, go through every section here, update or close it.  Needs the
    author once (flash).
 2. **Deploy without reflashing (§10), then bootcount fallback (§11).**
-   `scripts/deploy.sh` (guix deploy) written; test it on the device.
+   `scripts/deploy.sh` (guix deploy) works (2026-10-28, generation 3);
+   reboot into a deployed generation not tested yet.
    Then each later step is one generation the agent can deploy and roll
    back alone.
 3. **Phosh session + keyboard layout (§1, §3).** Phosh starting from greetd,
@@ -285,18 +286,28 @@ failed earlier, on webkitgtk.
 
 ---
 
-## 10. Deploy without reflashing  [MEDIUM — written, not tested]
+## 10. Deploy without reflashing  [MEDIUM — works, reboot into a deployed generation not tested]
 
 `scripts/update.sh` (NixOS commands, broken) and the NixOS `scripts/deploy.sh`
 are replaced by `scripts/deploy.sh` → `guix deploy -L . deploy/pro1x.scm`:
 build on the host, copy as root over SSH, new boot generation.  Root SSH by
 key (`keys/pro1x-guix.pub`, `permit-root-login 'prohibit-password`) is in
-all three `systems/*.scm`; it reaches the phone only with the next flashed
-image (the build running on 2026-10-28 predates it).
+all three `systems/*.scm`, and on the phone since the 2026-10-28 reflash.
 
-To check on first use:
-- the deploy copies only what changed (same host guix as `flash.sh`);
-- `/boot/extlinux/extlinux.conf` gets the new entry, older entries stay;
+First use 2026-10-28 (image flashed by the author; generation 1 built
+2026-10-28 21:27, source commit not recorded):
+- deploy 1 made generation 2 current but stopped before the bootloader:
+  activation rewrote /etc/guix/acl without the host key.  Fixed in
+  763f71a; deploy 2 (generation 3, the tree of 66f1456) succeeded and
+  extlinux.conf lists generations 3, 2, 1;
+- activation errors at every boot and deploy (NM mkdir EROFS, dconf
+  update EROFS) fixed in 35703cb and 66f1456.  A deployed phone keeps
+  the stale /etc/NetworkManager link: `rm /etc/NetworkManager` then
+  reactivate (done on this phone);
+
+Still to check:
+- reboot into generation 3 (kernel unchanged, so expected to work);
+- whether the deploy copies only what changed (not measured);
 - `prev*.conf` (boot-menu split, rewritten only at boot) still point at
   bootable generations between deploy and reboot;
 - what `want=n+2` in `services/boot.scm` skips in extlinux.conf;

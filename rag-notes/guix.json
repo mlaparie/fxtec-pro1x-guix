@@ -59,12 +59,12 @@
         "source": "commit d9c848c; TODO.md section 7"
       },
       {
-        "title": "Store NetworkManager connections under /var/lib",
-        "general": "On Guix System /etc is generated from the system configuration and is not a place for runtime state. NetworkManager's keyfile directory has to point to /var/lib/NetworkManager/system-connections or saved networks do not persist.",
-        "instance": "Configured in systems/mobile.scm.",
-        "confidence": "handover",
-        "date": "2026-10-26",
-        "source": "commit 491cd95; TODO.md 'Resolved'"
+        "title": "An etc-service entry under a directory makes the whole directory a read-only store link",
+        "general": "On Guix System, each top-level /etc entry produced by etc-service-type is a symlink into the store. Adding \"NetworkManager/conf.d/x.conf\" or \"dconf/db/local.d/x\" makes /etc/NetworkManager or /etc/dconf read-only, so daemons and activation snippets that write there fail (NetworkManager system-connections, dconf update). Use the service field made for it (network-manager-configuration extra-configuration-files), or build the file at build time (dconf compile in a computed-file), instead of writing beside a store link.",
+        "instance": "Earlier note (2026-10-26, handover from 491cd95) said /etc is read-only on Guix and moved NM connections to /var/lib; wrong cause: /etc is writable, the nm-unmanaged-usb0 etc entry made /etc/NetworkManager a store link. Activation logged mkdir EROFS for /etc/NetworkManager/system-connections and \"Failed to create file /etc/dconf/db/local.BTAPAA: Read-only file system\" from pro1x-keyboard (dconf update), at boot and on deploy, so the dconf system db never existed. Fixed: conf.d files via extra-configuration-files (the /var/lib keyfile path kept so saved networks stay), dconf db compiled at build time.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "generation 2 activate run by hand on the phone; ls -la /etc/NetworkManager /etc/dconf; gnu/services/networking.scm network-manager-activation (Guix fa73e81)"
       },
       {
         "title": "phoc started outside a desktop session needs its own session bus",
@@ -211,10 +211,26 @@
       {
         "title": "scripts/update.sh uses NixOS commands that do not exist on Guix",
         "general": "Deployment scripts carried over from a NixOS port need a rewrite, not a translation of names: switch-to-system is NixOS's activation script, and 'guix system reconfigure' takes a configuration file, not a system directory. guix deploy, or reconfigure run on the device, are the Guix ways.",
-        "instance": "scripts/update.sh runs 'guix system reconfigure /run/current-system --no-bootloader' then '/run/current-system/bin/switch-to-system' on the phone. --no-bootloader would also keep new generations out of the boot menu. Not run; TODO.md section 10. Replaced on 2026-10-28 by scripts/deploy.sh running guix deploy with deploy/pro1x.scm (root SSH by key); not yet tested on the device.",
+        "instance": "scripts/update.sh runs 'guix system reconfigure /run/current-system --no-bootloader' then '/run/current-system/bin/switch-to-system' on the phone. --no-bootloader would also keep new generations out of the boot menu. Not run; TODO.md section 10. Replaced on 2026-10-28 by scripts/deploy.sh running guix deploy with deploy/pro1x.scm (root SSH by key); first deploy 2026-10-28 (generation 3, after the ACL fix).",
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "scripts/update.sh lines 30-32 at 018fa97, read in source"
+      },
+      {
+        "title": "guix deploy needs the build host key in the deployed system authorized-keys",
+        "general": "guix deploy (authorize? #t) adds the host signing key to the target /etc/guix/acl before copying, but activating the new system rewrites the ACL from guix-configuration authorized-keys. The next copy (bootloader installation) is then refused with \"unauthorized public key\": the new generation is current but not in the boot menu. Add /etc/guix/signing-key.pub of the host to authorized-keys of the deployed operating-system.",
+        "instance": "First deploy 2026-10-28: generation 2 made current, then failed; /etc/guix/acl held only the two substitute keys and extlinux.conf still listed generation 1 only. deploy/pro1x.scm now wraps the system with with-host-signing-key.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "deploy log (window local-pc); cat /etc/guix/acl on the phone"
+      },
+      {
+        "title": "Running a system activate script by hand activates the booted system unless GUIX_NEW_SYSTEM is set",
+        "general": "activate-current-system takes the system from GUIX_NEW_SYSTEM, else from gnu.system= on the kernel command line. Running <system>/activate by hand without the variable points /run/current-system back at the booted generation.",
+        "instance": "Ran generation 2 activate on the phone booted into generation 1; /run/current-system went to generation 1 (pizz8…). Restored with GUIX_NEW_SYSTEM=<gen2> <gen2>/activate.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "readlink /run/current-system on the phone before and after"
       }
     ],
     "licensing": [
