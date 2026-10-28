@@ -164,6 +164,36 @@ images never have one).  Then, with the phone on USB:
 bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
 ```
 
+## Updates in the long run (plan, not in place yet)
+
+How a phone running this port is meant to stay up to date once the port is
+stable.  Today only `scripts/deploy.sh` exists.
+
+- **Three channels.**  The phone's `~/.config/guix/channels.scm` lists `guix`,
+  `nonguix` and `fxtec-pro1x` (this public repository).  Updating is plain
+  Guix: `guix pull`, then `sudo guix system reconfigure config.scm` with a
+  config file you own, based on `systems/mobile.scm`, and `guix package -u`
+  for user packages.
+- **Substitutes for this channel.**  Guix's servers build Guix proper for
+  aarch64; nobody builds this channel's packages (kernel, U-Boot, phosh/phoc,
+  ModemManager, libqmi, hexagonrpcd…).  Without a substitute server for them,
+  every reconfigure compiles them on the phone, the kernel alone for hours.
+  The plan: CI builds the channel and publishes the results (`guix publish`
+  or a static cache), and phones add that server and its key.
+- **Releases with pinned channels.**  Following the newest commits of Guix
+  and nonguix will sometimes break this channel.  A release is a tag here
+  plus a channels file pinning the Guix and nonguix commits it was built and
+  tested with; CI publishes substitutes for exactly that set, and phones
+  update with `guix pull -C <that file>`.  Following the newest commits
+  stays possible, at the cost of local builds and breakage.
+- **Developer path.**  `scripts/deploy.sh` keeps working alongside: the PC
+  builds and pushes a generation to the phone directly.
+- **Maintenance.**  The repository owner cuts releases (pin bump, green CI,
+  on-device checks); coding agents do the work when asked (see `AGENTS.md`).
+- **Shrinking the channel.**  As free parts go upstream (package updates
+  to Guix, kernel patches to mainline), this channel narrows to what is
+  device-specific: kernel build, firmware, U-Boot, and the Pro1X services.
+
 ## Full-disk encryption (LUKS2)
 
 `systems/mobile-encrypted.scm` adds LUKS2 to the same config as `mobile.scm`.

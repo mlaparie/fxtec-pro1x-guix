@@ -45,7 +45,11 @@ verified on the device.  Order:
 9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
    LED (feedbackd), GPS, camera userspace, backlight.  Compare each with
    the NixOS port before planning.
-10. **Upstreaming candidates** (author's review first): libqmi 1.36,
+10. **Updates for users** (README, "Updates in the long run"): a
+    substitute server for this channel's aarch64 builds, fed by CI, and
+    releases that pin Guix and nonguix commits.  After the port is usable
+    day to day; the CI build cache (bc8c7cf) is a first step.
+11. **Upstreaming candidates** (author's review first): libqmi 1.36,
     ModemManager 1.24, phosh 0.56, feedbackd, callaudiod to Guix;
     firmware-dependent parts stay here or go to nonguix.
 
