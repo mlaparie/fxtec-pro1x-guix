@@ -30,7 +30,11 @@
   ;; Must equal the value compiled into U-Boot (make-u-boot-pro1x).
   (generations pro1x-boot-menu-generations (default 3)))
 
-;;; The split script: mirrors modules/boot-menu.nix's `split`.
+;;; The split script: mirrors modules/boot-menu.nix's `split`, with one
+;;; difference.  NixOS's extlinux.conf starts with a "Default" entry, so its
+;;; previous generation N is entry N+2.  Guix's has no such entry: the
+;;; current system is entry 1, then older generations newest first
+;;; (gnu/bootloader/extlinux.scm), so previous generation N is entry N+1.
 (define (pro1x-boot-menu-split-script config)
   (let ((n (pro1x-boot-menu-generations config)))
     (computed-file "pro1x-boot-menu-split"
@@ -42,8 +46,12 @@
             (display "[ -f \"$src\" ] || exit 0\n" port)
             (display (string-append "for n in $(seq 1 " #$(number->string n) "); do\n") port)
             (display (string-append
-                      "  " #$gawk "/bin/awk -v want=$((n + 2)) '\n"
-                      "    /^[[:space:]]*LABEL[[:space:]]/ { entry++; if (entry == want) label = $2 }\n"
+                      "  " #$gawk "/bin/awk -v want=$((n + 1)) '\n"
+                      "    /^[[:space:]]*LABEL[[:space:]]/ {\n"
+                      "      entry++\n"
+                      "      # Guix labels contain spaces: keep the rest of the line.\n"
+                      "      if (entry == want) { label = $0; sub(/^[[:space:]]*LABEL[[:space:]]+/, \"\", label) }\n"
+                      "    }\n"
                       "    entry == want { body = body $0 \"\\n\" }\n"
                       "    END {\n"
                       "      if (body == \"\") exit 1\n"
