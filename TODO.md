@@ -321,6 +321,17 @@ First use 2026-10-28 (image flashed by the author; generation 1 built
   in 3b1c86d (flags no-atime).  Generations 2-5 stay unbootable in the
   menu until the author decides to delete them.
 
+- 2026-10-29: the author deleted generations 2-5 on the phone with
+  `guix system delete-generations 2..5`; the links went, but the
+  bootloader reinstall failed: the phone's guix looked up the bootloader
+  by its name "extlinux", got Guix's own, and tried to build syslinux
+  for aarch64 (fails), not our stub.  Same for roll-back and
+  switch-generation on the phone.  Fix: give the channel's bootloader its
+  own name and make it findable by lookup-bootloader-by-name (it scans
+  gnu/bootloader/*.scm on the load path).  Until then the menu is
+  rewritten by a deploy from the PC (done: generation 7 = 6, menu 7, 6,
+  1; prev1 = 6, prev2 = 1 after `herd start pro1x-boot-menu`).
+
 Still to check:
 - reboot into a deployed generation with 3b1c86d;
 - the boot menu should always keep one generation known to boot (the
