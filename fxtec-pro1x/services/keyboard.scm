@@ -35,11 +35,28 @@
      `("dconf/profile/user"
        ,(plain-file "dconf-profile-user"
                     "user-db:user\nsystem-db:local\n"))
-     `("dconf/db/local.d/00-keyboard"
-       ,(plain-file "dconf-keyboard"
-                    (string-append
-                     "[org/gnome/desktop/input-sources]\n"
-                     "sources=[('xkb', '" xkb-source "')]\n"))))))
+     ;; Compiled here: /etc/dconf is a read-only store link, so
+     ;; `dconf update' at activation cannot write /etc/dconf/db/local.
+     `("dconf/db/local"
+       ,(pro1x-dconf-db
+         "dconf-db-local"
+         (plain-file "00-keyboard"
+                     (string-append
+                      "[org/gnome/desktop/input-sources]\n"
+                      "sources=[('xkb', '" xkb-source "')]\n")))))))
+
+;;; Compile the dconf keyfile KEYFILE into a GVariant database, like
+;;; dconf-profile->db in (gnu services xorg).
+(define (pro1x-dconf-db name keyfile)
+  (computed-file
+   name
+   (with-imported-modules '((guix build utils))
+     #~(begin
+         (use-modules (guix build utils))
+         (mkdir "keyfiles")
+         (symlink #$keyfile "keyfiles/00-keyfile")
+         (invoke #$(file-append dconf "/bin/dconf") "compile"
+                 #$output "keyfiles")))))
 
 ;;; Shepherd service for keyd daemon
 (define (pro1x-keyboard-shepherd-services config)
@@ -55,10 +72,6 @@
     (stop #~(make-kill-destructor))
     (respawn? #t))))
 
-(define (pro1x-keyboard-activation config)
-  #~(begin
-      (system* #$(file-append dconf "/bin/dconf") "update")))
-
 (define (pro1x-keyboard-packages config)
   (list keyd dconf))
 
@@ -69,7 +82,6 @@
     (list
      (service-extension etc-service-type          pro1x-keyboard-etc)
      (service-extension shepherd-root-service-type pro1x-keyboard-shepherd-services)
-     (service-extension activation-service-type    pro1x-keyboard-activation)
      (service-extension profile-service-type       pro1x-keyboard-packages)))
    (default-value (pro1x-keyboard-configuration))
    (description "Hardware keyboard support for the F(x)tec Pro1X: keyd Fn-layer
