@@ -21,7 +21,11 @@
 ;;; Provenance: guix deploy records the deploying guix's channels (all of
 ;;; the host's, from `guix describe') in the new generation.  Here it records
 ;;; only guix and nonguix from the host, plus fxtec-pro1x at this tree's git
-;;; HEAD (uncommitted changes are not visible in it).
+;;; HEAD (uncommitted changes are not visible in it).  allow-downgrades?
+;;; skips guix deploy's check that each channel commit descends from the
+;;; one recorded on the phone: that check fetches the channel URL, where
+;;; an unpushed HEAD does not exist, and deploying an older tree is
+;;; deliberate here.
 ;;;
 ;;; Environment:
 ;;;   PRO1X_SYSTEM  system file to deploy (default systems/mobile.scm)
@@ -93,5 +97,6 @@ this tree's HEAD."
     (host-name (or (getenv "PRO1X_HOST") "172.16.42.1"))
     (system "aarch64-linux")
     (user "root")
+    (allow-downgrades? #t)
     (identity (or (getenv "PRO1X_IDENTITY")
                   (string-append (getenv "HOME") "/.ssh/pro1x-guix")))))))
