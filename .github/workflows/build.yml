@@ -41,7 +41,7 @@ jobs:
 
       # ── Host tools needed for image extraction ────────────────────────────
       - name: Install host tools
-        run: sudo apt-get install -y --no-install-recommends util-linux e2fsprogs
+        run: sudo apt-get install -y --no-install-recommends util-linux e2fsprogs zstd
 
       # ── Install Guix ──────────────────────────────────────────────────────
       - name: Install Guix
@@ -103,19 +103,25 @@ jobs:
           sudo mkdir -p /var/guix/profiles/per-user/runner
           sudo chown runner:runner /var/guix/profiles/per-user/runner
 
-      # ── Cache Guix store + time-machine cache ─────────────────────────────
+      # ── Guix build cache ──────────────────────────────────────────────────
+      # What this job builds itself (kernel, u-boot, packages without
+      # substitutes) is exported as a signed Guix archive at the end, even on
+      # failure, and imported here on the next run: see .github/guix-cache.sh.
+      # A raw /gnu/store cache does not work, since a fresh install has an
+      # empty Guix database.  Per-run keys; restore takes the newest entry.
+      #
       # To update channel pins in channels-ci.scm:
       #   git ls-remote https://codeberg.org/guix/guix refs/heads/master
       #   git ls-remote https://gitlab.com/nonguix/nonguix refs/heads/master
-      - name: Cache Guix store
-        uses: actions/cache@v4
+      - name: Restore Guix build cache
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            /gnu/store
-            ~/.cache/guix
-          key: guix-${{ hashFiles('channels-ci.scm') }}
-          restore-keys: guix-
-          save-always: true
+          path: /var/tmp/guix-cache
+          key: guix-built-${{ github.run_id }}
+          restore-keys: guix-built-
+
+      - name: Import Guix build cache
+        run: bash .github/guix-cache.sh import /var/tmp/guix-cache
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
@@ -224,6 +230,18 @@ jobs:
           resize2fs -M rootfs.img
           echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
           echo "==> disk space after extraction:"; df -h /
+
+      # ── Save Guix build cache (also after a failed build) ─────────────────
+      - name: Export Guix build cache
+        if: always()
+        run: bash .github/guix-cache.sh export /var/tmp/guix-cache
+
+      - name: Save Guix build cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /var/tmp/guix-cache
+          key: guix-built-${{ github.run_id }}
 
       # ── Upload artifacts ──────────────────────────────────────────────────
       - name: Upload u-boot
