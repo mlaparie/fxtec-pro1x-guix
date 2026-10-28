@@ -232,13 +232,15 @@ unconditional clock step.  Will take effect after next flash.
 
 ## 8. CI artifact size  [LOW — check after next successful build]
 
-GitHub Actions has a 2 GB per-file artifact limit.  The rootfs image may be
-close to or over that with IceCat + calls + chatty added.  The CI log prints
-`rootfs: N MiB` at the end of the image build step.
+The "2 GB per-file artifact limit" noted here earlier is the limit for
+**Release** assets (2 GiB per file); no per-file limit was found for Actions
+artifacts (`upload-artifact@v4`), only retention (≤ 90 days) and storage
+quota (2026-10-28, third-party sources, not GitHub's docs).
 
-**If over ~1800 MiB**: add a `gzip -1 rootfs.img` step before the upload-artifact
-step in `.github/workflows/build.yml`, and rename the artifact path to
-`rootfs.img.gz`.  ext4 images compress well (~50 % reduction typical).
+CI now runs `resize2fs -M` on `rootfs.img` before upload (the phone grows it
+back on first boot); it prints the size before and after.  Next, if needed:
+`zstd` the image, upload with `compression-level: 0`, and teach `flash.sh`
+to read `.zst`.  For Release assets, split under 2 GiB.
 
 ---
 

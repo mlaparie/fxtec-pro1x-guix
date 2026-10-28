@@ -194,6 +194,11 @@ jobs:
           LABEL=$(e2label rootfs.img 2>/dev/null || true)
           [ "$LABEL" = "guix" ] || e2label rootfs.img guix
           echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
+          # Shrink to the minimum: the phone grows it back on first boot
+          # (pro1x-rootfs-resize-service-type).
+          e2fsck -fy rootfs.img || [ $? -le 1 ]
+          resize2fs -M rootfs.img
+          echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
           echo "==> disk space after extraction:"; df -h /
 
       # ── Upload artifacts ──────────────────────────────────────────────────
