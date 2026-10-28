@@ -21,11 +21,11 @@
 ;;; Provenance: guix deploy records the deploying guix's channels (all of
 ;;; the host's, from `guix describe') in the new generation.  Here it records
 ;;; only guix and nonguix from the host, plus fxtec-pro1x at this tree's git
-;;; HEAD (uncommitted changes are not visible in it).  allow-downgrades?
-;;; skips guix deploy's check that each channel commit descends from the
-;;; one recorded on the phone: that check fetches the channel URL, where
-;;; an unpushed HEAD does not exist, and deploying an older tree is
-;;; deliberate here.
+;;; HEAD when HEAD is on origin/main (uncommitted changes are not visible in
+;;; it).  An unpushed HEAD is left out: guix deploy checks each recorded
+;;; channel against the phone's by fetching its URL, where that commit does
+;;; not exist ("object not found").  allow-downgrades? turns a deploy of an
+;;; older tree into a warning instead of an error.
 ;;;
 ;;; Environment:
 ;;;   PRO1X_SYSTEM  system file to deploy (default systems/mobile.scm)
@@ -57,14 +57,23 @@
     (close-pipe port)
     commit))
 
+(define (head-pushed?)
+  (zero? (status:exit-val
+          (system* "git" "merge-base" "--is-ancestor" "HEAD" "origin/main"))))
+
 (define (deployed-channels channels)
   "Return guix and nonguix from CHANNELS, the host's, and fxtec-pro1x at
-this tree's HEAD."
+this tree's HEAD if it is pushed."
   (append (filter (lambda (c) (memq (channel-name c) '(guix nonguix)))
                   channels)
-          (list (channel
-                 (inherit %fxtec-pro1x-channel)
-                 (commit (git-head))))))
+          (if (head-pushed?)
+              (list (channel
+                     (inherit %fxtec-pro1x-channel)
+                     (commit (git-head))))
+              (begin
+                (warning (G_ "HEAD is not on origin/main: fxtec-pro1x \
+left out of the provenance~%"))
+                '()))))
 
 ;; guix deploy calls current-channels when it adds the provenance.
 (let* ((describe (resolve-module '(guix describe)))
