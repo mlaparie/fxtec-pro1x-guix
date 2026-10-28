@@ -33,8 +33,9 @@ verified on the device.  Order:
    Then each later step is one generation the agent can deploy and roll
    back alone.
 3. **Phosh session + keyboard layout (§1, §3).** Phosh from tuigreet
-   fails, sway works (author, 2026-10-28); generation 5 logs the Phosh
-   session to /tmp/phosh-UID.log.  Phosh starting from greetd,
+   failed: phoc aborted, "Settings schema 'org.gnome.mutter.keybindings'
+   is not installed" (/tmp/phosh-1000.log, generation 7).  Schema added
+   in 08263df (generation 8), not retried yet.  Phosh starting from greetd,
    the layout surviving a reboot.
 4. **Guix Home layer, then audio (§2).**  Home services in the channel
    (`fxtec-pro1x home ...`): sway session, i3status-rust, mako/swayidle as
@@ -66,8 +67,8 @@ verified on the device.  Order:
 9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
    LED (feedbackd), GPS, camera userspace, backlight.  Keyboard backlight:
    pro1x-kbd-backlight: LED follows slide in/out and the power key
-   (generation 4, author).  Generation 5 (850ca36): slide-out wakes the
-   panel in sway, not tested; Phosh not handled.  Compare each with
+   (generation 4, author); slide-out wakes the panel in sway (generation
+   7, author).  Phosh not handled.  Compare each with
    the NixOS port before planning.
 10. **Updates for users** (README, "Updates in the long run"): a
     substitute server for this channel's aarch64 builds, fed by CI, and
@@ -332,8 +333,14 @@ First use 2026-10-28 (image flashed by the author; generation 1 built
   rewritten by a deploy from the PC (done: generation 7 = 6, menu 7, 6,
   1; prev1 = 6, prev2 = 1 after `herd start pro1x-boot-menu`).
 
+- 2026-10-29: generation 7 (3b1c86d) booted: root rw,noatime, console
+  landscape (fbcon=rotate:1), slide-out wakes sway and the keyboard light
+  (author).  Generation 8 (08263df) adds mutter's schema for phoc; Phosh
+  from tuigreet not retried yet.  Menu: 8, 7, 6, 1; prev1-3 = 7, 6, 1.
+  The next deploy pushes generation 1 out of the prev slots; 7 is the
+  known-good fallback from then on.
+
 Still to check:
-- reboot into a deployed generation with 3b1c86d;
 - the boot menu should always keep one generation known to boot (the
   prev slots only cover the 3 newest);
 - U-Boot menu: TIMEOUT 100 in extlinux.conf, but the author saw no
