@@ -79,6 +79,13 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; Keep the session's output (greetd discards it): /tmp/phosh-UID.log.
+        (let ((log (open-file (string-append "/tmp/phosh-"
+                                             (number->string (getuid))
+                                             ".log")
+                              "w")))
+          (dup2 (fileno log) 1)
+          (dup2 (fileno log) 2))
         (execl #$(file-append dbus "/bin/dbus-run-session")
                "dbus-run-session" "--"
                #$(file-append phoc-pro1x "/bin/phoc")
