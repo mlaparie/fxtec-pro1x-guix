@@ -163,6 +163,22 @@
         "confidence": "handover",
         "date": "2026-10-24",
         "source": "commit 7e93326"
+      },
+      {
+        "title": "phoc needs the wlroots it embeds, with phoc's patch; building it against a distribution wlroots breaks the Phosh home bar",
+        "general": "phoc ships wlroots as a meson subproject with patches under subprojects/packagefiles/wlroots. Phosh relies on them (0.56: a revert allowing layer surfaces of height 0 without top and bottom anchors). Packaging phoc against the distribution wlroots needs the same patches on a separate wlroots variant; patching phosh around the resulting protocol error instead hides the home bar (surface 15 px, folded by a margin computed for the full height).",
+        "instance": "phoc 0.56.0 against Guix wlroots 0.20.2. Phosh debug log: Configured phosh home (540x15), on_configure_event 137x540 margin -122, no bar on screen (screenshots). Fixed in 8897846 with wlroots-for-phoc and without fix-home-bar-height.patch (1b5d016).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "phoc-v0.56.0 subprojects/wlroots.wrap and packagefiles; phosh src/home.c get_margin; /tmp/phosh-1000.log with G_MESSAGES_DEBUG"
+      },
+      {
+        "title": "phosh 0.56 needs mutter keybinding schemas, a PAM service named phosh, and lives in libexec",
+        "general": "Running phoc+phosh without gnome-session and without mutter: phoc aborts without the org.gnome.mutter.keybindings schema; the lock screen authenticates with PAM service phosh and falls back to other (deny) without it; phosh 0.56 installs the shell in libexec and bin/phosh-session starts gnome-session.",
+        "instance": "Fixed in 08263df (schema from mutter 49.4), 9c82c6a (unix-pam-service phosh), 8bda744 (libexec/phosh).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "/tmp/phosh-1000.log on the phone; ls of the phosh-pro1x output; /etc/pam.d listing"
       }
     ],
     "ci": [
