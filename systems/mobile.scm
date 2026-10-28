@@ -86,6 +86,9 @@
                               "w")))
           (dup2 (fileno log) 1)
           (dup2 (fileno log) 2))
+        ;; Debugging the missing home bar: its size, margin and drag state.
+        (setenv "G_MESSAGES_DEBUG"
+                "phosh-home phosh-drag-surface phosh-layer-surface")
         (execl #$(file-append dbus "/bin/dbus-run-session")
                "dbus-run-session" "--"
                #$(file-append phoc-pro1x "/bin/phoc")
