@@ -686,7 +686,9 @@ It runs on top of the Phoc compositor.")
                     #$(local-file "../../device/phosh/org.gnome.settings-daemon.peripherals.gschema.xml")
                     #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.gschema.xml")
                     #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml")
-                    #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")))
+                    #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")
+                    ;; Read by phoc, which aborts at start without it.
+                    #$(local-file "../../device/phosh/org.gnome.mutter.gschema.xml")))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
 
