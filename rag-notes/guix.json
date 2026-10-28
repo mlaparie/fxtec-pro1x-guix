@@ -81,6 +81,22 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "systems/mobile.scm lines 260-262 at 018fa97, read in source; commit 1226034"
+      },
+      {
+        "title": "A udev-service-type extension must be a directory with lib/udev/rules.d/; a bare rules file is dropped silently",
+        "general": "udev-service-type unions the lib/udev/rules.d/ directories of the items it receives (packages or the output of udev-rule / file->udev-rule). A local-file, plain-file or computed-file holding rule text has no such directory and is ignored without any warning; the system builds and boots, and the rules simply are not there. Wrap rule files with file->udev-rule \"NN-name.rules\" FILE. A service that installs a daemon also has to pass the daemon package itself if its own rules matter (ModemManager, iio-sensor-proxy), as the stock Guix services do.",
+        "instance": "services/hardware.scm passed (local-file \"60-pro1x.rules\") and services/sensors.scm a computed-file \"90-pro1x-sensors.rules\"; on image 6b37ac4 neither file was in /etc/udev/rules.d, and pro1x-modem-service-type did not pass modem-manager-1.24, so 77-mm-qcom-soc.rules was missing too. Consequences: no rmnet_ipa0 tags (MM: no net port), no haptics/slider/sensor rules. Fixed with file->udev-rule plus the two packages; re-test pending.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone survey 2026-10-28 (ls /etc/udev/rules.d, udevadm test); /tmp/guix gnu/services/base.scm udev-configurations-union, file->udev-rule"
+      },
+      {
+        "title": "Guix extlinux.conf has no Default entry and multi-word labels",
+        "general": "Guix writes extlinux.conf as: header, the current system as entry 1, then older generations newest first, each LABEL being the generation label (with spaces). Scripts that index entries or reuse LABEL as a DEFAULT target must not assume NixOS layout (a leading Default entry) or one-word labels.",
+        "instance": "services/boot.scm (from NixOS boot-menu.nix) used entry N+2 and LABEL $2; changed to N+1 and the full label in f737b70. Phone: one generation only, so prev*.conf was never written.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "/boot/extlinux/extlinux.conf on image 6b37ac4; gnu/bootloader/extlinux.scm; NixOS modules/boot-menu.nix line 20-23"
       }
     ],
     "packaging": [

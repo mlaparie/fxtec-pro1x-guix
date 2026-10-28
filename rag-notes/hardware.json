@@ -56,11 +56,11 @@
     "modem": [
       {
         "title": "ModemManager needs udev tags on rmnet_ipa0 to pair the IPA data port with the QRTR control port",
-        "general": "With ModemManager's qcom-soc plugin, the IPA network interface must carry ID_MM_CANDIDATE=1 and ID_MM_PHYSDEV_UID=qcom-soc, or MM never associates it with the modem found over QRTR and mobile data cannot come up. The IPA driver can register the interface before the rule is loaded, so re-trigger udev (udevadm trigger, settle) before starting MM.",
-        "instance": "Rule in device/udev/60-pro1x.rules; modem.scm runs udevadm trigger and settle before exec'ing ModemManager. Not yet verified with a working data session.",
-        "confidence": "handover",
-        "date": "2026-10-27",
-        "source": "commit 2f30ae4"
+        "general": "With ModemManager's qcom-soc plugin, the IPA network interface must carry ID_MM_CANDIDATE=1 and ID_MM_PHYSDEV_UID=qcom-soc, or MM never associates it with the modem found over QRTR and mobile data cannot come up. The IPA driver can register the interface before the rule is loaded, so re-trigger udev (udevadm trigger, settle) before starting MM. ModemManager ships these tags itself in 77-mm-qcom-soc.rules (DRIVERS==ipa or bam-dmux), so installing MM's udev rules is enough; a device rule is a fallback.",
+        "instance": "Image 6b37ac4, 2026-10-28: MM 1.24.0 probes qrtr0, then \"couldn't create modem for device 'qcom-soc': Failed to find a net port in the QMI modem\". udevadm info on rmnet_ipa0 showed no ID_MM_* property at all: neither device/udev/60-pro1x.rules nor MM's own 77-mm-qcom-soc.rules (which tags DRIVERS==\"ipa\" net ports with ID_MM_PHYSDEV_UID=qcom-soc) was loaded (see guix.json, udev extensions). The rule text is right; the Guix wiring was wrong. Fixed, not yet re-tested.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone survey 2026-10-28: /var/log/ModemManager.log, udevadm info /sys/class/net/rmnet_ipa0; commit 2f30ae4"
       },
       {
         "title": "Build ModemManager for QMI over QRTR only: MBIM is not needed on SoC modems",

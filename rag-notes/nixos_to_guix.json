@@ -6,9 +6,9 @@
         "title": "hardware.nix -> hardware.scm and operating-system fields",
         "nixos": "modules/hardware.nix",
         "guix": "fxtec-pro1x/services/hardware.scm, systems/*.scm (kernel, initrd-modules, bootloader, file-systems), device/udev/60-pro1x.rules",
-        "status": "working",
+        "status": "partial",
         "general": "A NixOS hardware module mixes things Guix splits: the kernel, initrd and bootloader are fields of operating-system, udev rules and firmware go through service extensions. Translate each NixOS option to the place Guix expects it, not to one service.",
-        "instance": "Boots, all expected kernel modules load, display and keyboard work (2026-10-27 flash).",
+        "instance": "Boots, all expected kernel modules load, display and keyboard work (2026-10-27 flash). 2026-10-28: the udev rules from device/udev/60-pro1x.rules never reached udev (bare file given to udev-service-type); fixed with file->udev-rule, untested.",
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "TODO.md 'Working'; fxtec-pro1x/services/hardware.scm header"
@@ -17,9 +17,9 @@
         "title": "boot-menu.nix and boot-success.nix -> boot.scm",
         "nixos": "modules/boot-menu.nix, modules/boot-success.nix",
         "guix": "fxtec-pro1x/services/boot.scm (pro1x-boot-menu, pro1x-boot-success, pro1x-rootfs-resize)",
-        "status": "working",
+        "status": "partial",
         "general": "systemd oneshot units become Shepherd services with #:one-shot? #t. 'After=local-fs.target systemd-udev-settle.service' has no direct equivalent: require file-systems and udev and wait explicitly if needed.",
-        "instance": "A/B slot success marking (qbootctl) and the per-generation menu split work. The rootfs resize service is Guix-only (the NixOS image sizes itself differently).",
+        "instance": "A/B slot success marking (qbootctl) works. The per-generation menu split was earlier listed as working, which was wrong: with one generation on the phone it never wrote a prev*.conf, and its entry offset was wrong for Guix. The rootfs resize service is Guix-only (the NixOS image sizes itself differently). 2026-10-28: the split script kept NixOS's entry offset (N+2) and one-word labels; Guix needs N+1 and full labels. Fixed in f737b70, untested with several generations.",
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "TODO.md 'Working'; boot.scm header"

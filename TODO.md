@@ -1,6 +1,9 @@
 # Status & remaining work
 
 Last verified: 2026-10-27, on image built from commit a655fdf.
+Phone survey 2026-10-28 on the image from **6b37ac4** (inferred: generation 1
+built 2026-10-27 13:02 UTC, Guix 5ceffb6; qrcodegen-cpp present, cameractrl
+4c8ac34, no greetd).  Results are in §4, §7, §12, §13.
 
 **Reference repos** (Claude may clone these to /tmp at any time):
 - NixOS port (almost fully working, authoritative hardware reference):
@@ -50,7 +53,7 @@ verified on the device.  Order:
 
 ## Working
 
-- **Boot chain**: U-Boot + extlinux, A/B slot success marking, boot menu (prev1…3)
+- **Boot chain**: U-Boot + extlinux, A/B slot success marking (boot menu prev1…3: never exercised, offset fixed in f737b70, §13)
 - **Kernel**: linux-pro1x booting, all expected modules loaded
 - **USB networking**: usb0 (RNDIS/g_cdc), 172.16.42.1, SSH access
 - **WiFi**: ath10k_snoc driver working, NetworkManager connects (verified on home Wi-Fi, IPv4+IPv6)
@@ -151,6 +154,15 @@ xkb settings from `pro1x-keyboard-configuration` (already has `xkb-layout` /
 
 ## 4. ModemManager exits immediately  [MEDIUM — modem/calls broken — FIX IN NEXT BUILD]
 
+**2026-10-28, image 6b37ac4:** MM 1.24.0 now starts and stays up (the D-Bus
+fix works), probes qrtr0, then: `couldn't create modem for device
+'qcom-soc': Failed to find a net port in the QMI modem`.  `rmnet_ipa0` has
+no `ID_MM_*` properties: MM's own udev rules (`77-mm-qcom-soc.rules`) were
+never given to udev, and neither was our `60-pro1x.rules` (§12).  Fixed in
+`services/modem.scm` (udev extension with modem-manager-1.24); untested.
+
+Older notes:
+
 ModemManager shepherd service exited with code 0 five times at boot and was
 then disabled.
 
@@ -212,6 +224,10 @@ Replaced `openntpd-service-type` with `ntp-service-type` +
 `(allow-large-adjustment? #t)`, which passes `-g` to ntpd allowing an
 unconditional clock step.  Will take effect after next flash.
 
+**2026-10-28, image 6b37ac4:** ntpd runs, Wi-Fi was up, yet `date` read
+1970-01-01 21:50 one minute after boot.  Not followed further: check
+`ntpq -p` and `/var/log/ntpd.log` a few minutes after boot.
+
 ---
 
 ## 8. CI artifact size  [LOW — check after next successful build]
@@ -272,6 +288,30 @@ menu).  A boot-once or bootcount mechanism in U-Boot (fall back to the
 previous generation after N failed boots, cleared by
 `pro1x-boot-success-service-type`) would let those changes be tested
 without the author at the device.  See AGENTS.md §3.
+
+---
+
+## 12. Our udev rules never reached udev  [HIGH — fixed, untested]
+
+Seen on the phone: no `60-pro1x.rules` or `90-pro1x-sensors.rules` in
+`/etc/udev/rules.d`.  `udev-service-type` extensions must be directories
+with `lib/udev/rules.d/`; a bare rules file is dropped silently.  This cost
+the rmnet tag (modem), haptics, slider, and the sensor mount-matrix/SSC
+rules.  Fixed with `file->udev-rule` in `services/hardware.scm` and
+`services/sensors.scm`; iio-sensor-proxy and ModemManager now also pass
+their own rules.
+
+## 13. Smaller things seen on the phone (image 6b37ac4)
+
+- `cfg80211: failed to load regulatory.db` (no wireless-regdb).
+- `qcom/a630_sqe.fw` fails in the initrd, loads at 11 s from the rootfs.
+- `goodix_9286_cfg.bin` missing (touch uses its built-in config).
+- `term-console` (agetty on ttyMSM0) exits 1 and respawns.
+- `qrtr-lookup` not installed (needed for the sensors wait, §5).
+- phosh service "started", phosh.log shows only "Session terminated".
+- Boot menu: Guix extlinux.conf has no Default entry; split script fixed
+  (f737b70), untested with more than one generation.
+- Rootfs resize worked: 222G, 9.8G used.  Boot-slot marking works.
 
 ---
 
