@@ -30,7 +30,20 @@ assume NixOS and systemd and have to be translated, not copied.
 | Build host | x86_64 with QEMU binfmt for aarch64 (`--system=aarch64-linux`); GitHub Actions builds natively on aarch64 |
 | Where findings are written | `rag-notes/` in this repository (format in `rag-notes/README.md`) |
 | Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed |
+| Terminal layout | tmux session `1`, see below |
 | Standing permissions | see below |
+
+tmux layout (the author's default for every session; recreate it if missing):
+
+| window | name | content |
+|---|---|---|
+| 1 | `claude` | the agent (left pane) and the author's PC shell (right pane): host commands, builds, git, `gh`. Target the right pane by its id (`tmux list-panes -t 1:1`), e.g. `tmux send-keys -t %5 …` |
+| 2 | `local-pc` | long local builds (system images, `scripts/flash.sh`) |
+| 3 | `pro1x-ssh` | interactive SSH session to the phone (`ssh user@172.16.42.1`); commands for the phone go here |
+| 4 | `bpytop-local` | resource monitor on the PC |
+
+Window names are fixed (`automatic-rename off`).  To read long output, redirect it to a
+file in the agent's scratch directory and read the file, rather than scraping the pane.
 
 Standing permissions, set by the author:
 
@@ -43,10 +56,8 @@ Standing permissions, set by the author:
 - **Ask each time**: placing calls, sending SMS, using mobile data on the author's SIM.
 - **Build host**: long `guix build` jobs freely; `guix shell <pkg> -- <cmd>` freely for tools
   not installed on the host (e.g. `guix shell github-cli -- gh` for CI runs and logs);
-  `guix gc` only after asking. Run commands in the author's command pane in tmux session
-  `1` (the right-hand pane of window 0, next to the agent; target it by pane id, e.g.
-  `tmux send-keys -t %5`), so the author can watch them, rather than in background
-  processes the author cannot see.
+  `guix gc` only after asking. Run commands where the author can watch them (tmux layout
+  below), not in background processes the author cannot see.
 - **Git**: commit freely on this channel; push (to sr.ht and GitHub) when the author asks.
   Triggering or re-running GitHub Actions jobs is fine.
 - **Upstream** (Guix, nonguix, the NixOS port, the kernel): never without the author's review
