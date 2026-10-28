@@ -34,6 +34,7 @@
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services hardware)
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
@@ -203,6 +204,11 @@
 
     ;; Base Guix services — large font, remove getty (greetd takes over)
     (modify-services %base-services
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)

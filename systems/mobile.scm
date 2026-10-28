@@ -56,6 +56,7 @@
              (fxtec-pro1x packages sxmo)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services hardware)
              (fxtec-pro1x services keyboard)
@@ -331,6 +332,11 @@
     ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
     ;; console-font depends on term-ttyN provided by mingetty so must go too).
     (modify-services %base-services
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
       (delete login-service-type)
       (delete mingetty-service-type)
       (delete console-font-service-type))))

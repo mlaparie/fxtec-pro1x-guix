@@ -45,6 +45,7 @@
              (fxtec-pro1x packages misc)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services fde)
              (fxtec-pro1x services hardware)
@@ -224,6 +225,11 @@
                (authorized-keys %root-ssh-keys))))
 
     (modify-services %base-services
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)
