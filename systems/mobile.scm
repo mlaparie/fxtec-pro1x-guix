@@ -97,6 +97,13 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; Keep the session's output (greetd discards it): /tmp/sway-UID.log.
+        (let ((log (open-file (string-append "/tmp/sway-"
+                                             (number->string (getuid))
+                                             ".log")
+                              "w")))
+          (dup2 (fileno log) 1)
+          (dup2 (fileno log) 2))
         ;; A session bus for mako and other clients, as for Phosh.  The
         ;; config is ~/.config/sway/config (skeleton below).
         (execl #$(file-append dbus "/bin/dbus-run-session")
@@ -125,6 +132,8 @@
     (list
      "console=ttyMSM0,115200n8"
      "console=tty1"
+     ;; Text console (tuigreet) in landscape, like sway (keyboard out).
+     "fbcon=rotate:1"
      "loglevel=4"
      "g_cdc.host_addr=02:50:31:e8:00:01"
      "g_cdc.dev_addr=02:50:31:e8:00:02")
@@ -246,6 +255,22 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
+     ;; Console font for tuigreet: 16x32, double the kernel's 8x16.  Guix's
+     ;; console-font-service-type needs mingetty's term-ttyN, removed here.
+     (simple-service 'pro1x-console-font shepherd-root-service-type
+       (list (shepherd-service
+              (provision '(pro1x-console-font))
+              (requirement '(virtual-terminal))
+              (one-shot? #t)
+              (documentation "Load a 16x32 console font on tty1.")
+              (start #~(lambda _
+                         (system* #$(file-append kbd "/bin/setfont")
+                                  "-C" "/dev/tty1"
+                                  #$(file-append
+                                     kbd "/share/consolefonts/"
+                                     "latarcyrheb-sun32.psfu.gz"))
+                         #t)))))
+
      ;; ── greetd + tuigreet session picker ─────────────────────────────────
      ;; Replaces the direct phosh shepherd service.  tuigreet shows a session
      ;; menu on VT1; sessions are in /etc/wayland-sessions (above).
@@ -258,7 +283,8 @@
                  (greetd-terminal-configuration
                   (terminal-vt "1")
                   (terminal-switch #t)
-                  (extra-shepherd-requirement '(udev dbus-system seatd))
+                  (extra-shepherd-requirement
+                   '(udev dbus-system seatd pro1x-console-font))
                   (default-session-command
                     (program-file "tuigreet-session"
                       #~(execl #$(file-append tuigreet "/bin/tuigreet")
@@ -268,8 +294,14 @@
                                "--remember"
                                "--remember-user-session"
                                "--sessions" "/etc/wayland-sessions"
+                               ;; No logind here: without LIBSEAT_BACKEND
+                               ;; libseat fails ("Unable to create seat:
+                               ;; Function not implemented") and every
+                               ;; session exits at once.
                                "--session-wrapper"
                                (string-append
+                                #$(file-append coreutils "/bin/env")
+                                " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
