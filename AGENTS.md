@@ -29,7 +29,7 @@ assume NixOS and systemd and have to be translated, not copied.
 | Fallback on the device | previous Guix system generations, in the U-Boot extlinux menu (hold volume-down at power-on; needs the author's hands) |
 | Build host | x86_64 with QEMU binfmt for aarch64 (`--system=aarch64-linux`); GitHub Actions builds natively on aarch64 |
 | Where findings are written | `rag-notes/` in this repository (format in `rag-notes/README.md`) |
-| Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed |
+| Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed; moWerk's SailfishOS mainline port and sailfish-rag (§4) |
 | Terminal layout | tmux session `1`, see below |
 | Standing permissions | see below |
 
@@ -139,6 +139,13 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
    Linaro/Qualcomm upstream docs, the git history of the driver. Read their recipe, then write
    yours. Respect `robots.txt` and explicit AI-crawler bans of the sites you read; paraphrase,
    do not copy.
+   Also check, regularly and for any hardware feature, moWerk's SailfishOS port of the same
+   phone on a mainline kernel, github.com/moWerk/sailfishos-pro1x-mainline, and its findings
+   corpus github.com/moWerk/sailfish-rag (`Mainline/`). They have working fixes the other ports
+   lack (for example double-tap to wake/unlock, RTC alarm wake from power-off). Both are
+   LLM-driven and SailfishOS-specific: treat what they say as `reported`, verify it on this
+   device, keep only what is distribution-neutral, and redo it the Guix way under this file's
+   rules (licences, no vendor/halium pieces, no unreviewed upstream submissions).
 2. **Diff against a working stack.** When something works on NixOS on this device, compare
    runtime state, not just Nix modules against Guix services: loaded modules, mixer contents,
    D-Bus traffic, service order, kernel command line, kernel version. File equality proves
