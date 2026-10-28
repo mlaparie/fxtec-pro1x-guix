@@ -266,26 +266,29 @@ keyboard are remapped by keyd (`device/input/keyd.conf`), after the Pro1
 keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
 
 ```
- Modifiers
+ Base layer: what each key types (keyd, then us-intl)
  ─────────────────────────────────────────────────────────────────────
-  yellow slant arrows (both)  Super, the sway modifier ($mod)
-  F(x)                        Fn: hold it for the layer below
-  key left of space           /        Shift: ?        Fn: AltGr
-  ` ~ key (row 4, col 2)      `        Shift: ~   (dead keys on us-intl)
-  Shift, Ctrl, Alt            as labelled
+  esc  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    [    ]    del
+    caps a    s    d    f    g    h    j    k    l    ;    '    ret
+  sft  `    z    x    c    v    b    n    m    ,    .    /    up   sft
+  ctl  sup  fx   alt  /?   spc ──────────────  ctl  sup  lft  down rght
 
- Fn layer (hold F(x))
+ Fn layer: hold fx (· = as in the base layer)
  ─────────────────────────────────────────────────────────────────────
-  1 2 3 4 5 6 7 8 9 0 - =     F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12
-  ,  .                        volume down, volume up
-  ;  '                        play/pause, mute
-  [  ]                        brightness down, brightness up
-  w  b                        Wi-Fi, Bluetooth (rfkill keys)
-  ↑ ↓ ← →                     Page Up, Page Down, Home, End
-  Delete                      Insert
-  Enter  Backspace            Menu, Scroll Lock
-  l  z                        \  |
-  key left of space           AltGr  (Fn + it + letter: é, ñ, … on us-intl)
+  ·    f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12  sclk
+  ·    ·    wlan ·    ·    ·    ·    ·    ·    ·    ·    bri- bri+ ins
+    ·    ·    ·    ·    ·    ·    ·    ·    ·    \    play mute menu
+  ·    ·    |    ·    ·    ·    bt   ·    ·    vol- vol+ ·    pgup ·
+  ·    ·    fx   ·    agr  · ────────────────  ·    ·    home pgdn end
+
+  sup   yellow slant arrows: Super, the sway modifier ($mod)
+  fx    F(x) key: hold for the Fn layer
+  /?    key labelled Sym: / (Shift: ?); with fx it is AltGr (agr),
+        so fx+Sym+letter types é, ñ, … on us-intl
+  `     sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
+  wlan, bt   rfkill keys for Wi-Fi and Bluetooth
+  bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media
 
  Sway (Super = yellow arrow)
  ─────────────────────────────────────────────────────────────────────
