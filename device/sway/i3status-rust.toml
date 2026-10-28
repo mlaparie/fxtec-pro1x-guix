@@ -1,0 +1,62 @@
+# i3status-rust bar for sway on the F(x)tec Pro1X.
+# Based on mlaparie's guix-config (.config/i3status-rust/config.toml), with the
+# PC-specific blocks removed and phone ones added.  Copy it to
+# ~/.config/i3status-rust/config.toml to change it.  Icons need font-awesome.
+# No sound block yet: there is no PipeWire/PulseAudio session (TODO.md §2).
+
+[theme]
+theme = "nord-dark"
+
+[theme.overrides]
+idle_bg = "#313544"
+idle_fg = "#B1B1B1"
+
+[icons]
+icons = "awesome4"
+
+[[block]]
+block = "focused_window"
+[block.format]
+full = " $title.str(max_w:40) |"
+short = " $title.str(max_w:10) |"
+
+[[block]]
+block = "cpu"
+interval = 2
+format = " $barchart $utilization "
+
+[[block]]
+block = "memory"
+format = " $icon $mem_avail free "
+interval = 5
+warning_mem = 80
+critical_mem = 95
+
+[[block]]
+block = "net"
+device = "wlan0"
+format = " $icon $signal_strength "
+format_alt = " $icon $ssid $ip "
+interval = 5
+inactive_format = ""
+missing_format = ""
+
+[[block]]
+block = "backlight"
+device = "5e94000.dsi.0"
+
+[[block]]
+block = "battery"
+driver = "sysfs"
+device = "battery"
+interval = 10
+format = " $icon $percentage "
+good = 101
+info = 60
+warning = 30
+critical = 15
+
+[[block]]
+block = "time"
+interval = 10
+format = " $timestamp.datetime(f:'%a %d, %R') "

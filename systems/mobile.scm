@@ -32,6 +32,11 @@
              (gnu packages messaging)
              (gnu packages gnuzilla)
              (gnu packages terminals)
+             (gnu packages image)          ; grim, slurp
+             (gnu packages music)          ; playerctl
+             (gnu packages rust-apps)      ; i3status-rust
+             (gnu packages web)            ; jq
+             (gnu packages xdisorg)        ; wl-clipboard
              (gnu packages web-browsers)
              (gnu packages emacs)
              (gnu packages video)
@@ -92,7 +97,17 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
-        (execl #$(file-append sway "/bin/sway") "sway"))))
+        ;; The user's ~/.config/sway/config wins; otherwise the Pro1X one.
+        ;; A session bus for mako and other clients, as for Phosh.
+        (let ((user-config (string-append (getenv "HOME")
+                                          "/.config/sway/config")))
+          (apply execl #$(file-append dbus "/bin/dbus-run-session")
+                 "dbus-run-session" "--"
+                 #$(file-append sway "/bin/sway")
+                 (if (file-exists? user-config)
+                     '()
+                     (list "-c" #$(file-append pro1x-sway-config
+                                               "/share/pro1x-sway/config"))))))))
 
 ;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
 ;; each owner puts their own public key there (README, "Updating without
@@ -165,6 +180,8 @@
     (list
      ;; ── Hardware
      (service pro1x-hardware-service-type)
+     ;; Backlight writable by the video group (brightnessctl's rules).
+     (udev-rules-service 'brightnessctl brightnessctl)
 
      ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
      ;; assign the static IP and run dnsmasq without interference.
@@ -286,8 +303,11 @@
      phosh-pro1x
      sxmo-utils
      clickclack
-     ;; Sway fallback + display tools
-     foot sway wdisplays
+     ;; Sway session (config: device/sway, Super = yellow arrows)
+     foot sway wdisplays swayidle mako
+     sway-launcher-desktop pro1x-sway-config fzf jq
+     i3status-rust font-awesome
+     grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
      icecat gnome-console
      emacs mpv nnn

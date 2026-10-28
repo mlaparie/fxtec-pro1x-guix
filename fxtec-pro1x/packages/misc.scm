@@ -13,9 +13,15 @@
 ;;;   feedbackd-0.8     — haptic/audio/visual feedback daemon >= 0.7 (required by phosh 0.56+)
 ;;;   phosh             — Phosh mobile shell
 ;;;   phosh-pro1x       — Phosh configured to use phoc-pro1x compositor
+;;;   sway-launcher-desktop — fzf application launcher for sway (in a terminal)
+;;;   pro1x-sway-config — default sway config, i3status-rust bar, window switcher
 
 (define-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages bash)
+  #:use-module (gnu packages gawk)
+  #:use-module (gnu packages terminals)
+  #:use-module (gnu packages web)            ; jq
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
@@ -37,6 +43,7 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
+  #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
@@ -61,7 +68,9 @@
             callaudiod
             feedbackd-0.8
             phosh
-            phosh-pro1x))
+            phosh-pro1x
+            sway-launcher-desktop
+            pro1x-sway-config))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libqrtr — Qualcomm IPC Router userspace library
@@ -680,3 +689,89 @@ It runs on top of the Phoc compositor.")
                     #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
+
+;;; ---------------------------------------------------------------------------
+;;; sway-launcher-desktop — fzf launcher for .desktop entries and commands
+;;; Run in a floating terminal from the sway config (Super+d).  The script's
+;;; awk uses BEGINFILE, so it needs gawk; it is wrapped with fzf, gawk, sed,
+;;; coreutils and util-linux (setsid) on PATH.
+;;; ---------------------------------------------------------------------------
+(define-public sway-launcher-desktop
+  (package
+    (name "sway-launcher-desktop")
+    (version "unstable-f19bbb8")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/Biont/sway-launcher-desktop/archive/"
+             "f19bbb8795567d54005356357562c748ea33a7a9.tar.gz"))
+       (sha256
+        (base32 "1md718draf7nn3f2xr9qnynvvk6cdg11xggrspvzp0pws34fjxka"))
+       ;; Preview shows the .desktop file and the executable (mlaparie).
+       (patches
+        (list (local-file
+               "../../device/sway/sway-launcher-desktop-preview.patch")))))
+    (build-system copy-build-system)
+    (inputs (list bash coreutils fzf gawk sed util-linux))
+    (arguments
+     (list
+      #:install-plan
+      #~'(("sway-launcher-desktop.sh" "bin/sway-launcher-desktop"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/sway-launcher-desktop")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "fzf" "gawk" "sed" "util-linux"))))))))))
+    (home-page "https://github.com/Biont/sway-launcher-desktop")
+    (synopsis "Terminal application launcher for sway, using fzf")
+    (description
+     "sway-launcher-desktop lists desktop entries and commands on PATH in fzf
+and launches the selected one.  It is meant to run in a floating terminal
+window opened by a sway key binding.")
+    (license license:gpl3)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-sway-config — sway defaults for the Pro1X, from device/sway/
+;;;   share/pro1x-sway/config            used by the Sway session when the user
+;;;                                      has no ~/.config/sway/config
+;;;   share/pro1x-sway/i3status-rust.toml  bar used when the user has none
+;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-sway-config
+  (package
+    (name "pro1x-sway-config")
+    (version "0.1")
+    (source (local-file "../../device/sway" "pro1x-sway"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (inputs (list bash coreutils foot fzf jq))
+    (arguments
+     (list
+      #:install-plan
+      #~'(("config" "share/pro1x-sway/")
+          ("i3status-rust.toml" "share/pro1x-sway/")
+          ("sway-window-switcher" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/sway-window-switcher")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "foot" "fzf" "jq"))))))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Sway defaults for the F(x)tec Pro1X")
+    (description
+     "Default sway configuration for the Pro1X in landscape with the keyboard
+out, an i3status-rust bar configuration, and an fzf window switcher.")
+    (license license:gpl3+)))

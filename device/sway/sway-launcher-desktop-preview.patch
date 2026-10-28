@@ -1,0 +1,25 @@
+Show the desktop file and the resolved executable in the preview.
+
+From the author's local copy of sway-launcher-desktop (mlaparie), rebased
+on upstream f19bbb8.
+
+--- a/sway-launcher-desktop.sh
++++ b/sway-launcher-desktop.sh
+@@ -73,6 +73,9 @@
+   description=$(sed -ne '/^Comment=/{s/^Comment=//;p;q}' "$1")
+   echo -e "\033[33m$(sed -ne '/^Name=/{s/^Name=//;p;q}' "$1")\033[0m"
+   echo "${description:-No description}"
++  echo "Desktop: $1"
++  exec_bin=$(sed -ne '/^Exec=/{s/^Exec=//;p;q}' "$1" | awk '{print $1}')
++  echo "Executable: $(command -v "$exec_bin" 2>/dev/null || echo "not found")"
+ }
+ function describe-command() {
+   readarray arr < <(whatis -l "$1" 2>/dev/null)
+@@ -80,6 +83,7 @@
+   description="${description#* - }"
+   echo -e "\033[33m${1}\033[0m"
+   echo "${description:-No description}"
++  echo "Executable: $(command -v "$1")"
+ }
+ 
+ function provide() {
