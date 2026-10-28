@@ -44,8 +44,10 @@ verified on the device.  Order:
 8. **CI green (§9), artifact size (§8).**
 8a. **Video decode (Venus):** no hardware codec yet.  Firmware and driver
    (QCM2290 AR50 Lite) are there; needs an SM6115 video-codec DT node
-   (rag-notes hardware.json "video").  Then mpv --hwdec=v4l2m2m-copy.
-   VA-API/libva does not apply to Venus.
+   (rag-notes hardware.json "video").  Then mpv --hwdec=v4l2m2m-copy,
+   shipped as a home skeleton (~/.config/mpv/mpv.conf) like the sway
+   configs.  VA-API/libva does not apply to Venus.  Low priority: only
+   helps mpv/FFmpeg/GStreamer, not IceCat (2026-10-28 discussion).
 8b. **Sway extras, when wanted:** more scripts from mlaparie's guix-config
    (nmcli-fzf for Wi-Fi as a bar click, power menu, clamshell mode), and
    i3status-rust click actions.  Strip PC-specific parts first.
