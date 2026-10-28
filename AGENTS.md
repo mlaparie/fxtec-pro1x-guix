@@ -41,7 +41,10 @@ Standing permissions, set by the author:
   unloading modules; mixer changes; joining Wi-Fi networks and changing NetworkManager
   settings. Not the modem remoteproc (§2).
 - **Ask each time**: placing calls, sending SMS, using mobile data on the author's SIM.
-- **Build host**: long `guix build` jobs freely; `guix gc` only after asking.
+- **Build host**: long `guix build` jobs freely; `guix shell <pkg> -- <cmd>` freely for tools
+  not installed on the host (e.g. `guix shell github-cli -- gh` for CI runs and logs);
+  `guix gc` only after asking. Run commands in tmux session `1`, window 3, so the author
+  can watch them, rather than in background processes the author cannot see.
 - **Git**: commit freely on this channel; push (to sr.ht and GitHub) when the author asks.
   Triggering or re-running GitHub Actions jobs is fine.
 - **Upstream** (Guix, nonguix, the NixOS port, the kernel): never without the author's review
