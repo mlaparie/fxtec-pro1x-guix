@@ -1,5 +1,5 @@
 > **Work in progress — partially functional.**
-> Boot, display, hardware keyboard, and USB SSH work.
+> Boot, display, hardware keyboard, USB SSH, and bare sway work.
 > Audio, modem, and several other features are unverified or broken.
 > Do not flash this on a device you depend on.
 
@@ -47,7 +47,8 @@ fxtec-pro1x/packages/        kernel, u-boot, firmware, audio, misc
 fxtec-pro1x/services/        Shepherd services: audio, boot, camera, fde, hardware,
                              keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
-systems/mobile.scm           Phosh mobile desktop (sway+foot as fallback)
+systems/mobile.scm           Phosh + Sxmo desktop (greetd/tuigreet session picker)
+fxtec-pro1x/packages/sxmo.scm  clickclack, sxmo-utils (Sxmo packages)
 systems/mobile-encrypted.scm Phosh with LUKS2 full-disk encryption
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
@@ -170,13 +171,33 @@ guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/mobile-enc
 bash scripts/update-encrypted-boot.sh
 ```
 
+## Session selection
+
+`systems/mobile.scm` boots into a **greetd + tuigreet** session picker on VT1.
+Two sessions are offered:
+
+| Session | Description |
+|---|---|
+| **Phosh** | phoc-pro1x compositor + phosh-pro1x shell |
+| **Sxmo + Sway** | Minimalist sway/Wayland UI via `sxmo_swayinit.sh` |
+
+Desktop files live in `/etc/wayland-sessions/` with absolute store paths in
+`Exec=`, so they work regardless of the user's `PATH` at session start.
+
 ## Sway fallback
 
-`systems/mobile.scm` ships `foot` and `sway` alongside Phosh. To switch:
+`systems/mobile.scm` also ships `foot`, `sway`, and `wdisplays`. To drop to a
+bare sway session from the phone (confirmed working):
 
 ```sh
-herd stop phosh
+# from a tuigreet session or SSH:
 XDG_RUNTIME_DIR=/run/user/1000 sway
+```
+
+Or from an existing Wayland session, launch it on a new VT:
+
+```sh
+XDG_RUNTIME_DIR=/run/user/1000 WLR_BACKENDS=drm,libinput sway
 ```
 
 ## Services

@@ -1,7 +1,9 @@
 ;;; systems/mobile.scm — Pro1X Guix mobile desktop system
 ;;;
-;;; Default compositor: Phosh (phoc-pro1x + squeekboard on-screen keyboard)
-;;; Fallback: sway + foot (if Phosh fails, herd stop phosh && XDG_RUNTIME_DIR=/run/user/1000 sway)
+;;; Session selection: greetd + tuigreet on VT1
+;;;   • Phosh   — phoc-pro1x compositor + phosh-pro1x shell
+;;;   • Sxmo    — sway/Wayland via sxmo_swayinit.sh (sxmo-utils)
+;;;   • Sway    — bare sway + foot (manual fallback; see README)
 ;;;
 ;;; Includes:
 ;;;   • Camera stack (libcamera-pro1x, cameractrl)
@@ -11,7 +13,9 @@
 (define-module (systems mobile))
 
 (use-modules (gnu)
+             (guix gexp)
              (fxtec-pro1x packages bootloader)
+             (gnu packages bash)
              (gnu packages fonts)
              (ice-9 match)
              (gnu packages admin)
@@ -43,6 +47,7 @@
              (fxtec-pro1x packages firmware)
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x packages misc)
+             (fxtec-pro1x packages sxmo)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
              (fxtec-pro1x services camera)
@@ -51,6 +56,27 @@
              (fxtec-pro1x services modem)
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services usb-network))
+
+;; Phosh session launch script for greetd.  Uses absolute store paths so it
+;; works regardless of PATH at session startup.
+(define phosh-pro1x-session
+  (program-file "start-phosh-pro1x"
+    #~(begin
+        (setenv "WLR_BACKENDS" "drm,libinput")
+        (setenv "MOZ_ENABLE_WAYLAND" "1")
+        (let ((d (getenv "XDG_DATA_DIRS")))
+          (setenv "XDG_DATA_DIRS"
+                  (string-append "/run/current-system/profile/share"
+                                 (if d (string-append ":" d) ""))))
+        ;; greetd's pam_mount creates /run/user/UID; fall back just in case.
+        (unless (getenv "XDG_RUNTIME_DIR")
+          (setenv "XDG_RUNTIME_DIR"
+                  (string-append "/run/user/" (number->string (getuid)))))
+        (execl #$(file-append dbus "/bin/dbus-run-session")
+               "dbus-run-session" "--"
+               #$(file-append phoc-pro1x "/bin/phoc")
+               "-S" "-C" "/etc/phoc.ini" "-E"
+               #$(file-append phosh-pro1x "/bin/phosh")))))
 
 (operating-system
   (host-name "pro1x")
@@ -143,44 +169,22 @@
      ;; services that require elogind also wait for seatd.
      (service seatd-service-type)
 
-     ;; ── Phosh desktop
-     ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
-     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on VT1.
-     (simple-service 'phosh shepherd-root-service-type
+     ;; ── Session desktop files ─────────────────────────────────────────────
+     ;; phosh.desktop and swmo.desktop installed to /etc/wayland-sessions so
+     ;; tuigreet can find them.  Both use absolute store paths in Exec= so they
+     ;; work regardless of login-shell PATH.
+     (simple-service 'wayland-sessions etc-service-type
        (list
-        (shepherd-service
-         (provision '(phosh))
-         (requirement '(user-processes udev dbus-system elogind file-systems))
-         (documentation "Phosh mobile shell (phoc-pro1x + phosh)")
-         (start
-          #~(make-forkexec-constructor
-             (list "/bin/sh" "-c"
-                   (string-append
-                    ;; Create XDG_RUNTIME_DIR as root before dropping privs.
-                    "mkdir -p /run/user/1000"
-                    " && chown 1000:1000 /run/user/1000"
-                    " && chmod 0700 /run/user/1000"
-                    ;; Remove stale wayland sockets/locks from a previous run;
-                    ;; phoc doesn't always clean up on SIGTERM.
-                    " && rm -f /run/user/1000/wayland-*"
-                    " && exec " #$(file-append shadow "/bin/su")
-                    " -l user -s /bin/sh -c"
-                    ;; dbus-run-session starts a private D-Bus session bus and
-                    ;; sets DBUS_SESSION_BUS_ADDRESS before exec-ing phoc.
-                    ;; Without it, g_settings_new() in phoc_desktop_constructed()
-                    ;; blocks indefinitely waiting for the session bus.
-                    " 'exec env"
-                    " XDG_RUNTIME_DIR=/run/user/1000"
-                    " XDG_DATA_DIRS=/run/current-system/profile/share"
-                    " WLR_BACKENDS=drm,libinput"
-                    " " #$(file-append dbus "/bin/dbus-run-session")
-                    " --"
-                    " " #$(file-append phoc-pro1x "/bin/phoc")
-                    " -S -C /etc/phoc.ini -E "
-                    #$(file-append phosh-pro1x "/bin/phosh") "'"))
-             #:log-file "/var/log/phosh.log"))
-         (stop #~(make-kill-destructor))
-         (respawn? #t))))
+        `("wayland-sessions/phosh.desktop"
+          ,(mixed-text-file "phosh.desktop"
+             "[Desktop Entry]\nName=Phosh\nExec="
+             phosh-pro1x-session
+             "\nType=Application\n"))
+        `("wayland-sessions/swmo.desktop"
+          ,(mixed-text-file "swmo.desktop"
+             "[Desktop Entry]\nName=Sxmo + Sway\nExec="
+             (file-append sxmo-utils "/bin/sxmo_swayinit.sh")
+             "\nType=Application\n"))))
 
      ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
      (simple-service 'phosh-config etc-service-type
@@ -188,6 +192,32 @@
         `("phoc.ini"
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
+
+     ;; ── greetd + tuigreet session picker ─────────────────────────────────
+     ;; Replaces the direct phosh shepherd service.  tuigreet shows a session
+     ;; menu on VT1; sessions are in /etc/wayland-sessions (above).
+     ;; --session-wrapper "bash -lc" sources the login profile so PATH and
+     ;; XDG_DATA_DIRS are populated before the session script runs.
+     (service greetd-service-type
+              (greetd-configuration
+               (terminals
+                (list
+                 (greetd-terminal-configuration
+                  (terminal-vt "1")
+                  (terminal-switch #t)
+                  (extra-shepherd-requirement '(udev dbus-system seatd))
+                  (default-session-command
+                    (program-file "tuigreet-session"
+                      #~(execl #$(file-append tuigreet "/bin/tuigreet")
+                               "tuigreet"
+                               "--time"
+                               "--asterisks"
+                               "--remember"
+                               "--remember-user-session"
+                               "--sessions" "/etc/wayland-sessions"
+                               "--session-wrapper"
+                               (string-append
+                                #$(file-append bash "/bin/bash") " -lc")))))))))
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
@@ -206,23 +236,27 @@
               (openssh-configuration
                (password-authentication? #t))))
 
-    ;; Base services — override console font for phone's high-DPI screen
+    ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
+    ;; console-font depends on term-ttyN provided by mingetty so must go too).
     (modify-services %base-services
-      (console-font-service-type config =>
-        (map (match-lambda
-               ((tty . _)
-                (cons tty (file-append font-terminus
-                                       "/share/consolefonts/ter-128n.psf.gz"))))
-             config)))))
+      (delete login-service-type)
+      (delete mingetty-service-type)
+      (delete console-font-service-type))))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
    (append
     (list
-     ;; Mobile apps
-     icecat
-     gnome-console
-     foot sway
+     ;; Mobile UIs
+     phoc-pro1x
+     phosh-pro1x
+     sxmo-utils
+     clickclack
+     ;; Sway fallback + display tools
+     foot sway wdisplays
+     ;; Browser, terminal, editors
+     icecat gnome-console
+     emacs mpv nnn
      ;; Calls (dialer) requires ModemManager + callaudiod — install here
      ;; and wire through dconf when available in Guix packages
      ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
@@ -231,8 +265,5 @@
      gsettings-desktop-schemas mutter
      ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
      ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
-     gnome-settings-daemon
-     phoc-pro1x
-     phosh-pro1x
-     emacs mpv nnn)
+     gnome-settings-daemon)
     %base-packages)))
