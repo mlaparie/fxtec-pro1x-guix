@@ -371,6 +371,29 @@ camera hardware.  Run as: cameractr")
      (base32 "1mnv0mgpffdkq6fxdiyxylps8qy9z1js4pnz2nllci9i72yq0dns"))))
 
 ;;; ---------------------------------------------------------------------------
+;;; wlroots-for-phoc — wlroots with the patch phoc builds its own copy with
+;;; phoc 0.56 embeds wlroots 0.20.1 plus one revert (its
+;;; subprojects/packagefiles/wlroots): a layer surface may ask for height 0
+;;; without top and bottom anchors, meaning "as tall as the content".  Phosh's
+;;; home bar relies on it.  Without the revert phosh died with "height 0
+;;; requested without setting top and bottom anchors"; a phosh patch giving
+;;; the home bar a fixed 15 px height avoided that but left the bar 122 px
+;;; below the screen (phosh folds it with a margin computed for its full
+;;; height).  Only phoc links against this; sway keeps Guix's wlroots.
+;;; ---------------------------------------------------------------------------
+(define wlroots-for-phoc
+  (package
+    (inherit wlroots)
+    (name "wlroots-for-phoc")
+    (source
+     (origin
+       (inherit (package-source wlroots))
+       (patches
+        (append (origin-patches (package-source wlroots))
+                (list (local-file
+                       "../../device/phoc/wlroots-revert-layer-shell-0-dimension.patch"))))))))
+
+;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
 ;;; ---------------------------------------------------------------------------
 (define-public phoc
@@ -390,7 +413,7 @@ camera hardware.  Run as: cameractr")
      (list gettext-minimal gobject-introspection pkg-config
            `(,glib "bin")))
     (inputs
-     (list wlroots glib json-glib mesa
+     (list wlroots-for-phoc glib json-glib mesa
            gnome-desktop gsettings-desktop-schemas gmobile-0.7
            libinput eudev libdrm pixman
            wayland wayland-protocols libxkbcommon))
@@ -408,7 +431,8 @@ camera hardware.  Run as: cameractr")
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
-     "phoc is a Wayland compositor for phones, based on unpatched wlroots 0.20.
+     "phoc is a Wayland compositor for phones, based on wlroots 0.20 with phoc's
+layer-shell patch.
 Used as the compositor for the Phosh mobile shell.")
     (license license:gpl3+)))
 
@@ -655,12 +679,6 @@ It runs on top of the Phoc compositor.")
   (package
     (inherit phosh)
     (name "phosh-pro1x")
-    (source
-     (origin
-       (inherit (package-source phosh))
-       (patches
-        (append (origin-patches (package-source phosh))
-                (list (local-file "../../device/phosh/fix-home-bar-height.patch"))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -689,6 +707,11 @@ It runs on top of the Phoc compositor.")
                     #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")
                     ;; Read by phoc, which aborts at start without it.
                     #$(local-file "../../device/phosh/org.gnome.mutter.gschema.xml")))
+                  ;; Show all apps in the overview, not only adaptive ones.
+                  (call-with-output-file
+                      (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
+                    (lambda (port)
+                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
 
