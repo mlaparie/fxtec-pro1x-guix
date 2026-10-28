@@ -61,6 +61,13 @@ jobs:
             (curve Ed25519)
             (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))
           EOF
+          # bordeaux.guix.gnu.org — has aarch64 substitutes that ci.guix.gnu.org lacks
+          sudo guix archive --authorize <<'EOF'
+          (public-key
+           (ecc
+            (curve Ed25519)
+            (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)))
+          EOF
           # ARM runners lack CAP_SYS_ADMIN for build namespace mounts, so disable
           # the chroot/sandbox entirely (--disable-chroot is the current Guix flag;
           # --no-sandbox was removed).
