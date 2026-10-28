@@ -71,9 +71,12 @@ jobs:
           # ARM runners lack CAP_SYS_ADMIN for build namespace mounts, so disable
           # the chroot/sandbox entirely (--disable-chroot is the current Guix flag;
           # --no-sandbox was removed).
-          # guix-install.sh in unprivileged mode creates only a guix-daemon user,
-          # NOT the guixbuild group.  Omit --build-users-group; builds then run
-          # as the guix-daemon user directly (fine for CI).
+          # guix-install.sh (Guix 1.5) runs the daemon as an unprivileged
+          # guix-daemon user and creates no guixbuild group.  Run it as root
+          # instead (User=root in the drop-in): under the unprivileged daemon
+          # the rootfs partition.img builder failed registering its closure,
+          # sqlite "database is locked" (run 40751831198).  Without
+          # --build-users-group, builds run as the daemon's user.
           # Override ExecStart via drop-in; quote the substitute-urls value so
           # systemd treats the space-separated list as one argument.
           DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
@@ -93,14 +96,15 @@ jobs:
           # Ensure git-minimal (used by git-fetch builders) can read gitconfig.
           sudo touch /etc/gitconfig && sudo chmod 644 /etc/gitconfig
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+          printf '[Service]\nUser=root\nGroup=root\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
             "$DAEMON" "$SUBS" \
             | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
           sudo systemctl restart guix-daemon || {
             echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
           }
-          echo "Daemon PID: $(systemctl show guix-daemon -p MainPID --value)"
+          PID=$(systemctl show guix-daemon -p MainPID --value)
+          echo "Daemon PID: $PID, user: $(ps -o user= -p "$PID")"
           # Create per-user profile dir expected by guix on ubuntu-24.04
           # (missing by default; fix from SystemCrafters/guix-installer).
           sudo mkdir -p /var/guix/profiles/per-user/runner
@@ -155,7 +159,7 @@ jobs:
           fi
 
       # ── Diagnose git-fetch network access ────────────────────────────────
-      # The daemon now runs as root (User= stripped from drop-in), so test as root.
+      # The daemon runs as root (User=root in the drop-in), so test as root.
       - name: Test network access from guix build user
         run: |
           # Show daemon service (check for PrivateNetwork or other net restrictions)
