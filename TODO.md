@@ -35,7 +35,11 @@ verified on the device.  Order:
 3. **Phosh session + keyboard layout (§1, §3).** Phosh from tuigreet
    failed: phoc aborted, "Settings schema 'org.gnome.mutter.keybindings'
    is not installed" (/tmp/phosh-1000.log, generation 7).  Schema added
-   in 08263df (generation 8), not retried yet.  Phosh starting from greetd,
+   in 08263df (generation 8); phosh 0.56 is in libexec (8bda744,
+   generation 9): Phosh starts from tuigreet (author, 2026-10-29).  Lock
+   screen refused the passcode: no /etc/pam.d/phosh (9c82c6a, generation
+   10, not tested yet).  After a deploy that changes sessions, tuigreet
+   keeps the old session list until it restarts (log in and out once).  Phosh starting from greetd,
    the layout surviving a reboot.
 4. **Guix Home layer, then audio (§2).**  Home services in the channel
    (`fxtec-pro1x home ...`): sway session, i3status-rust, mako/swayidle as
