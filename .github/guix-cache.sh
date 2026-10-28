@@ -33,7 +33,7 @@ case $cmd in
     echo "==> /var/log/guix: $(sudo ls -la /var/log/guix 2>&1 | tr '\n' ' ')"
     echo "==> build logs: $(sudo find -L /var/log/guix -type f | wc -l)," \
          "of which > 8 KiB: $(sudo find -L /var/log/guix -type f -size +8k | wc -l)"
-    sudo find -L /var/log/guix -type f | head -3
+    sudo find -L /var/log/guix -type f | sed -n 1,3p   # not head: pipefail
     # Logs under 8 KiB come from trivial builders (config files, profiles).
     sudo find -L /var/log/guix/drvs -name '*.drv.gz' -size +8k | while read -r log; do
       rel=${log#/var/log/guix/drvs/}
