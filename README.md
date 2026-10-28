@@ -164,6 +164,48 @@ images never have one).  Then, with the phone on USB:
 bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
 ```
 
+## Your home configuration (plan, not in place yet)
+
+Guix manages two things separately: the **system** (kernel, drivers, system
+services; `guix system reconfigure`) and your **home** (your programs'
+settings in `~/.config`, and programs that run for you, such as the sound
+server or notifications; `guix home reconfigure`).  Both are written in a
+Scheme file, both can be rolled back.
+
+This channel will provide ready-made home pieces for the Pro1X: the sway
+session and its bar, sound (PipeWire), and later mpv.  How you get them:
+
+- **Do nothing.**  The default image sets up the home of the `user` account
+  with the Pro1X defaults.  Each system update (new image, `deploy.sh`) also
+  updates them.
+- **Use your own home config.**  If you already describe your home with Guix
+  Home, add the Pro1X pieces to it and keep the rest yours.  A sketch (names
+  are not final):
+
+  ```scheme
+  ;; ~/home.scm -- apply with: guix home reconfigure ~/home.scm
+  (use-modules (gnu home)
+               (gnu home services)
+               (fxtec-pro1x home))          ; this channel
+
+  (home-environment
+    (packages (list htop))                 ; your own programs
+    (services
+     (append
+      (list
+       ;; Pro1X sway, bar and sound, with one change of your own:
+       (service pro1x-home-sway-service-type
+                (pro1x-home-sway-configuration
+                 (extra-config "bindsym $mod+b exec icecat")))
+       (service pro1x-home-audio-service-type))
+      %base-home-services)))
+  ```
+
+Files managed this way are links into the store, so you change them in the
+Scheme file and run `guix home reconfigure`, not by editing `~/.config`.
+Until this is in place, the image puts the sway and bar configs in
+`~/.config` once, for new accounts, and you edit them there.
+
 ## Updates in the long run (plan, not in place yet)
 
 How a phone running this port is meant to stay up to date once the port is

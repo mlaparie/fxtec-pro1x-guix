@@ -33,9 +33,15 @@ verified on the device.  Order:
    back alone.
 3. **Phosh session + keyboard layout (§1, §3).** Phosh starting from greetd,
    the layout surviving a reboot.
-4. **Audio (§2).** PipeWire, pipewire-pulse, WirePlumber as user services,
-   rtkit, `pro1x-audio-init` before WirePlumber, merged UCM2 tree.  Playback
-   on speaker and headset first.
+4. **Guix Home layer, then audio (§2).**  Home services in the channel
+   (`fxtec-pro1x home ...`): sway session, i3status-rust, mako/swayidle as
+   user services, later mpv.  The default image applies a home environment
+   for `user` through `guix-home-service-type`; these replace the
+   skeletons, so updates reach existing homes.  Audio through the same
+   layer: `home-pipewire-service-type` (PipeWire, pipewire-pulse,
+   WirePlumber) + `home-dbus-service-type`, rtkit, `pro1x-audio-init`
+   before WirePlumber, merged UCM2 tree.  Playback on speaker and headset
+   first.  README "Your home configuration" describes the intended use.
 5. **Modem (§4, §6).** MM up and seeing the modem, SIM provisioning; SMS,
    calls and data only with the author's go-ahead each time.
 6. **Voice-call audio.** q6voice patch is in the kernel; userspace
