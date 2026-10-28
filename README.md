@@ -259,6 +259,51 @@ guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/mobile-enc
 bash scripts/update-encrypted-boot.sh
 ```
 
+## Keyboard
+
+Layout: US international (`us` + `intl`).  The keys that differ from a PC
+keyboard are remapped by keyd (`device/input/keyd.conf`), after the Pro1
+keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
+
+```
+ Modifiers
+ ─────────────────────────────────────────────────────────────────────
+  yellow slant arrows (both)  Super, the sway modifier ($mod)
+  F(x)                        Fn: hold it for the layer below
+  key left of space           /        Shift: ?        Fn: AltGr
+  ` ~ key (row 4, col 2)      `        Shift: ~   (dead keys on us-intl)
+  Shift, Ctrl, Alt            as labelled
+
+ Fn layer (hold F(x))
+ ─────────────────────────────────────────────────────────────────────
+  1 2 3 4 5 6 7 8 9 0 - =     F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12
+  ,  .                        volume down, volume up
+  ;  '                        play/pause, mute
+  [  ]                        brightness down, brightness up
+  w  b                        Wi-Fi, Bluetooth (rfkill keys)
+  ↑ ↓ ← →                     Page Up, Page Down, Home, End
+  Delete                      Insert
+  Enter  Backspace            Menu, Scroll Lock
+  l  z                        \  |
+  key left of space           AltGr  (Fn + it + letter: é, ñ, … on us-intl)
+
+ Sway (Super = yellow arrow)
+ ─────────────────────────────────────────────────────────────────────
+  Super+Return                terminal (foot)
+  Super+m                     application launcher
+  Super+Tab                   window switcher
+  Super+BackSpace, Super+Shift+q   close window
+  Super+1…0, Super+Shift+1…0  go to / move to workspace
+  Super+h j k l, Super+arrows focus; with Shift: move
+  Super+f, Super+Shift+space  fullscreen, floating
+  Super+r                     resize mode
+  Super+Ctrl+h                show all sway key bindings
+  Super+Shift+c, Super+Shift+e   reload sway, exit sway
+  Power key                   panel off / on
+```
+
+`keyd monitor` (as root) shows what each key sends.
+
 ## Session selection
 
 `systems/mobile.scm` boots into a **greetd + tuigreet** session picker on VT1.
