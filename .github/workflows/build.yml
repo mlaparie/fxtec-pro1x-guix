@@ -161,6 +161,30 @@ jobs:
               && echo "git clone: OK" || echo "git clone FAILED (exit $?)"
           fi
 
+      # ── Prefetch GitHub tarballs ──────────────────────────────────────────
+      # The daemon's anonymous downloads from codeload.github.com got HTTP 429
+      # (run 40731915977, kernel tarball) and no Guix mirror has them.  Fetch
+      # them here with the job token and retries, then add them to the store
+      # under the name and hash the packages expect.  A failure only warns:
+      # the daemon still tries its own download.
+      - name: Prefetch GitHub sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TM="guix time-machine --disable-authentication -C channels-ci.scm --"
+          mkdir -p /tmp/prefetch
+          $TM repl -L . .github/prefetch-sources.scm > /tmp/prefetch/list
+          cat /tmp/prefetch/list
+          while read -r url name; do
+            curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors \
+              --location-trusted -H "Authorization: Bearer $GH_TOKEN" \
+              -o "/tmp/prefetch/$name" "$url" \
+              || { echo "WARNING: prefetch failed: $url"; rm -f "/tmp/prefetch/$name"; }
+          done < /tmp/prefetch/list
+          ls /tmp/prefetch/*.tar.gz >/dev/null 2>&1 \
+            && $TM repl -L . .github/prefetch-sources.scm /tmp/prefetch/*.tar.gz
+          rm -rf /tmp/prefetch
+
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
         run: |
