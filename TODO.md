@@ -314,8 +314,20 @@ First use 2026-10-28 (image flashed by the author; generation 1 built
   fxtec-pro1x at the deployed HEAD (dcb2dec); /etc/guix/channels.scm
   lists the same three (f666fd0), not pulled from yet.
 
+- 2026-10-29: rebooting into generation 5 failed in the initrd ("ext4:
+  unknown parameter 'noatime'"); generations 2-5 all share it, the
+  U-Boot prev1-3 slots pointed at 4, 3, 2.  Recovered through U-Boot USB
+  mass storage: generation 1 first in extlinux.conf (.bak kept).  Fixed
+  in 3b1c86d (flags no-atime).  Generations 2-5 stay unbootable in the
+  menu until the author decides to delete them.
+
 Still to check:
-- reboot into a deployed generation (kernel unchanged, so expected to work);
+- reboot into a deployed generation with 3b1c86d;
+- the boot menu should always keep one generation known to boot (the
+  prev slots only cover the 3 newest);
+- U-Boot menu: TIMEOUT 100 in extlinux.conf, but the author saw no
+  generation list on screen; the U-Boot bootmenu shows only Boot and
+  prev1-3;
 - whether the deploy copies only what changed (not measured);
 - `prev*.conf` (boot-menu split, rewritten only at boot) still point at
   bootable generations between deploy and reboot;

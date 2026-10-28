@@ -239,6 +239,14 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "gnu/machine.scm, gnu/services.scm provenance-entry, guix/describe.scm (Guix fa73e81); guix system list-generations on the phone"
+      },
+      {
+        "title": "A deployed generation can activate fine and still not boot: deploy never runs its initrd",
+        "general": "guix deploy and reconfigure activate the new system on the running kernel; the initrd, the root mount and the kernel command line are first exercised at the next boot. A file-system entry with (options \"noatime\") activates without complaint, but the initrd passes it to mount(2) as ext4 data and stops with \"unknown parameter\" in the Guile REPL. Use (flags (quote (no-atime))). Before rebooting into a deployed generation, keep a known-good one in the boot menu that does not share the change.",
+        "instance": "Generations 2-5 (deployed 2026-10-28) all stopped at \"ext4: unknown parameter noatime\" / mount: invalid argument. Generation 1 (image) booted because the image builder writes its own root entry (root=UUID, no options). The U-Boot previous-generation slots (prev1-3) pointed at 4, 3, 2, so no menu entry reached generation 1. Recovered by U-Boot USB mass storage from the PC: generation 1 moved first in /boot/extlinux/extlinux.conf (original kept as extlinux.conf.bak). Fixed in 3b1c86d.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "author report of the boot screen; extlinux.conf and prev*.conf read over UMS; gnu/build/file-systems.scm (Guix fa73e81)"
       }
     ],
     "licensing": [
