@@ -78,6 +78,21 @@
                "-S" "-C" "/etc/phoc.ini" "-E"
                #$(file-append phosh-pro1x "/bin/phosh")))))
 
+;; Bare sway session for greetd.
+(define sway-session
+  (program-file "start-sway"
+    #~(begin
+        (setenv "WLR_BACKENDS" "drm,libinput")
+        (setenv "MOZ_ENABLE_WAYLAND" "1")
+        (let ((d (getenv "XDG_DATA_DIRS")))
+          (setenv "XDG_DATA_DIRS"
+                  (string-append "/run/current-system/profile/share"
+                                 (if d (string-append ":" d) ""))))
+        (unless (getenv "XDG_RUNTIME_DIR")
+          (setenv "XDG_RUNTIME_DIR"
+                  (string-append "/run/user/" (number->string (getuid)))))
+        (execl #$(file-append sway "/bin/sway") "sway"))))
+
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -184,6 +199,11 @@
           ,(mixed-text-file "swmo.desktop"
              "[Desktop Entry]\nName=Sxmo + Sway\nExec="
              (file-append sxmo-utils "/bin/sxmo_swayinit.sh")
+             "\nType=Application\n"))
+        `("wayland-sessions/sway.desktop"
+          ,(mixed-text-file "sway.desktop"
+             "[Desktop Entry]\nName=Sway\nExec="
+             sway-session
              "\nType=Application\n"))))
 
      ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
