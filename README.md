@@ -101,9 +101,12 @@ guix system build --system=aarch64-linux systems/mobile.scm
 
 The flash script builds automatically; no need to run this first.
 
-**Pre-built artifacts** (u-boot.bin, DTB, rootfs.img) are available from
-GitHub Actions on the `main` branch for each push — useful if you lack an
-aarch64 build machine.
+**Pre-built artifacts** (u-boot.bin, DTB, rootfs.img) are meant to come from
+GitHub Actions on the `main` branch, for those without Guix or an aarch64
+build machine.  No CI run has succeeded yet, so none exist.  With them,
+`scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img` runs without
+Guix if fastboot, mkbootimg, util-linux, e2fsprogs and python3 are
+installed (untested).  Such images have no root SSH key.
 
 ## Flashing (first install)
 
@@ -140,13 +143,26 @@ ssh user@172.16.42.1
 
 ## Updating without reflashing
 
+`scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`): builds on the
+host, copies over SSH as root, adds a generation and activates it, like
+`guix system reconfigure`.  Kernel, initrd and firmware changes need a
+reboot.  Previous generations are selectable from the U-Boot menu (hold
+volume-down at power-on).  Not tested yet.
+
+It logs in as root with your own key.  Create it **before building the image
+you flash**, because the image only lets in the key present at build time:
+
 ```sh
-guix system build --system=aarch64-linux systems/mobile.scm
-bash scripts/update.sh
+ssh-keygen -t ed25519 -C pro1x-guix -f ~/.ssh/pro1x-guix
+cp ~/.ssh/pro1x-guix.pub keys/pro1x-guix.pub   # not tracked by git
 ```
 
-Reboot to switch generation. Previous generations are selectable from the
-U-Boot menu (hold volume-down at power-on).
+Without `keys/pro1x-guix.pub` the image has no root SSH login at all (CI
+images never have one).  Then, with the phone on USB:
+
+```sh
+bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
+```
 
 ## Full-disk encryption (LUKS2)
 

@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
-# Update the phone over USB ethernet WITHOUT reflashing userdata.
-#   ./scripts/deploy.sh [config] [phone]      defaults: phosh-xc 172.16.42.1
-# `config` is any nixosConfigurations name of the flake in the current directory
-# (built-in: minimal, phosh and their -xc cross-kernel variants; or your own).
-# From your own flake: nix run github:<you>/fxtec-pro1x-nixos#deploy -- my-pro1x
+# scripts/deploy.sh — update the phone over USB Ethernet without reflashing
 #
-# Builds the system, `nix copy`s it into the phone's store, makes it the system
-# profile and writes its U-Boot entry (kernel, initrd, DTB, extlinux.conf) to /boot
-# on the phone. After a reboot U-Boot boots the new generation; older ones stay in the
-# U-Boot menu (hold volume-down). New files must be `git add`ed first (flakes only
-# see tracked files). Add your ssh key to hosts/minimal to avoid password prompts.
+# Usage:
+#   bash scripts/deploy.sh [system-file] [host]
+#   defaults: systems/mobile.scm 172.16.42.1
+#
+# Runs guix deploy with deploy/pro1x.scm: builds on this host (same guix as
+# scripts/flash.sh, so unchanged store items are not copied again), copies
+# the closure as root over SSH, and activates it as a new generation, like
+# guix system reconfigure.  Kernel, initrd and firmware changes need a
+# reboot.  Older generations stay in the U-Boot menu (hold volume-down).  Needs an image flashed with root SSH by key
+# (keys/pro1x-guix.pub); the private key is ~/.ssh/pro1x-guix.
+#
+# State: not tested yet.  For systems/mobile-encrypted.scm, also run
+# scripts/update-encrypted-boot.sh on the phone afterwards.
+
 set -euo pipefail
 
-cfg="${1:-phosh-xc}"
-host="${2:-172.16.42.1}"
+cd "$(dirname "$0")/.."
 
-top="$(nix build --no-link --print-out-paths ".#nixosConfigurations.$cfg.config.system.build.toplevel")"
+PRO1X_SYSTEM="${1:-systems/mobile.scm}" \
+PRO1X_HOST="${2:-172.16.42.1}" \
+    guix deploy -L . deploy/pro1x.scm
 
-nix copy --no-check-sigs --to "ssh-ng://nixos@$host" "$top"
-ssh -t "nixos@$host" sudo nix-env -p /nix/var/nix/profiles/system --set "$top"
-ssh -t "nixos@$host" sudo "$top/bin/switch-to-configuration" boot
-
-echo
-echo "system copied: $top"
-echo "Reboot the phone: U-Boot boots the new generation."
-echo "If U-Boot itself needs reflashing (first time / recovery), slot a only:"
-echo "  nix build .#flash-uboot && ./result/bin/pro1x-flash-uboot"
+echo "Deployed.  Reboot the phone if the kernel, initrd or firmware changed."

@@ -94,6 +94,16 @@
                   (string-append "/run/user/" (number->string (getuid)))))
         (execl #$(file-append sway "/bin/sway") "sway"))))
 
+;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
+;; each owner puts their own public key there (README, "Updating without
+;; reflashing").  Without it, root has no SSH login.
+(define %root-ssh-keys
+  (let ((file (string-append (dirname (or (current-filename) "systems/."))
+                             "/../keys/pro1x-guix.pub")))
+    (if (file-exists? file)
+        `(("root" ,(local-file (canonicalize-path file) "pro1x-guix.pub")))
+        '())))
+
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -255,7 +265,10 @@
      ;; SSH
      (service openssh-service-type
               (openssh-configuration
-               (password-authentication? #t))))
+               (password-authentication? #t)
+               ;; Root by key only, for guix deploy (scripts/deploy.sh).
+               (permit-root-login 'prohibit-password)
+               (authorized-keys %root-ssh-keys))))
 
     ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
     ;; console-font depends on term-ttyN provided by mingetty so must go too).

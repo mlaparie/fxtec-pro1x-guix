@@ -61,6 +61,16 @@
     (targets '("pro1x-crypt"))
     (type luks-pro1x-device-mapping))))
 
+;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
+;; each owner puts their own public key there (README, "Updating without
+;; reflashing").  Without it, root has no SSH login.
+(define %root-ssh-keys
+  (let ((file (string-append (dirname (or (current-filename) "systems/."))
+                             "/../keys/pro1x-guix.pub")))
+    (if (file-exists? file)
+        `(("root" ,(local-file (canonicalize-path file) "pro1x-guix.pub")))
+        '())))
+
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -200,7 +210,10 @@
 
      (service openssh-service-type
               (openssh-configuration
-               (password-authentication? #t))))
+               (password-authentication? #t)
+               ;; Root by key only, for guix deploy (scripts/deploy.sh).
+               (permit-root-login 'prohibit-password)
+               (authorized-keys %root-ssh-keys))))
 
     (modify-services %base-services
       (console-font-service-type config =>

@@ -25,9 +25,9 @@ verified on the device.  Order:
    build, go through every section here, update or close it.  Needs the
    author once (flash).
 2. **Deploy without reflashing (§10), then bootcount fallback (§11).**
-   `guix deploy` or reconfigure-on-device, with the extlinux bootloader and
-   boot menu checked on that path.  Then each later step is one generation
-   the agent can deploy and roll back alone.
+   `scripts/deploy.sh` (guix deploy) written; test it on the device.
+   Then each later step is one generation the agent can deploy and roll
+   back alone.
 3. **Phosh session + keyboard layout (§1, §3).** Phosh starting from greetd,
    the layout surviving a reboot.
 4. **Audio (§2).** PipeWire, pipewire-pulse, WirePlumber as user services,
@@ -245,26 +245,22 @@ failed earlier, on webkitgtk.
 
 ---
 
-## 10. scripts/update.sh carries NixOS commands  [MEDIUM — likely broken, unverified]
+## 10. Deploy without reflashing  [MEDIUM — written, not tested]
 
-Not run yet; read in source only.  After `guix copy` it runs, on the device:
-```sh
-sudo guix system reconfigure /run/current-system --no-bootloader && \
-sudo /run/current-system/bin/switch-to-system
-```
-- `switch-to-system` is NixOS's activation script; Guix has no such file
-  (confirm with `ls /run/current-system/` on the device).
-- `guix system reconfigure` takes a config file (`.scm`), not a system
-  directory.
-- `--no-bootloader` would keep the new generation out of extlinux.conf, so
-  the README's "previous generations selectable from the U-Boot menu" would
-  not hold for generations deployed this way.
+`scripts/update.sh` (NixOS commands, broken) and the NixOS `scripts/deploy.sh`
+are replaced by `scripts/deploy.sh` → `guix deploy -L . deploy/pro1x.scm`:
+build on the host, copy as root over SSH, new boot generation.  Root SSH by
+key (`keys/pro1x-guix.pub`, `permit-root-login 'prohibit-password`) is in
+all three `systems/*.scm`; it reaches the phone only with the next flashed
+image (the build running on 2026-10-28 predates it).
 
-**Fix candidates**: `guix deploy` with a machine config for 172.16.42.1
-(builds on the host, copies, activates, installs the bootloader), or
-`guix system reconfigure systems/mobile.scm` run on the device from a
-checkout of this channel.  Check that `pro1x-extlinux-bootloader` and the
-boot-menu split still run on that path.
+To check on first use:
+- the deploy copies only what changed (same host guix as `flash.sh`);
+- `/boot/extlinux/extlinux.conf` gets the new entry, older entries stay;
+- `prev*.conf` (boot-menu split, rewritten only at boot) still point at
+  bootable generations between deploy and reboot;
+- what `want=n+2` in `services/boot.scm` skips in extlinux.conf;
+- encrypted system: `update-encrypted-boot.sh` still needed afterwards.
 
 ---
 

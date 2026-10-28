@@ -5,3 +5,6 @@ result-*
 # MAC addresses and RF calibration. Never commit them.
 backup-*/
 *.img
+
+# Owner-specific root SSH key for scripts/deploy.sh (see README).
+keys/*.pub

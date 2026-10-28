@@ -195,7 +195,7 @@
       {
         "title": "scripts/update.sh uses NixOS commands that do not exist on Guix",
         "general": "Deployment scripts carried over from a NixOS port need a rewrite, not a translation of names: switch-to-system is NixOS's activation script, and 'guix system reconfigure' takes a configuration file, not a system directory. guix deploy, or reconfigure run on the device, are the Guix ways.",
-        "instance": "scripts/update.sh runs 'guix system reconfigure /run/current-system --no-bootloader' then '/run/current-system/bin/switch-to-system' on the phone. --no-bootloader would also keep new generations out of the boot menu. Not run; TODO.md section 10.",
+        "instance": "scripts/update.sh runs 'guix system reconfigure /run/current-system --no-bootloader' then '/run/current-system/bin/switch-to-system' on the phone. --no-bootloader would also keep new generations out of the boot menu. Not run; TODO.md section 10. Replaced on 2026-10-28 by scripts/deploy.sh running guix deploy with deploy/pro1x.scm (root SSH by key); not yet tested on the device.",
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "scripts/update.sh lines 30-32 at 018fa97, read in source"
