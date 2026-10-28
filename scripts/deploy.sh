@@ -12,7 +12,12 @@
 # reboot.  Older generations stay in the U-Boot menu (hold volume-down).  Needs an image flashed with root SSH by key
 # (keys/pro1x-guix.pub); the private key is ~/.ssh/pro1x-guix.
 #
-# State: not tested yet.  For systems/mobile-encrypted.scm, also run
+# After a reflash the phone has a new SSH host key and guix deploy stops
+# with "known-changed".  Refresh it (USB link to your own phone):
+#   ssh-keygen -R 172.16.42.1
+#   ssh-keyscan -t ed25519 172.16.42.1 >> ~/.ssh/known_hosts
+#
+# State: first used 2026-10-28.  For systems/mobile-encrypted.scm, also run
 # scripts/update-encrypted-boot.sh on the phone afterwards.
 
 set -euo pipefail
