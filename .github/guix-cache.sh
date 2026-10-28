@@ -8,9 +8,15 @@
 # files is useless: the daemon treats unregistered items as invalid.  This
 # exports what the job built itself (outputs of every derivation with a build
 # log in /var/log/guix/drvs; substituted items have none) with their closures,
-# as a signed archive, and imports it on the next run.  Only the public half
-# of the exporting run's signing key is cached; the importing run authorizes
-# it.  Disk images and partitions are skipped: they change on every commit.
+# as a signed archive, and imports it on the next run.  Items imported from
+# the previous cache are exported again (they leave no build log), so the
+# cache keeps them.  Only the public half of the exporting run's signing key
+# is cached; the importing run authorizes it.  Disk images and partitions
+# are skipped: they change on every commit.  "export" writes archive=true to
+# $GITHUB_OUTPUT only when it wrote an archive, so an empty cache is never
+# saved over a full one.
+
+imported=/var/tmp/guix-cache-imported.txt
 
 set -euo pipefail
 
@@ -37,13 +43,22 @@ case $cmd in
         | while read -r out; do
             if [ -e "$out" ]; then echo "$out"; fi
           done
-    done | sort -u > "$dir/items.txt"
+    done > "$dir/built.txt"
+    # Imported items that are still valid: they were not rebuilt.
+    if [ -f "$imported" ]; then
+      while read -r item; do
+        if [ -e "$item" ]; then echo "$item"; fi
+      done < "$imported" >> "$dir/built.txt"
+    fi
+    sort -u "$dir/built.txt" > "$dir/items.txt"
+    rm -f "$dir/built.txt"
     echo "==> $(wc -l < "$dir/items.txt") built items to cache"
     if [ -s "$dir/items.txt" ]; then
       # shellcheck disable=SC2046
       sudo guix archive --export -r $(cat "$dir/items.txt") \
         | zstd -T0 -3 -q > "$dir/items.nar.zst"
       sudo cat /etc/guix/signing-key.pub > "$dir/signing-key.pub"
+      echo "archive=true" >> "${GITHUB_OUTPUT:-/dev/null}"
     fi
     du -sh "$dir"
     ;;
@@ -54,8 +69,12 @@ case $cmd in
     fi
     du -sh "$dir"
     sudo guix archive --authorize < "$dir/signing-key.pub"
-    zstd -dc "$dir/items.nar.zst" | sudo guix archive --import \
-      || echo "WARNING: importing the Guix build cache failed; building without it"
+    if zstd -dc "$dir/items.nar.zst" | sudo guix archive --import; then
+      cp "$dir/items.txt" "$imported"
+      echo "==> imported $(wc -l < "$imported") cached items"
+    else
+      echo "WARNING: importing the Guix build cache failed; building without it"
+    fi
     rm -f "$dir/items.nar.zst"
     ;;
   *)

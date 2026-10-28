@@ -233,11 +233,12 @@ jobs:
 
       # ── Save Guix build cache (also after a failed build) ─────────────────
       - name: Export Guix build cache
+        id: export-cache
         if: always()
         run: bash .github/guix-cache.sh export /var/tmp/guix-cache
 
       - name: Save Guix build cache
-        if: always()
+        if: always() && steps.export-cache.outputs.archive == 'true'
         uses: actions/cache/save@v4
         with:
           path: /var/tmp/guix-cache
