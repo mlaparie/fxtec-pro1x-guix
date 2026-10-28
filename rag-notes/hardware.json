@@ -126,6 +126,24 @@
         "date": "2026-10-28",
         "source": "phone dmesg 2026-10-28; author observed the white panel"
       }
+    ],
+    "video": [
+      {
+        "title": "GPU rendering is hardware-accelerated (Mesa gallium on Adreno 610); no hardware video codec yet",
+        "general": "Check GPU acceleration from the compositor side: which Mesa libraries the compositor maps (/proc/PID/maps) and whether the GPU devfreq leaves its idle frequency under load (/sys/class/devfreq/*gpu*/trans_stat). Qualcomm video decode/encode is Venus/Iris, a V4L2 memory-to-memory device: VA-API (libva) has no driver for it; users are FFmpeg *_v4l2m2m codecs (mpv --hwdec=v4l2m2m-copy) and GStreamer v4l2 elements. Browsers that only speak VA-API get no video acceleration.",
+        "instance": "Image 6b37ac4, kernel 7.1.0 (sm6115-mainline 8cd9520): sway maps libgallium-26.0.2.so and dri_gbm.so; GPU devfreq moved 320 -> 745/950 MHz 535 times while sway ran. Renderer string not read (eglinfo not installed). No Venus: only camss /dev/video*, no venus module loaded, although CONFIG_VIDEO_QCOM_VENUS=m and CONFIG_VIDEO_QCOM_IRIS=m.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone /proc/<sway>/maps, devfreq trans_stat, /sys/class/video4linux, lsmod; device/kernel/config.aarch64"
+      },
+      {
+        "title": "Venus on SM6115: firmware present, driver support present via QCM2290 (AR50 Lite), device-tree node missing",
+        "general": "SM6115 shares the AR50 Lite video core with QCM2290 (Agatti). With the qcm2290-venus support in the driver, enabling Venus is mostly a device-tree node in sm6115.dtsi modelled on agatti.dtsi, plus a compatible (sm6115 or reuse of qcm2290) accepted by the driver and binding. Register base, interrupt, IOMMU stream IDs and OPPs must be checked against SM6115 (downstream bengal DT), not assumed from Agatti.",
+        "instance": "Kernel tree 8cd9520: venus/core.c matches qcom,qcm2290-venus but no sm6115; sm6115.dtsi has no video-codec node but has pil_video_mem at 0x51400000 (0x500000), gcc-sm6115.h has GCC_VENUS_GDSC/GCC_VCODEC0_GDSC and the GCC_VIDEO_* clocks, interconnect sm6115.h has MASTER_VIDEO_P0 and SLAVE_VENUS_CFG, mmnrt_virt exists. agatti.dtsi node: reg 0x5a00000, GIC_SPI 225, iommus 0x860/0x880. Signed firmware qcom/sm6115/Fxtec/QX1050/venus.mbn is in firmware-fxtec-qx1050. Not attempted.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "kernel source 8cd9520; Konrad Dybcio, Venus QoL series v4 (LKML 2023-05, names SM6115/QCM2290 AR50 Lite); Jorge Ramirez-Ortiz, QCM2290 AR50 Lite series v7 (2025-07)"
+      }
     ]
   }
 }
