@@ -197,16 +197,6 @@
      ;; Backlight writable by the video group (brightnessctl's rules).
      (udev-rules-service 'brightnessctl brightnessctl)
 
-     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
-     ;; assign the static IP and run dnsmasq without interference.
-     (simple-service 'nm-unmanaged-usb0 etc-service-type
-       (list `("NetworkManager/conf.d/unmanaged.conf"
-               ,(plain-file "nm-unmanaged.conf"
-                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
-     (simple-service 'nm-connections-dir etc-service-type
-       (list `("NetworkManager/conf.d/connections.conf"
-               ,(plain-file "nm-connections.conf"
-                            "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
@@ -308,7 +298,21 @@
      (service dbus-root-service-type)
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
-     (service network-manager-service-type)
+     (service network-manager-service-type
+              (network-manager-configuration
+               ;; In conf.d, not through etc-service-type: an /etc entry
+               ;; makes /etc/NetworkManager a read-only store link, and NM's
+               ;; activation then fails to create system-connections.
+               (extra-configuration-files
+                (list
+                 ;; Leave usb0 to pro1x-usb-network (static IP, dnsmasq).
+                 `("unmanaged.conf"
+                   ,(plain-file "nm-unmanaged.conf"
+                                "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))
+                 ;; Saved connections stay where earlier images put them.
+                 `("connections.conf"
+                   ,(plain-file "nm-connections.conf"
+                                "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))))
      (service wpa-supplicant-service-type)
 
      ;; NTP — no hardware RTC; -g allows stepping the clock from 1970

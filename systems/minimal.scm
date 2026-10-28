@@ -132,13 +132,6 @@
      ;; Hardware baseline: udev rules, feedbackd group
      (service pro1x-hardware-service-type)
 
-     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
-     ;; assign the static IP and run dnsmasq without interference.
-     (simple-service 'nm-unmanaged-usb0 etc-service-type
-       (list `("NetworkManager/conf.d/unmanaged.conf"
-               ,(plain-file "nm-unmanaged.conf"
-                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
-
      ;; USB gadget Ethernet + DHCP server
      (service pro1x-usb-network-service-type)
 
@@ -162,7 +155,17 @@
                (generations 3)))
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
-     (service network-manager-service-type)
+     (service network-manager-service-type
+              (network-manager-configuration
+               ;; In conf.d, not through etc-service-type: an /etc entry
+               ;; makes /etc/NetworkManager a read-only store link, and NM's
+               ;; activation then fails to create system-connections.
+               (extra-configuration-files
+                (list
+                 ;; Leave usb0 to pro1x-usb-network (static IP, dnsmasq).
+                 `("unmanaged.conf"
+                   ,(plain-file "nm-unmanaged.conf"
+                                "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))))
      (service wpa-supplicant-service-type)
 
      ;; SSH for USB-ethernet access
