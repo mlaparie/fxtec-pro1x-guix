@@ -181,7 +181,19 @@ unconditional clock step.  Will take effect after next flash.
 
 ---
 
-## 8. GitHub CI  [VERIFY — last known good push: 64f123d]
+## 8. CI artifact size  [LOW — check after next successful build]
+
+GitHub Actions has a 2 GB per-file artifact limit.  The rootfs image may be
+close to or over that with IceCat + calls + chatty added.  The CI log prints
+`rootfs: N MiB` at the end of the image build step.
+
+**If over ~1800 MiB**: add a `gzip -1 rootfs.img` step before the upload-artifact
+step in `.github/workflows/build.yml`, and rename the artifact path to
+`rootfs.img.gz`.  ext4 images compress well (~50 % reduction typical).
+
+---
+
+## 9. GitHub CI  [VERIFY — last known good push: 64f123d]
 
 CI was failing due to glib graft on cached store path (`--no-grafts` fixed),
 `/tmp` mount inheritance (daemon restart order fixed), and gitconfig
