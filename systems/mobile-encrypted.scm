@@ -182,7 +182,7 @@
                     " WLR_BACKENDS=drm,libinput"
                     " " #$(file-append phoc-pro1x "/bin/phoc")
                     " -S -C /etc/phoc.ini -E "
-                    #$(file-append phosh-pro1x "/bin/phosh") "'"))
+                    #$(file-append phosh-pro1x "/libexec/phosh") "'"))
              #:log-file "/var/log/phosh.log"))
          (stop #~(make-kill-destructor))
          (respawn? #t))))

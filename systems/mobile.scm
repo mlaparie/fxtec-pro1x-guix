@@ -90,7 +90,9 @@
                "dbus-run-session" "--"
                #$(file-append phoc-pro1x "/bin/phoc")
                "-S" "-C" "/etc/phoc.ini" "-E"
-               #$(file-append phosh-pro1x "/bin/phosh")))))
+               ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
+               ;; wants gnome-session.
+               #$(file-append phosh-pro1x "/libexec/phosh")))))
 
 ;; Bare sway session for greetd.
 (define sway-session
