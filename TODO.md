@@ -42,6 +42,9 @@ verified on the device.  Order:
    `pro1x-voice-call`/`voicepcm` from NixOS still to translate.
 7. **Sensors (§5).** Mount-matrix and SSC udev rules, wait for QRTR 400.
 8. **CI green (§9), artifact size (§8).**
+8b. **Sway extras, when wanted:** more scripts from mlaparie's guix-config
+   (nmcli-fzf for Wi-Fi as a bar click, power menu, clamshell mode), and
+   i3status-rust click actions.  Strip PC-specific parts first.
 9. **Not yet surveyed:** battery/charging reporting, suspend, haptics and
    LED (feedbackd), GPS, camera userspace, backlight.  Compare each with
    the NixOS port before planning.
