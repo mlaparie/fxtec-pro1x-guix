@@ -8,14 +8,17 @@
 ;;; not touch the DSI link, unlike backlight actual_brightness.  The LED is
 ;;; written only when that result changes, so a manual change
 ;;; (brightnessctl -d white:kbd_backlight set 0) holds until the next slide
-;;; or panel change.
+;;; or panel change.  Sliding the keyboard out with the panel off turns
+;;; the panel on in every running sway (swaymsg on its IPC socket); sway's
+;;; bindswitch knows only lid and tablet switches.  Not done for Phosh yet.
 ;;;
-;;; State: slider values and dpms measured on the phone 2026-10-28; the
-;;; service itself not yet run.
+;;; State: slide in/out and the power key follow the LED (2026-10-28,
+;;; generation 4); panel wake on slide-out not tested yet.
 
 (define-module (fxtec-pro1x services keyboard)
   #:use-module (gnu packages gnome)         ; dconf
   #:use-module (gnu packages linux)         ; keyd, evtest
+  #:use-module (gnu packages wm)            ; sway (swaymsg)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services configuration)
@@ -108,6 +111,22 @@
                             read-line))
                 (any-dsi-on? rest)))))
 
+       ;; Sway does not see the slide switch: turn its outputs on.
+       (define (wake-sway!)
+         (for-each
+          (lambda (dir)
+            (for-each
+             (lambda (sock)
+               (setenv "SWAYSOCK" (string-append dir "/" sock))
+               (system* #$(file-append sway "/bin/swaymsg")
+                        "output * power on"))
+             (or (scandir dir (lambda (f) (string-prefix? "sway-ipc." f)))
+                 '())))
+          (map (lambda (uid) (string-append "/run/user/" uid))
+               (or (scandir "/run/user"
+                            (lambda (f) (not (string-prefix? "." f))))
+                   '()))))
+
        (define (set-led! value)
          (call-with-output-file led
            (lambda (port) (display value port))))
@@ -122,13 +141,16 @@
              ;; u16 code, s32 value.  Poll dpms once a second meanwhile.
              (match (select (list port) '() '() 1)
                (((_) () ())
-                (let ((event (get-bytevector-n port 24)))
-                  (loop (if (and (= ev-sw (bytevector-u16-native-ref event 16))
+                (let* ((event (get-bytevector-n port 24))
+                       (open-now?
+                        (if (and (= ev-sw (bytevector-u16-native-ref event 16))
                                  (= sw-keypad-slide
                                     (bytevector-u16-native-ref event 18)))
                             (= 1 (bytevector-s32-native-ref event 20))
-                            open?)
-                        value)))
+                            open?)))
+                  (when (and open-now? (not open?) (not (panel-on?)))
+                    (wake-sway!))
+                  (loop open-now? value)))
                (_ (loop open? value)))))))))
 
 ;;; Shepherd services: keyd, keyboard backlight
