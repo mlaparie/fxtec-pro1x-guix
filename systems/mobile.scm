@@ -29,6 +29,7 @@
              (gnu packages freedesktop)    ; libqmi, libqrtr-glib
              (gnu packages version-control)
              (gnu packages vim)
+             (gnu packages messaging)
              (gnu packages gnuzilla)
              (gnu packages terminals)
              (gnu packages web-browsers)
@@ -277,9 +278,7 @@
      ;; Browser, terminal, editors
      icecat gnome-console
      emacs mpv nnn
-     ;; Calls (dialer) requires ModemManager + callaudiod — install here
-     ;; and wire through dconf when available in Guix packages
-     ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
+     calls chatty
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas mutter
