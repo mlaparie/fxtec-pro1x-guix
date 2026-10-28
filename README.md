@@ -23,7 +23,7 @@ Touchscreen                      Untested
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
 Keyboard backlight               Broken     not yet working
 Keyboard slider switch           Untested
-Wi-Fi                            Untested   firmware via tqftpserv over QRTR
+Wi-Fi                            Working    firmware via tqftpserv over QRTR
 Bluetooth                        Untested
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
 Speaker / earpiece / headphones  Untested   audio stack incomplete (see TODO §1)
@@ -44,11 +44,11 @@ Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash
 
 ```
 fxtec-pro1x/packages/        kernel, u-boot, firmware, audio, misc
+fxtec-pro1x/packages/sxmo.scm  clickclack, sxmo-utils (Sxmo packages)
 fxtec-pro1x/services/        Shepherd services: audio, boot, camera, fde, hardware,
                              keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
 systems/mobile.scm           Phosh + Sxmo desktop (greetd/tuigreet session picker)
-fxtec-pro1x/packages/sxmo.scm  clickclack, sxmo-utils (Sxmo packages)
 systems/mobile-encrypted.scm Phosh with LUKS2 full-disk encryption
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
@@ -131,8 +131,8 @@ guix shell -m manifest.scm -- bash scripts/flash.sh systems/minimal.scm
 Builds U-Boot, wraps it as an Android boot image, disables vbmeta, erases
 `dtbo_a`, flashes boot + rootfs to slot A, reboots.
 
-First boot initialises the Guix store (~2 min). Log in as `user` (password
-`123456` — **change it**) on the console or over USB Ethernet:
+Log in as `user` (password `123456` — **change it**) on the console or over
+USB Ethernet:
 
 ```sh
 ssh user@172.16.42.1
