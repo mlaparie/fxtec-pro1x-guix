@@ -667,7 +667,7 @@ It runs on top of the Phoc compositor.")
        ((#:phases phases)
         #~(modify-phases #$phases
             (add-after 'install 'install-missing-schemas
-              (lambda* (#:key native-inputs outputs #:allow-other-keys)
+              (lambda* (#:key outputs #:allow-other-keys)
                 (let* ((out (assoc-ref outputs "out"))
                        (schema-dir (string-append out "/share/glib-2.0/schemas")))
                   (for-each
@@ -678,6 +678,5 @@ It runs on top of the Phoc compositor.")
                     #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.gschema.xml")
                     #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml")
                     #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")))
-                  (invoke (search-input-file native-inputs "bin/glib-compile-schemas")
-                          schema-dir))))))))
+                  (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
