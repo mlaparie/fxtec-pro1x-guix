@@ -169,7 +169,7 @@
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime"))
+      (flags '(no-atime)))
     %base-file-systems))
 
   ;; ── Home skeleton: sway and bar configs for new accounts ─────────────────

@@ -120,13 +120,13 @@
       (mount-point "/boot")
       (type "ext4")
       (check? #f)
-      (options "noatime"))
+      (flags '(no-atime)))
     ;; Encrypted root on the LUKS2 device.
     (file-system
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime")
+      (flags '(no-atime))
       (dependencies %fde-mapped-devices))
     %base-file-systems))
 

@@ -108,7 +108,7 @@
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime"))
+      (flags '(no-atime)))
     %base-file-systems))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────
