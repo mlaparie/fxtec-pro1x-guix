@@ -77,9 +77,12 @@
    (extensions
     (list
      ;; udev rules: dma-buf, haptics, slider symlink, optional touch matrix
+     ;; udev only reads lib/udev/rules.d/ inside each item: a bare rules
+     ;; file is silently ignored, hence file->udev-rule.
      (service-extension udev-service-type
                         (lambda (config)
-                          (list (pro1x-udev-rules config))))
+                          (list (file->udev-rule "60-pro1x.rules"
+                                                 (pro1x-udev-rules config)))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)))

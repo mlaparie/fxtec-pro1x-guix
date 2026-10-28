@@ -126,6 +126,11 @@
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))
+     ;; MM's own rules: 77-mm-qcom-soc.rules tags rmnet_ipa0 (driver ipa)
+     ;; with ID_MM_PHYSDEV_UID=qcom-soc; without them MM fails with "Failed
+     ;; to find a net port in the QMI modem".
+     (service-extension udev-service-type
+                        (lambda (_) (list modem-manager-1.24)))
      (service-extension profile-service-type
                         pro1x-modem-packages)))
    (default-value (pro1x-modem-configuration))
