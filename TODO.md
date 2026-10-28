@@ -48,6 +48,9 @@ verified on the device.  Order:
    `pro1x-voice-call`/`voicepcm` from NixOS still to translate.
 7. **Sensors (§5).** Mount-matrix and SSC udev rules, wait for QRTR 400.
 8. **CI green (§9), artifact size (§8).**
+7b. **Redo the dpugap/panelgap sync with the NixOS port** (69697e4,
+   reverted in 9f1e7c8 to reuse the built kernel).  Cosmetic only; redo it
+   with the next real kernel change, so the kernel is rebuilt once.
 8a. **Video decode (Venus):** no hardware codec yet.  Firmware and driver
    (QCM2290 AR50 Lite) are there; needs an SM6115 video-codec DT node
    (rag-notes hardware.json "video").  Then mpv --hwdec=v4l2m2m-copy,
