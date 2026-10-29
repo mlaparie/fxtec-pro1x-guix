@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST="$SCRIPT_DIR/../manifest.scm"
+
 ARCH="aarch64-linux"
 SYSTEM="systems/mobile.scm"
 OPT_UBOOT=""
@@ -21,10 +24,83 @@ SECOND_OFFSET=0x00f00000
 TAGS_OFFSET=0x00000100
 
 die()  { echo "error: $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found — run: guix shell fastboot mkbootimg -- bash $0"; }
 ask()  { local yn; read -r -p "$1 [Y/n] " yn; [[ "${yn:-Y}" =~ ^[Yy]$ ]]; }
 # Run a command, suppressing stderr unless --verbose was passed.
 quiet() { if [[ "$VERBOSE" == true ]]; then "$@"; else "$@" 2>/dev/null; fi; }
+
+# Query the guix store DB for when a path was built/substituted.
+store_date() {
+    python3 - "$1" 2>/dev/null <<'PYEOF'
+import sys, sqlite3, datetime
+try:
+    con = sqlite3.connect('file:/var/guix/db/db.sqlite?mode=ro&immutable=1', uri=True, timeout=2)
+    row = con.execute('SELECT registrationTime FROM ValidPaths WHERE path=?',
+                      (sys.argv[1],)).fetchone()
+    if row:
+        print(datetime.datetime.fromtimestamp(row[0]).strftime('%Y-%m-%d %H:%M'))
+except Exception:
+    pass
+PYEOF
+}
+
+# Find cached store outputs for CMD ARGS; let user pick one or build new.
+# Interactive prompts/listing → stderr. Chosen store path → stdout.
+guix_select_or_build() {
+    local label="$1"; shift
+    local hits=()
+    # Phase 1: --dry-run — works for "guix build" (prints output paths when cached).
+    local _dry; _dry=$(mktemp)
+    { "$@" --dry-run 2>&1 || true; } > "$_dry"
+    while IFS= read -r p; do
+        [[ -e "$p" ]] && hits+=("$p")
+    done < <(grep '^/gnu/store' "$_dry" | grep -v '\.drv$')
+    rm -f "$_dry"
+
+    # Phase 2: quick probe — "guix system image --dry-run" silently ignores --dry-run
+    # and outputs nothing.  Run without it; if the image is cached the command returns
+    # the store path in ~7 s (daemon round-trip).  timeout kills the client if a real
+    # build would be needed; daemon state is unaffected by client disconnect.
+    if [[ ${#hits[@]} -eq 0 ]]; then
+        local _quick
+        _quick=$(timeout 15 "$@" 2>/dev/null | grep '^/gnu/store' | grep -v '\.drv$' | tail -1)
+        [[ -e "$_quick" ]] && hits+=("$_quick")
+    fi
+
+    local choice=""
+    if [[ ${#hits[@]} -gt 0 ]]; then
+        for i in "${!hits[@]}"; do
+            local ts; ts=$(store_date "${hits[$i]}")
+            printf "    %d) cached  %s  [%s]\n" "$((i+1))" "${hits[$i]}" "${ts:-unknown}" >&2
+        done
+        printf "    %d) build new\n" "$((${#hits[@]}+1))" >&2
+        local _pick
+        read -r -p "    select [1]: " _pick
+        _pick="${_pick:-1}"
+        if [[ "$_pick" =~ ^[0-9]+$ && "$_pick" -ge 1 && "$_pick" -le "${#hits[@]}" ]]; then
+            choice="${hits[$((_pick-1))]}"
+        fi
+        # selecting "build new" or out-of-range leaves choice empty → falls through to build
+    fi
+
+    if [[ -z "$choice" ]]; then
+        if [[ ${#hits[@]} -gt 0 ]]; then
+            printf "    building %s (guix is deterministic — same image if config unchanged) …\n" \
+                "$label" >&2
+        else
+            ask "    build $label?" || die "Aborted."
+        fi
+        choice=$(guix_build_path "$@" --fallback)
+        [[ -n "$choice" ]] || die "$label build failed"
+        local _cached_hit
+        for _cached_hit in "${hits[@]}"; do
+            if [[ "$choice" == "$_cached_hit" ]]; then
+                printf "    (config unchanged — same image as cached)\n" >&2
+                break
+            fi
+        done
+    fi
+    echo "$choice"
+}
 
 # Run CMD, stream output live to stderr, return the last /gnu/store path found.
 # Avoids the pipe-buffering that silences guix progress when capturing via $().
@@ -40,38 +116,39 @@ guix_build_path() {
 
 show_help() {
     cat <<EOF
-Usage: sudo bash scripts/flash.sh [OPTIONS]
+Usage: bash scripts/flash.sh [OPTIONS]
 
 Flash U-Boot and a Guix root filesystem onto the F(x)tec Pro1X via fastboot.
 The device must be in fastboot mode (hold Vol-Down at power-on).
-Run as root (sudo) unless you have a udev rule granting your user fastboot access.
+fastboot commands are run via sudo internally (USB device access).
 
 Options:
   --uboot FILE     Path to u-boot-nodtb.bin
   --dtb FILE       Path to sm6115-fxtec-pro1x.dtb (default: same dir as --uboot)
   --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
-  --system FILE    Guix system .scm to build if rootfs is not found
-                   (default: systems/mobile.scm)
+  --system FILE    Guix system .scm (prompted interactively if omitted)
   -v, --verbose    Show all dd progress and suppress no stderr output
   -h, --help       Show this help
 
-Artifact discovery order (tried in sequence for both U-Boot and rootfs):
+Systems in systems/:
+  mobile.scm           Phosh desktop, unencrypted userdata  [default]
+  minimal.scm          Headless, SSH only (fast build, good for testing)
+  mobile-encrypted.scm Phosh desktop, LUKS2 full-disk encryption
+                       (delegates to flash-encrypted.sh automatically)
+
+Artifact discovery (tried in order for both U-Boot and rootfs):
   1. Explicit flag (--uboot / --rootfs)
-  2. Local files in the current directory:
-       u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb   (as downloaded from GitHub releases)
-       rootfs.img
-  3. Guix store (/gnu/store) — offered interactively if Guix is installed
-  4. Build with Guix  — offered interactively (U-Boot: ~2 h; rootfs: ~30 min)
+  2. Local files: u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb, rootfs.img
+  3. Guix store — checked via "guix build --dry-run"; prints path + date if cached
+  4. Guix build — offered interactively if not cached (U-Boot: ~2 h; rootfs: ~30 min)
+
+If guix is in PATH, the script re-execs itself inside "guix shell -m manifest.scm"
+for a reproducible tooling environment (fastboot, mkbootimg, partx, e2label).
+Without guix, those tools must already be installed.
 
 Examples:
-  # Use pre-downloaded GitHub release artifacts in the current directory:
-  sudo bash scripts/flash.sh
-
-  # Explicit paths:
-  sudo bash scripts/flash.sh --uboot ~/Downloads/u-boot.bin --rootfs ~/Downloads/rootfs.img
-
-  # Force a fresh build of a specific system:
-  sudo guix shell fastboot mkbootimg -- bash scripts/flash.sh --system systems/minimal.scm
+  bash scripts/flash.sh
+  bash scripts/flash.sh --uboot ~/Downloads/u-boot.bin --rootfs ~/Downloads/rootfs.img
 EOF
 }
 
@@ -89,64 +166,103 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-need fastboot
-need mkbootimg
+# ── Tool environment ──────────────────────────────────────────────────────────
+# Re-exec inside guix shell for a reproducible tooling environment.
+# If guix is not available, fall through and check each tool manually.
+if [[ -z "${_IN_GUIX_SHELL:-}" ]] && command -v guix >/dev/null 2>&1; then
+    [[ -f "$MANIFEST" ]] || die "manifest.scm not found at $MANIFEST"
+    export _IN_GUIX_SHELL=1
+    exec guix shell -m "$MANIFEST" -- bash "$0" "$@"
+fi
+for _t in fastboot mkbootimg partx e2label python3; do
+    command -v "$_t" >/dev/null 2>&1 \
+        || die "$_t not found (Guix unavailable; install fastboot mkbootimg util-linux e2fsprogs python3)"
+done
+
+# fastboot needs USB device access — wrap with sudo.
+# Capture the real path now so sudo gets the store path, not a shell function.
+export _FASTBOOT_BIN="$(command -v fastboot)"
+fastboot() { sudo "$_FASTBOOT_BIN" "$@"; }
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# ── Select system (when we'll need to build one) ──────────────────────────────
+# Prompt only if no --system flag, no --rootfs flag, and no local rootfs.img.
+if [[ -z "$OPT_ROOTFS" && ! -f "rootfs.img" && "$SYSTEM" == "systems/mobile.scm" ]]; then
+    mapfile -t SCMS < <(ls systems/*.scm 2>/dev/null | sort)
+    if [[ ${#SCMS[@]} -gt 1 ]]; then
+        echo "Available systems:"
+        for i in "${!SCMS[@]}"; do
+            printf "  %d) %s\n" "$((i+1))" "${SCMS[$i]}"
+        done
+        # Default to mobile.scm if present, else item 1
+        default_idx=1
+        for i in "${!SCMS[@]}"; do
+            [[ "${SCMS[$i]}" == "systems/mobile.scm" ]] && default_idx=$((i+1)) && break
+        done
+        read -r -p "Select [$default_idx]: " _pick
+        _pick="${_pick:-$default_idx}"
+        [[ "$_pick" =~ ^[0-9]+$ && "$_pick" -ge 1 && "$_pick" -le "${#SCMS[@]}" ]] \
+            || die "invalid selection"
+        SYSTEM="${SCMS[$((_pick-1))]}"
+    fi
+fi
+echo "System: $SYSTEM"
+echo ""
+
 # ── Find U-Boot ───────────────────────────────────────────────────────────────
-echo "==> Finding U-Boot …"
+echo "==> U-Boot"
 UBOOT_BIN=""
 UBOOT_DTB=""
 
 if [[ -n "$OPT_UBOOT" ]]; then
     UBOOT_BIN="$OPT_UBOOT"
     UBOOT_DTB="${OPT_DTB:-$(dirname "$OPT_UBOOT")/sm6115-fxtec-pro1x.dtb}"
-    echo "    Using: $UBOOT_BIN"
 elif [[ -f "u-boot-nodtb.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
     UBOOT_BIN="u-boot-nodtb.bin"
     UBOOT_DTB="sm6115-fxtec-pro1x.dtb"
-    echo "    Found local files."
+    echo "    local files"
 elif command -v guix >/dev/null 2>&1; then
-    # guix build returns the store path instantly if already built, or builds it.
-    ask "    Not found locally. Use Guix to find/build u-boot-pro1x?" || die "Aborted."
-    BUILT=$(guix_build_path guix build u-boot-pro1x -L . --fallback)
-    [[ -d "$BUILT" ]] || die "U-Boot build failed"
+    BUILT=$(guix_select_or_build "u-boot-pro1x" guix build u-boot-pro1x -L .)
+    [[ -d "$BUILT" ]] || die "U-Boot not found: $BUILT"
     UBOOT_BIN="$BUILT/libexec/u-boot-nodtb.bin"
     UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
 else
-    die "u-boot-nodtb.bin not found and Guix is not installed.
-Download u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb from the GitHub releases page
-and place them in the current directory, or pass --uboot / --dtb."
+    die "u-boot-nodtb.bin not found and Guix is not installed — pass --uboot or install Guix"
 fi
 
-[[ -f "$UBOOT_BIN" ]]  || die "u-boot-nodtb.bin not found at: $UBOOT_BIN"
-[[ -f "$UBOOT_DTB" ]]  || die "DTB not found at: $UBOOT_DTB"
-echo "    u-boot-nodtb.bin: $UBOOT_BIN"
-echo "    DTB:        $UBOOT_DTB"
+[[ -f "$UBOOT_BIN" ]] || die "not found: $UBOOT_BIN"
+[[ -f "$UBOOT_DTB" ]] || die "not found: $UBOOT_DTB"
+
+# Encrypted path: find the disk image here, export everything, delegate assembly.
+if [[ "$SYSTEM" == "systems/mobile-encrypted.scm" ]]; then
+    echo "==> System image ($SYSTEM)"
+    DISK_IMAGE=$(guix_select_or_build "system image" \
+        guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
+    [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
+    export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE"
+    exec bash "$SCRIPT_DIR/flash-encrypted.sh"
+fi
 
 # ── Find rootfs ───────────────────────────────────────────────────────────────
-echo "==> Finding rootfs …"
+echo "==> Rootfs"
 ROOTFS_FLASH=""   # final path passed to fastboot
 NEED_EXTRACT=false
 DISK_IMAGE=""
 
 if [[ -n "$OPT_ROOTFS" ]]; then
     ROOTFS_FLASH="$OPT_ROOTFS"
-    echo "    Using: $ROOTFS_FLASH"
 elif [[ -f "rootfs.img" ]]; then
     ROOTFS_FLASH="rootfs.img"
-    echo "    Found local file: rootfs.img"
+    echo "    local file: rootfs.img"
 elif command -v guix >/dev/null 2>&1; then
-    ask "    Not found locally. Use Guix to find/build system image?" || die "Aborted."
-    DISK_IMAGE=$(guix_build_path guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
-    [[ -f "$DISK_IMAGE" ]] || die "System image build failed"
+    DISK_IMAGE=$(guix_select_or_build "system image" \
+        guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
+    [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
     NEED_EXTRACT=true
 else
-    die "rootfs.img not found and Guix is not installed.
-Download rootfs.img from the GitHub releases page and place it in the
-current directory, or pass --rootfs."
+    die "rootfs.img not found and Guix is not installed — pass --rootfs or install Guix"
 fi
 
 # ── Prepare artifacts ─────────────────────────────────────────────────────────
