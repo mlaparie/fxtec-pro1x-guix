@@ -30,6 +30,7 @@
   #:use-module (gnu packages fribidi)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
+  #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
@@ -798,6 +799,8 @@ It runs on top of the Phoc compositor.")
            gmobile-0.7
            gnome-desktop
            gsound
+           gst-plugins-base
+           gst-plugins-good
            gtk
            json-glib
            libadwaita-1.9
@@ -836,7 +839,18 @@ It runs on top of the Phoc compositor.")
                  (lambda _
                    (substitute* "meson.build"
                      (("'polkit-gobject-1', version: '>= 126'")
-                      "'polkit-gobject-1', version: '>= 121'")))))))
+                      "'polkit-gobject-1', version: '>= 121'"))))
+               ;; gtk4's GStreamer media backend aborts the app without
+               ;; playbin3 ("GstPlay: 'playbin3' element not found").
+               (add-after 'glib-or-gtk-wrap 'wrap-gstreamer
+                 (lambda _
+                   (wrap-program (string-append #$output
+                                                "/bin/phosh-mobile-settings")
+                     `("GST_PLUGIN_SYSTEM_PATH" prefix
+                       (,(string-append #$(this-package-input "gst-plugins-base")
+                                        "/lib/gstreamer-1.0")
+                        ,(string-append #$(this-package-input "gst-plugins-good")
+                                        "/lib/gstreamer-1.0")))))))))
     (home-page "https://gitlab.gnome.org/World/Phosh/phosh-mobile-settings")
     (synopsis "Settings app for the Phosh mobile shell")
     (description
