@@ -55,9 +55,13 @@ the newest one plus three previous (`prev1-3`).
      private `libadwaita-1.9` (uses AdwSidebar), polkit check relaxed to
      121 (only `polkit_permission_new_sync` is used), gvc,
      libcellbroadcast and gvdb pre-seeded, lm-sensors for the librem5
-     plugin.  Not built through yet.
+     plugin, binary wrapped with GST_PLUGIN_SYSTEM_PATH (it aborted on
+     "playbin3 not found").  Generation 17: starts by hand and stays up;
+     from the gear not confirmed yet.  Warnings: a GStreamer element still
+     missing (gst_bin_add NULL), no localed permission, no cbd daemon, no
+     gmobile device info for fxtec,pro1x.
    - GNOME Settings: installed; `XDG_CURRENT_DESKTOP=Phosh:GNOME` set in
-     the session (ad1b59d) so it shows and starts — not tested yet.  Opens
+     the session (ad1b59d): shows and starts (author).  Opens
      from a long press on a quick setting.  Its panels warn about missing
      hostname1 and UPower services.
    - Power key: after blanking, the screen never comes back.  phosh
@@ -65,7 +69,8 @@ the newest one plus three previous (`prev1-3`).
      has no gnome-session (gnome-session-shepherd does not implement
      Presence either).  Patch: unblank on power-key press when the
      presence proxy has no owner
-     (`device/phosh/unblank-without-gnome-session.patch`).  Not built yet.
+     (`device/phosh/unblank-without-gnome-session.patch`, 7af4415): the
+     power key wakes the screen and keyboard light again (author).
 2. **PipeWire + WirePlumber, then audio and camera** (§1).
    Camera shows black in cameractrl: both sensors register (imx582,
    s5k4h7), cameractrl finds the focus subdev, but no PipeWire or
