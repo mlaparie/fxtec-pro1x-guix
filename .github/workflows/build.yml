@@ -143,39 +143,6 @@ jobs:
       - name: Import Guix build cache
         run: bash .github/guix-cache.sh import /var/tmp/guix-cache
 
-      # ── Build U-Boot ──────────────────────────────────────────────────────
-      # Running natively on aarch64.  The build is non-blocking (continue-on-error)
-      # because the current uboot.scm produces a derivation that fails to build
-      # from source in CI (see TODO.md §6).  The system-image step must not be
-      # gated on u-boot until that is fixed.
-      #
-      # guix time-machine handles channel module loading (including nonguix)
-      # automatically — no guix pull + GUILE_LOAD_PATH juggling needed.
-      - name: Build u-boot-pro1x
-        run: |
-          guix time-machine --disable-authentication -C channels-ci.scm -- \
-            build u-boot-pro1x \
-            -L modules \
-            --no-grafts \
-            --fallback \
-            2>&1 | tee /tmp/uboot.log || true
-          UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
-          if [ -d "$UBOOT" ]; then
-            cp "$UBOOT/libexec/u-boot-nodtb.bin"            u-boot-nodtb.bin
-            cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
-            echo "Built: $UBOOT"
-          else
-            echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
-            tail -50 /tmp/uboot.log
-            # Print the tail of each failed builder's own log.
-            for drv in $(grep -o "builder for \`[^']*" /tmp/uboot.log | sed 's/.*`//' | sort -u); do
-              base=$(basename "$drv")
-              echo "==> log of $base:"
-              sudo zcat "/var/log/guix/drvs/${base:0:2}/${base:2}.gz" 2>/dev/null | tail -60 \
-                || echo "(log not found)"
-            done
-          fi
-
       # ── Diagnose git-fetch network access ────────────────────────────────
       # The daemon runs as the guix-daemon user; this test runs git as root.
       - name: Test network access from guix build user
@@ -255,6 +222,44 @@ jobs:
           resize2fs -M rootfs.img
           echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
           echo "==> disk space after extraction:"; df -h /
+
+      # ── Build U-Boot ──────────────────────────────────────────────────────
+      # After the image step: the first guix time-machine of a job builds
+      # its own guix, and that has failed grafting glib-2.86.5 in this step
+      # while succeeding minutes later in the image step (run 40915192501).
+      # Here it reuses the guix the image step built.
+      # Running natively on aarch64.  The build is non-blocking (continue-on-error)
+      # because the current uboot.scm produces a derivation that fails to build
+      # from source in CI (see TODO.md §6).  The system-image step must not be
+      # gated on u-boot until that is fixed.
+      #
+      # guix time-machine handles channel module loading (including nonguix)
+      # automatically — no guix pull + GUILE_LOAD_PATH juggling needed.
+      - name: Build u-boot-pro1x
+        if: always()
+        run: |
+          guix time-machine --disable-authentication -C channels-ci.scm -- \
+            build u-boot-pro1x \
+            -L modules \
+            --no-grafts \
+            --fallback \
+            2>&1 | tee /tmp/uboot.log || true
+          UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
+          if [ -d "$UBOOT" ]; then
+            cp "$UBOOT/libexec/u-boot-nodtb.bin"            u-boot-nodtb.bin
+            cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
+            echo "Built: $UBOOT"
+          else
+            echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
+            tail -50 /tmp/uboot.log
+            # Print the tail of each failed builder's own log.
+            for drv in $(grep -o "builder for \`[^']*" /tmp/uboot.log | sed 's/.*`//' | sort -u); do
+              base=$(basename "$drv")
+              echo "==> log of $base:"
+              sudo zcat "/var/log/guix/drvs/${base:0:2}/${base:2}.gz" 2>/dev/null | tail -60 \
+                || echo "(log not found)"
+            done
+          fi
 
       # ── Save Guix build cache (also after a failed build) ─────────────────
       - name: Export Guix build cache

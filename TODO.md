@@ -77,6 +77,13 @@ To deploy and test once the phone takes deploys again (Tailscale):
 - kernel.scm: package lookup by name failed (current-source-directory).
 The kernel changed: reboot needed, with the U-Boot fallback in mind.
 
+Updating the phone without the PC replacing its configuration: let the
+phone reconfigure from its own config.scm but download what the PC built,
+`guix publish` on the PC reachable over Tailscale, the PC's signing key
+and URL added to the phone's guix-configuration (authorized-keys,
+substitute-urls) in config.scm.  Otherwise the phone builds the kernel
+and Phosh itself.  Not set up yet.
+
 ## Next steps (author's order, 2026-10-29)
 
 1. **Phosh settings and power key** (in progress).
