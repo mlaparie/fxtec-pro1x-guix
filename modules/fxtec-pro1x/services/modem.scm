@@ -206,7 +206,11 @@ exit 0
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))
      (service-extension polkit-service-type
-                        (const (list pro1x-modem-polkit-rules)))
+                        ;; MM's actions (share/polkit-1/actions): without
+                        ;; them every unlock fails, even as root ("Action
+                        ;; ...ModemManager1.Device.Control is not registered").
+                        (const (list modem-manager-1.24
+                                     pro1x-modem-polkit-rules)))
      ;; MM's own rules: 77-mm-qcom-soc.rules tags rmnet_ipa0 (driver ipa)
      ;; with ID_MM_PHYSDEV_UID=qcom-soc; without them MM fails with "Failed
      ;; to find a net port in the QMI modem".
