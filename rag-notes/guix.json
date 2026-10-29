@@ -1,0 +1,279 @@
+{
+  "guix": {
+    "note": "Findings specific to Guix System and its tooling, from porting it to the F(x)tec Pro¹x. Seeded 2026-10-28 from this repository's git history (commits up to 018fa97) and TODO.md; entries labelled handover were not re-checked. Hardware lessons go in hardware.json, NixOS translation notes in nixos_to_guix.json.",
+    "shepherd_services": [
+      {
+        "title": "A compositor started from a Shepherd service needs seatd, not elogind",
+        "general": "libseat needs a seat session. A Shepherd service that runs the compositor through 'su -l user' gets no PAM/logind session, so libseat fails with elogind ('Failed to load session backend', 'Failed to start a DRM session') even though elogind runs and /dev/dri exists. seatd-service-type gives libseat a socket that needs no session; the user must be in the seat group. seatd also provides the 'elogind Shepherd symbol, which services such as phosh require for start order.",
+        "instance": "phoc/phosh on the Pro¹x, systems/mobile.scm. Later replaced by greetd + tuigreet as session picker, which owns VT1.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 9ff38c8; TODO.md section 1"
+      },
+      {
+        "title": "A daemon's D-Bus policy is only loaded if the service extends dbus-root-service-type",
+        "general": "Installing a package does not install its D-Bus system policy. Unless the Guix service extends dbus-root-service-type with the package, dbus-daemon refuses the daemon's bus name. Some daemons, like ModemManager, then exit with status 0 and no useful message, and Shepherd disables them after repeated restarts.",
+        "instance": "ModemManager exited five times at boot and was disabled. Fixed by the extension in fxtec-pro1x/services/modem.scm; NixOS's networking.modemmanager.enable did this implicitly.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 625bfec; TODO.md section 4"
+      },
+      {
+        "title": "Do not give #:pid-file to a daemon that runs in the foreground",
+        "general": "make-forkexec-constructor with #:pid-file waits for the file to appear. A daemon started in the foreground never writes it, so Shepherd waits until the timeout and marks the service failed although the daemon runs. Leave #:pid-file out and Shepherd tracks the child it started.",
+        "instance": "rmtfs started with -s (foreground) in fxtec-pro1x/services/modem.scm.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 375bb13"
+      },
+      {
+        "title": "Shepherd requirement means 'start after', and fails if the requirement cannot start",
+        "general": "A Shepherd 'requirement' starts the required service first and refuses to start the dependent one if that fails. It is not systemd's Wants=, which tolerates a failed dependency. Translate systemd After=/Wants=/Requires= deliberately, service by service.",
+        "instance": "ModemManager requires rmtfs/tqftpserv in modem.scm; behaviour once MM stays up is still to be checked (TODO.md section 6).",
+        "confidence": "inferred",
+        "date": "2026-10-27",
+        "source": "TODO.md section 6; confirm in the Shepherd manual and with herd status after the next flash"
+      },
+      {
+        "title": "D-Bus-activated daemons do not appear in herd status",
+        "general": "A daemon started by dbus-daemon on first use (NetworkManager here, iio-sensor-proxy on other systems) is not a Shepherd service. 'herd status' does not list it; check with ps, or with busctl or dbus-send on its bus name.",
+        "instance": "NetworkManager running and nmcli working on the Pro¹x while absent from herd status.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working'"
+      },
+      {
+        "title": "/etc/environment.d is a systemd convention; check that anything reads it on Guix",
+        "general": "systemd's environment.d is read by the systemd user manager, not by PAM. On a Guix system without systemd, a file placed there may be ignored. Use the session start script, a service's #:environment-variables, or /etc/environment (pam_env) instead, and verify the variable inside the running process (/proc/<pid>/environ).",
+        "instance": "fxtec-pro1x/services/camera.scm writes LD_LIBRARY_PATH for libcamera-pro1x to /etc/environment.d/51-pro1x-libcamera.conf, with a comment saying PAM reads it. The NixOS port sets it on the wireplumber user service instead. Not checked on the device.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "fxtec-pro1x/services/camera.scm lines 37-45 at 018fa97, read in source; confirm with: tr '\\0' '\\n' < /proc/$(pgrep -n wireplumber)/environ | grep LD_LIBRARY_PATH"
+      },
+      {
+        "title": "Step the clock at boot with ntpd -g; openntpd did not",
+        "general": "A phone without a battery-backed clock at first boot can start in 1970, and TLS, substitutes and guix pull fail until the time is fixed. openntpd-service-type did not step it; ntp-service-type with allow-large-adjustment? #t passes -g, which lets ntpd make one large step.",
+        "instance": "systems/mobile.scm and mobile-encrypted.scm. Fix not yet seen on the device as of TODO.md section 7.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit d9c848c; TODO.md section 7"
+      },
+      {
+        "title": "An etc-service entry under a directory makes the whole directory a read-only store link",
+        "general": "On Guix System, each top-level /etc entry produced by etc-service-type is a symlink into the store. Adding \"NetworkManager/conf.d/x.conf\" or \"dconf/db/local.d/x\" makes /etc/NetworkManager or /etc/dconf read-only, so daemons and activation snippets that write there fail (NetworkManager system-connections, dconf update). Use the service field made for it (network-manager-configuration extra-configuration-files), or build the file at build time (dconf compile in a computed-file), instead of writing beside a store link.",
+        "instance": "Earlier note (2026-10-26, handover from 491cd95) said /etc is read-only on Guix and moved NM connections to /var/lib; wrong cause: /etc is writable, the nm-unmanaged-usb0 etc entry made /etc/NetworkManager a store link. Activation logged mkdir EROFS for /etc/NetworkManager/system-connections and \"Failed to create file /etc/dconf/db/local.BTAPAA: Read-only file system\" from pro1x-keyboard (dconf update), at boot and on deploy, so the dconf system db never existed. Fixed: conf.d files via extra-configuration-files (the /var/lib keyfile path kept so saved networks stay), dconf db compiled at build time.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "generation 2 activate run by hand on the phone; ls -la /etc/NetworkManager /etc/dconf; gnu/services/networking.scm network-manager-activation (Guix fa73e81)"
+      },
+      {
+        "title": "phoc started outside a desktop session needs its own session bus",
+        "general": "GSettings calls block indefinitely when there is no session bus. A compositor started by a system service or a greeter command must be wrapped in dbus-run-session, and needs XDG_DATA_DIRS pointing at the system profile so gschemas.compiled is found.",
+        "instance": "phoc -E phosh wrapped in dbus-run-session; stale Wayland sockets removed before restart.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 1b5d016"
+      },
+      {
+        "title": "A greeter that owns VT1 means removing mingetty, login and console-font from %base-services",
+        "general": "greetd on VT1 conflicts with the mingetty on tty1 from %base-services. Removing the mingetty services also requires removing console-font, which depends on the term-ttyN services that mingetty provides.",
+        "instance": "systems/mobile.scm, greetd + tuigreet offering Phosh and Sxmo/Sway sessions from /etc/wayland-sessions.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "systems/mobile.scm lines 260-262 at 018fa97, read in source; commit 1226034"
+      },
+      {
+        "title": "A udev-service-type extension must be a directory with lib/udev/rules.d/; a bare rules file is dropped silently",
+        "general": "udev-service-type unions the lib/udev/rules.d/ directories of the items it receives (packages or the output of udev-rule / file->udev-rule). A local-file, plain-file or computed-file holding rule text has no such directory and is ignored without any warning; the system builds and boots, and the rules simply are not there. Wrap rule files with file->udev-rule \"NN-name.rules\" FILE. A service that installs a daemon also has to pass the daemon package itself if its own rules matter (ModemManager, iio-sensor-proxy), as the stock Guix services do.",
+        "instance": "services/hardware.scm passed (local-file \"60-pro1x.rules\") and services/sensors.scm a computed-file \"90-pro1x-sensors.rules\"; on image 6b37ac4 neither file was in /etc/udev/rules.d, and pro1x-modem-service-type did not pass modem-manager-1.24, so 77-mm-qcom-soc.rules was missing too. Consequences: no rmnet_ipa0 tags (MM: no net port), no haptics/slider/sensor rules. Fixed with file->udev-rule plus the two packages; re-test pending.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone survey 2026-10-28 (ls /etc/udev/rules.d, udevadm test); /tmp/guix gnu/services/base.scm udev-configurations-union, file->udev-rule"
+      },
+      {
+        "title": "Guix extlinux.conf has no Default entry and multi-word labels",
+        "general": "Guix writes extlinux.conf as: header, the current system as entry 1, then older generations newest first, each LABEL being the generation label (with spaces). Scripts that index entries or reuse LABEL as a DEFAULT target must not assume NixOS layout (a leading Default entry) or one-word labels.",
+        "instance": "services/boot.scm (from NixOS boot-menu.nix) used entry N+2 and LABEL $2; changed to N+1 and the full label in f737b70. Phone: one generation only, so prev*.conf was never written.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "/boot/extlinux/extlinux.conf on image 6b37ac4; gnu/bootloader/extlinux.scm; NixOS modules/boot-menu.nix line 20-23"
+      }
+    ],
+    "packaging": [
+      {
+        "title": "Installing GSettings schemas: the package must be in the system profile",
+        "general": "Guix compiles GSettings schemas per profile. A program whose schemas are not compiled into the profile it runs from crashes at the first g_settings_new() for a missing schema. Put the package providing the schema in the system 'packages' field (not only as a service's dependency), or bundle the schemas.",
+        "instance": "phoc crashed at start until phoc-pro1x was added to the system packages for mobi.phosh.phoc.gschema.xml.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 375bb13"
+      },
+      {
+        "title": "Bundle a few schema XMLs instead of pulling a large package for them",
+        "general": "When a package only needs a handful of another project's GSettings schemas, ship those XML files with the package and compile them in a phase, instead of adding the whole project as an input. Note the upstream version they came from, and refresh them on upgrades.",
+        "instance": "phosh-pro1x needs three org.gnome.settings-daemon schemas; gnome-settings-daemon as an input pulled evolution-data-server and webkitgtk, hours of building on aarch64. Schemas now in device/phosh/.",
+        "confidence": "handover",
+        "date": "2026-10-28",
+        "source": "commit b62a382"
+      },
+      {
+        "title": "In a meson build phase, call glib-compile-schemas by name, not via search-input-file",
+        "general": "search-input-file on native-inputs did not find glib-compile-schemas from glib:bin inside a custom phase, although the meson build system has it on PATH. Calling the program by name works.",
+        "instance": "phosh-pro1x install-missing-schemas phase; three consecutive commits before it built.",
+        "confidence": "handover",
+        "date": "2026-10-28",
+        "source": "commits 6027998, 61b65db, a0a4360"
+      },
+      {
+        "title": "Newer phone stacks pull version chains Guix does not have yet",
+        "general": "A recent mobile shell can require newer middleware than the distribution ships, which in turn requires newer libraries. Package the whole chain in the channel, disable optional features whose own dependencies fail (introspection, MBIM, plugins), and write each disabled feature down at the package definition.",
+        "instance": "phosh 0.56 needs mm-glib >= 1.24, so ModemManager 1.24, which needs libqmi >= 1.36. Introspection disabled in both (g-ir-scanner failure), MBIM disabled. phosh lockscreen plugins disabled (evince dependency); quick-setting plugins re-enabled once qrcodegen-cpp was added. phosh needs gcr-3, not gcr 4.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commits f104978, e8a9b65, 5c4dbbf, 76b4378, 3c94f45, d14bc99, 6b37ac4, 6fe0154"
+      },
+      {
+        "title": "Replace extlinux-bootloader by a stub when U-Boot reads extlinux.conf itself",
+        "general": "Guix's extlinux-bootloader depends on syslinux, a BIOS-era build that fails with GCC 14 (-mregparm=3) and is useless on an arm64 phone. Since U-Boot reads extlinux.conf natively, a custom bootloader with a no-op installer only needs to write the configuration file.",
+        "instance": "pro1x-extlinux-bootloader in fxtec-pro1x/packages/bootloader.scm.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commits a6577ad, 97d3f59, 913c9f0, 5a03d29"
+      },
+      {
+        "title": "Cross-gcc for U-Boot fails in fixincludes in the non-FHS build sandbox",
+        "general": "gcc's stmp-fixinc rule expects /usr/include, which does not exist in the Guix build sandbox. Configure the cross compiler with --disable-fixincludes. The grafted cross toolchain hit the same failure; building U-Boot with --no-grafts used the cached ungrafted one.",
+        "instance": "(cross-gcc \"aarch64-linux-gnu\") override for u-boot-pro1x.",
+        "confidence": "handover",
+        "date": "2026-10-24",
+        "source": "commits bd9cb4b, 12a1733"
+      },
+      {
+        "title": "Prefer url-fetch tarballs over git-fetch when CI cannot run git",
+        "general": "git-fetch origins need a working git in the build environment. On the GitHub runner, Guix's git-minimal exited with status 128 for every fetch. Release or archive tarballs through url-fetch avoid it; the hash then pins the tarball, not the commit.",
+        "instance": "libqrtr, qbootctl, tqftpserv, rmtfs, hexagonrpcd, cameractrl switched to url-fetch.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commits d9bb90a, 24dbe60, 4d3faa1, ee9a121"
+      },
+      {
+        "title": "Check for aarch64 substitutes before choosing a large application",
+        "general": "Without substitutes, large packages build on aarch64 for hours or run out of memory (LTO links). Check with 'guix weather --system=aarch64-linux <package>' before adding one to the system.",
+        "instance": "firefox had no aarch64 substitutes and ran out of memory at the LTO link; icecat had substitutes on ci.guix.gnu.org (about 78 MB).",
+        "confidence": "handover",
+        "date": "2026-10-24",
+        "source": "commit 7e93326"
+      },
+      {
+        "title": "phoc needs the wlroots it embeds, with phoc's patch; building it against a distribution wlroots breaks the Phosh home bar",
+        "general": "phoc ships wlroots as a meson subproject with patches under subprojects/packagefiles/wlroots. Phosh relies on them (0.56: a revert allowing layer surfaces of height 0 without top and bottom anchors). Packaging phoc against the distribution wlroots needs the same patches on a separate wlroots variant; patching phosh around the resulting protocol error instead hides the home bar (surface 15 px, folded by a margin computed for the full height).",
+        "instance": "phoc 0.56.0 against Guix wlroots 0.20.2. Phosh debug log: Configured phosh home (540x15), on_configure_event 137x540 margin -122, no bar on screen (screenshots). Fixed in 8897846 with wlroots-for-phoc and without fix-home-bar-height.patch (1b5d016).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "phoc-v0.56.0 subprojects/wlroots.wrap and packagefiles; phosh src/home.c get_margin; /tmp/phosh-1000.log with G_MESSAGES_DEBUG"
+      },
+      {
+        "title": "phosh 0.56 needs mutter keybinding schemas, a PAM service named phosh, and lives in libexec",
+        "general": "Running phoc+phosh without gnome-session and without mutter: phoc aborts without the org.gnome.mutter.keybindings schema; the lock screen authenticates with PAM service phosh and falls back to other (deny) without it; phosh 0.56 installs the shell in libexec and bin/phosh-session starts gnome-session.",
+        "instance": "Fixed in 08263df (schema from mutter 49.4), 9c82c6a (unix-pam-service phosh), 8bda744 (libexec/phosh).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "/tmp/phosh-1000.log on the phone; ls of the phosh-pro1x output; /etc/pam.d listing"
+      }
+    ],
+    "ci": [
+      {
+        "title": "Running guix-daemon on GitHub Actions runners: the obstacles met",
+        "general": "A hosted Ubuntu runner is a hostile place for guix-daemon. Seen here: systemd PrivateTmp and AppArmor breaking mkdtemp in /tmp, the build-users group missing in unprivileged installs, chroot builds impossible without privileges (--disable-chroot), client/daemon version mismatch after guix pull (restart the daemon), channel authentication and signing keys for nonguix and bordeaux, and disk space for a system image. A self-hosted aarch64 runner or building locally avoids most of it.",
+        "instance": ".github/workflows/build.yml, channels-ci.scm. 34 commits starting with 'ci:' between 2026-10-24 and 2026-10-28, most of them on 2026-10-25 and 2026-10-26.",
+        "confidence": "handover",
+        "date": "2026-10-28",
+        "source": "commits 5cf5abb, cdcadbe, 9258bcf, 4625427, 3e6889b, b22daac, 6abd14b, d839788, 1e46d14, af94e86, 65e35a6"
+      },
+      {
+        "title": "Reproduce a CI failure locally before pushing another fix",
+        "general": "Each push-and-wait cycle on hosted CI costs many minutes, and guessing one flag per push produces long chains of fix commits. Reproduce the failing step in a local container or VM, or add the diagnostics first and change the setup only once the cause is known. This is the two-failed-fixes rule of AGENTS.md section 4 applied to CI.",
+        "instance": "The daemon sandbox flags alone went through --no-sandbox, a systemd drop-in resetting the daemon to root, stripping User=/Group=, then --disable-chroot (commits e227e9d, 19355ca, 9c63efb, 3e6889b).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "git log of this repository, read 2026-10-28"
+      },
+      {
+        "title": "Do not let a pipeline hide the exit status of the build",
+        "general": "'guix system image ... | tail -1' returns the status of tail. Use set -o pipefail and capture the output separately, or the CI step passes with no image.",
+        "instance": ".github/workflows/build.yml image build step.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit f5fe4c8"
+      },
+      {
+        "title": "With --disable-chroot, guix-daemon builds in its TMPDIR; a small /tmp tmpfs breaks system image builds",
+        "general": "Without chroot, guix-daemon puts build directories under its own TMPDIR (default /tmp). The partition.img builder of guix system image stages the whole system closure and then writes the ext4 image in that directory, so it needs roughly twice the closure size. A size-limited tmpfs on /tmp lets every package build and fails only at the very end, with the note \"build failure may have been caused by lack of free disk space\". Give the daemon a TMPDIR on a disk with room (Environment=TMPDIR=... in its unit).",
+        "instance": "Run 40702633350 (commit 018fa97): /tmp was a 4G tmpfs (added in 9258bcf for mkdtemp), root disk had 120G free; failed in x434...-partition.img.drv. Fixed by TMPDIR=/var/tmp/guix-build. Not yet verified by a green run; the builder log itself was not printed, so the cause is inferred.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "GitHub Actions run 40702633350 log; .github/workflows/build.yml"
+      }
+    ],
+    "deployment": [
+      {
+        "title": "Previous generations are the rollback, written as separate extlinux menus",
+        "general": "Every reconfigure creates a system generation. With U-Boot reading extlinux.conf, the previous generations must be written somewhere U-Boot offers them, or rollback only works from a running system (guix system roll-back).",
+        "instance": "pro1x-boot-menu-service-type (fxtec-pro1x/services/boot.scm) splits extlinux.conf into per-generation files for 3 previous generations; the count must equal the value compiled into U-Boot. Chosen by holding volume-down at power-on.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "fxtec-pro1x/services/boot.scm at 018fa97, read in source"
+      },
+      {
+        "title": "scripts/update.sh uses NixOS commands that do not exist on Guix",
+        "general": "Deployment scripts carried over from a NixOS port need a rewrite, not a translation of names: switch-to-system is NixOS's activation script, and 'guix system reconfigure' takes a configuration file, not a system directory. guix deploy, or reconfigure run on the device, are the Guix ways.",
+        "instance": "scripts/update.sh runs 'guix system reconfigure /run/current-system --no-bootloader' then '/run/current-system/bin/switch-to-system' on the phone. --no-bootloader would also keep new generations out of the boot menu. Not run; TODO.md section 10. Replaced on 2026-10-28 by scripts/deploy.sh running guix deploy with deploy/pro1x.scm (root SSH by key); first deploy 2026-10-28 (generation 3, after the ACL fix).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "scripts/update.sh lines 30-32 at 018fa97, read in source"
+      },
+      {
+        "title": "guix deploy needs the build host key in the deployed system authorized-keys",
+        "general": "guix deploy (authorize? #t) adds the host signing key to the target /etc/guix/acl before copying, but activating the new system rewrites the ACL from guix-configuration authorized-keys. The next copy (bootloader installation) is then refused with \"unauthorized public key\": the new generation is current but not in the boot menu. Add /etc/guix/signing-key.pub of the host to authorized-keys of the deployed operating-system.",
+        "instance": "First deploy 2026-10-28: generation 2 made current, then failed; /etc/guix/acl held only the two substitute keys and extlinux.conf still listed generation 1 only. deploy/pro1x.scm now wraps the system with with-host-signing-key.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "deploy log (window local-pc); cat /etc/guix/acl on the phone"
+      },
+      {
+        "title": "Running a system activate script by hand activates the booted system unless GUIX_NEW_SYSTEM is set",
+        "general": "activate-current-system takes the system from GUIX_NEW_SYSTEM, else from gnu.system= on the kernel command line. Running <system>/activate by hand without the variable points /run/current-system back at the booted generation.",
+        "instance": "Ran generation 2 activate on the phone booted into generation 1; /run/current-system went to generation 1 (pizz8…). Restored with GUIX_NEW_SYSTEM=<gen2> <gen2>/activate.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "readlink /run/current-system on the phone before and after"
+      },
+      {
+        "title": "guix deploy records the host guix channels as provenance; override current-channels in the deploy file",
+        "general": "machine-operating-system adds provenance from (guix describe) current-channels, i.e. every channel of the guix running guix deploy. To record only the channels the system is meant to follow, module-set! current-channels in (guix describe) from the deploy file; (gnu services) reads the same variable. Separately, guix-configuration channels sets /etc/guix/channels.scm, which guix pull on the target uses.",
+        "instance": "deploy/pro1x.scm (dcb2dec) keeps guix and nonguix from the host and adds fxtec-pro1x at git HEAD. Generation 4 on the phone lists exactly these three; generations 2 and 3 listed all of the host channels.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "gnu/machine.scm, gnu/services.scm provenance-entry, guix/describe.scm (Guix fa73e81); guix system list-generations on the phone"
+      },
+      {
+        "title": "A deployed generation can activate fine and still not boot: deploy never runs its initrd",
+        "general": "guix deploy and reconfigure activate the new system on the running kernel; the initrd, the root mount and the kernel command line are first exercised at the next boot. A file-system entry with (options \"noatime\") activates without complaint, but the initrd passes it to mount(2) as ext4 data and stops with \"unknown parameter\" in the Guile REPL. Use (flags (quote (no-atime))). Before rebooting into a deployed generation, keep a known-good one in the boot menu that does not share the change.",
+        "instance": "Generations 2-5 (deployed 2026-10-28) all stopped at \"ext4: unknown parameter noatime\" / mount: invalid argument. Generation 1 (image) booted because the image builder writes its own root entry (root=UUID, no options). The U-Boot previous-generation slots (prev1-3) pointed at 4, 3, 2, so no menu entry reached generation 1. Recovered by U-Boot USB mass storage from the PC: generation 1 moved first in /boot/extlinux/extlinux.conf (original kept as extlinux.conf.bak). Fixed in 3b1c86d.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "author report of the boot screen; extlinux.conf and prev*.conf read over UMS; gnu/build/file-systems.scm (Guix fa73e81)"
+      }
+    ],
+    "licensing": [
+      {
+        "title": "The NixOS port has no licence file; code taken from it has no stated licence",
+        "general": "A repository without a licence grants no reuse rights by default. Before relicensing material from another port under the channel's GPL-3, ask its author to add a licence, and keep its origin stated where it is used.",
+        "instance": "nyymi609/fxtec-pro1x-nixos at commit 579356e has no LICENSE or COPYING file and GitHub detects no licence. This channel (GPL-3) carries its kernel patches, UCM2 profiles and scripts under device/.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "clone of nyymi609/fxtec-pro1x-nixos at 579356e, root listing; GitHub API license field empty"
+      }
+    ]
+  }
+}

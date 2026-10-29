@@ -1,0 +1,167 @@
+{
+  "hardware": {
+    "note": "Findings about the F(x)tec Pro¹x (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
+    "boot_chain": [
+      {
+        "title": "Qualcomm ABL rejects a U-Boot arm64 Image whose header text_offset is not zero",
+        "general": "The Qualcomm Android bootloader (ABL) checks the arm64 Image header of the kernel in the boot image. A U-Boot binary built with a negative text_offset (bytes 8-15 of the header) is refused and the phone falls straight back to fastboot, with no message. Zero text_offset as Linux does, gzip the image, and append the DTB after the gzip stream so ABL hands it to U-Boot in x0.",
+        "instance": "Pro¹x, U-Boot packed as an Android boot image in boot_a/boot_b by scripts/flash.sh. U-Boot's header had text_offset = -0x80000000. The NixOS port already did this; the Guix flash script had missed it. --second was dropped once the DTB was appended.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 869183f (scripts/flash.sh); approach from nyymi609/fxtec-pro1x-nixos"
+      },
+      {
+        "title": "AVB vbmeta flags are at byte offset 120 of the header",
+        "general": "To disable verification with a hand-made vbmeta image, the flags word (value 3: verification and hashtree disabled) goes at byte offset 120 of vbmeta_image_header_t, and the image is zero-padded to 4096 bytes. Writing it anywhere else leaves verification enabled, and ABL rejects the unsigned boot image by falling back to fastboot.",
+        "instance": "scripts/flash.sh first wrote the flag at offset 48 (the signature_offset field). Fixed by building the header with Python struct.pack_into so the offset is explicit (scripts/mkvbmeta.py).",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 310e0b8"
+      },
+      {
+        "title": "Flash U-Boot to both boot slots and set slot A active",
+        "general": "On an A/B Qualcomm phone, if only one boot slot holds the new bootloader, a failed boot can make ABL switch to the other slot and boot the old stock image, or loop between slots. Flashing both slots avoids the loop, but it leaves no stock slot to fall back to: the only way back to Android is a reflash.",
+        "instance": "scripts/flash.sh flashes boot_a, boot_b, vbmeta_a and vbmeta_b, erases dtbo, flashes userdata, then runs set_active a. The README still says 'replaces the bootloader on slot A' only (as of 018fa97).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "scripts/flash.sh at 018fa97, read in source"
+      },
+      {
+        "title": "A one-shot boot entry with a known-good default makes kernel experiments recoverable without hands",
+        "general": "With U-Boot and extlinux, boot the system under test through a one-shot entry while the default stays a known-good system, so any crash or hang comes back to something reachable over ssh after a reset. Without it, a kernel or initrd that does not boot needs a person at the boot menu.",
+        "instance": "moWerk's SailfishOS port keeps NixOS as the default on userdata and enters SailfishOS through a one-shot extlinux entry. This Guix port has no such mechanism yet: recovery is the volume-down boot menu with previous generations (TODO.md section 11).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "moWerk/sailfish-rag Mainline/boot.json, section dual_boot"
+      },
+      {
+        "title": "U-Boot extlinux refuses kernel command lines over 511 bytes (CONFIG_SYS_CBSIZE=512 in qcom_defconfig)",
+        "general": "U-Boot builds bootargs for an extlinux/PXE label in a CONFIG_SYS_CBSIZE buffer; a longer APPEND prints \"bootarg overflow\" and the label does not boot. qcom_defconfig sets 512. Long store paths (gnu.system, gnu.load) already take about half of it on Guix; options like vt.default_red/grn/blu push it over. Raise CONFIG_SYS_CBSIZE or keep the command line short.",
+        "instance": "Pro¹x, U-Boot 2026.10-rc f8eb346: generations 22-24 with the three vt.default_* arguments (APPEND 569 bytes) did not boot; the phone came up from prev3 (generation 21, 284 bytes). The palette moved back to setvtrgb at boot. Generation 25: 317 bytes.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "boot/pxe_utils.c label_boot (bootargs[CONFIG_SYS_CBSIZE]), configs/qcom_defconfig in the u-boot-pro1x source; /proc/cmdline on the phone (gnu.system=system-21-link); APPEND lengths in /boot/extlinux/prev*.conf"
+      }
+    ],
+    "kernel": [
+      {
+        "title": "QRTR name service and PD mapper are in the kernel config; no userspace daemons needed for them",
+        "general": "Recent kernels provide the QRTR name service and the protection domain mapper in-kernel (CONFIG_QRTR, CONFIG_QCOM_PD_MAPPER). Guides that list qrtr-ns and pd-mapper daemons are outdated. rmtfs and tqftpserv are still needed.",
+        "instance": "CONFIG_QRTR=y and CONFIG_QCOM_PD_MAPPER=y in device/kernel/config.aarch64. rmtfs, tqftpserv and pro1x-hexagonrpcd run as Shepherd services (seen running on the 2026-10-27 flash, per TODO.md).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "device/kernel/config.aarch64 lines 1645 and 9530 at 018fa97, read in source; sailfish-rag Mainline/firmware_remoteproc.json"
+      },
+      {
+        "title": "Enable zstd firmware decompression when the firmware package ships .zst files",
+        "general": "If the distribution compresses firmware files, the kernel firmware loader needs the matching option (CONFIG_FW_LOADER_COMPRESS_ZSTD or _XZ), or every request_firmware fails as 'file not found' although the file is there.",
+        "instance": "Enabled in device/kernel/config.aarch64 for the Guix build. The reason (linux-firmware from nonguix shipping .zst files) is not written in the commit.",
+        "confidence": "inferred",
+        "date": "2026-10-25",
+        "source": "commits a60b1f2, d58b891; confirm with: ls $(guix build linux-firmware)/lib/firmware/qcom | head"
+      }
+    ],
+    "modem": [
+      {
+        "title": "ModemManager needs udev tags on rmnet_ipa0 to pair the IPA data port with the QRTR control port",
+        "general": "With ModemManager's qcom-soc plugin, the IPA network interface must carry ID_MM_CANDIDATE=1 and ID_MM_PHYSDEV_UID=qcom-soc, or MM never associates it with the modem found over QRTR and mobile data cannot come up. The IPA driver can register the interface before the rule is loaded, so re-trigger udev (udevadm trigger, settle) before starting MM. ModemManager ships these tags itself in 77-mm-qcom-soc.rules (DRIVERS==ipa or bam-dmux), so installing MM's udev rules is enough; a device rule is a fallback.",
+        "instance": "Image 6b37ac4, 2026-10-28: MM 1.24.0 probes qrtr0, then \"couldn't create modem for device 'qcom-soc': Failed to find a net port in the QMI modem\". udevadm info on rmnet_ipa0 showed no ID_MM_* property at all: neither device/udev/60-pro1x.rules nor MM's own 77-mm-qcom-soc.rules (which tags DRIVERS==\"ipa\" net ports with ID_MM_PHYSDEV_UID=qcom-soc) was loaded (see guix.json, udev extensions). The rule text is right; the Guix wiring was wrong. Fixed, not yet re-tested.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone survey 2026-10-28: /var/log/ModemManager.log, udevadm info /sys/class/net/rmnet_ipa0; commit 2f30ae4"
+      },
+      {
+        "title": "Build ModemManager for QMI over QRTR only: MBIM is not needed on SoC modems",
+        "general": "Qualcomm SoC modems are reached over QRTR with QMI, not MBIM. If the distribution's libmbim is too old for a newer ModemManager, disable MBIM support rather than packaging a new libmbim.",
+        "instance": "modem-manager 1.24 built without MBIM (needs libmbim >= 1.32) and with the qcom-soc plugin forced on.",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "commit 3c94f45"
+      }
+    ],
+    "usb_network": [
+      {
+        "title": "Keep the phone's DHCP server from handing the host a default route",
+        "general": "When the phone serves DHCP on the USB gadget interface, it must not advertise a router (DHCP option 3), or the host replaces its own default route with the phone and loses its network.",
+        "instance": "dnsmasq in usb-network.scm started with --dhcp-option=3 (empty), phone at 172.16.42.1.",
+        "confidence": "handover",
+        "date": "2026-10-25",
+        "source": "commit 4bffec9"
+      }
+    ],
+    "storage_and_fde": [
+      {
+        "title": "cryptsetup cannot open LUKS2 at an offset; use a loop device with losetup -o",
+        "general": "cryptsetup's --offset applies to plain and loop-AES mappings, not LUKS2. To place a LUKS2 container after an unencrypted region on the same partition, expose the region with losetup -o <bytes> and open LUKS2 on the loop device. The kernel needs CONFIG_BLK_DEV_LOOP=y if this happens in the initrd.",
+        "instance": "userdata keeps a 256 MiB plain area (boot files for U-Boot) followed by LUKS2. fxtec-pro1x/services/fde.scm. FDE as a whole is untested on the device.",
+        "confidence": "handover",
+        "date": "2026-10-24",
+        "source": "commit 7e93326"
+      },
+      {
+        "title": "Grow the root filesystem to the partition on first boot by comparing sizes, not with a flag alone",
+        "general": "A rootfs image smaller than userdata needs resize2fs on the device. Comparing the partition size with the filesystem size (as Droidian does) is idempotent and survives reflashes; a flag file alone can skip a needed resize.",
+        "instance": "pro1x-rootfs-resize-service-type in fxtec-pro1x/services/boot.scm; seen to run on the 2026-10-27 flash.",
+        "confidence": "handover",
+        "date": "2026-10-26",
+        "source": "commits 771c6c8, ad78e29, 09e328d; TODO.md 'Working'"
+      }
+    ],
+    "wifi": [
+      {
+        "title": "Wi-Fi (ath10k_snoc) works once tqftpserv serves the firmware over QRTR",
+        "general": "On SM6115 the WCN3990 Wi-Fi firmware is loaded by the modem DSP through tqftpserv, so Wi-Fi depends on the modem remoteproc and tqftpserv finding the firmware files.",
+        "instance": "ath10k_snoc driver, NetworkManager connected with IPv4 and IPv6 on home Wi-Fi, after the tqftpserv firmware path fix (see guix.json).",
+        "confidence": "handover",
+        "date": "2026-10-27",
+        "source": "TODO.md 'Working', commit 972413f"
+      }
+    ],
+    "display": [
+      {
+        "title": "Ghost touches came from the panel running at 61 Hz: set the DSI pixel clock for exactly 60 Hz",
+        "general": "A touch controller can pick up the display scan as touches when the panel refresh rate is off from what the stock firmware uses. Phantom touch events that appear only while the panel is on point at the display mode (pixel clock, porches), not at the touch driver. Compute the refresh rate as clock / (htotal * vtotal) and match the stock fps.",
+        "instance": "BOE BF060Y8M-AJ0 panel (drivers/gpu/drm/panel/panel-boe-bf060y8m-aj0.c), 1236 x 2192 total. Mainline .clock = 165268 kHz gives 61.00 Hz and about 5000 phantom touch events per 10 s with the panel on; 162559 kHz gives 60.00 Hz and none. The fix is in device/kernel/patches/pro1x-dsi.patch, applied by fxtec-pro1x/packages/kernel.scm since the first commit 5ad022d. Arithmetic checked; not yet observed on this port with getevent/libinput.",
+        "confidence": "reported",
+        "date": "2026-10-28",
+        "source": "nyymi (NixOS port author), message relayed by the author on 2026-10-28; device/kernel/patches/pro1x-dsi.patch lines 9-15"
+      },
+      {
+        "title": "Reading the panel backlight (actual_brightness) wedges the DSI link; the panel fades to white",
+        "general": "On a DSI panel whose backlight is controlled over DCS, reading actual_brightness makes the driver issue a DCS read (set max return packet size 0x37, then read). In video mode on this SoC that read times out; repeated polling (a status bar block) left the DSI host unable to send even writes, and the AMOLED panel slowly turned fully white. Power-cycling the output through the compositor did not recover it; a reboot did. Do not poll actual_brightness on such panels; reading brightness (the cached value) or writing it is the safe path, but check with dmesg.",
+        "instance": "panel-sw43404-boe-fhd-amoled on 5e94000.dsi, image 6b37ac4, kernel 7.1.0. i3status-rust backlight block on /sys/class/backlight/5e94000.dsi.0, run by hand twice at 19:29 UTC: dmesg from 8604 s on \"dsi_cmds2buf_tx: cmd dma tx failed, type=0x37 ... ret=-110\", \"wait for video done timed out\"; later \"sending DCS SET_DISPLAY_OFF failed: -110\". Panel white; reboot needed. Block removed from device/sway/i3status-rust.toml.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone dmesg 2026-10-28; author observed the white panel"
+      }
+    ],
+    "video": [
+      {
+        "title": "GPU rendering is hardware-accelerated (Mesa gallium on Adreno 610); no hardware video codec yet",
+        "general": "Check GPU acceleration from the compositor side: which Mesa libraries the compositor maps (/proc/PID/maps) and whether the GPU devfreq leaves its idle frequency under load (/sys/class/devfreq/*gpu*/trans_stat). Qualcomm video decode/encode is Venus/Iris, a V4L2 memory-to-memory device: VA-API (libva) has no driver for it; users are FFmpeg *_v4l2m2m codecs (mpv --hwdec=v4l2m2m-copy) and GStreamer v4l2 elements. Browsers that only speak VA-API get no video acceleration.",
+        "instance": "Image 6b37ac4, kernel 7.1.0 (sm6115-mainline 8cd9520): sway maps libgallium-26.0.2.so and dri_gbm.so; GPU devfreq moved 320 -> 745/950 MHz 535 times while sway ran. Renderer string not read (eglinfo not installed). No Venus: only camss /dev/video*, no venus module loaded, although CONFIG_VIDEO_QCOM_VENUS=m and CONFIG_VIDEO_QCOM_IRIS=m.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "phone /proc/<sway>/maps, devfreq trans_stat, /sys/class/video4linux, lsmod; device/kernel/config.aarch64"
+      },
+      {
+        "title": "Venus on SM6115: firmware present, driver support present via QCM2290 (AR50 Lite), device-tree node missing",
+        "general": "SM6115 shares the AR50 Lite video core with QCM2290 (Agatti). With the qcm2290-venus support in the driver, enabling Venus is mostly a device-tree node in sm6115.dtsi modelled on agatti.dtsi, plus a compatible (sm6115 or reuse of qcm2290) accepted by the driver and binding. Register base, interrupt, IOMMU stream IDs and OPPs must be checked against SM6115 (downstream bengal DT), not assumed from Agatti.",
+        "instance": "Kernel tree 8cd9520: venus/core.c matches qcom,qcm2290-venus but no sm6115; sm6115.dtsi has no video-codec node but has pil_video_mem at 0x51400000 (0x500000), gcc-sm6115.h has GCC_VENUS_GDSC/GCC_VCODEC0_GDSC and the GCC_VIDEO_* clocks, interconnect sm6115.h has MASTER_VIDEO_P0 and SLAVE_VENUS_CFG, mmnrt_virt exists. agatti.dtsi node: reg 0x5a00000, GIC_SPI 225, iommus 0x860/0x880. Signed firmware qcom/sm6115/Fxtec/QX1050/venus.mbn is in firmware-fxtec-qx1050. Not attempted.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "kernel source 8cd9520; Konrad Dybcio, Venus QoL series v4 (LKML 2023-05, names SM6115/QCM2290 AR50 Lite); Jorge Ramirez-Ortiz, QCM2290 AR50 Lite series v7 (2025-07)"
+      }
+    ],
+    "keyboard": [
+      {
+        "title": "Keyboard backlight is an on/off GPIO LED; the slider is SW_KEYPAD_SLIDE on gpio-keys, 1 = slid out",
+        "general": "On sliders the keyboard backlight and the slide switch are separate devices: an LED class device and an EV_SW switch. Drive the LED from the switch and the panel state. The DRM connector sysfs dpms attribute follows the compositor output power (atomic ACTIVE) and is a cached value, so it is a safe panel-state source on DSI video-mode panels where backlight actual_brightness reads wedge the link.",
+        "instance": "Pro¹x, linux-pro1x 7.1.0: /sys/class/leds/white:kbd_backlight, max_brightness 1, off at boot. gpio-keys (udev symlink /dev/input/pro1x-slider): type 5 code 10, slide in 0, slide out 1. /sys/class/drm/card0-DSI-1/dpms read Off with sway output power off and On after swaymsg output DSI-1 power on.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "event logger on /dev/input/pro1x-slider with the author sliding; swaymsg -t get_outputs vs dpms; echo 1 > brightness lit the keys (author)"
+      }
+    ]
+  }
+}
