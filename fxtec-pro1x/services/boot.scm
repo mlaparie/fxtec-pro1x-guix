@@ -5,6 +5,7 @@
   #:use-module (fxtec-pro1x packages misc)   ; qbootctl
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
+  #:use-module (gnu packages linux)          ; e2fsprogs
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -17,7 +18,8 @@
             pro1x-boot-success-configuration
             pro1x-boot-success-configuration?
             make-pro1x-boot-success-configuration
-            pro1x-boot-success-service-type))
+            pro1x-boot-success-service-type
+            pro1x-rootfs-resize-service-type))
 
 ;;; ── Boot menu ───────────────────────────────────────────────────────────────
 
@@ -28,7 +30,11 @@
   ;; Must equal the value compiled into U-Boot (make-u-boot-pro1x).
   (generations pro1x-boot-menu-generations (default 3)))
 
-;;; The split script: mirrors modules/boot-menu.nix's `split`.
+;;; The split script: mirrors modules/boot-menu.nix's `split`, with one
+;;; difference.  NixOS's extlinux.conf starts with a "Default" entry, so its
+;;; previous generation N is entry N+2.  Guix's has no such entry: the
+;;; current system is entry 1, then older generations newest first
+;;; (gnu/bootloader/extlinux.scm), so previous generation N is entry N+1.
 (define (pro1x-boot-menu-split-script config)
   (let ((n (pro1x-boot-menu-generations config)))
     (computed-file "pro1x-boot-menu-split"
@@ -40,8 +46,12 @@
             (display "[ -f \"$src\" ] || exit 0\n" port)
             (display (string-append "for n in $(seq 1 " #$(number->string n) "); do\n") port)
             (display (string-append
-                      "  " #$gawk "/bin/awk -v want=$((n + 2)) '\n"
-                      "    /^[[:space:]]*LABEL[[:space:]]/ { entry++; if (entry == want) label = $2 }\n"
+                      "  " #$gawk "/bin/awk -v want=$((n + 1)) '\n"
+                      "    /^[[:space:]]*LABEL[[:space:]]/ {\n"
+                      "      entry++\n"
+                      "      # Guix labels contain spaces: keep the rest of the line.\n"
+                      "      if (entry == want) { label = $0; sub(/^[[:space:]]*LABEL[[:space:]]+/, \"\", label) }\n"
+                      "    }\n"
                       "    entry == want { body = body $0 \"\\n\" }\n"
                       "    END {\n"
                       "      if (body == \"\") exit 1\n"
@@ -129,3 +139,45 @@ into U-Boot via make-u-boot-pro1x.")))
    (default-value (pro1x-boot-success-configuration))
    (description "Mark the active A/B boot slot as successfully booted.
 Without this, the ABL falls back to fastboot after a hard reboot.")))
+
+;;; ── Rootfs resize ───────────────────────────────────────────────────────────
+
+(define (pro1x-rootfs-resize-shepherd-services _)
+  (list
+   (shepherd-service
+    (provision '(pro1x-rootfs-resize))
+    (requirement '(file-systems))
+    (documentation "Expand the root ext4 filesystem to fill its partition if needed")
+    (one-shot? #t)
+    (start
+     #~(make-forkexec-constructor
+        (list "/bin/sh" "-c"
+              (string-append
+               ;; Locate root device.
+               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) || exit 1; "
+               ;; Partition size in 1 KiB blocks (from /proc/partitions).
+               "devname=${dev##*/}; "
+               "pblocks=$(awk -v d=\"$devname\" '$4==d {print $3}' /proc/partitions); "
+               ;; Filesystem block count (4 KiB blocks, from tune2fs).
+               "fsblocks=$("
+               #$(file-append e2fsprogs "/sbin/tune2fs") " -l \"$dev\""
+               " | awk '/^Block count:/ {print $3}'); "
+               ;; Mirror Droidian's threshold: resize if gap > 10000 * 4 KiB (~40 MiB).
+               "diff=$((pblocks - 4 * fsblocks)); "
+               "if [ \"$diff\" -gt 10000 ]; then "
+               #$(file-append e2fsprogs "/sbin/resize2fs") " -f \"$dev\"; "
+               "fi"))
+        #:log-file "/var/log/pro1x-rootfs-resize.log"))
+    (stop #~(make-kill-destructor)))))
+
+(define pro1x-rootfs-resize-service-type
+  (service-type
+   (name 'pro1x-rootfs-resize)
+   (extensions
+    (list
+     (service-extension shepherd-root-service-type
+                        pro1x-rootfs-resize-shepherd-services)))
+   (default-value #f)
+   (description "Expand the root ext4 filesystem to fill its partition when
+the gap between partition size and filesystem size exceeds ~40 MiB.  Mirrors
+the resize_userdata_if_needed logic from Droidian's initramfs-tools-halium.")))

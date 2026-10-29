@@ -114,9 +114,13 @@
       (respawn? #t)))))
 
 (define (pro1x-sensors-udev-rules config)
+  ;; file->udev-rule: udev ignores items without lib/udev/rules.d/.
   (let ((matrix (pro1x-sensors-accel-mount-matrix config)))
     (list
-     (computed-file "90-pro1x-sensors.rules"
+     iio-sensor-proxy                   ; its own 80-iio-sensor-proxy.rules
+     (file->udev-rule
+      "90-pro1x-sensors.rules"
+      (computed-file "90-pro1x-sensors.rules"
        #~(call-with-output-file #$output
            (lambda (port)
              (display
@@ -125,7 +129,7 @@
                " ENV{ACCEL_MOUNT_MATRIX}+=\"" #$matrix "\"\n"
                "SUBSYSTEM==\"misc\", KERNEL==\"fastrpc-adsp\","
                " ENV{IIO_SENSOR_PROXY_TYPE}+=\"ssc-accel ssc-proximity\"\n")
-              port)))))))
+              port))))))))
 
 (define (pro1x-sensors-packages config)
   (list iio-sensor-proxy

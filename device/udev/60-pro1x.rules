@@ -6,3 +6,7 @@ SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="aw86224-haptics", ENV{FEEDBA
 # Keyboard slider switch (SW_KEYPAD_SLIDE, used by SXMO's keyboard autorotate): readable by
 # the input group, and with a stable name because the eventN number changes between boots.
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="gpio-keys", GROUP="input", MODE="0660", SYMLINK+="input/pro1x-slider"
+# IPA rmnet interface: tag for ModemManager's qcom-soc plugin.
+# The qcom-soc plugin matches a QRTR control port + a net port with ID_MM_PHYSDEV_UID=qcom-soc.
+# rmnet_ipa0 is created by the IPA driver (5840000.ipa) and carries LTE data.
+KERNEL=="rmnet_ipa*", SUBSYSTEM=="net", ENV{ID_MM_CANDIDATE}="1", ENV{ID_MM_PHYSDEV_UID}="qcom-soc"

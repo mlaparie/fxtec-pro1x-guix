@@ -7,6 +7,7 @@
   #:use-module (gnu packages telephony)
   #:use-module (gnu services)
   #:use-module (gnu services base)
+  #:use-module (gnu services dbus)
   #:use-module (gnu services networking)
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
@@ -64,14 +65,22 @@
       (stop #~(make-kill-destructor))
       (respawn? #t))
 
-     ;; ModemManager: the high-level modem manager
+     ;; ModemManager: the high-level modem manager.
+     ;; Before starting, re-trigger net udev events so rmnet_ipa0 gets tagged
+     ;; with ID_MM_PHYSDEV_UID=qcom-soc (race: IPA driver may fire its ADD
+     ;; event before our udev rules are installed on first boot).
      (shepherd-service
       (provision '(modem-manager))
       (requirement '(dbus-system tqftpserv rmtfs))
       (documentation "ModemManager")
       (start
        #~(make-forkexec-constructor
-          (list #$(file-append modem-manager "/sbin/ModemManager"))
+          (list "/bin/sh" "-c"
+                (string-append
+                 "udevadm trigger --subsystem-match=net --action=add"
+                 " && udevadm settle --timeout=5"
+                 " && exec " #$(file-append modem-manager-1.24 "/sbin/ModemManager")))
+          #:environment-variables '("PATH=/run/current-system/profile/bin")
           #:log-file "/var/log/ModemManager.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t)))))
@@ -104,7 +113,7 @@
     (stop #~(make-kill-destructor)))))
 
 (define (pro1x-modem-packages config)
-  (list tqftpserv rmtfs modem-manager))
+  (list tqftpserv rmtfs modem-manager-1.24))
 
 (define pro1x-modem-service-type
   (service-type
@@ -115,6 +124,13 @@
                         (lambda (config)
                           (append (pro1x-modem-rmtfs-wait config)
                                   (pro1x-modem-shepherd-services config))))
+     (service-extension dbus-root-service-type
+                        (lambda (_) (list modem-manager-1.24)))
+     ;; MM's own rules: 77-mm-qcom-soc.rules tags rmnet_ipa0 (driver ipa)
+     ;; with ID_MM_PHYSDEV_UID=qcom-soc; without them MM fails with "Failed
+     ;; to find a net port in the QMI modem".
+     (service-extension udev-service-type
+                        (lambda (_) (list modem-manager-1.24)))
      (service-extension profile-service-type
                         pro1x-modem-packages)))
    (default-value (pro1x-modem-configuration))
