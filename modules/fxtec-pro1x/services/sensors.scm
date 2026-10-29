@@ -1,10 +1,12 @@
 ;;; fxtec-pro1x/services/sensors.scm — ADSP sensors via hexagonrpcd + iio-sensor-proxy
-;;; Translates modules/sensors.nix.
+;;; Translates modules/sensors.nix.  iio-sensor-proxy is the 3.9 build with
+;;; SSC support ((fxtec-pro1x packages sensors)); Guix's 3.8 has none and
+;;; exited at once on this phone.
 
 (define-module (fxtec-pro1x services sensors)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages misc)
-  #:use-module (gnu packages freedesktop) ; iio-sensor-proxy
+  #:use-module (fxtec-pro1x packages sensors) ; iio-sensor-proxy-ssc
   #:use-module (gnu packages base)        ; grep
   #:use-module (gnu packages bash)        ; bash-minimal
   #:use-module (gnu services)
@@ -136,7 +138,7 @@
                  " 2>/dev/null | " #$(file-append grep "/bin/grep")
                  " -q '^ *400 ' && break; i=$((i + 1)); sleep 1; done; "
                  "[ $i -lt 60 ] || echo 'SSC sensor service (QRTR 400) did not appear' >&2; "
-                 "exec " #$(file-append iio-sensor-proxy "/libexec/iio-sensor-proxy")))
+                 "exec " #$(file-append iio-sensor-proxy-ssc "/libexec/iio-sensor-proxy")))
           #:log-file "/var/log/iio-sensor-proxy.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t)))))
@@ -145,7 +147,7 @@
   ;; file->udev-rule: udev ignores items without lib/udev/rules.d/.
   (let ((matrix (pro1x-sensors-accel-mount-matrix config)))
     (list
-     iio-sensor-proxy                   ; its own 80-iio-sensor-proxy.rules
+     iio-sensor-proxy-ssc               ; its own 80-iio-sensor-proxy.rules
      (file->udev-rule
       "90-pro1x-sensors.rules"
       (computed-file "90-pro1x-sensors.rules"
@@ -160,7 +162,7 @@
               port))))))))
 
 (define (pro1x-sensors-packages config)
-  (list iio-sensor-proxy
+  (list iio-sensor-proxy-ssc
         libqrtr                         ; qrtr-lookup, for diagnostics
         (pro1x-sensors-hexagonrpcd-package config)))
 
@@ -174,7 +176,7 @@
      (service-extension udev-service-type
                         pro1x-sensors-udev-rules)
      (service-extension dbus-root-service-type
-                        (lambda (config) (list iio-sensor-proxy)))
+                        (lambda (config) (list iio-sensor-proxy-ssc)))
      (service-extension profile-service-type
                         pro1x-sensors-packages)))
    (default-value (pro1x-sensors-configuration))
