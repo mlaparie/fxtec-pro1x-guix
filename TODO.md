@@ -93,9 +93,12 @@ then deploys of next up to cc16582; generation 2 and later):
 - sensors: libssc + iio-sensor-proxy 3.9 (SSC); monitor-sensor reads the
   accelerometer once polkit had the actions and a rule for users.
   Auto-rotation in Phosh not yet tested.
-- SIM: PIN blocked; PUK refused 5 times once requests reached the SIM
-  (the earlier "10 left" only meant polkit stopped them first).  5 PUK
-  tries left: the author checks the PUK elsewhere.  Do not retry here.
+- SIM unlocked by the author (2026-10-30), after PUK refusals here: the
+  earlier "10 left" only meant polkit stopped the requests first.
+- mobile data: connected on 3G (UMTS, 28% signal); 4G allowed and
+  preferred, every LTE band enabled, yet no LTE.  Next: compare with
+  another phone's 4G at the same place; read the modem's carrier
+  profiles (qmicli --pdc-list-configs, read-only).
 - polkit, without logind: every D-Bus service whose actions are
   allow_active only needs its package in polkit-service-type and a rule
   (ModemManager, NetworkManager: netdev; sensors: users).  polkitd does
