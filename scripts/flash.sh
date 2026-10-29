@@ -211,6 +211,26 @@ fi
 echo "System: $SYSTEM"
 echo ""
 
+# ── Deploy key ────────────────────────────────────────────────────────────────
+# systems/*.scm let root in by SSH with ~/.ssh/pro1x-guix.pub, so that
+# scripts/deploy.sh can update the phone, and put that public key in the
+# phone user's home (~/.ssh/pro1x-guix.pub) for their own configuration,
+# where it is off until they opt in (/etc/guix/config.scm).  Made here once,
+# without a passphrase (guix deploy cannot ask for one).  A ready-made rootfs
+# (--rootfs, rootfs.img, CI images) carries no key.
+DEPLOY_KEY="$HOME/.ssh/pro1x-guix"
+if [[ -z "$OPT_ROOTFS" && ! -f "rootfs.img" ]]; then
+    if [[ -f "$DEPLOY_KEY.pub" ]]; then
+        echo "==> Deploy key: $DEPLOY_KEY.pub"
+    else
+        echo "==> Making the deploy key $DEPLOY_KEY (keep it: scripts/deploy.sh uses it)"
+        mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+        ssh-keygen -q -t ed25519 -N "" -C pro1x-guix -f "$DEPLOY_KEY" \
+            || die "ssh-keygen failed"
+    fi
+    echo ""
+fi
+
 # ── Find U-Boot ───────────────────────────────────────────────────────────────
 echo "==> U-Boot"
 UBOOT_BIN=""

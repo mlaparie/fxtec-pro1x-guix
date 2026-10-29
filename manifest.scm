@@ -10,4 +10,5 @@
    "mkbootimg"
    "util-linux"    ; partx, dd
    "e2fsprogs"     ; e2label, mke2fs, debugfs
-   "cryptsetup"))  ; luksFormat (flash-encrypted.sh only)
+   "cryptsetup"    ; luksFormat (flash-encrypted.sh only)
+   "openssh"))     ; ssh-keygen: the deploy key (flash.sh)
