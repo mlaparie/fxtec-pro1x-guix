@@ -101,9 +101,10 @@ guix system build --system=aarch64-linux systems/mobile.scm
 
 The flash script builds automatically; no need to run this first.
 
-**Pre-built artifacts** (u-boot.bin, DTB, rootfs.img) are meant to come from
-GitHub Actions on the `main` branch, for those without Guix or an aarch64
-build machine.  No CI run has succeeded yet, so none exist.  With them,
+**Pre-built artifacts** (rootfs.img, and u-boot-nodtb.bin plus the DTB when
+the CI U-Boot build succeeds) come with each release on GitHub (`v*` tags,
+release notes in NEWS.md), for those without Guix or an aarch64 build
+machine.  With them,
 `scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img` runs without
 Guix if fastboot, mkbootimg, util-linux, e2fsprogs and python3 are
 installed (untested).  Such images have no root SSH key.

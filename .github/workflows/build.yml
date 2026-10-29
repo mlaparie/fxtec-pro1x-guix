@@ -287,6 +287,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: NEWS.md
           files: |
             u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
