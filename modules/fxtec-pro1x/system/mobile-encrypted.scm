@@ -16,6 +16,7 @@
 
 
 (use-modules (gnu)
+             (fxtec-pro1x system common)
              (fxtec-pro1x packages bootloader)
              (gnu packages fonts)
              (ice-9 match)
@@ -65,8 +66,8 @@
     (type luks-pro1x-device-mapping))))
 
 (define* (pro1x-mobile-encrypted-operating-system #:key (root-ssh-keys '()))
-  "Return the Pro¹x mobile-encrypted operating system, with ROOT-SSH-KEYS as root's
-authorized SSH keys."
+  "Return the Pro¹x mobile-encrypted operating system; ROOT-SSH-KEYS are public key
+files root may log in with."
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -138,6 +139,11 @@ authorized SSH keys."
     %base-user-accounts))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
+  ;; ~/.ssh/pro1x-guix.pub in new homes: the key root accepts, for the
+  ;; owner's own configuration (/etc/guix/config.scm).
+  (skeletons (append (pro1x-root-key-skeletons root-ssh-keys)
+                     (default-skeletons)))
+
   (services
    (append
     (list
@@ -222,8 +228,11 @@ authorized SSH keys."
                (password-authentication? #t)
                ;; Root by key only, for guix deploy (scripts/deploy.sh).
                (permit-root-login 'prohibit-password)
-               (authorized-keys root-ssh-keys))))
+               (authorized-keys (pro1x-root-authorized-keys root-ssh-keys)))))
 
+    ;; /etc/guix/config.scm: the owner's starting configuration.
+    (list (pro1x-user-config-service '(fxtec-pro1x system mobile-encrypted)
+                                     'pro1x-mobile-encrypted-operating-system))
     (modify-services %base-services
       ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
       (guix-service-type config =>

@@ -5,21 +5,22 @@
 ;;; scripts/flash.sh, scripts/deploy.sh and CI.
 
 (use-modules (gnu)
-             (ice-9 textual-ports)
+             (guix gexp)
+             (srfi srfi-1)
              (fxtec-pro1x system mobile))
 
-;; Root SSH keys for scripts/deploy.sh, one per line of keys/pro1x-guix.pub.
-;; That file is not in git: each owner puts their own public key there
-;; (README, "Updating without reflashing").  Without it, root has no SSH
-;; login.  The keys also go into /etc/guix/config.scm on the phone.
+;; Root SSH by key for scripts/deploy.sh: the PC key that scripts/flash.sh
+;; makes (~/.ssh/pro1x-guix.pub), or, when this file is reconfigured on the
+;; phone, the copy of it in the user's home.  Without either, root has no
+;; SSH login.  The owner's own /etc/guix/config.scm keeps it off until
+;; they opt in.
 (define %root-ssh-keys
-  (let ((file (string-append (dirname (or (current-filename) "systems/."))
-                             "/../keys/pro1x-guix.pub")))
-    (if (file-exists? file)
-        (filter (lambda (line) (not (string-null? line)))
-                (map string-trim-both
-                     (string-split (call-with-input-file file get-string-all)
-                                   #\newline)))
+  (let ((file (find file-exists?
+                    (list (string-append (or (getenv "HOME") "/root")
+                                         "/.ssh/pro1x-guix.pub")
+                          "/home/user/.ssh/pro1x-guix.pub"))))
+    (if file
+        (list (local-file file "pro1x-guix.pub"))
         '())))
 
 (pro1x-mobile-operating-system #:root-ssh-keys %root-ssh-keys)
