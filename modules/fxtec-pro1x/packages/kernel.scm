@@ -17,9 +17,16 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:export (linux-pro1x))
 
-;;; The 14 device patches, applied in the same order as the NixOS port.
+;;; This module's directory.  current-source-directory is #f when Guix
+;;; loads the module to look a package up by name (guix build linux-pro1x),
+;;; so fall back to finding this file on the load path.
+(define %module-directory
+  (or (current-source-directory)
+      (dirname (search-path %load-path "fxtec-pro1x/packages/kernel.scm"))))
+
+;;; The device patches: the NixOS port's 14, in its order, then ours.
 (define %pro1x-patch-dir
-  (string-append (current-source-directory) "/../../../device/kernel/patches/"))
+  (string-append %module-directory "/../../../device/kernel/patches/"))
 
 (define %pro1x-patches
   (map (lambda (n)
@@ -38,7 +45,11 @@
          "power"
          "haptics"
          "bluetooth"
-         "ipa")))
+         "ipa"
+         ;; From moWerk's SailfishOS port (written for 7.3, applies to 7.1):
+         ;; send display off while video still runs, so a blank no longer
+         ;; ends in one corrupted full-brightness frame.
+         "panel-display-off")))
 
 (define-public linux-pro1x
   (package
@@ -70,7 +81,7 @@
             (replace 'configure
               (lambda _
                 (copy-file
-                 #$(local-file (string-append (current-source-directory)
+                 #$(local-file (string-append %module-directory
                                               "/../../../device/kernel/config.aarch64")
                                "pro1x.config")
                  ".config")
