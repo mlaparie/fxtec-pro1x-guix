@@ -37,8 +37,13 @@ verified on the device.  Order:
    no on-screen keyboard (sm.puri.OSK0); background image "Unrecognized
    image file format" (pixbuf loader?); two "activate action" criticals.
    Settings: GNOME Settings added (gnome-control-center, substitute on
-   bordeaux); Phosh Mobile Settings (phosh-mobile-settings) not in Guix,
-   to package.  The NixOS port installs neither.
+   bordeaux); hidden and not starting without XDG_CURRENT_DESKTOP
+   (ad1b59d, generation 15, not tested).  The top-panel gear opens Phosh
+   Mobile Settings (launch-mobile-panel): phosh-mobile-settings 0.56 not
+   in Guix.  To package: needs polkit-gobject >= 126 (Guix 121), gvc and
+   libcellbroadcast subprojects pre-seeded, feedbackd-0.8 (channel),
+   phosh-plugins/phosh-settings .pc (phosh-pro1x has both).  The NixOS
+   port installs neither settings app.
    Camera: cameractrl shows black (author, 2026-10-29).  Both sensors
    register (imx582, s5k4h7), cameractrl finds the focus subdev, libcamera
    logs nothing.  No PipeWire or WirePlumber runs in the session (and
