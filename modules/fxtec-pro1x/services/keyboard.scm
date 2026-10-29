@@ -16,6 +16,7 @@
 ;;; generation 4); panel wake on slide-out not tested yet.
 
 (define-module (fxtec-pro1x services keyboard)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu packages gnome)         ; dconf
   #:use-module (gnu packages linux)         ; keyd, evtest
   #:use-module (gnu packages wm)            ; sway (swaymsg)
@@ -46,7 +47,7 @@
                          (string-append layout "+" variant))))
     (list
      `("keyd/default.conf"
-       ,(local-file "../../../device/input/keyd.conf" "keyd.conf"))
+       ,(local-file (repository-file "device/input/keyd.conf") "keyd.conf"))
      ;; dconf system-db that persists the XKB layout across reboots.
      `("dconf/profile/user"
        ,(plain-file "dconf-profile-user"

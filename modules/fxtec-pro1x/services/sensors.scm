@@ -2,6 +2,7 @@
 ;;; Translates modules/sensors.nix.
 
 (define-module (fxtec-pro1x services sensors)
+  #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages freedesktop) ; iio-sensor-proxy
   #:use-module (gnu packages base)        ; grep
@@ -22,7 +23,7 @@
   pro1x-sensors-configuration?
   ;; Path to the hexagonfs tree (sensors/config, sensors/registry, sensors/sns_reg.conf)
   (hexagonfs        pro1x-sensors-hexagonfs
-                    (default (local-file "../../../device/hexagonfs"
+                    (default (local-file (repository-file "device/hexagonfs")
                                          "hexagonfs" #:recursive? #t)))
   ;; Start at boot?
   (autostart?       pro1x-sensors-autostart?       (default #t))

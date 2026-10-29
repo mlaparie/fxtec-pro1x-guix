@@ -17,6 +17,7 @@
 ;;;   pro1x-sway-config — default sway config, i3status-rust bar, window switcher
 
 (define-module (fxtec-pro1x packages misc)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages gawk)
@@ -208,7 +209,7 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
         (base32 "0df4af0n2fx3bx6b24ajva177mnvrk1clhpclrmpd8ljrwyva6k5"))
        (patches
         (list
-         (local-file "../../../packages/hexagonrpc-sns-registry.patch"
+         (local-file (repository-file "packages/hexagonrpc-sns-registry.patch")
                      "hexagonrpc-sns-registry.patch")))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
@@ -232,7 +233,7 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
   (package
     (name "pro1x-xts-encrypt")
     (version "0.1")
-    (source (local-file "../../../device/fde/xts-encrypt.c"
+    (source (local-file (repository-file "device/fde/xts-encrypt.c")
                         "xts-encrypt.c"))
     (build-system trivial-build-system)
     ;; Host tool: compiled for the build machine (x86_64 or whatever the host is).
@@ -286,9 +287,9 @@ to build an FDE userdata image on the host before flashing.")
                 (let ((ipa (string-append #$output
                                           "/share/libcamera/ipa/simple")))
                   (mkdir-p ipa)
-                  (copy-file #$(local-file "../../../device/libcamera/imx582.yaml")
+                  (copy-file #$(local-file (repository-file "device/libcamera/imx582.yaml"))
                              (string-append ipa "/imx582.yaml"))
-                  (copy-file #$(local-file "../../../device/libcamera/s5k4h7.yaml")
+                  (copy-file #$(local-file (repository-file "device/libcamera/s5k4h7.yaml"))
                              (string-append ipa "/s5k4h7.yaml")))))))))
     (source
      (origin
@@ -297,9 +298,9 @@ to build an FDE userdata image on the host before flashing.")
         (append
          (origin-patches (package-source libcamera))
          (list
-          (local-file "../../../device/libcamera/s5k4h7-sensor.patch"
+          (local-file (repository-file "device/libcamera/s5k4h7-sensor.patch")
                       "s5k4h7-sensor.patch")
-          (local-file "../../../device/libcamera/imx582-sensor.patch"
+          (local-file (repository-file "device/libcamera/imx582-sensor.patch")
                       "imx582-sensor.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
@@ -393,7 +394,7 @@ camera hardware.  Run as: cameractr")
        (patches
         (append (origin-patches (package-source wlroots))
                 (list (local-file
-                       "../../../device/phoc/wlroots-revert-layer-shell-0-dimension.patch"))))))))
+                       (repository-file "device/phoc/wlroots-revert-layer-shell-0-dimension.patch")))))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
@@ -454,7 +455,7 @@ Used as the compositor for the Phosh mobile shell.")
         (append
          (origin-patches (package-source phoc))
          (list
-          (local-file "../../../device/phoc/ignore-unknown-switch.patch"
+          (local-file (repository-file "device/phoc/ignore-unknown-switch.patch")
                       "phoc-ignore-unknown-switch.patch"))))))
     (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
 
@@ -689,10 +690,10 @@ It runs on top of the Phoc compositor.")
        (patches
         (append (origin-patches (package-source phosh))
                 (list (local-file
-                       "../../../device/phosh/unblank-without-gnome-session.patch")
+                       (repository-file "device/phosh/unblank-without-gnome-session.patch"))
                       ;; Brightness without logind: write sysfs directly.
                       (local-file
-                       "../../../device/phosh/backlight-sysfs-without-logind.patch"))))))
+                       (repository-file "device/phosh/backlight-sysfs-without-logind.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -715,12 +716,12 @@ It runs on top of the Phoc compositor.")
                    (lambda (src)
                      (copy-file src (string-append schema-dir "/" (basename src))))
                    (list
-                    #$(local-file "../../../device/phosh/org.gnome.settings-daemon.peripherals.gschema.xml")
-                    #$(local-file "../../../device/phosh/org.gnome.settings-daemon.plugins.gschema.xml")
-                    #$(local-file "../../../device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml")
-                    #$(local-file "../../../device/phosh/gnome-shell-keybindings.gschema.xml")
+                    #$(local-file (repository-file "device/phosh/org.gnome.settings-daemon.peripherals.gschema.xml"))
+                    #$(local-file (repository-file "device/phosh/org.gnome.settings-daemon.plugins.gschema.xml"))
+                    #$(local-file (repository-file "device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml"))
+                    #$(local-file (repository-file "device/phosh/gnome-shell-keybindings.gschema.xml"))
                     ;; Read by phoc, which aborts at start without it.
-                    #$(local-file "../../../device/phosh/org.gnome.mutter.gschema.xml")))
+                    #$(local-file (repository-file "device/phosh/org.gnome.mutter.gschema.xml"))))
                   ;; Show all apps in the overview, not only adaptive ones.
                   (call-with-output-file
                       (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
@@ -883,7 +884,7 @@ keyboard, sensors and cell broadcast alerts.")
        ;; Preview shows the .desktop file and the executable (mlaparie).
        (patches
         (list (local-file
-               "../../../device/sway/sway-launcher-desktop-preview.patch")))))
+               (repository-file "device/sway/sway-launcher-desktop-preview.patch"))))))
     (build-system copy-build-system)
     (inputs (list bash coreutils fzf gawk sed util-linux))
     (arguments
@@ -920,7 +921,7 @@ window opened by a sway key binding.")
   (package
     (name "pro1x-sway-config")
     (version "0.1")
-    (source (local-file "../../../device/sway" "pro1x-sway"
+    (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils foot fzf jq))

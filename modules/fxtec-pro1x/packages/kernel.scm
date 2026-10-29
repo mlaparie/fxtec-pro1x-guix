@@ -7,6 +7,7 @@
 ;;; Guix will print the expected hash on failure.
 
 (define-module (fxtec-pro1x packages kernel)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu packages linux)
   #:use-module (nongnu packages linux)
   #:use-module (guix build-system gnu)
@@ -17,16 +18,9 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:export (linux-pro1x))
 
-;;; This module's directory.  current-source-directory is #f when Guix
-;;; loads the module to look a package up by name (guix build linux-pro1x),
-;;; so fall back to finding this file on the load path.
-(define %module-directory
-  (or (current-source-directory)
-      (dirname (search-path %load-path "fxtec-pro1x/packages/kernel.scm"))))
-
 ;;; The device patches: the NixOS port's 14, in its order, then ours.
 (define %pro1x-patch-dir
-  (string-append %module-directory "/../../../device/kernel/patches/"))
+  (repository-file "device/kernel/patches/"))
 
 (define %pro1x-patches
   (map (lambda (n)
@@ -81,8 +75,7 @@
             (replace 'configure
               (lambda _
                 (copy-file
-                 #$(local-file (string-append %module-directory
-                                              "/../../../device/kernel/config.aarch64")
+                 #$(local-file (repository-file "device/kernel/config.aarch64")
                                "pro1x.config")
                  ".config")
                 (invoke "make" "ARCH=arm64" "olddefconfig")))))))

@@ -14,6 +14,7 @@
 ;;; bootloader directly — see systems/minimal.scm.
 
 (define-module (fxtec-pro1x services hardware)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
@@ -48,7 +49,7 @@
   (let* ((top    (pro1x-hardware-display-top-gap    config))
          (bottom (pro1x-hardware-display-bottom-gap config))
          (gap?   (> (+ top bottom) 0))
-         (base   (local-file "../../../device/udev/60-pro1x.rules"
+         (base   (local-file (repository-file "device/udev/60-pro1x.rules")
                              "60-pro1x.rules")))
     (if gap?
         (let* ((even   (lambda (g) (- g (modulo g 2))))

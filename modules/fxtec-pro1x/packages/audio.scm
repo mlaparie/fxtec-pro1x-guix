@@ -1,6 +1,7 @@
 ;;; fxtec-pro1x/packages/audio.scm — pro1x-audio: voicepcm + UCM2 + WirePlumber conf
 
 (define-module (fxtec-pro1x packages audio)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu packages audio)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
@@ -20,7 +21,7 @@
     (name "pro1x-audio")
     (version "1")
     ;; Source lives in device/audio/ within this repo.
-    (source (local-file "../../../device/audio" "pro1x-audio-src" #:recursive? #t))
+    (source (local-file (repository-file "device/audio") "pro1x-audio-src" #:recursive? #t))
     (build-system gnu-build-system)
     (inputs
      (list alsa-lib alsa-utils pipewire pulseaudio
