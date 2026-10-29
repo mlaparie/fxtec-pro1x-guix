@@ -7,8 +7,9 @@
 ;;; homes as ~/.ssh/pro1x-guix.pub, so the owner's own configuration can
 ;;; refer to it.
 ;;;
-;;; /etc/guix/config.scm: a starting configuration for the phone's owner.
-;;; It inherits the port's system from the channel, so guix pull still
+;;; /etc/guix/config.scm and /etc/guix/channels.scm: starting files for the
+;;; phone's owner (channels: see (fxtec-pro1x services channels)).
+;;; config.scm inherits the port's system from the channel, so guix pull still
 ;;; brings the port's fixes; root SSH is off in it until the owner
 ;;; uncomments one line (opt-in), and it holds no key, so it can be shared
 ;;; as a dotfile.
@@ -17,6 +18,7 @@
 ;;; without the key line; not yet used on the phone.
 
 (define-module (fxtec-pro1x system common)
+  #:use-module (fxtec-pro1x services channels)
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:export (pro1x-root-authorized-keys
@@ -76,8 +78,34 @@ symbol exported by MODULE, a list of symbols, returns."
 "))
 
 (define (pro1x-user-config-service module procedure)
-  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE."
-  (simple-service 'pro1x-user-config etc-service-type
-                  `(("guix/config.scm"
-                     ,(plain-file "config.scm"
-                                  (pro1x-user-config module procedure))))))
+  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE,
+and /etc/guix/channels.scm.
+
+Not through etc-service-type: an /etc entry under guix/ would turn the whole
+of /etc/guix into a read-only store link and hide the acl and signing keys
+Guix writes there.  Like guix-service-type for its channels.scm, link each
+file in place at activation."
+  (define files
+    `(("config.scm" ,(plain-file "config.scm"
+                                 (pro1x-user-config module procedure)))
+      ("channels.scm" ,pro1x-channels-file)))
+
+  (simple-service
+   'pro1x-guix-files activation-service-type
+   (with-imported-modules '((guix build utils))
+     #~(begin
+         (use-modules (guix build utils))
+         (mkdir-p "/etc/guix")
+         (for-each
+          (lambda (name file)
+            (let ((target (string-append "/etc/guix/" name)))
+              ;; A link into the store is ours from an earlier generation;
+              ;; anything else was written by hand: keep it as .bak.
+              (when (false-if-exception (lstat target))
+                (if (and (symbolic-link? target)
+                         (store-file-name? (readlink target)))
+                    (delete-file target)
+                    (rename-file target (string-append target ".bak"))))
+              (symlink file target)))
+          '#$(map car files)
+          (list #$@(map cadr files)))))))

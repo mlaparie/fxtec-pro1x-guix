@@ -234,11 +234,6 @@ files root may log in with."
     (list (pro1x-user-config-service '(fxtec-pro1x system mobile-encrypted)
                                      'pro1x-mobile-encrypted-operating-system))
     (modify-services %base-services
-      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
-      (guix-service-type config =>
-        (guix-configuration
-          (inherit config)
-          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)

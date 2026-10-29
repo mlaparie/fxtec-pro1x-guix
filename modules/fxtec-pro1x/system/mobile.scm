@@ -402,11 +402,6 @@ Dracula palette, no kernel messages over the greeter.")
     ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
     ;; console-font depends on term-ttyN provided by mingetty so must go too).
     (modify-services %base-services
-      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
-      (guix-service-type config =>
-        (guix-configuration
-          (inherit config)
-          (channels %pro1x-channels)))
       (delete login-service-type)
       (delete mingetty-service-type)
       (delete console-font-service-type))))

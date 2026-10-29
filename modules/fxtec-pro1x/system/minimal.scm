@@ -208,11 +208,6 @@ files root may log in with."
                                      'pro1x-minimal-operating-system))
     ;; Base Guix services — large font, remove getty (greetd takes over)
     (modify-services %base-services
-      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
-      (guix-service-type config =>
-        (guix-configuration
-          (inherit config)
-          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)

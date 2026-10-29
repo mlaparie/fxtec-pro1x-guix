@@ -37,7 +37,9 @@ from the channel, and root SSH for deploys is opt-in there.
 - Boot through U-Boot and extlinux; earlier generations in the boot menu
   (hold volume-down at power-on); A/B slot marking.
 - `guix pull` of this channel, and `guix system reconfigure` on the
-  phone from `/etc/guix/config.scm`.
+  phone from `/etc/guix/config.scm`.  `/etc/guix/channels.scm` pins guix
+  and nonguix to the tested commits, so the phone does not rebuild the
+  kernel and Phosh itself.
 - `guix system delete-generations`, `roll-back` and `switch-generation`
   on the phone; the U-Boot "previous generation" entries follow every
   change of the boot menu (refresh on each change: not tested yet).

@@ -74,21 +74,20 @@ manifest.scm                 Flash tooling: fastboot, mkbootimg, util-linux, e2f
 
 ## Channel setup
 
-Add to `~/.config/guix/channels.scm`:
+`channels.scm` lists the three channels a Pro¹x system follows: guix,
+nonguix and fxtec-pro1x (the phone ships the same file as
+`/etc/guix/channels.scm`).  Copy it to `~/.config/guix/channels.scm`, add
+your own channels, then `guix pull`.
 
-```scheme
-(cons* (channel
-        (name 'fxtec-pro1x)
-        (url "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-        (branch "main"))
-       %default-channels)
-```
+**guix and nonguix are pinned** to the commits the port is built and
+tested with.  No substitute server builds this channel's packages yet, so
+with any other guix or nonguix commit, a pull followed by a reconfigure
+makes the phone build the kernel, Phosh and much of their dependencies
+itself, for hours.  The pins move with the port's releases; remove them
+only if you accept those builds (or build on a PC and deploy).
 
-Then `guix pull`. For reproducible builds pinned to known-good commits:
-
-```sh
-guix pull -C channels-lock.scm
-```
+`channels-lock.scm` pins the same guix and nonguix commits and is what
+release builds use.
 
 GitHub mirror: `https://github.com/mlaparie/fxtec-pro1x-guix`
 
@@ -159,8 +158,9 @@ guix pull                    # then log out and back in once
 sudo guix system reconfigure ~/.config/guix/config.scm
 ```
 
-- `channels.scm` lists guix, nonguix and fxtec-pro1x; add your own
-  channels to it.
+- `channels.scm` lists guix, nonguix and fxtec-pro1x, with guix and
+  nonguix pinned so the phone does not rebuild the kernel and Phosh
+  itself (see "Channel setup"); add your own channels to it.
 - `config.scm` inherits the port's system from the channel
   (`pro1x-mobile-operating-system` in `(fxtec-pro1x system mobile)`), so
   `guix pull` keeps bringing the port's fixes while your changes stay in
