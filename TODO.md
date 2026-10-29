@@ -77,25 +77,36 @@ To deploy and test once the phone takes deploys again (Tailscale):
 - kernel.scm: package lookup by name failed (current-source-directory).
 The kernel changed: reboot needed, with the U-Boot fallback in mind.
 
-Tested on the phone 2026-10-29 (flashed CI image of next, 2d71b95):
-- works: SIM detected after UIM provisioning (ModemManager: locked, PIN
-  blocked, PUK left); Bluetooth controller up (firmware loads);
-  brightness slider; screen off without the corrupted frame; 16x32
-  console font from boot; no ADSP sensor_process crash this boot.
-- SIM unlock loop in GNOME Settings: polkit refused ModemManager
-  (fixed on next, polkit rule for netdev, not yet on the phone).
-- sound: PipeWire, WirePlumber up with ALSA_CONFIG_UCM2; the card shows
-  only off/pro-audio profiles because opening hw:0,0 fails with EBUSY:
-  the wcd937x codec on SoundWire fails to resume ("ASoC error (-16)" at
-  pm_runtime_get, "IRQ sync failed to resume: -16").  SailfishOS's
-  re-probe (rmmod/modprobe snd_soc_sm8250) made it worse: card failed to
-  instantiate until reboot.  Kernel side; compare with the NixOS port's
-  dmesg on this phone.  Two attempts, stopped.
-- sensors: QRTR 400 present, but iio-sensor-proxy exits: Guix builds it
-  without SSC support and has no libssc (nixpkgs has both).  Package
-  libssc, build iio-sensor-proxy with -Dssc-support.
-- camera: WirePlumber's libcamera loads both sensors' tuning; no viewer
-  installed (cameractrl is a control panel).  Add Snapshot (NixOS does).
+Tested on the phone 2026-10-29/30 (flashed CI image of next, 2d71b95,
+then deploys of next up to cc16582; generation 2 and later):
+- works: SIM detected after UIM provisioning; Bluetooth controller up
+  (firmware loads); brightness slider; screen off without the corrupted
+  frame; 16x32 console font from boot; tuigreet order 1 Sway, 2 Phosh,
+  3 Sxmo + Sway; Snapshot shows both cameras; foot starts (Sxmo's
+  foot.ini used [colors]); volume keys in Phosh (gsd-media-keys).
+- sound works since hexagonrpcd 40e5041: with da7a374 the ADSP crashed at
+  12 s (SNS_REG_INIT, registry writes refused) and took audio with it
+  (AFE -110, wcd937x -16).  It was quiet: S24_LE (the S16 rule did not
+  match Guix's node names) and the speaker's HPH gain at 12 of 20; now
+  S16 and 20 on the speaker.  Speaker gain 20 confirmed by ear with
+  amixer; the UCM change not yet heard.
+- sensors: libssc + iio-sensor-proxy 3.9 (SSC); monitor-sensor reads the
+  accelerometer once polkit had the actions and a rule for users.
+  Auto-rotation in Phosh not yet tested.
+- SIM: PIN blocked; PUK refused 5 times once requests reached the SIM
+  (the earlier "10 left" only meant polkit stopped them first).  5 PUK
+  tries left: the author checks the PUK elsewhere.  Do not retry here.
+- polkit, without logind: every D-Bus service whose actions are
+  allow_active only needs its package in polkit-service-type and a rule
+  (ModemManager, NetworkManager: netdev; sensors: users).  polkitd does
+  not see a new /etc/polkit-1 after a deploy until restarted (or reboot).
+- crackle on reaching tuigreet (session audio stopping): probably the
+  speaker pop at power-down also seen on NixOS (moWerk's notes); kernel.
+- Sway: volume keys through wpctl, capped at 120%; Sway volume keys not
+  yet tested by the author.  GNOME volume above 100% via
+  pro1x-gsettings-defaults, not yet tested.
+- Sxmo: same device settings (/etc/sway/config.d/pro1x.conf), bus and
+  audio as Sway; still needs superd.
 - Phosh lock keypad flickers once on wake (low priority).
 - CI: U-Boot only changes with uboot.scm; reuse the last artifact when
   its derivation is unchanged instead of rebuilding.  The U-Boot step's
