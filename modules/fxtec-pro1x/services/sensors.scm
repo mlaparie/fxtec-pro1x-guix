@@ -166,6 +166,23 @@
         libqrtr                         ; qrtr-lookup, for diagnostics
         (pro1x-sensors-hexagonrpcd-package config)))
 
+;; polkit allows claiming a sensor to the active local session only, which
+;; it cannot tell without logind (seatd here): "Sensor claim not allowed"
+;; for Phosh and monitor-sensor.  Allow it to members of users.
+(define pro1x-sensors-polkit-rules
+  (file-union
+   "pro1x-sensors-polkit-rules"
+   `(("share/polkit-1/rules.d/50-pro1x-sensors.rules"
+      ,(plain-file
+        "50-pro1x-sensors.rules"
+        "polkit.addRule(function (action, subject) {
+    if (action.id == \"net.hadess.SensorProxy.claim-sensor\" &&
+        subject.isInGroup(\"users\")) {
+        return polkit.Result.YES;
+    }
+});
+")))))
+
 (define pro1x-sensors-service-type
   (service-type
    (name 'pro1x-sensors)
@@ -181,7 +198,9 @@
      ;; everyone, Phosh included ("Action net.hadess.SensorProxy.
      ;; claim-sensor is not registered").
      (service-extension polkit-service-type
-                        (lambda (config) (list iio-sensor-proxy-ssc)))
+                        (lambda (config)
+                          (list iio-sensor-proxy-ssc
+                                pro1x-sensors-polkit-rules)))
      (service-extension profile-service-type
                         pro1x-sensors-packages)))
    (default-value (pro1x-sensors-configuration))
