@@ -142,6 +142,27 @@ exit 0
              #:log-file "/var/log/pro1x-uim-provision.log"))
    (stop #~(make-kill-destructor))))
 
+;;; polkit: let members of netdev use ModemManager (unlock the SIM with PIN
+;;; or PUK, calls, SMS) and NetworkManager.  polkit's defaults allow these
+;;; only to the active local session, which it cannot tell without logind
+;;; (seatd here): GNOME Settings' SIM unlock was refused ("PolicyKit
+;;; authorization failed" from ModemManager) and closed its dialog without
+;;; an error, so the SIM stayed locked.
+(define pro1x-modem-polkit-rules
+  (file-union
+   "pro1x-modem-polkit-rules"
+   `(("share/polkit-1/rules.d/50-pro1x-netdev.rules"
+      ,(plain-file
+        "50-pro1x-netdev.rules"
+        "polkit.addRule(function (action, subject) {
+    if ((action.id.indexOf(\"org.freedesktop.ModemManager1.\") == 0 ||
+         action.id.indexOf(\"org.freedesktop.NetworkManager.\") == 0) &&
+        subject.isInGroup(\"netdev\")) {
+        return polkit.Result.YES;
+    }
+});
+")))))
+
 ;;; A one-shot service that blocks rmtfs startup until the modem remoteproc appears.
 (define (pro1x-modem-rmtfs-wait config)
   (list
@@ -184,6 +205,8 @@ exit 0
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))
+     (service-extension polkit-service-type
+                        (const (list pro1x-modem-polkit-rules)))
      ;; MM's own rules: 77-mm-qcom-soc.rules tags rmnet_ipa0 (driver ipa)
      ;; with ID_MM_PHYSDEV_UID=qcom-soc; without them MM fails with "Failed
      ;; to find a net port in the QMI modem".
