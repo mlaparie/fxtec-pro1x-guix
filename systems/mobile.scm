@@ -71,6 +71,10 @@
     #~(begin
         (setenv "WLR_BACKENDS" "drm,libinput")
         (setenv "MOZ_ENABLE_WAYLAND" "1")
+        ;; Upstream's session file has DesktopNames=Phosh;GNOME; which
+        ;; greetd does not turn into XDG_CURRENT_DESKTOP.  Without it GNOME
+        ;; Settings (OnlyShowIn=GNOME) is hidden and does not start.
+        (setenv "XDG_CURRENT_DESKTOP" "Phosh:GNOME")
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
