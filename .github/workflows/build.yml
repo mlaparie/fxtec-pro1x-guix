@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# The release step creates a GitHub release; the job token is read-only
+# by default ("Resource not accessible by integration", run 40809007728).
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04-arm

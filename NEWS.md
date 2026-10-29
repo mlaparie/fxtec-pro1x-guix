@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.1.2 — 2026-10-29
+
+- CI can publish releases: the release step was refused ("Resource not
+  accessible by integration") because the workflow did not ask for
+  `contents: write`; 0.1.0 and 0.1.1 have tags but no GitHub release.
+  Otherwise the same as 0.1.1.
+
 ## 0.1.1 — 2026-10-29
 
 - The channel can be pulled: `guix pull` failed to build it, because
