@@ -179,6 +179,9 @@ files root may log in with."
      "console=tty1"
      ;; Text console (tuigreet) in landscape, like sway (keyboard out).
      "fbcon=rotate:1"
+     ;; 16x32 console font from the start (kernel CONFIG_FONT_TER16x32);
+     ;; before, early boot used 8x16 until setfont ran.
+     "fbcon=font:TER16x32"
      "loglevel=4"
      "g_cdc.host_addr=02:50:31:e8:00:01"
      "g_cdc.dev_addr=02:50:31:e8:00:02")

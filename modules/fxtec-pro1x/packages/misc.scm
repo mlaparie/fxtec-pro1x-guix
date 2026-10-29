@@ -689,7 +689,10 @@ It runs on top of the Phoc compositor.")
        (patches
         (append (origin-patches (package-source phosh))
                 (list (local-file
-                       "../../../device/phosh/unblank-without-gnome-session.patch"))))))
+                       "../../../device/phosh/unblank-without-gnome-session.patch")
+                      ;; Brightness without logind: write sysfs directly.
+                      (local-file
+                       "../../../device/phosh/backlight-sysfs-without-logind.patch"))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)

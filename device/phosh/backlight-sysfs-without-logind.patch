@@ -1,0 +1,57 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] backlight-sysfs: write sysfs directly without logind
+
+Phosh sets the backlight only through logind (Session.SetBrightness).
+Without logind (seatd, as on this port) every change failed ("proxy is
+for the well-known name org.freedesktop.login1 without an owner") and the
+brightness slider did nothing; with no session proxy at all the task was
+never completed.  Write the brightness attribute directly then, which
+udev rules (brightnessctl) make writable for the video group.  Reading
+stays on "brightness", never "actual_brightness".
+
+--- a/src/backlight-sysfs.c
++++ b/src/backlight-sysfs.c
+@@ -19,6 +19,11 @@
+ 
+ #include <gudev/gudev.h>
+ 
++#include <errno.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <unistd.h>
++
+ /**
+  * PhoshBacklightSysfs:
+  *
+@@ -101,8 +106,30 @@
+   g_task_set_task_data (task, GINT_TO_POINTER (brightness), NULL);
+   g_task_set_source_tag (task, phosh_backlight_sysfs_set_level);
+ 
+-  if (!self->session_proxy)
++  /* Without logind (e.g. seatd) there is nobody to ask: write the sysfs
++     attribute directly, which udev rules can make writable for the user. */
++  if (!self->session_proxy ||
++      g_dbus_proxy_get_name_owner (G_DBUS_PROXY (self->session_proxy)) == NULL) {
++    char level[16];
++    int fd, len;
++
++    fd = open (self->brightness_path, O_WRONLY | O_CLOEXEC);
++    len = g_snprintf (level, sizeof level, "%d", brightness);
++    if (fd < 0 || write (fd, level, len) != len) {
++      int err = errno;
++
++      if (fd >= 0)
++        close (fd);
++      g_task_return_new_error (task, G_IO_ERROR, g_io_error_from_errno (err),
++                               "Failed to write %s: %s", self->brightness_path,
++                               g_strerror (err));
++      return;
++    }
++    close (fd);
++    g_debug ("Set brightness via sysfs: %d", brightness);
++    g_task_return_int (task, brightness);
+     return;
++  }
+ 
+   g_debug ("Setting brightness via logind: %d", brightness);
+   phosh_dbus_login_session_call_set_brightness (self->session_proxy,
