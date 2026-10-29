@@ -85,7 +85,14 @@ trigger a vibration effect on each keypress.")
               ;; setup_config_version.sh uses busybox; replace with standard
               ;; POSIX tools available in the build environment.
               (substitute* "setup_config_version.sh"
-                (("busybox ") ""))))
+                (("busybox ") ""))
+              ;; The entry scripts source /etc/profile.d/sxmo_init.sh, which
+              ;; does not exist on Guix ("sh: can't open"), so every Sxmo
+              ;; session ended at once; use the installed copy.
+              (substitute* (append (find-files "scripts" "\\.sh$")
+                                   (find-files "configs" "\\.sh$"))
+                (("/etc/profile\\.d/sxmo_init\\.sh")
+                 (string-append #$output "/etc/profile.d/sxmo_init.sh")))))
           (add-before 'install 'skip-setcap
             (lambda _
               ;; setcap cannot run in the build sandbox.  sxmo_sleep will work

@@ -4,6 +4,8 @@
 (define-module (fxtec-pro1x services sensors)
   #:use-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages freedesktop) ; iio-sensor-proxy
+  #:use-module (gnu packages base)        ; grep
+  #:use-module (gnu packages bash)        ; bash-minimal
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services dbus)
@@ -111,6 +113,31 @@
                    "-R" #$%state-dir)
              #:log-file "/var/log/hexagonrpcd.log") args)))
       (stop #~(make-kill-destructor))
+      (respawn? #t))
+
+     ;; iio-sensor-proxy (auto-rotate, light, proximity for the shells).
+     ;; Guix's package has no D-Bus activation file (its systemd unit even
+     ;; lands in a directory named "false"), so nothing started it.  Start
+     ;; it after hexagonrpcd, once the ADSP's sensor service (QRTR 400)
+     ;; exists, as the NixOS port does, so that it does not start into
+     ;; nothing.
+     (shepherd-service
+      (provision '(iio-sensor-proxy))
+      (requirement '(dbus-system pro1x-hexagonrpcd))
+      (documentation "iio-sensor-proxy, once the ADSP sensor service is up")
+      (auto-start? auto?)
+      (start
+       #~(make-forkexec-constructor
+          (list #$(file-append bash-minimal "/bin/sh") "-c"
+                (string-append
+                 "i=0; while [ $i -lt 60 ]; do "
+                 #$(file-append libqrtr "/bin/qrtr-lookup")
+                 " 2>/dev/null | " #$(file-append grep "/bin/grep")
+                 " -q '^ *400 ' && break; i=$((i + 1)); sleep 1; done; "
+                 "[ $i -lt 60 ] || echo 'SSC sensor service (QRTR 400) did not appear' >&2; "
+                 "exec " #$(file-append iio-sensor-proxy "/libexec/iio-sensor-proxy")))
+          #:log-file "/var/log/iio-sensor-proxy.log"))
+      (stop #~(make-kill-destructor))
       (respawn? #t)))))
 
 (define (pro1x-sensors-udev-rules config)
@@ -133,6 +160,7 @@
 
 (define (pro1x-sensors-packages config)
   (list iio-sensor-proxy
+        libqrtr                         ; qrtr-lookup, for diagnostics
         (pro1x-sensors-hexagonrpcd-package config)))
 
 (define pro1x-sensors-service-type
