@@ -39,6 +39,15 @@ verified on the device.  Order:
    Settings: GNOME Settings added (gnome-control-center, substitute on
    bordeaux); Phosh Mobile Settings (phosh-mobile-settings) not in Guix,
    to package.  The NixOS port installs neither.
+   Camera: cameractrl shows black (author, 2026-10-29).  Both sensors
+   register (imx582, s5k4h7), cameractrl finds the focus subdev, libcamera
+   logs nothing.  No PipeWire or WirePlumber runs in the session (and
+   wireplumber is not installed); the NixOS port gets frames through
+   WirePlumber loading the patched libcamera (LD_LIBRARY_PATH on the
+   wireplumber user unit).  Our environment.d/51-pro1x-libcamera.conf is
+   a systemd convention nothing reads here.  Needs step 4 (PipeWire +
+   WirePlumber user services).  libcamera-pro1x has no `cam` tool to test
+   it alone (inferred diagnosis).
    Earlier text:** Phosh from tuigreet
    failed: phoc aborted, "Settings schema 'org.gnome.mutter.keybindings'
    is not installed" (/tmp/phosh-1000.log, generation 7).  Schema added
