@@ -33,19 +33,9 @@ MUSIC=Music\n\
 PICTURES=Pictures\n\
 VIDEOS=Videos\n"))))
 
-;;; WirePlumber needs to find our patched libcamera at runtime.
-;;; We set LD_LIBRARY_PATH via /etc/environment.d/ which is read by PAM.
-(define (pro1x-camera-ld-path-etc config)
-  (list
-   `("environment.d/51-pro1x-libcamera.conf"
-     ,(computed-file "51-pro1x-libcamera.conf"
-        #~(call-with-output-file #$output
-            (lambda (port)
-              (display
-               (string-append "LD_LIBRARY_PATH="
-                              #$libcamera-pro1x "/lib"
-                              "\n")
-               port)))))))
+;;; WirePlumber finds the patched libcamera through LD_LIBRARY_PATH, set
+;;; by pro1x-audio-session in (fxtec-pro1x services audio): an
+;;; /etc/environment.d file did that on NixOS, but nothing reads it here.
 
 (define (pro1x-camera-packages config)
   (list libcamera-pro1x cameractrl v4l-utils))
@@ -56,10 +46,7 @@ VIDEOS=Videos\n"))))
    (extensions
     (list
      (service-extension etc-service-type
-                        (lambda (config)
-                          (append
-                           (pro1x-camera-etc config)
-                           (pro1x-camera-ld-path-etc config))))
+                        pro1x-camera-etc)
      (service-extension profile-service-type
                         pro1x-camera-packages)))
    (default-value (pro1x-camera-configuration))

@@ -4,8 +4,17 @@
 ;;;
 ;;; The key challenges vs. NixOS:
 ;;;   1. UCM2 merge: we need alsa-ucm-conf + pro1x UCM profiles in the same
-;;;      tree.  We do this with a computed union directory set via
-;;;      ALSA_CONFIG_UCM2 in the PAM/session environment.
+;;;      tree, a computed union directory.  ALSA_CONFIG_UCM2 points at it in
+;;;      the sessions, through pro1x-audio-session (below); an
+;;;      /etc/environment.d file did that on NixOS (systemd) but nothing
+;;;      reads that directory here.
+;;;   0. PipeWire, WirePlumber and pipewire-pulse have no systemd user units
+;;;      here: pro1x-audio-session starts them inside each graphical session
+;;;      (after dbus-run-session) and stops them when the session ends.
+;;;      WirePlumber gets the patched libcamera (same 0.7.2 ABI as the one
+;;;      PipeWire links) through LD_LIBRARY_PATH, as on NixOS, so that the
+;;;      cameras reach apps through PipeWire.
+;;;      State: not yet run on the phone.
 ;;;   2. WirePlumber config: installed to /etc/wireplumber/wireplumber.conf.d/
 ;;;   3. pro1x-audio-init: run as a Shepherd one-shot before PipeWire starts.
 ;;;   4. pro1x-voicepcm user service: started/stopped by UCM VoiceCall verb.
@@ -13,7 +22,10 @@
 
 (define-module (fxtec-pro1x services audio)
   #:use-module (fxtec-pro1x packages audio)
+  #:use-module (fxtec-pro1x packages misc)  ; libcamera-pro1x
   #:use-module (gnu packages audio)
+  #:use-module (gnu packages gnome)         ; wireplumber
+  #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages linux)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu services)
@@ -23,7 +35,8 @@
   #:use-module (guix packages)
   #:use-module (guix records)
   #:use-module (guix store)
-  #:export (pro1x-audio-configuration
+  #:export (pro1x-audio-session
+            pro1x-audio-configuration
             pro1x-audio-configuration?
             make-pro1x-audio-configuration
             pro1x-audio-service-type))
@@ -53,22 +66,43 @@
 
 ;;; /etc entries: WirePlumber conf fragment and environment for ALSA_CONFIG_UCM2
 (define (pro1x-audio-etc config)
-  (let* ((audio-pkg (pro1x-audio-configuration-package config))
-         (ucm       (pro1x-ucm-dir audio-pkg)))
+  (let ((audio-pkg (pro1x-audio-configuration-package config)))
     (list
      ;; WirePlumber config fragment
      `("wireplumber/wireplumber.conf.d/52-pro1x-s16.conf"
        ,(file-append audio-pkg
-                     "/share/wireplumber/wireplumber.conf.d/52-pro1x-s16.conf"))
-     ;; UCM2 path for session processes: write into a PAM environment file
-     ;; so anything started by the display manager inherits it.
-     `("environment.d/50-pro1x-ucm2.conf"
-       ,(computed-file "50-pro1x-ucm2.conf"
-          #~(call-with-output-file #$output
-              (lambda (p)
-                (display
-                 (string-append "ALSA_CONFIG_UCM2=" #$ucm "\n")
-                 p))))))))
+                     "/share/wireplumber/wireplumber.conf.d/52-pro1x-s16.conf")))))
+
+;;; pro1x-audio-session PROGRAM ARGS...: start the user's audio daemons,
+;;; run PROGRAM (the compositor) and stop them when it exits.  Runs inside
+;;; the session's D-Bus (after dbus-run-session).
+(define pro1x-audio-session
+  (program-file
+   "pro1x-audio-session"
+   #~(begin
+       (define (spawn program . args)
+         (let ((pid (primitive-fork)))
+           (if (zero? pid)
+               (catch #t
+                 (lambda () (apply execl program program args))
+                 (lambda _ (primitive-exit 127)))
+               pid)))
+
+       (setenv "ALSA_CONFIG_UCM2" #$(pro1x-ucm-dir pro1x-audio))
+       (let* ((pipewire (spawn #$(file-append pipewire "/bin/pipewire")))
+              (pulse    (spawn #$(file-append pipewire "/bin/pipewire-pulse")))
+              (wireplumber
+               (begin
+                 (sleep 1)              ;let PipeWire create its socket
+                 (spawn #$(file-append coreutils "/bin/env")
+                        (string-append "LD_LIBRARY_PATH="
+                                       #$(file-append libcamera-pro1x "/lib"))
+                        #$(file-append wireplumber "/bin/wireplumber"))))
+              (status (apply system* (cdr (command-line)))))
+         (for-each (lambda (pid)
+                     (false-if-exception (kill pid SIGTERM)))
+                   (list wireplumber pulse pipewire))
+         (primitive-exit (or (status:exit-val status) 1))))))
 
 ;;; Shepherd service: pro1x-audio-init runs once before PipeWire/WirePlumber.
 (define (pro1x-audio-shepherd-services config)
@@ -88,7 +122,7 @@
 ;;; System packages
 (define (pro1x-audio-packages config)
   (let ((audio-pkg (pro1x-audio-configuration-package config)))
-    (list audio-pkg alsa-utils pulseaudio)))
+    (list audio-pkg alsa-utils pulseaudio pipewire wireplumber)))
 
 (define pro1x-audio-service-type
   (service-type
