@@ -13,9 +13,9 @@
   (commit "8b96d76752be5bfe4ce87e32a53afa919d365fd0")
   (introduction
    (make-channel-introduction
-    "c91e27c60864faa229198f6f0caf620275c429a2"
+    "9edb3f66fd807b096b48283debdcddccfea34bad"
     (openpgp-fingerprint
-     "510A 8628 E2A7 7678 8F8C  709C 4BC0 2592 5FF8 F4D3"))))
+     "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
 
  (channel
   (name 'nonguix)
@@ -24,6 +24,6 @@
   (commit "c241d19ff840dc75556f722b231760d119b6adea")
   (introduction
    (make-channel-introduction
-    "897c1a470da759236cc11798f4e0a5f7d4d796ab"
+    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
     (openpgp-fingerprint
      "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5")))))
