@@ -114,6 +114,9 @@
 ;; Sxmo on sway, for greetd.  Logs to /tmp/sxmo-UID.log (greetd discards
 ;; session output).  Sxmo also needs superd, its user service manager, not
 ;; packaged yet: its start hook waits for `superctl status' (TODO.md).
+;; Same session bus and audio as the Sway session (Sxmo would start
+;; PipeWire through superd); the device settings come from
+;; /etc/sway/config.d/pro1x.conf, which Sxmo's sway template includes.
 (define sxmo-session
   (program-file "start-sxmo"
     #~(begin
@@ -131,8 +134,10 @@
                               "w")))
           (dup2 (fileno log) 1)
           (dup2 (fileno log) 2))
-        (execl #$(file-append sxmo-utils "/bin/sxmo_swayinit.sh")
-               "sxmo_swayinit.sh"))))
+        (execl #$(file-append dbus "/bin/dbus-run-session")
+               "dbus-run-session" "--"
+               #$pro1x-audio-session
+               #$(file-append sxmo-utils "/bin/sxmo_swayinit.sh")))))
 
 ;; Bare sway session for greetd.
 (define sway-session
@@ -275,26 +280,33 @@ files root may log in with."
      (service seatd-service-type)
 
      ;; ── Session desktop files ─────────────────────────────────────────────
-     ;; phosh.desktop and swmo.desktop installed to /etc/wayland-sessions so
-     ;; tuigreet can find them.  Both use absolute store paths in Exec= so they
-     ;; work regardless of login-shell PATH.
+     ;; Session entries in /etc/wayland-sessions for tuigreet, with absolute
+     ;; store paths in Exec= so they work regardless of login-shell PATH.
+     ;; tuigreet sorts them by Name; the numbers give the order Sway, Phosh,
+     ;; Sxmo (the author's choice, Sway first).
      (simple-service 'wayland-sessions etc-service-type
        (list
         `("wayland-sessions/phosh.desktop"
           ,(mixed-text-file "phosh.desktop"
-             "[Desktop Entry]\nName=Phosh\nExec="
+             "[Desktop Entry]\nName=2 Phosh\nExec="
              phosh-pro1x-session
              "\nType=Application\n"))
         `("wayland-sessions/swmo.desktop"
           ,(mixed-text-file "swmo.desktop"
-             "[Desktop Entry]\nName=Sxmo + Sway\nExec="
+             "[Desktop Entry]\nName=3 Sxmo + Sway\nExec="
              sxmo-session
              "\nType=Application\n"))
         `("wayland-sessions/sway.desktop"
           ,(mixed-text-file "sway.desktop"
-             "[Desktop Entry]\nName=Sway\nExec="
+             "[Desktop Entry]\nName=1 Sway\nExec="
              sway-session
              "\nType=Application\n"))))
+
+     ;; Device settings shared by the Sway and Sxmo sessions.
+     (simple-service 'sway-device-config etc-service-type
+       (list
+        `("sway/config.d/pro1x.conf"
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/pro1x.conf"))))
 
      ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
      (simple-service 'phosh-config etc-service-type
@@ -465,6 +477,9 @@ Dracula palette, no kernel messages over the greeter.")
      icecat gnome-console
      emacs mpv nnn
      calls chatty
+     ;; Camera viewer: libcamera's cameras reach it through PipeWire
+     ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
+     snapshot
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas
