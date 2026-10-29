@@ -177,6 +177,11 @@
                         pro1x-sensors-udev-rules)
      (service-extension dbus-root-service-type
                         (lambda (config) (list iio-sensor-proxy-ssc)))
+     ;; Its polkit actions: without them claiming a sensor fails for
+     ;; everyone, Phosh included ("Action net.hadess.SensorProxy.
+     ;; claim-sensor is not registered").
+     (service-extension polkit-service-type
+                        (lambda (config) (list iio-sensor-proxy-ssc)))
      (service-extension profile-service-type
                         pro1x-sensors-packages)))
    (default-value (pro1x-sensors-configuration))
