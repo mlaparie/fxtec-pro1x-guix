@@ -5,9 +5,13 @@
 ;;; (operating-system (inherit (pro1x-mobile-operating-system …)) …), so
 ;;; guix pull brings the port's changes to customised systems too.
 ;;;
-;;; ROOT-SSH-KEYS: openssh authorized-keys entries for root, e.g.
-;;; `(("root" ,(local-file "deploy.pub"))); root logs in by key only, for
-;;; guix deploy (scripts/deploy.sh).  Empty: no root SSH login.
+;;; ROOT-SSH-KEYS: root's SSH public keys, as strings ("ssh-ed25519 AAAA…");
+;;; root logs in by key only, for guix deploy (scripts/deploy.sh).  Empty:
+;;; no root SSH login.
+;;;
+;;; The system installs /etc/guix/config.scm, a starting configuration for
+;;; the phone's owner that inherits from this one and lists the same keys
+;;; inline, so copying it keeps (or visibly drops) deploy access.
 ;;;
 ;;; Session selection: greetd + tuigreet on VT1
 ;;;   • Phosh   — phoc-pro1x compositor + phosh-pro1x shell
@@ -134,9 +138,61 @@
                "dbus-run-session" "--"
                #$(file-append sway "/bin/sway")))))
 
+(define (pro1x-user-config root-ssh-keys)
+  "Return /etc/guix/config.scm: a configuration inheriting from this system,
+with ROOT-SSH-KEYS (strings) inline."
+  (define (scheme-string str)
+    (with-output-to-string (lambda () (write str))))
+
+  (define keys
+    (if (null? root-ssh-keys)
+        "   ;; No key: this system was built without one.  To allow it, use
+   ;; #:root-ssh-keys '(\"ssh-ed25519 AAAA… you@pc\")
+   #:root-ssh-keys '()"
+        (string-append "   #:root-ssh-keys\n   '("
+                       (string-join (map scheme-string root-ssh-keys)
+                                    "\n     ")
+                       ")")))
+
+  (plain-file
+   "config.scm"
+   (string-append
+    ";;; /etc/guix/config.scm — starting point for your own configuration of
+;;; this phone, written by the fxtec-pro1x channel.  Copy it, with
+;;; /etc/guix/channels.scm, to ~/.config/guix/, change it, then:
+;;;
+;;;   guix pull
+;;;   sudo guix system reconfigure ~/.config/guix/config.scm
+;;;
+;;; The port's system comes from the channel (pro1x-mobile-operating-system),
+;;; so guix pull brings its fixes; your changes stay in this file.
+
+(use-modules (gnu)
+             (fxtec-pro1x system mobile))
+
+(define base
+  (pro1x-mobile-operating-system
+   ;; Root SSH login by key, used by `guix deploy` from a PC
+   ;; (scripts/deploy.sh in the fxtec-pro1x-guix repository) to update
+   ;; this phone.  Keep the key to allow it; delete it to turn it off.
+"
+    keys
+    "))
+
+(operating-system
+  (inherit base)
+  ;; Your changes, for example:
+  ;; (timezone \"Europe/Paris\")
+  ;; (packages (cons (specification->package \"htop\")
+  ;;                 (operating-system-packages base)))
+  ;; (services (cons (service some-service-type)
+  ;;                 (operating-system-user-services base)))
+  )
+")))
+
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
-  "Return the Pro¹x mobile operating system, with ROOT-SSH-KEYS as root's
-authorized SSH keys."
+  "Return the Pro¹x mobile operating system, with ROOT-SSH-KEYS (public key
+strings) as root's authorized SSH keys."
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -391,7 +447,16 @@ Dracula palette, no kernel messages over the greeter.")
                (password-authentication? #t)
                ;; Root by key only, for guix deploy (scripts/deploy.sh).
                (permit-root-login 'prohibit-password)
-               (authorized-keys root-ssh-keys))))
+               (authorized-keys
+                (if (null? root-ssh-keys)
+                    '()
+                    `(("root" ,(plain-file "root-ssh-keys.pub"
+                                           (string-join root-ssh-keys "\n"
+                                                        'suffix))))))))
+
+     ;; /etc/guix/config.scm: the owner's starting configuration.
+     (simple-service 'pro1x-user-config etc-service-type
+       `(("guix/config.scm" ,(pro1x-user-config root-ssh-keys)))))
 
     ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
     ;; console-font depends on term-ttyN provided by mingetty so must go too).
