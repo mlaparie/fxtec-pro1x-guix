@@ -77,6 +77,31 @@ To deploy and test once the phone takes deploys again (Tailscale):
 - kernel.scm: package lookup by name failed (current-source-directory).
 The kernel changed: reboot needed, with the U-Boot fallback in mind.
 
+Tested on the phone 2026-10-29 (flashed CI image of next, 2d71b95):
+- works: SIM detected after UIM provisioning (ModemManager: locked, PIN
+  blocked, PUK left); Bluetooth controller up (firmware loads);
+  brightness slider; screen off without the corrupted frame; 16x32
+  console font from boot; no ADSP sensor_process crash this boot.
+- SIM unlock loop in GNOME Settings: polkit refused ModemManager
+  (fixed on next, polkit rule for netdev, not yet on the phone).
+- sound: PipeWire, WirePlumber up with ALSA_CONFIG_UCM2; the card shows
+  only off/pro-audio profiles because opening hw:0,0 fails with EBUSY:
+  the wcd937x codec on SoundWire fails to resume ("ASoC error (-16)" at
+  pm_runtime_get, "IRQ sync failed to resume: -16").  SailfishOS's
+  re-probe (rmmod/modprobe snd_soc_sm8250) made it worse: card failed to
+  instantiate until reboot.  Kernel side; compare with the NixOS port's
+  dmesg on this phone.  Two attempts, stopped.
+- sensors: QRTR 400 present, but iio-sensor-proxy exits: Guix builds it
+  without SSC support and has no libssc (nixpkgs has both).  Package
+  libssc, build iio-sensor-proxy with -Dssc-support.
+- camera: WirePlumber's libcamera loads both sensors' tuning; no viewer
+  installed (cameractrl is a control panel).  Add Snapshot (NixOS does).
+- Phosh lock keypad flickers once on wake (low priority).
+- CI: U-Boot only changes with uboot.scm; reuse the last artifact when
+  its derivation is unchanged instead of rebuilding.  The U-Boot step's
+  failure: glib graft cannot read glib's etc/ld.so.cache (permission
+  denied) under the unprivileged daemon.
+
 Updating the phone without the PC replacing its configuration: let the
 phone reconfigure from its own config.scm but download what the PC built,
 `guix publish` on the PC reachable over Tailscale, the PC's signing key
