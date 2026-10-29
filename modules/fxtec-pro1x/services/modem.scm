@@ -3,7 +3,10 @@
 
 (define-module (fxtec-pro1x services modem)
   #:use-module (fxtec-pro1x packages misc)
+  #:use-module (gnu packages base)          ; coreutils, grep
+  #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages gawk)
   #:use-module (gnu packages telephony)
   #:use-module (gnu services)
   #:use-module (gnu services base)
@@ -71,7 +74,7 @@
      ;; event before our udev rules are installed on first boot).
      (shepherd-service
       (provision '(modem-manager))
-      (requirement '(dbus-system tqftpserv rmtfs))
+      (requirement '(dbus-system tqftpserv rmtfs pro1x-uim-provision))
       (documentation "ModemManager")
       (start
        #~(make-forkexec-constructor
@@ -84,6 +87,60 @@
           #:log-file "/var/log/ModemManager.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t)))))
+
+;;; The SIM's UIM provisioning session, activated before ModemManager.
+;;; The modem firmware (MPSS.HA.1.1) does not keep the primary GW
+;;; provisioning session across boots: the SIM shows present but stays
+;;; "detected" and nothing registers (ModemManager: sim-missing).  Activate
+;;; it for the first USIM application on slot 1, every boot, idempotently;
+;;; postmarketOS's msm-modem-uim-selection and moWerk's SailfishOS port
+;;; (qx1050-modem-prep.sh) do the same.  It must run before ModemManager,
+;;; which probes a QRTR modem only once.  Exits 0 in every case so that
+;;; ModemManager still starts.
+;;;
+;;; State: reported working on this phone (NixOS, SailfishOS); not yet run
+;;; on Guix.
+(define pro1x-uim-provision-script
+  (let ((qmicli (file-append libqmi-1.36 "/bin/qmicli")))
+    (mixed-text-file
+     "pro1x-uim-provision"
+     "#!" (file-append bash-minimal "/bin/sh") "
+PATH=" coreutils "/bin:" gawk "/bin:" grep "/bin
+log() { echo \"pro1x-uim-provision: $*\"; }
+status=
+i=0
+# The UIM service appears on QRTR some seconds after the modem starts.
+while [ $i -lt 60 ]; do
+  status=$(" qmicli " -d qrtr://0 --uim-get-card-status 2>/dev/null)
+  echo \"$status\" | grep -q \"Card state: 'present'\" && break
+  i=$((i + 1)); sleep 1
+done
+echo \"$status\" | grep -q \"Card state: 'present'\" || { log 'no SIM card present (or no UIM service)'; exit 0; }
+if echo \"$status\" | grep -q \"Primary GW:.*session doesn't exist\"; then
+  aid=$(echo \"$status\" | awk '/Application type:.*usim/ { f = 1 } f && /Application ID:/ { getline; gsub(/[^0-9A-Fa-f]/, \"\"); print; exit }')
+  if [ -n \"$aid\" ]; then
+    " qmicli " -d qrtr://0 --uim-change-provisioning-session=\"session-type=primary-gw-provisioning,activate=yes,slot=1,aid=$aid\" \\
+      && log 'primary GW provisioning session activated' \\
+      || log 'activating the provisioning session failed'
+  else
+    log 'no USIM application on the card'
+  fi
+else
+  log 'primary GW provisioning session already present'
+fi
+exit 0
+")))
+
+(define (pro1x-uim-provision-service config)
+  (shepherd-service
+   (provision '(pro1x-uim-provision))
+   (requirement '(rmtfs))
+   (documentation "Activate the SIM's UIM provisioning session")
+   (one-shot? #t)
+   (start #~(make-forkexec-constructor
+             (list "/bin/sh" #$pro1x-uim-provision-script)
+             #:log-file "/var/log/pro1x-uim-provision.log"))
+   (stop #~(make-kill-destructor))))
 
 ;;; A one-shot service that blocks rmtfs startup until the modem remoteproc appears.
 (define (pro1x-modem-rmtfs-wait config)
@@ -123,6 +180,7 @@
      (service-extension shepherd-root-service-type
                         (lambda (config)
                           (append (pro1x-modem-rmtfs-wait config)
+                                  (list (pro1x-uim-provision-service config))
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))
