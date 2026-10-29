@@ -204,6 +204,14 @@ sensors notes.
 
 ## 7. Later
 
+- **Sign the channel** (low priority, author's key): `.guix-authorizations`
+  with the author's OpenPGP fingerprint, a `keyring` branch with the public
+  key, every commit on main signed from then on (the agent's through the
+  author's gpg-agent, or signed by the author before each push), and the
+  first signed commit as the channel introduction in channels.scm, README
+  and `%fxtec-pro1x-channel`.  Removes the "cannot be authenticated"
+  warning; guix pull then refuses unsigned commits.
+
 - **Video decode (Venus)**: needs an SM6115 video-codec DT node
   (rag-notes hardware.json "video"), then `mpv --hwdec=v4l2m2m-copy`.
 - **Sway extras**: scripts from mlaparie's guix-config (nmcli-fzf, power
