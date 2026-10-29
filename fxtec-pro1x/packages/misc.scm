@@ -25,6 +25,7 @@
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages serialization)  ; libyaml
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages fribidi)
   #:use-module (gnu packages glib)
@@ -679,6 +680,15 @@ It runs on top of the Phoc compositor.")
   (package
     (inherit phosh)
     (name "phosh-pro1x")
+    ;; The power key wakes the screen only through gnome-session's presence
+    ;; interface; this session has no gnome-session (TODO.md).
+    (source
+     (origin
+       (inherit (package-source phosh))
+       (patches
+        (append (origin-patches (package-source phosh))
+                (list (local-file
+                       "../../device/phosh/unblank-without-gnome-session.patch"))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -714,6 +724,126 @@ It runs on top of the Phoc compositor.")
                       (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
+
+;;; ---------------------------------------------------------------------------
+;;; libadwaita-1.9 — for phosh-mobile-settings only
+;;; Guix ships 1.8.4; phosh-mobile-settings 0.56 uses AdwSidebar and the
+;;; view-stack section API, new in 1.9.  Same dependencies as 1.8.4.  Built
+;;; without documentation, introspection, Vala bindings and tests to keep
+;;; the aarch64 build short; nothing else in the system links against it.
+;;; ---------------------------------------------------------------------------
+(define libadwaita-1.9
+  (package
+    (inherit libadwaita)
+    (version "1.9.4")
+    (source
+     (origin
+       (inherit (package-source libadwaita))
+       (uri (string-append "mirror://gnome/sources/libadwaita/"
+                           (version-major+minor version) "/"
+                           "libadwaita-" version ".tar.xz"))
+       (sha256
+        (base32 "1vk287x2ph83fxil36sx2a6hxllwg0hnhvgrrn9w4gblxr9k9azm"))))
+    (outputs '("out"))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list "-Ddocumentation=false"
+                   "-Dintrospection=disabled"
+                   "-Dvapi=false"
+                   "-Dtests=false"
+                   "-Dexamples=false")))))
+
+;;; libcellbroadcast, a meson subproject of phosh-mobile-settings (static,
+;;; library only).  Its own gvdb subproject is phoc-gvdb-source (same commit).
+(define phosh-mobile-settings-libcellbroadcast-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.freedesktop.org/devrtz/cellbroadcastd/-/archive/v0.0.2/cellbroadcastd-v0.0.2.tar.gz")
+    (sha256
+     (base32 "0867prrjk2515jrmcjg1jv9ci6xamgz1vslvvdlhnbi6h587vfmy"))))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh-mobile-settings — Phosh's own settings app
+;;; Phosh's top-panel gear opens it (launch-mobile-panel); without it the gear
+;;; does nothing.  Not in Guix.  Needs libadwaita >= 1.9 (above); asks for
+;;; polkit-gobject >= 126 but only calls polkit_permission_new_sync, so the
+;;; check is relaxed to Guix's polkit 121.  gvc, libcellbroadcast and gvdb
+;;; are pre-seeded meson subprojects (no network in the build).
+;;; ---------------------------------------------------------------------------
+(define-public phosh-mobile-settings
+  (package
+    (name "phosh-mobile-settings")
+    (version "0.56.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phosh-mobile-settings/-/archive/v"
+             version "/phosh-mobile-settings-v" version ".tar.gz"))
+       (sha256
+        (base32 "1v03y518wv6b1zaz59fnnd1i56hhk25y9hr3x62q4xdkv68c043n"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config
+           `(,glib "bin")
+           `(,gtk "bin")                ; gtk-update-icon-cache
+           gettext-minimal
+           desktop-file-utils
+           wayland))                    ; wayland-scanner
+    (inputs
+     (list accountsservice
+           feedbackd-0.8
+           glib
+           gmobile-0.7
+           gnome-desktop
+           gsound
+           gtk
+           json-glib
+           libadwaita-1.9
+           libportal
+           libyaml
+           `(,lm-sensors "lib")         ; librem5 plugin
+           mobile-broadband-provider-info
+           modem-manager-1.24
+           phosh-pro1x                  ; phosh-plugins.pc, phosh-settings.pc
+           polkit
+           pulseaudio                   ; gvc
+           wayland
+           wayland-protocols))
+    (arguments
+     (list #:tests? #f
+           #:glib-or-gtk? #t
+           #:configure-flags
+           ;; Guix runs meson with --wrap-mode=nofallback; libcellbroadcast
+           ;; is only reachable as a fallback subproject.
+           #~(list "-Dintrospection=false"
+                   "--force-fallback-for=libcellbroadcast-0.0")
+           #:phases
+           #~(modify-phases %standard-phases
+               (add-after 'unpack 'seed-subprojects
+                 (lambda _
+                   (for-each
+                    (lambda (dir source)
+                      (mkdir-p (string-append "subprojects/" dir))
+                      (invoke "tar" "xf" source "--strip-components=1"
+                              "-C" (string-append "subprojects/" dir)))
+                    '("gvc" "libcellbroadcast" "gvdb")
+                    (list #$phosh-gvc-source
+                          #$phosh-mobile-settings-libcellbroadcast-source
+                          #$phoc-gvdb-source))))
+               (add-after 'unpack 'relax-polkit-version
+                 (lambda _
+                   (substitute* "meson.build"
+                     (("'polkit-gobject-1', version: '>= 126'")
+                      "'polkit-gobject-1', version: '>= 121'")))))))
+    (home-page "https://gitlab.gnome.org/World/Phosh/phosh-mobile-settings")
+    (synopsis "Settings app for the Phosh mobile shell")
+    (description
+     "Phosh Mobile Settings configures what GNOME Settings does not cover in
+Phosh: lock screen and its plugins, app filtering, feedback, on-screen
+keyboard, sensors and cell broadcast alerts.")
+    (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; sway-launcher-desktop — fzf launcher for .desktop entries and commands
