@@ -36,6 +36,9 @@ verified on the device.  Order:
    (/tmp/phosh-1000.log): brightness goes through logind (absent here);
    no on-screen keyboard (sm.puri.OSK0); background image "Unrecognized
    image file format" (pixbuf loader?); two "activate action" criticals.
+   Settings: GNOME Settings added (gnome-control-center, substitute on
+   bordeaux); Phosh Mobile Settings (phosh-mobile-settings) not in Guix,
+   to package.  The NixOS port installs neither.
    Earlier text:** Phosh from tuigreet
    failed: phoc aborted, "Settings schema 'org.gnome.mutter.keybindings'
    is not installed" (/tmp/phosh-1000.log, generation 7).  Schema added

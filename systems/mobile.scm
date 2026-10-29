@@ -362,6 +362,9 @@
      ;; Mobile UIs
      phoc-pro1x
      phosh-pro1x
+     ;; GNOME Settings, opened by the gear in Phosh's top panel.  Phosh
+     ;; Mobile Settings is not packaged yet (TODO.md).
+     gnome-control-center
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
