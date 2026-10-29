@@ -9,19 +9,35 @@
 ;;;   libcamera-pro1x   — libcamera patched for IMX582 + S5K4H7
 ;;;   cameractrl        — V4L2 camera controls GUI (focus/exposure)
 ;;;   phoc-pro1x        — phoc patched to ignore SW_KEYPAD_SLIDE
+;;;   callaudiod        — call audio routing daemon (needed by phosh/libcall-ui)
+;;;   feedbackd-0.8     — haptic/audio/visual feedback daemon >= 0.7 (required by phosh 0.56+)
+;;;   phosh             — Phosh mobile shell
+;;;   phosh-pro1x       — Phosh configured to use phoc-pro1x compositor
+;;;   sway-launcher-desktop — fzf application launcher for sway (in a terminal)
+;;;   pro1x-sway-config — default sway config, i3status-rust bar, window switcher
 
 (define-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages bash)
+  #:use-module (gnu packages gawk)
+  #:use-module (gnu packages terminals)
+  #:use-module (gnu packages web)            ; jq
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages serialization)  ; libyaml
+  #:use-module (gnu packages aidc)
+  #:use-module (gnu packages fribidi)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
+  #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages polkit)
+  #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages python)
@@ -29,11 +45,12 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
+  #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
+  #:use-module (guix download)
   #:use-module (guix gexp)
-  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
@@ -47,7 +64,15 @@
             cameractrl
             gmobile-0.7
             phoc
-            phoc-pro1x))
+            phoc-pro1x
+            libqmi-1.36
+            modem-manager-1.24
+            callaudiod
+            feedbackd-0.8
+            phosh
+            phosh-pro1x
+            sway-launcher-desktop
+            pro1x-sway-config))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libqrtr — Qualcomm IPC Router userspace library
@@ -59,13 +84,12 @@
     (version "unstable-29e36ae")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/qrtr")
-             (commit "29e36ae164389580a0f8ea7a7fdb728140ae978d")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/qrtr/archive/"
+             "29e36ae164389580a0f8ea7a7fdb728140ae978d.tar.gz"))
        (sha256
-        (base32 "0vg5d1jkfy1530jsl4l1x1lvn3hzf3nz0m9351nblf19l4byflax"))))
+        (base32 "0kmfvm2lr69rxfwpns841c882l4l7064bdfrglp318508z24dy36"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (arguments (list #:tests? #f))
@@ -86,13 +110,12 @@ Qualcomm modem and ADSP subsystems.")
     (version "unstable-39a6e6d")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/qbootctl")
-             (commit "39a6e6daaf029fb0a083777679a15ea2c18f72de")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/qbootctl/archive/"
+             "39a6e6daaf029fb0a083777679a15ea2c18f72de.tar.gz"))
        (sha256
-        (base32 "01hm5f50z31mqdyg4rvqp4bnqiq8rrbi07bym6zr5qj9si9w544n"))))
+        (base32 "0yxnx26mni9h712nayp3pi51qlrzcwydhxshmznsr79h03f8zilx"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (arguments (list #:tests? #f))
@@ -112,13 +135,12 @@ the ABL from reverting to fastboot after a hard reboot.")
     (version "unstable-0bf5b98")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/andersson/tqftpserv")
-             (commit "0bf5b98c24229b0042554d99bb1509d813219f36")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/andersson/tqftpserv/archive/"
+             "0bf5b98c24229b0042554d99bb1509d813219f36.tar.gz"))
        (sha256
-        (base32 "0fb9dns3h20y9n4b57cnyb53j8yvlm8fm6n2gxd04iwwk3nfylmi"))))
+        (base32 "0n6b7qxzqrjkbn55y6c98bxvl29z96jgy4rjzj3nka39b9x4vyg0"))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (inputs (list libqrtr))
@@ -147,13 +169,12 @@ inter-processor bus, serving firmware blobs from the firmware directory.")
     (version "unstable-b30a3eb")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/andersson/rmtfs")
-             (commit "b30a3eb38f9af283f18dbd3c7755653efc52c094")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/andersson/rmtfs/archive/"
+             "b30a3eb38f9af283f18dbd3c7755653efc52c094.tar.gz"))
        (sha256
-        (base32 "0hjp0lzv2hkbawjrbnkk98rrrfb1g3x1iifbilbkcabrik7smpcg"))))
+        (base32 "09sbikvzm8j7nmbrg8idr75sq5h96gj04k29wz04gcj8mhfab385"))))
     (build-system gnu-build-system)
     (inputs (list libqrtr eudev))
     (arguments
@@ -170,22 +191,21 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
 
 ;;; ---------------------------------------------------------------------------
 ;;; hexagonrpcd — serve ADSP sensor configuration via FastRPC
-;;; The version used here is the linux-msm PR #27 branch which adds the
-;;; sns_registry interface needed for sensor initialisation on the Pro1X.
+;;; PR #27 (sns_registry interface) was never merged; apply it as a patch.
+;;; The upstream repo was force-pushed; switched to url-fetch tarball.
 ;;; ---------------------------------------------------------------------------
 (define-public hexagonrpcd
   (package
     (name "hexagonrpcd")
-    (version "0.5.0-unstable-pr27")
+    (version "0.5.0-unstable-da7a374")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/linux-msm/hexagonrpc")
-             (commit "40e50412812adce9dddc2be9a4510ebce05eef89")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/linux-msm/hexagonrpc/archive/"
+             "da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz"))
        (sha256
-        (base32 "09hf7v2ix0j6bvx90dnxfgy9hz8var0qjrbvhdmh6bnayyydampr"))
+        (base32 "0df4af0n2fx3bx6b24ajva177mnvrk1clhpclrmpd8ljrwyva6k5"))
        (patches
         (list
          (local-file "../../packages/hexagonrpc-sns-registry.patch"
@@ -292,16 +312,16 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
 (define-public cameractrl
   (package
     (name "cameractrl")
-    (version "unstable-4c8ac34")
+    (version "unstable-17f1b82")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.com/NekoCWD/cameractrl")
-             (commit "4c8ac34295df52c5f887a9e51ec64f54ef26c636")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.com/NekoCWD/cameractrl/-/archive/"
+             "17f1b82d5dbe05abf7ccc1f9dd52d6cc23e48230"
+             "/cameractrl-17f1b82d5dbe05abf7ccc1f9dd52d6cc23e48230.tar.gz"))
        (sha256
-        (base32 "0f9dfg26lylq92894hcv7c6l5dwnibnj7rzb0m43py7n7w5p92p2"))))
+        (base32 "13w0v4vmx7pd3pdyp8xsxd8vik5xli8w23mqfvmkq64gd6w40q7c"))))
     (build-system meson-build-system)
     (native-inputs
      (list pkg-config vala blueprint-compiler gettext-minimal
@@ -326,13 +346,12 @@ camera hardware.  Run as: cameractr")
     (version "0.7.4")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.gnome.org/World/Phosh/gmobile")
-             (commit (string-append "v" version))))
-       (file-name (git-file-name "gmobile" version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/gmobile/-/archive/v"
+             version "/gmobile-v" version ".tar.gz"))
        (sha256
-        (base32 "1cya0aad763v07ss1qx7g5fnqmnxznhrnw4arr1956kxa00qf68c"))))
+        (base32 "1mhb34xw58cblw8v5w0a17309fcpn439bl0rad21nq11iyh76wsr"))))
     (native-inputs
      (modify-inputs (package-native-inputs gmobile)
        (delete "gobject-introspection")
@@ -345,13 +364,36 @@ camera hardware.  Run as: cameractr")
 ;;; gvdb is an unconditional meson subproject of phoc; pre-seed the dir.
 (define phoc-gvdb-source
   (origin
-    (method git-fetch)
-    (uri (git-reference
-          (url "https://gitlab.gnome.org/GNOME/gvdb")
-          (commit "4758f6fb7f889e074e13df3f914328f3eecb1fd3")))
-    (file-name "gvdb-checkout")
+    (method url-fetch)
+    (uri (string-append
+          "https://gitlab.gnome.org/GNOME/gvdb/-/archive/"
+          "4758f6fb7f889e074e13df3f914328f3eecb1fd3"
+          "/gvdb-4758f6fb7f889e074e13df3f914328f3eecb1fd3.tar.gz"))
     (sha256
-     (base32 "129ln7rldafdkcf2kxdazckyp3xzxnk0xw33l2kzfc3bz4fahsp2"))))
+     (base32 "1mnv0mgpffdkq6fxdiyxylps8qy9z1js4pnz2nllci9i72yq0dns"))))
+
+;;; ---------------------------------------------------------------------------
+;;; wlroots-for-phoc — wlroots with the patch phoc builds its own copy with
+;;; phoc 0.56 embeds wlroots 0.20.1 plus one revert (its
+;;; subprojects/packagefiles/wlroots): a layer surface may ask for height 0
+;;; without top and bottom anchors, meaning "as tall as the content".  Phosh's
+;;; home bar relies on it.  Without the revert phosh died with "height 0
+;;; requested without setting top and bottom anchors"; a phosh patch giving
+;;; the home bar a fixed 15 px height avoided that but left the bar 122 px
+;;; below the screen (phosh folds it with a margin computed for its full
+;;; height).  Only phoc links against this; sway keeps Guix's wlroots.
+;;; ---------------------------------------------------------------------------
+(define wlroots-for-phoc
+  (package
+    (inherit wlroots)
+    (name "wlroots-for-phoc")
+    (source
+     (origin
+       (inherit (package-source wlroots))
+       (patches
+        (append (origin-patches (package-source wlroots))
+                (list (local-file
+                       "../../device/phoc/wlroots-revert-layer-shell-0-dimension.patch"))))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; phoc — Wayland compositor for phones (Phosh)
@@ -362,19 +404,18 @@ camera hardware.  Run as: cameractr")
     (version "0.56.0")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://gitlab.gnome.org/World/Phosh/phoc")
-             (commit (string-append "v" version))))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phoc/-/archive/v"
+             version "/phoc-v" version ".tar.gz"))
        (sha256
-        (base32 "1g83lm6k4f4v37hqrj9rrf8hcrrh0hd9gn7kgjz38xjsqq5zndjz"))))
+        (base32 "02y4zda49rfl7j399c8kvwllw51kfawgm7d4yj715yq50kvk2dr3"))))
     (build-system meson-build-system)
     (native-inputs
      (list gettext-minimal gobject-introspection pkg-config
            `(,glib "bin")))
     (inputs
-     (list wlroots glib json-glib mesa
+     (list wlroots-for-phoc glib json-glib mesa
            gnome-desktop gsettings-desktop-schemas gmobile-0.7
            libinput eudev libdrm pixman
            wayland wayland-protocols libxkbcommon))
@@ -385,12 +426,15 @@ camera hardware.  Run as: cameractr")
            #~(modify-phases %standard-phases
                (add-after 'unpack 'seed-gvdb-subproject
                  (lambda _
-                   (copy-recursively #$phoc-gvdb-source
-                                     "subprojects/gvdb"))))))
+                   (mkdir-p "subprojects/gvdb")
+                   (invoke "tar" "xf" #$phoc-gvdb-source
+                           "-C" "subprojects/gvdb"
+                           "--strip-components=1"))))))
     (home-page "https://gitlab.gnome.org/World/Phosh/phoc")
     (synopsis "Wayland compositor for mobile phones")
     (description
-     "phoc is a Wayland compositor for phones, based on unpatched wlroots 0.20.
+     "phoc is a Wayland compositor for phones, based on wlroots 0.20 with phoc's
+layer-shell patch.
 Used as the compositor for the Phosh mobile shell.")
     (license license:gpl3+)))
 
@@ -413,3 +457,490 @@ Used as the compositor for the Phosh mobile shell.")
           (local-file "../../device/phoc/ignore-unknown-switch.patch"
                       "phoc-ignore-unknown-switch.patch"))))))
     (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
+
+;;; ---------------------------------------------------------------------------
+;;; libqmi-1.36 — libqmi >= 1.36 required by ModemManager 1.24
+;;; Guix ships 1.34.0.
+;;; ---------------------------------------------------------------------------
+(define-public libqmi-1.36
+  (package
+    (inherit libqmi)
+    (version "1.36.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/mobile-broadband/libqmi"
+             "/-/archive/" version "/libqmi-" version ".tar.gz"))
+       (sha256
+        (base32 "14whz2d0b1h2ska89pn7b5zlhqk68fp74vbf28kqm9qnv7yzlm72"))))
+    (arguments
+     (list #:configure-flags
+           #~(list "-Dmbim_qmux=false"  ; Pro1X uses native QMI, not QMI-over-MBIM
+                   "-Dman=false"
+                   "-Dintrospection=false"
+                   "-Dfuzzer=false")))))
+
+;;; ---------------------------------------------------------------------------
+;;; modem-manager-1.24 — ModemManager >= 1.24 required by phosh 0.56+
+;;; Guix ships 1.22.0; phosh's mm-glib dependency needs >= 1.24.
+;;; ---------------------------------------------------------------------------
+(define-public modem-manager-1.24
+  (package
+    (inherit modem-manager)
+    (version "1.24.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
+             "/-/archive/" version "/ModemManager-" version ".tar.gz"))
+       (sha256
+        (base32 "1ix74pj05isl9fbyxyi4ainv5igv1n986i41xp50pc5c4jxndqah"))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments modem-manager)
+       ((#:configure-flags flags)
+        #~(list (string-append "-Dudevdir=" #$output "/lib/udev")
+                "-Dsystemdsystemunitdir=no"
+                "-Dvapi=false"
+                "-Dtests=false"
+                "-Dman=false"
+                "-Dmbim=false"          ; Pro1X uses QMI/QRTR, not MBIM; avoids mbim-glib >= 1.32 req
+                "-Dintrospection=false"
+                "-Dplugin_qcom_soc=enabled"))))
+    (inputs
+     (modify-inputs (package-inputs modem-manager)
+       (replace "libqmi" libqmi-1.36)))))
+
+;;; callaudiod — call audio routing daemon
+;;; Required at build time by the libcall-ui subproject embedded in Phosh.
+;;; ---------------------------------------------------------------------------
+(define-public callaudiod
+  (package
+    (name "callaudiod")
+    (version "0.1.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.com/mobian1/callaudiod/-/archive/"
+             version "/callaudiod-" version ".tar.gz"))
+       (sha256
+        (base32 "0jkh9axrcyz920s30z3vfp1rds98dlq18f7wcycrnp7h4vmw0w3y"))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config `(,glib "bin")))
+    (inputs (list alsa-lib glib pulseaudio))
+    (arguments (list #:tests? #f))
+    (home-page "https://gitlab.com/mobian1/callaudiod")
+    (synopsis "Daemon for audio routing during phone calls")
+    (description
+     "callaudiod routes audio between earpiece, speaker and headphones during
+phone calls via ALSA and PulseAudio.  Its library (libcallaudio-0.1) is
+required by the libcall-ui subproject embedded in Phosh.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; feedbackd-0.8 — haptic/audio/visual feedback daemon, >= 0.7 series
+;;; Guix ships 0.6.0; Phosh 0.56+ requires libfeedback >= 0.7.0.
+;;; ---------------------------------------------------------------------------
+(define-public feedbackd-0.8
+  (package
+    (name "feedbackd")
+    (version "0.8.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.freedesktop.org/feedbackd/feedbackd/-/archive/v"
+             version "/feedbackd-v" version ".tar.gz"))
+       (sha256
+        (base32 "09g953k5jwki6c0nj78xl2alhhkhk3q0dwx6jpxv5dy67i5nkzaa"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config vala gobject-introspection `(,glib "bin")))
+    (inputs (list glib gsound json-glib libgudev gmobile-0.7))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list "-Dintrospection=disabled"
+                   "-Dvapi=false"
+                   "-Dudev=false"
+                   "-Dgtk_doc=false"
+                   "-Dtests=false")))
+    (home-page "https://gitlab.freedesktop.org/feedbackd/feedbackd")
+    (synopsis "Haptic/audio/visual feedback daemon (0.8 series)")
+    (description
+     "feedbackd provides a D-Bus daemon for delivering haptic, audio and
+visual feedback events.  This 0.8 series supplies libfeedback >= 0.7.0 as
+required by Phosh 0.56+.")
+    (license license:lgpl2.1+)))
+
+;;; gvc and libcall-ui tarballs pre-seeded as Phosh meson subprojects.
+(define phosh-gvc-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.gnome.org/GNOME/libgnome-volume-control/-/archive/d2442f455844e5292cb4a74ffc66ecc8d7595a9f/libgnome-volume-control-d2442f455844e5292cb4a74ffc66ecc8d7595a9f.tar.gz")
+    (sha256
+     (base32 "1c6wpymfn5sf609d3nws3hbrxdnww4r8pfhh5i4j2jl93kiwara5"))))
+
+(define phosh-libcall-ui-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.gnome.org/World/Phosh/libcall-ui/-/archive/v0.1.5/libcall-ui-v0.1.5.tar.gz")
+    (sha256
+     (base32 "167hqq4npnyvh6sqhvb7kgwdk29snhnh3hm1lsrik1yxsp8xzais"))))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh — Phosh mobile shell (lock screen, home screen, status bar, OSK)
+;;; ---------------------------------------------------------------------------
+(define-public phosh
+  (package
+    (name "phosh")
+    (version "0.56.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phosh/-/archive/v"
+             version "/phosh-v" version ".tar.gz"))
+       (sha256
+        (base32 "0md2vg9fi3vccjm906w83hj3g7dwwc7b0h2b532cayvkk6hb01m0"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config
+           `(,glib "bin")
+           `(,gtk+ "bin")
+           gettext-minimal
+           python
+           wayland            ; provides wayland-scanner
+           desktop-file-utils))
+    (inputs
+     (list appstream
+           callaudiod
+           elogind
+           evolution-data-server
+           feedbackd-0.8
+           fribidi
+           gcr-3
+           glib
+           gmobile-0.7
+           gnome-bluetooth
+           gnome-desktop
+           gsettings-desktop-schemas
+           gtk+
+           libgudev
+           libhandy
+           libsecret
+           libsoup
+           linux-pam
+           modem-manager-1.24
+           qrcodegen-cpp
+           network-manager
+           polkit
+           pulseaudio
+           upower
+           wayland
+           wayland-protocols
+           libxkbcommon))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list (string-append "-Dcompositor=" #$(file-append phoc "/bin/phoc"))
+                   "-Dtests=false"
+                   "-Dsearchd=false"
+                   "-Dbindings-lib=false"
+                   "-Dgtk_doc=false"
+                   "-Dman=false"
+                   "-Dintrospection=false"
+                   "-Dcallui-i18n=false"
+                   "-Dlockscreen-plugins=false")
+           #:phases
+           #~(modify-phases %standard-phases
+               (add-after 'unpack 'seed-subprojects
+                 (lambda _
+                   (mkdir-p "subprojects/gvc")
+                   (invoke "tar" "xf" #$phosh-gvc-source
+                           "--strip-components=1" "-C" "subprojects/gvc")
+                   (mkdir-p "subprojects/libcall-ui")
+                   (invoke "tar" "xf" #$phosh-libcall-ui-source
+                           "--strip-components=1" "-C" "subprojects/libcall-ui"))))))
+    (home-page "https://gitlab.gnome.org/World/Phosh/phosh")
+    (synopsis "Phosh mobile shell for Wayland")
+    (description
+     "Phosh is a pure Wayland mobile shell for phones and tablets, providing a
+lock screen, status bar, notification drawer, home screen and app launcher.
+It runs on top of the Phoc compositor.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh-pro1x — Phosh built with phoc-pro1x as the managed compositor
+;;; phoc-pro1x ignores SW_KEYPAD_SLIDE so sliding the keyboard open does not
+;;; crash-loop the compositor when Phosh manages phoc itself.
+;;; ---------------------------------------------------------------------------
+(define-public phosh-pro1x
+  (package
+    (inherit phosh)
+    (name "phosh-pro1x")
+    ;; The power key wakes the screen only through gnome-session's presence
+    ;; interface; this session has no gnome-session (TODO.md).
+    (source
+     (origin
+       (inherit (package-source phosh))
+       (patches
+        (append (origin-patches (package-source phosh))
+                (list (local-file
+                       "../../device/phosh/unblank-without-gnome-session.patch"))))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments phosh)
+       ((#:configure-flags _)
+        #~(list (string-append "-Dcompositor=" #$(file-append phoc-pro1x "/bin/phoc"))
+                "-Dtests=false"
+                "-Dsearchd=false"
+                "-Dbindings-lib=false"
+                "-Dgtk_doc=false"
+                "-Dman=false"
+                "-Dintrospection=false"
+                "-Dcallui-i18n=false"
+                "-Dlockscreen-plugins=false"))
+       ((#:phases phases)
+        #~(modify-phases #$phases
+            (add-after 'install 'install-missing-schemas
+              (lambda* (#:key outputs #:allow-other-keys)
+                (let* ((out (assoc-ref outputs "out"))
+                       (schema-dir (string-append out "/share/glib-2.0/schemas")))
+                  (for-each
+                   (lambda (src)
+                     (copy-file src (string-append schema-dir "/" (basename src))))
+                   (list
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.peripherals.gschema.xml")
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.gschema.xml")
+                    #$(local-file "../../device/phosh/org.gnome.settings-daemon.plugins.power.gschema.xml")
+                    #$(local-file "../../device/phosh/gnome-shell-keybindings.gschema.xml")
+                    ;; Read by phoc, which aborts at start without it.
+                    #$(local-file "../../device/phosh/org.gnome.mutter.gschema.xml")))
+                  ;; Show all apps in the overview, not only adaptive ones.
+                  (call-with-output-file
+                      (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
+                    (lambda (port)
+                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
+                  (invoke "glib-compile-schemas" schema-dir))))))))
+    (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
+
+;;; ---------------------------------------------------------------------------
+;;; libadwaita-1.9 — for phosh-mobile-settings only
+;;; Guix ships 1.8.4; phosh-mobile-settings 0.56 uses AdwSidebar and the
+;;; view-stack section API, new in 1.9.  Same dependencies as 1.8.4.  Built
+;;; without documentation, introspection, Vala bindings and tests to keep
+;;; the aarch64 build short; nothing else in the system links against it.
+;;; ---------------------------------------------------------------------------
+(define libadwaita-1.9
+  (package
+    (inherit libadwaita)
+    (version "1.9.4")
+    (source
+     (origin
+       (inherit (package-source libadwaita))
+       (uri (string-append "mirror://gnome/sources/libadwaita/"
+                           (version-major+minor version) "/"
+                           "libadwaita-" version ".tar.xz"))
+       (sha256
+        (base32 "1vk287x2ph83fxil36sx2a6hxllwg0hnhvgrrn9w4gblxr9k9azm"))))
+    (outputs '("out"))
+    (arguments
+     (list #:tests? #f
+           #:configure-flags
+           #~(list "-Ddocumentation=false"
+                   "-Dintrospection=disabled"
+                   "-Dvapi=false"
+                   "-Dtests=false"
+                   "-Dexamples=false")))))
+
+;;; libcellbroadcast, a meson subproject of phosh-mobile-settings (static,
+;;; library only).  Its own gvdb subproject is phoc-gvdb-source (same commit).
+(define phosh-mobile-settings-libcellbroadcast-source
+  (origin
+    (method url-fetch)
+    (uri "https://gitlab.freedesktop.org/devrtz/cellbroadcastd/-/archive/v0.0.2/cellbroadcastd-v0.0.2.tar.gz")
+    (sha256
+     (base32 "0867prrjk2515jrmcjg1jv9ci6xamgz1vslvvdlhnbi6h587vfmy"))))
+
+;;; ---------------------------------------------------------------------------
+;;; phosh-mobile-settings — Phosh's own settings app
+;;; Phosh's top-panel gear opens it (launch-mobile-panel); without it the gear
+;;; does nothing.  Not in Guix.  Needs libadwaita >= 1.9 (above); asks for
+;;; polkit-gobject >= 126 but only calls polkit_permission_new_sync, so the
+;;; check is relaxed to Guix's polkit 121.  gvc, libcellbroadcast and gvdb
+;;; are pre-seeded meson subprojects (no network in the build).
+;;; ---------------------------------------------------------------------------
+(define-public phosh-mobile-settings
+  (package
+    (name "phosh-mobile-settings")
+    (version "0.56.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://gitlab.gnome.org/World/Phosh/phosh-mobile-settings/-/archive/v"
+             version "/phosh-mobile-settings-v" version ".tar.gz"))
+       (sha256
+        (base32 "1v03y518wv6b1zaz59fnnd1i56hhk25y9hr3x62q4xdkv68c043n"))))
+    (build-system meson-build-system)
+    (native-inputs
+     (list pkg-config
+           `(,glib "bin")
+           `(,gtk "bin")                ; gtk-update-icon-cache
+           gettext-minimal
+           desktop-file-utils
+           wayland))                    ; wayland-scanner
+    (inputs
+     (list accountsservice
+           feedbackd-0.8
+           glib
+           gmobile-0.7
+           gnome-desktop
+           gsound
+           gst-plugins-base
+           gst-plugins-good
+           gtk
+           json-glib
+           libadwaita-1.9
+           libportal
+           libyaml
+           `(,lm-sensors "lib")         ; librem5 plugin
+           mobile-broadband-provider-info
+           modem-manager-1.24
+           phosh-pro1x                  ; phosh-plugins.pc, phosh-settings.pc
+           polkit
+           pulseaudio                   ; gvc
+           wayland
+           wayland-protocols))
+    (arguments
+     (list #:tests? #f
+           #:glib-or-gtk? #t
+           #:configure-flags
+           ;; Guix runs meson with --wrap-mode=nofallback; libcellbroadcast
+           ;; is only reachable as a fallback subproject.
+           #~(list "-Dintrospection=false"
+                   "--force-fallback-for=libcellbroadcast-0.0")
+           #:phases
+           #~(modify-phases %standard-phases
+               (add-after 'unpack 'seed-subprojects
+                 (lambda _
+                   (for-each
+                    (lambda (dir source)
+                      (mkdir-p (string-append "subprojects/" dir))
+                      (invoke "tar" "xf" source "--strip-components=1"
+                              "-C" (string-append "subprojects/" dir)))
+                    '("gvc" "libcellbroadcast" "gvdb")
+                    (list #$phosh-gvc-source
+                          #$phosh-mobile-settings-libcellbroadcast-source
+                          #$phoc-gvdb-source))))
+               (add-after 'unpack 'relax-polkit-version
+                 (lambda _
+                   (substitute* "meson.build"
+                     (("'polkit-gobject-1', version: '>= 126'")
+                      "'polkit-gobject-1', version: '>= 121'"))))
+               ;; gtk4's GStreamer media backend aborts the app without
+               ;; playbin3 ("GstPlay: 'playbin3' element not found").
+               (add-after 'glib-or-gtk-wrap 'wrap-gstreamer
+                 (lambda _
+                   (wrap-program (string-append #$output
+                                                "/bin/phosh-mobile-settings")
+                     `("GST_PLUGIN_SYSTEM_PATH" prefix
+                       (,(string-append #$(this-package-input "gst-plugins-base")
+                                        "/lib/gstreamer-1.0")
+                        ,(string-append #$(this-package-input "gst-plugins-good")
+                                        "/lib/gstreamer-1.0")))))))))
+    (home-page "https://gitlab.gnome.org/World/Phosh/phosh-mobile-settings")
+    (synopsis "Settings app for the Phosh mobile shell")
+    (description
+     "Phosh Mobile Settings configures what GNOME Settings does not cover in
+Phosh: lock screen and its plugins, app filtering, feedback, on-screen
+keyboard, sensors and cell broadcast alerts.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; sway-launcher-desktop — fzf launcher for .desktop entries and commands
+;;; Run in a floating terminal from the sway config (Super+d).  The script's
+;;; awk uses BEGINFILE, so it needs gawk; it is wrapped with fzf, gawk, sed,
+;;; coreutils and util-linux (setsid) on PATH.
+;;; ---------------------------------------------------------------------------
+(define-public sway-launcher-desktop
+  (package
+    (name "sway-launcher-desktop")
+    (version "unstable-f19bbb8")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/Biont/sway-launcher-desktop/archive/"
+             "f19bbb8795567d54005356357562c748ea33a7a9.tar.gz"))
+       (sha256
+        (base32 "1md718draf7nn3f2xr9qnynvvk6cdg11xggrspvzp0pws34fjxka"))
+       ;; Preview shows the .desktop file and the executable (mlaparie).
+       (patches
+        (list (local-file
+               "../../device/sway/sway-launcher-desktop-preview.patch")))))
+    (build-system copy-build-system)
+    (inputs (list bash coreutils fzf gawk sed util-linux))
+    (arguments
+     (list
+      #:install-plan
+      #~'(("sway-launcher-desktop.sh" "bin/sway-launcher-desktop"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/sway-launcher-desktop")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "fzf" "gawk" "sed" "util-linux"))))))))))
+    (home-page "https://github.com/Biont/sway-launcher-desktop")
+    (synopsis "Terminal application launcher for sway, using fzf")
+    (description
+     "sway-launcher-desktop lists desktop entries and commands on PATH in fzf
+and launches the selected one.  It is meant to run in a floating terminal
+window opened by a sway key binding.")
+    (license license:gpl3)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-sway-config — sway defaults for the Pro1X, from device/sway/
+;;;   share/pro1x-sway/config              ~/.config/sway/config (skeleton)
+;;;   share/pro1x-sway/i3status-rust.toml  ~/.config/i3status-rust/config.toml
+;;;                                        (skeleton)
+;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-sway-config
+  (package
+    (name "pro1x-sway-config")
+    (version "0.1")
+    (source (local-file "../../device/sway" "pro1x-sway"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (inputs (list bash coreutils foot fzf jq))
+    (arguments
+     (list
+      #:install-plan
+      #~'(("config" "share/pro1x-sway/")
+          ("i3status-rust.toml" "share/pro1x-sway/")
+          ("sway-window-switcher" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/sway-window-switcher")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "foot" "fzf" "jq"))))))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Sway defaults for the F(x)tec Pro1X")
+    (description
+     "Default sway configuration for the Pro1X in landscape with the keyboard
+out, an i3status-rust bar configuration, and an fzf window switcher.")
+    (license license:gpl3+)))

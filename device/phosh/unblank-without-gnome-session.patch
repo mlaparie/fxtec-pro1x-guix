@@ -1,0 +1,43 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] screen-saver-manager: unblank on power key without gnome-session
+
+The power key unblanks only through gnome-session's presence interface,
+which changes status on any key press.  Started from greetd without
+gnome-session, that interface has no owner, so the screen stayed off
+after the first press.  Unblank directly on press when the presence
+proxy has no name owner.
+
+--- a/src/screen-saver-manager.c
++++ b/src/screen-saver-manager.c
+@@ -190,6 +190,20 @@
+ }
+ 
+ 
++/* Whether gnome-session's presence interface is there to unblank on input */
++static gboolean
++presence_has_owner (PhoshScreenSaverManager *self)
++{
++  g_autofree char *owner = NULL;
++
++  if (self->presence == NULL)
++    return FALSE;
++
++  owner = g_dbus_proxy_get_name_owner (G_DBUS_PROXY (self->presence));
++  return owner != NULL;
++}
++
++
+ static void
+ on_power_button_pressed (GSimpleAction *action, GVariant *param, gpointer data)
+ {
+@@ -212,6 +226,10 @@
+   /* Press already unblanks since presence status changes due to key press so nothing to do here */
+   if (press) {
+     state_on_press = self->active;
++    /* Without gnome-session nothing turns the key press into a presence
++       change, so unblank here */
++    if (self->active && !presence_has_owner (self))
++      screen_saver_set_active (self, FALSE, FALSE);
+     return;
+   }
+ 

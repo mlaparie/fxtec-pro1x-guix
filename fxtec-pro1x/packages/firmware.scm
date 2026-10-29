@@ -2,8 +2,8 @@
 
 (define-module (fxtec-pro1x packages firmware)
   #:use-module (guix build-system copy)
+  #:use-module (guix download)
   #:use-module (guix gexp)
-  #:use-module (guix git-download)
   #:use-module (guix packages)
   #:use-module ((guix licenses) #:prefix license:)
   #:export (firmware-fxtec-qx1050))
@@ -14,13 +14,12 @@
     (version "unstable-6c1ef5b")
     (source
      (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://github.com/sm6115-mainline/firmware-fxtec-qx1050")
-             (commit "6c1ef5bce85750688f789bc6e232ca8237b24713")))
-       (file-name (git-file-name name version))
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/sm6115-mainline/firmware-fxtec-qx1050"
+             "/archive/6c1ef5bce85750688f789bc6e232ca8237b24713.tar.gz"))
        (sha256
-        (base32 "0bx6vagc0fa833rdisyyqv03nj1fjb6jxjfb5l14dfa4cw4halmq"))))
+        (base32 "1cgi0p9h2iaivgydn8hw4jzp2x42rhc79rvn74lh1xrnr1p362fn"))))
     (build-system copy-build-system)
     (arguments
      (list #:install-plan
