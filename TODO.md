@@ -32,13 +32,19 @@ verified on the device.  Order:
    reboot into a deployed generation not tested yet.
    Then each later step is one generation the agent can deploy and roll
    back alone.
-3. **Phosh session + keyboard layout (§1, §3).** Phosh from tuigreet
+3. **Phosh session + keyboard layout (§1, §3).**  Phosh open items
+   (/tmp/phosh-1000.log): brightness goes through logind (absent here);
+   no on-screen keyboard (sm.puri.OSK0); background image "Unrecognized
+   image file format" (pixbuf loader?); two "activate action" criticals.
+   Earlier text:** Phosh from tuigreet
    failed: phoc aborted, "Settings schema 'org.gnome.mutter.keybindings'
    is not installed" (/tmp/phosh-1000.log, generation 7).  Schema added
    in 08263df (generation 8); phosh 0.56 is in libexec (8bda744,
    generation 9): Phosh starts from tuigreet (author, 2026-10-29).  Lock
    screen refused the passcode: no /etc/pam.d/phosh (9c82c6a, generation
-   10, not tested yet).  After a deploy that changes sessions, tuigreet
+   10, passcode accepted).  Home bar and app drawer missing: phoc built
+   without its wlroots patch (8897846, generation 12): bar, drawer and
+   all apps show (author).  After a deploy that changes sessions, tuigreet
    keeps the old session list until it restarts (log in and out once).  Phosh starting from greetd,
    the layout surviving a reboot.
 4. **Guix Home layer, then audio (§2).**  Home services in the channel
