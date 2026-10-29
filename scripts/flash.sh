@@ -153,6 +153,9 @@ EOF
 }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
+# Keep the arguments for the re-exec inside guix shell below: the loop
+# consumes them (they were lost, so --uboot and --rootfs were ignored).
+ORIG_ARGS=("$@")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --uboot)        OPT_UBOOT="$2";  shift 2 ;;
@@ -172,7 +175,7 @@ done
 if [[ -z "${_IN_GUIX_SHELL:-}" ]] && command -v guix >/dev/null 2>&1; then
     [[ -f "$MANIFEST" ]] || die "manifest.scm not found at $MANIFEST"
     export _IN_GUIX_SHELL=1
-    exec guix shell -m "$MANIFEST" -- bash "$0" "$@"
+    exec guix shell -m "$MANIFEST" -- bash "$0" "${ORIG_ARGS[@]}"
 fi
 for _t in fastboot mkbootimg partx e2label python3; do
     command -v "$_t" >/dev/null 2>&1 \
@@ -244,7 +247,7 @@ elif [[ -f "u-boot-nodtb.bin" && -f "sm6115-fxtec-pro1x.dtb" ]]; then
     UBOOT_DTB="sm6115-fxtec-pro1x.dtb"
     echo "    local files"
 elif command -v guix >/dev/null 2>&1; then
-    BUILT=$(guix_select_or_build "u-boot-pro1x" guix build u-boot-pro1x -L .)
+    BUILT=$(guix_select_or_build "u-boot-pro1x" guix build u-boot-pro1x -L modules)
     [[ -d "$BUILT" ]] || die "U-Boot not found: $BUILT"
     UBOOT_BIN="$BUILT/libexec/u-boot-nodtb.bin"
     UBOOT_DTB="$BUILT/libexec/sm6115-fxtec-pro1x.dtb"
