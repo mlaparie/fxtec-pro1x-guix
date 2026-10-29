@@ -196,7 +196,18 @@ the phone on USB:
 bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
 ```
 
-## Your home configuration (plan, not in place yet)
+## Your home configuration
+
+New accounts get Guix's default skeleton: `~/.bash_profile` and
+`~/guix-home-config.scm`, but no `~/.bashrc`.  That is Guix's choice, not
+a missing file: `guix-home-config.scm` is a ready Guix Home configuration
+in which you uncomment the shell you use (Bash, Fish or Zsh); `guix home
+reconfigure ~/guix-home-config.scm` then writes that shell's files, a
+`~/.bashrc` included for Bash.  `~/.bash_profile` already loads the
+profile from your latest `guix pull` (through `/etc/profile`): you do not
+need to add it by hand.
+
+### Home services from this channel (plan, not in place yet)
 
 Guix manages two things separately: the **system** (kernel, drivers, system
 services; `guix system reconfigure`) and your **home** (your programs'
