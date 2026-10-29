@@ -179,6 +179,14 @@
         "confidence": "confirmed",
         "date": "2026-10-29",
         "source": "/tmp/phosh-1000.log on the phone; ls of the phosh-pro1x output; /etc/pam.d listing"
+      },
+      {
+        "title": "A channel that uses another channel must declare it in .guix-channel; test pulls with guix time-machine, not -L",
+        "general": "guix pull builds a channel with only its declared dependencies on the load path. A channel whose modules import another channel (nonguix here) fails with \"no code for module\" unless .guix-channel lists it under dependencies. Loading the tree with -L on a host that has the other channel pulled hides this. The reliable test is guix time-machine with a channels file pointing at the local repository (file:// URL, commit), without --disable-authentication. Copy channel introductions from the upstream README or source, never retype them: a wrong commit fails with \"Git error: object not found\".",
+        "instance": "fxtec-pro1x: nonguix introduction had ...d4d796ab instead of ...d4d59fbc (pull on the phone: object not found); the guix introduction in channels-lock.scm and channels-ci.scm was c91e27c6 instead of 9edb3f66; .guix-channel had no dependencies. Fixed in cb401e1; time-machine with guix 8b96d76, nonguix c241d19 and the local commit builds the channel.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "author pull log on the phone; GitLab API commit lookup (404 vs 200); /var/log/guix/drvs/gm/5smv8pyx…-fxtec-pro1x.drv.gz; guix/channels.scm %guix-channel-introduction"
       }
     ],
     "ci": [
