@@ -1,6 +1,6 @@
 # rag-notes
 
-Findings from porting Guix System to the F(x)tec Pro1X (SM6115), kept as
+Findings from porting Guix System to the F(x)tec Pro¹x (SM6115), kept as
 structured JSON so a coding agent can look them up instead of guessing. Every entry
 says how it is known and where it came from.
 

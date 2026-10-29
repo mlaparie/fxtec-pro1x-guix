@@ -3,9 +3,9 @@
 > Audio, modem, and several other features are unverified or broken.
 > Do not flash this on a device you depend on.
 
-# Guix System on the F(x)tec Pro1X (QX1050)
+# Guix System on the F(x)tec Pro¹x (QX1050)
 
-Mainline Linux and U-Boot for the F(x)tec Pro1X (SM6115 / Snapdragon 662),
+Mainline Linux and U-Boot for the F(x)tec Pro¹x (SM6115 / Snapdragon 662),
 packaged as a GNU Guix channel. Port of
 [nyymi609/fxtec-pro1x-nixos](https://github.com/nyymi609/fxtec-pro1x-nixos);
 kernel patches, firmware, and flash approach originate there.
@@ -70,7 +70,7 @@ manifest.scm                 Flash tooling: fastboot, mkbootimg, util-linux, e2f
 - GNU Guix with the [nonguix](https://gitlab.com/nonguix/nonguix) channel (for `linux-firmware`).
 - aarch64 build support: native aarch64 machine or x86_64 with QEMU offloading.
 - Flash tooling via the provided manifest (see Flashing below).
-- Unlocked bootloader on the Pro1X.
+- Unlocked bootloader on the Pro¹x.
 
 ## Channel setup
 
@@ -101,9 +101,10 @@ guix system build --system=aarch64-linux systems/mobile.scm
 
 The flash script builds automatically; no need to run this first.
 
-**Pre-built artifacts** (u-boot.bin, DTB, rootfs.img) are meant to come from
-GitHub Actions on the `main` branch, for those without Guix or an aarch64
-build machine.  No CI run has succeeded yet, so none exist.  With them,
+**Pre-built artifacts** (rootfs.img, and u-boot-nodtb.bin plus the DTB when
+the CI U-Boot build succeeds) come with each release on GitHub (`v*` tags,
+release notes in NEWS.md), for those without Guix or an aarch64 build
+machine.  With them,
 `scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img` runs without
 Guix if fastboot, mkbootimg, util-linux, e2fsprogs and python3 are
 installed (untested).  Such images have no root SSH key.
@@ -172,14 +173,14 @@ settings in `~/.config`, and programs that run for you, such as the sound
 server or notifications; `guix home reconfigure`).  Both are written in a
 Scheme file, both can be rolled back.
 
-This channel will provide ready-made home pieces for the Pro1X: the sway
+This channel will provide ready-made home pieces for the Pro¹x: the sway
 session and its bar, sound (PipeWire), and later mpv.  How you get them:
 
 - **Do nothing.**  The default image sets up the home of the `user` account
-  with the Pro1X defaults.  Each system update (new image, `deploy.sh`) also
+  with the Pro¹x defaults.  Each system update (new image, `deploy.sh`) also
   updates them.
 - **Use your own home config.**  If you already describe your home with Guix
-  Home, add the Pro1X pieces to it and keep the rest yours.  A sketch (names
+  Home, add the Pro¹x pieces to it and keep the rest yours.  A sketch (names
   are not final):
 
   ```scheme
@@ -193,7 +194,7 @@ session and its bar, sound (PipeWire), and later mpv.  How you get them:
     (services
      (append
       (list
-       ;; Pro1X sway, bar and sound, with one change of your own:
+       ;; Pro¹x sway, bar and sound, with one change of your own:
        (service pro1x-home-sway-service-type
                 (pro1x-home-sway-configuration
                  (extra-config "bindsym $mod+b exec icecat")))
@@ -234,7 +235,7 @@ stable.  Today only `scripts/deploy.sh` exists.
   on-device checks); coding agents do the work when asked (see `AGENTS.md`).
 - **Shrinking the channel.**  As free parts go upstream (package updates
   to Guix, kernel patches to mainline), this channel narrows to what is
-  device-specific: kernel build, firmware, U-Boot, and the Pro1X services.
+  device-specific: kernel build, firmware, U-Boot, and the Pro¹x services.
 
 ## Full-disk encryption (LUKS2)
 
@@ -272,20 +273,21 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   tab  q    w    e    r    t    y    u    i    o    p    [    ]    del
     caps a    s    d    f    g    h    j    k    l    ;    '    ret
   sft  `~   z    x    c    v    b    n    m    ,    .    /    up   sft
-  ctl  sup  fx   alt  /?   spc ──────────────  ctl  sup  lft  down rght
+  ctl  sup  fx   alt  \|   spc ──────────────  ctl  sup  lft  down rght
 
  Fn layer: hold fx (· = as in the base layer)
  ─────────────────────────────────────────────────────────────────────
   ·    f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12  sclk
-  ·    ·    wlan ·    ·    ·    ·    ·    ·    ·    ·    bri- bri+ ins
-    ·    ·    ·    ·    ·    ·    ·    ·    ·    \    play mute menu
-  ·    ·    |    ·    ·    ·    bt   ·    ·    vol- vol+ ·    pgup ·
+  ·    ·    wlan ·    ·    ·    ·    ·    ·    ·    \    bri- bri+ ins
+    ·    ·    ·    ·    ·    ·    ·    ·    ·    ;    play mute menu
+  ·    ·    ·    ·    ·    ·    bt   ·    ·    vol- vol+ |    pgup ·
   ·    ·    fx   ·    agr  · ────────────────  ·    ·    home pgdn end
 
   sup   yellow slant arrows: Super, the sway modifier ($mod)
   fx    F(x) key: hold for the Fn layer
-  /?    key labelled Sym: / (Shift: ?); with fx it is AltGr (agr),
+  \|    key labelled Sym: \ (Shift: |); with fx it is AltGr (agr),
         so fx+Sym+letter types é, ñ, … on us-intl
+  ; \ |  on fx+l, fx+p, fx+/ as on the yellow keycaps
   `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth
   bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media

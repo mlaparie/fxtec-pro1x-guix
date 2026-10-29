@@ -63,7 +63,7 @@
         "guix": "fxtec-pro1x/services/audio.scm, device/audio/",
         "status": "partial",
         "general": "services.pipewire.enable in NixOS starts pipewire, pipewire-pulse and wireplumber as systemd user services and enables rtkit. Guix has no system-level PipeWire service equivalent of that: start them per user (home services or the session script), and add rtkit with the audio group realtime rule.",
-        "instance": "ALSA card Pro1X (sm4250) present, UCM2 paths and the WirePlumber Pro1X config installed, pro1x-audio-init runs. Missing: the PipeWire, pipewire-pulse and WirePlumber daemons, and rtkit. Audio silent.",
+        "instance": "ALSA card Pro1X (sm4250) present, UCM2 paths and the WirePlumber Pro¹x config installed, pro1x-audio-init runs. Missing: the PipeWire, pipewire-pulse and WirePlumber daemons, and rtkit. Audio silent.",
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "TODO.md section 2"

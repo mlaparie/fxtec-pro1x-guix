@@ -1,11 +1,11 @@
 {
   "hardware": {
-    "note": "Findings about the F(x)tec Pro1X (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
+    "note": "Findings about the F(x)tec Pro¹x (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
     "boot_chain": [
       {
         "title": "Qualcomm ABL rejects a U-Boot arm64 Image whose header text_offset is not zero",
         "general": "The Qualcomm Android bootloader (ABL) checks the arm64 Image header of the kernel in the boot image. A U-Boot binary built with a negative text_offset (bytes 8-15 of the header) is refused and the phone falls straight back to fastboot, with no message. Zero text_offset as Linux does, gzip the image, and append the DTB after the gzip stream so ABL hands it to U-Boot in x0.",
-        "instance": "Pro1X, U-Boot packed as an Android boot image in boot_a/boot_b by scripts/flash.sh. U-Boot's header had text_offset = -0x80000000. The NixOS port already did this; the Guix flash script had missed it. --second was dropped once the DTB was appended.",
+        "instance": "Pro¹x, U-Boot packed as an Android boot image in boot_a/boot_b by scripts/flash.sh. U-Boot's header had text_offset = -0x80000000. The NixOS port already did this; the Guix flash script had missed it. --second was dropped once the DTB was appended.",
         "confidence": "handover",
         "date": "2026-10-25",
         "source": "commit 869183f (scripts/flash.sh); approach from nyymi609/fxtec-pro1x-nixos"
@@ -33,6 +33,14 @@
         "confidence": "reported",
         "date": "2026-10-27",
         "source": "moWerk/sailfish-rag Mainline/boot.json, section dual_boot"
+      },
+      {
+        "title": "U-Boot extlinux refuses kernel command lines over 511 bytes (CONFIG_SYS_CBSIZE=512 in qcom_defconfig)",
+        "general": "U-Boot builds bootargs for an extlinux/PXE label in a CONFIG_SYS_CBSIZE buffer; a longer APPEND prints \"bootarg overflow\" and the label does not boot. qcom_defconfig sets 512. Long store paths (gnu.system, gnu.load) already take about half of it on Guix; options like vt.default_red/grn/blu push it over. Raise CONFIG_SYS_CBSIZE or keep the command line short.",
+        "instance": "Pro¹x, U-Boot 2026.10-rc f8eb346: generations 22-24 with the three vt.default_* arguments (APPEND 569 bytes) did not boot; the phone came up from prev3 (generation 21, 284 bytes). The palette moved back to setvtrgb at boot. Generation 25: 317 bytes.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "boot/pxe_utils.c label_boot (bootargs[CONFIG_SYS_CBSIZE]), configs/qcom_defconfig in the u-boot-pro1x source; /proc/cmdline on the phone (gnu.system=system-21-link); APPEND lengths in /boot/extlinux/prev*.conf"
       }
     ],
     "kernel": [
@@ -149,7 +157,7 @@
       {
         "title": "Keyboard backlight is an on/off GPIO LED; the slider is SW_KEYPAD_SLIDE on gpio-keys, 1 = slid out",
         "general": "On sliders the keyboard backlight and the slide switch are separate devices: an LED class device and an EV_SW switch. Drive the LED from the switch and the panel state. The DRM connector sysfs dpms attribute follows the compositor output power (atomic ACTIVE) and is a cached value, so it is a safe panel-state source on DSI video-mode panels where backlight actual_brightness reads wedge the link.",
-        "instance": "Pro1X, linux-pro1x 7.1.0: /sys/class/leds/white:kbd_backlight, max_brightness 1, off at boot. gpio-keys (udev symlink /dev/input/pro1x-slider): type 5 code 10, slide in 0, slide out 1. /sys/class/drm/card0-DSI-1/dpms read Off with sway output power off and On after swaymsg output DSI-1 power on.",
+        "instance": "Pro¹x, linux-pro1x 7.1.0: /sys/class/leds/white:kbd_backlight, max_brightness 1, off at boot. gpio-keys (udev symlink /dev/input/pro1x-slider): type 5 code 10, slide in 0, slide out 1. /sys/class/drm/card0-DSI-1/dpms read Off with sway output power off and On after swaymsg output DSI-1 power on.",
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "event logger on /dev/input/pro1x-slider with the author sliding; swaymsg -t get_outputs vs dpms; echo 1 > brightness lit the keys (author)"

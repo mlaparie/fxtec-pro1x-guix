@@ -202,6 +202,15 @@
 
   ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
 
+  ;; Guix's default sudoers, plus tuigreet's power menu (F12): the greeter
+  ;; runs as "greeter", and halt/reboot need root (Shepherd's socket).
+  (sudoers-file
+   (plain-file "sudoers"
+               (string-append (plain-file-content %sudoers-specification)
+                              "greeter ALL=(root) NOPASSWD: "
+                              "/run/current-system/profile/sbin/halt, "
+                              "/run/current-system/profile/sbin/reboot\n")))
+
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
    (append
@@ -271,13 +280,29 @@
               (provision '(pro1x-console-font))
               (requirement '(virtual-terminal))
               (one-shot? #t)
-              (documentation "Load a 16x32 console font on tty1.")
+              (documentation "Console for tuigreet: 16x32 font on tty1,
+Dracula palette, no kernel messages over the greeter.")
               (start #~(lambda _
                          (system* #$(file-append kbd "/bin/setfont")
                                   "-C" "/dev/tty1"
                                   #$(file-append
                                      kbd "/share/consolefonts/"
                                      "latarcyrheb-sun32.psfu.gz"))
+                         ;; Dracula (draculatheme.com) as the 16 console
+                         ;; colours, red/green/blue rows; colour 0 is the
+                         ;; background #282a36.  Not vt.default_* on the
+                         ;; kernel command line: U-Boot refuses command
+                         ;; lines over 511 bytes (CONFIG_SYS_CBSIZE=512).
+                         (system* #$(file-append kbd "/bin/setvtrgb")
+                                  #$(plain-file "dracula.vtrgb" "\
+40,255,80,241,189,255,139,248,98,255,105,255,214,255,164,255
+42,85,250,250,147,121,233,248,114,110,255,255,172,146,255,255
+54,85,123,140,249,198,253,242,164,110,148,165,255,223,255,255
+"))
+                         ;; Late driver errors and warnings went over
+                         ;; tuigreet; they stay in dmesg.
+                         (system* #$(file-append util-linux "/bin/dmesg")
+                                  "-n" "1")
                          #t)))))
 
      ;; ── greetd + tuigreet session picker ─────────────────────────────────
@@ -300,8 +325,26 @@
                                "tuigreet"
                                "--time"
                                "--asterisks"
+                               ;; Running kernel, read when tuigreet starts.
+                               "--greeting"
+                               (string-append "GNU Guix System on the F(x)tec Pro¹x"
+                                              " · Linux "
+                                              (utsname:release (uname))
+                                              " (tty1)")
+                               ;; Named colours map to the Dracula console
+                               ;; palette set by pro1x-console-font.
+                               "--theme"
+                               (string-append
+                                "border=magenta;text=cyan;prompt=green;"
+                                "time=red;action=blue;button=yellow;"
+                                "container=black;input=red")
                                "--remember"
                                "--remember-user-session"
+                               ;; F12 power menu; sudoers allows exactly these.
+                               "--power-shutdown"
+                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/halt"
+                               "--power-reboot"
+                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/reboot"
                                "--sessions" "/etc/wayland-sessions"
                                ;; No logind here: without LIBSEAT_BACKEND
                                ;; libseat fails ("Unable to create seat:

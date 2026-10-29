@@ -1,54 +1,33 @@
-;;; fxtec-pro1x/packages/bootloader.scm — extlinux bootloader for U-Boot
+;;; fxtec-pro1x/packages/bootloader.scm — extlinux.conf for U-Boot
 ;;;
-;;; The upstream extlinux-bootloader depends on syslinux, which uses
-;;; -mregparm=3 in its BIOS build — a flag removed in GCC 14.  On this device
-;;; U-Boot reads extlinux.conf natively; we don't need syslinux installed on
-;;; disk at all.  This module provides:
+;;; U-Boot on the Pro¹x reads /boot/extlinux/extlinux.conf itself (sysboot),
+;;; so nothing has to be installed on disk: the bootloader only writes that
+;;; file.  pro1x-extlinux-bootloader is Guix's u-boot-bootloader (extlinux
+;;; configuration, no package, no installer) without its disk-image
+;;; installer, so neither deploy, reconfigure nor image builds write to a
+;;; partition.
 ;;;
-;;;   syslinux-stub        — a trivial package with the directory layout that
-;;;                          extlinux-bootloader expects (share/syslinux, bin,
-;;;                          sbin directories).
-;;;   pro1x-extlinux-bootloader — extlinux-bootloader with syslinux-stub as its
-;;;                          package and a no-op installer.  The upstream
-;;;                          installer calls extlinux --install and writes an
-;;;                          MBR, neither of which is needed or possible: U-Boot
-;;;                          reads extlinux.conf natively, and the build sandbox
-;;;                          has no /bin/sh for the shell-script stub to use.
+;;; Its name stays 'u-boot on purpose.  `guix system delete-generations',
+;;; `roll-back' and `switch-generation' look the bootloader up by the name
+;;; recorded in the system, among the bootloaders the running guix knows;
+;;; the phone's guix does not include this channel.  Under 'u-boot they find
+;;; Guix's u-boot-bootloader, which writes the same extlinux.conf with no
+;;; package to build, and nothing else (reinstall-bootloader passes no
+;;; target devices).  The earlier name 'extlinux found Guix's
+;;; extlinux-bootloader, whose syslinux does not build for aarch64.
+;;;
+;;; State: `guix system switch-generation 26' on the phone, with the phone's
+;;; own guix (5ceffb6), rewrote extlinux.conf (2026-10-29).  Generations
+;;; deployed before this record recorded 'extlinux and still fail there.
+;;; The U-Boot slots (prev1-3) are refreshed at boot or with
+;;; `herd start pro1x-boot-menu', not by these commands.
 
 (define-module (fxtec-pro1x packages bootloader)
   #:use-module (gnu bootloader)
-  #:use-module (gnu bootloader extlinux)
-  #:use-module (guix build-system trivial)
-  #:use-module (guix gexp)
-  #:use-module (guix packages)
-  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu bootloader u-boot)
   #:export (pro1x-extlinux-bootloader))
 
-(define syslinux-stub
-  (package
-    (name "syslinux")
-    (version "stub")
-    (source #f)
-    (build-system trivial-build-system)
-    (arguments
-     (list #:builder
-           #~(begin
-               (mkdir #$output)
-               (mkdir (string-append #$output "/share"))
-               (mkdir (string-append #$output "/share/syslinux"))
-               (mkdir (string-append #$output "/bin"))
-               (mkdir (string-append #$output "/sbin")))))
-    (home-page "https://wiki.syslinux.org/")
-    (synopsis "Syslinux stub (U-Boot reads extlinux.conf natively)")
-    (description "Stub package: no x86 BIOS build, just the directory layout
-that extlinux-bootloader expects.  U-Boot on the Pro1X reads extlinux.conf
-directly, so the syslinux MBR installer is never invoked.")
-    (license license:gpl2+)))
-
-(define-public pro1x-extlinux-bootloader
+(define pro1x-extlinux-bootloader
   (bootloader
-   (inherit extlinux-bootloader)
-   (package syslinux-stub)
-   (installer
-    ;; U-Boot reads extlinux.conf natively; skip the BIOS MBR install entirely.
-    #~(lambda (bootloader device mount-point) #t))))
+   (inherit u-boot-bootloader)
+   (disk-image-installer #f)))

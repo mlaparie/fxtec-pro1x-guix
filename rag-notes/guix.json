@@ -1,11 +1,11 @@
 {
   "guix": {
-    "note": "Findings specific to Guix System and its tooling, from porting it to the F(x)tec Pro1X. Seeded 2026-10-28 from this repository's git history (commits up to 018fa97) and TODO.md; entries labelled handover were not re-checked. Hardware lessons go in hardware.json, NixOS translation notes in nixos_to_guix.json.",
+    "note": "Findings specific to Guix System and its tooling, from porting it to the F(x)tec Pro¹x. Seeded 2026-10-28 from this repository's git history (commits up to 018fa97) and TODO.md; entries labelled handover were not re-checked. Hardware lessons go in hardware.json, NixOS translation notes in nixos_to_guix.json.",
     "shepherd_services": [
       {
         "title": "A compositor started from a Shepherd service needs seatd, not elogind",
         "general": "libseat needs a seat session. A Shepherd service that runs the compositor through 'su -l user' gets no PAM/logind session, so libseat fails with elogind ('Failed to load session backend', 'Failed to start a DRM session') even though elogind runs and /dev/dri exists. seatd-service-type gives libseat a socket that needs no session; the user must be in the seat group. seatd also provides the 'elogind Shepherd symbol, which services such as phosh require for start order.",
-        "instance": "phoc/phosh on the Pro1X, systems/mobile.scm. Later replaced by greetd + tuigreet as session picker, which owns VT1.",
+        "instance": "phoc/phosh on the Pro¹x, systems/mobile.scm. Later replaced by greetd + tuigreet as session picker, which owns VT1.",
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "commit 9ff38c8; TODO.md section 1"
@@ -37,7 +37,7 @@
       {
         "title": "D-Bus-activated daemons do not appear in herd status",
         "general": "A daemon started by dbus-daemon on first use (NetworkManager here, iio-sensor-proxy on other systems) is not a Shepherd service. 'herd status' does not list it; check with ps, or with busctl or dbus-send on its bus name.",
-        "instance": "NetworkManager running and nmcli working on the Pro1X while absent from herd status.",
+        "instance": "NetworkManager running and nmcli working on the Pro¹x while absent from herd status.",
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "TODO.md 'Working'"

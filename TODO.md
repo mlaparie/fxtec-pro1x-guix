@@ -83,8 +83,7 @@ the newest one plus three previous (`prev1-3`).
 4. **Voice-call audio**: q6voice is in the kernel; `pro1x-voice-call` /
    `voicepcm` from NixOS still to translate.
 5. **Sensors** (§4).
-6. **Bootloader name** (§3): `guix system delete-generations`, `roll-back`
-   and `switch-generation` run on the phone fail.
+6. **Boot menu** (§3): keep a known-good entry; U-Boot command-line limit.
 7. **Bootcount fallback** (§3).
 8. **CI** (§5): U-Boot step, artifact size, releases.
 9. **Smaller items** (§6), video decode, sway extras, user updates (§7).
@@ -94,7 +93,7 @@ the newest one plus three previous (`prev1-3`).
 ## 1. PipeWire, WirePlumber, audio, camera
 
 NixOS (`modules/audio.nix`, `modules/camera.nix`):
-- `services.pipewire` with ALSA and Pulse, WirePlumber with the Pro1X
+- `services.pipewire` with ALSA and Pulse, WirePlumber with the Pro¹x
   config package, `pro1x-audio-init` as WirePlumber's ExecStartPre;
 - `ALSA_CONFIG_UCM2` pointing at alsa-ucm-conf merged with
   `device/audio/ucm2`;
@@ -113,23 +112,35 @@ first, then camera in cameractrl and Snapshot.  Packages: `pipewire`,
 
 ## 2. Modem
 
-ModemManager 1.24 sees the modem (2026-10-29).  Next, with the author:
+ModemManager 1.24 sees the modem (2026-10-29).  With a SIM inserted there
+is no LTE network (author, 2026-10-29): not looked into yet; check SIM
+state (`mmcli -m 0`, UIM provisioning session, AGENTS.md §7), registration
+and the modem's crash log.  Next, with the author:
 SIM provisioning (UIM session, AGENTS.md §7), then SMS, calls, data.
 Shepherd `requirement` orders but does not pull in rmtfs; check MM does
 not start before rmtfs on a cold boot.
 
 ## 3. Boot menu, rollback, bootloader
 
-- **Bootloader lookup**: on the phone, `guix system delete-generations`
-  (and roll-back, switch-generation) look the bootloader up by name
-  ("extlinux"), get Guix's own and try to build syslinux for aarch64.
-  Fix: give the channel's bootloader its own name and make it findable by
-  `lookup-bootloader-by-name` (scans `gnu/bootloader/*.scm` on the load
-  path).  Until then a deploy from the PC rewrites the menu.
+- **Bootloader lookup** (fixed for generations from 26 on): on the phone,
+  `guix system delete-generations`, roll-back and switch-generation look
+  the bootloader up by the name a generation recorded, among those the
+  phone's guix knows (not this channel).  The old name "extlinux" found
+  Guix's syslinux-based bootloader (does not build for aarch64).
+  `pro1x-extlinux-bootloader` is now Guix's u-boot-bootloader without its
+  disk-image installer, recorded as "u-boot": `switch-generation 26` on
+  the phone rewrote extlinux.conf.  After deleting generations on the
+  phone, run `sudo herd start pro1x-boot-menu` to refresh the U-Boot slots
+  (otherwise done at the next boot).
 - **Known-good entry**: `prev1-3` cover the three newest previous
   generations only; a run of bad deploys can push every bootable one out
   (happened on 2026-10-29; recovered through U-Boot USB mass storage from
   the PC).  Keep one pinned known-good entry.
+- **Command-line limit**: U-Boot's extlinux loader refuses an APPEND over
+  511 bytes (CONFIG_SYS_CBSIZE=512, "bootarg overflow"); generations 22-24
+  (vt.default_* palette, 569 bytes) do not boot.  Raise CONFIG_SYS_CBSIZE
+  in u-boot-pro1x (needs the boot partition reflashed by the author), or
+  keep the command line short.
 - **U-Boot menu**: extlinux.conf has TIMEOUT 100, but the author sees no
   generation list on screen; the U-Boot bootmenu shows Boot and prev1-3.
 - **Bootcount**: no boot-once/bootcount fallback; a kernel/initrd/USB
@@ -163,7 +174,10 @@ sensors notes.
 
 - Phosh: brightness goes through logind (absent; "Setting backlight on
   DSI-1 failed"); no on-screen keyboard (`sm.puri.OSK0`); background image
-  "Unrecognized image file format" (gdk-pixbuf loader?).
+  "Unrecognized image file format" (gdk-pixbuf loader?); the dark-theme
+  switch changes nothing (author); battery information looks wrong
+  (author; UPower is not running — GNOME Settings logs "The name
+  org.freedesktop.UPower was not provided").  Not looked into yet.
 - `cfg80211: failed to load regulatory.db` (no wireless-regdb).
 - `qcom/a630_sqe.fw` fails in the initrd, loads later from the rootfs.
 - `goodix_9286_cfg.bin` missing (touch uses its built-in config).

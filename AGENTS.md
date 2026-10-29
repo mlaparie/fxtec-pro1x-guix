@@ -1,7 +1,7 @@
-# AGENTS.md: an LLM coding agent porting Guix System onto the Pro1X with a mainline kernel
+# AGENTS.md: an LLM coding agent porting Guix System onto the Pro¹x with a mainline kernel
 
 This file instructs a coding agent (Claude Code, or any agent that reads AGENTS.md) working
-on this repository: GNU Guix System on the F(x)tec Pro1X (Qualcomm SM6115), with **no vendor
+on this repository: GNU Guix System on the F(x)tec Pro¹x (Qualcomm SM6115), with **no vendor
 kernel, no libhybris, no halium**: a near-upstream Linux kernel, the device's firmware blobs,
 and a Guix userspace with Shepherd, not systemd.
 
@@ -21,7 +21,7 @@ assume NixOS and systemd and have to be translated, not copied.
 | what | value |
 |---|---|
 | Author (the person who owns the work) | mlaparie |
-| Device, SoC | F(x)tec Pro1X (QX1050), SM6115 / Snapdragon 662 |
+| Device, SoC | F(x)tec Pro¹x (QX1050), SM6115 / Snapdragon 662 |
 | Kernel | `linux-pro1x` in `fxtec-pro1x/packages/kernel.scm`; patches and config in `device/kernel/` (from the NixOS port) |
 | Target OS | Guix System; channel commits pinned in `channels-lock.scm` (local) and `channels-ci.scm` (CI) |
 | Repositories | sr.ht `~mlaparie/fxtec-pro1x-guix` (primary, `origin`), GitHub `mlaparie/fxtec-pro1x-guix` (mirror, CI) |
@@ -47,8 +47,8 @@ file in the agent's scratch directory and read the file, rather than scraping th
 
 Standing permissions, set by the author:
 
-- **Device**: the Pro1X only. Never any other phone, in particular the author's daily one.
-- **On the Pro1X, without asking**: `sudo`; deploying generations and rebooting into them,
+- **Device**: the Pro¹x only. Never any other phone, in particular the author's daily one.
+- **On the Pro¹x, without asking**: `sudo`; deploying generations and rebooting into them,
   including kernel, initrd, boot-service and USB-network changes (tell the author before such
   a reboot, since a failure needs their hands at the boot menu); `herd` start/stop; loading and
   unloading modules; mixer changes; joining Wi-Fi networks and changing NetworkManager
@@ -96,7 +96,7 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
   When the agent changes a flash script, it reads the whole script back for the partition
   names above, and says which partitions and slots the script writes.
 - **Never stop the modem remoteproc** (`echo stop > /sys/class/remoteproc/*/state`) to "reset"
-  it. On the Pro1X (in moWerk's SailfishOS port, same SoC) it crashed the kernel. Reboot instead.
+  it. On the Pro¹x (in moWerk's SailfishOS port, same SoC) it crashed the kernel. Reboot instead.
 - Disabling DSP recovery (`recovery=disabled`) means a DSP crash leaves it down until reboot
   (audio gone with an ADSP crash). Know which DSP your experiment can crash before you start.
 - **Never delete system generations on the device** (`guix system delete-generations`, or a
@@ -216,7 +216,7 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
 
 ## 7. Traps already found (check these first)
 
-**Hardware: seen on SM6115 (Pro1X) with a 7.x kernel; most apply across recent Snapdragon
+**Hardware: seen on SM6115 (Pro¹x) with a 7.x kernel; most apply across recent Snapdragon
 SoCs. Mostly from moWerk's SailfishOS port; the ones not yet seen here are marked "reported".**
 
 *Firmware and remoteprocs*

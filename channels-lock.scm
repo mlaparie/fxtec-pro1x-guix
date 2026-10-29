@@ -4,6 +4,9 @@
 ;;;   guix pull -C channels-lock.scm
 ;;;   guix system -C channels-lock.scm reconfigure systems/mobile.scm
 ;;;
+;;; guix and nonguix: the commits release 0.1.0 was built and tested with
+;;; (same as channels-ci.scm).  fxtec-pro1x: the release tag.
+;;;
 ;;; Regenerate with:
 ;;;   guix describe --format=channels > channels-lock.scm
 ;;;   (keep only guix, nonguix, and fxtec-pro1x entries)
@@ -13,7 +16,7 @@
   (name 'guix)
   (url "https://codeberg.org/guix/guix.git")
   (branch "master")
-  (commit "ab5a40491d1b551b73060cd82d25aa3fd0c04773")
+  (commit "8b96d76752be5bfe4ce87e32a53afa919d365fd0")
   (introduction
    (make-channel-introduction
     "c91e27c60864faa229198f6f0caf620275c429a2"
@@ -24,7 +27,7 @@
   (name 'nonguix)
   (url "https://gitlab.com/nonguix/nonguix")
   (branch "master")
-  (commit "19a133327ef425d1294406c83ffc23484fb399f0")
+  (commit "c241d19ff840dc75556f722b231760d119b6adea")
   (introduction
    (make-channel-introduction
     "897c1a470da759236cc11798f4e0a5f7d4d796ab"
@@ -35,4 +38,4 @@
   (name 'fxtec-pro1x)
   (url "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
   (branch "main")
-  (commit "e81e5deea0389f1b2aa84494778349289ce65f38")))
+  (commit "v0.1.0")))  ; a tag: Guix resolves commit as tag-or-commit
