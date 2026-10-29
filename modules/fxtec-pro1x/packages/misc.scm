@@ -194,19 +194,24 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
 ;;; hexagonrpcd — serve ADSP sensor configuration via FastRPC
 ;;; PR #27 (sns_registry interface) was never merged; apply it as a patch.
 ;;; The upstream repo was force-pushed; switched to url-fetch tarball.
+;;; Commit 40e5041 (the NixOS port's), not da7a374: it lets the ADSP write
+;;; into its sensor registry.  With da7a374 the writes were refused, the
+;;; Sensor Core took the whole ADSP down at about 12 s ("fatal error
+;;; received: ... sensor_process ... SNS_REG_INIT"), and audio, which runs
+;;; on the same DSP, failed afterwards (AFE -110, wcd937x -16).
 ;;; ---------------------------------------------------------------------------
 (define-public hexagonrpcd
   (package
     (name "hexagonrpcd")
-    (version "0.5.0-unstable-da7a374")
+    (version "0.5.0-unstable-40e5041")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
              "https://github.com/linux-msm/hexagonrpc/archive/"
-             "da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz"))
+             "40e50412812adce9dddc2be9a4510ebce05eef89.tar.gz"))
        (sha256
-        (base32 "0df4af0n2fx3bx6b24ajva177mnvrk1clhpclrmpd8ljrwyva6k5"))
+        (base32 "0q8q76pk343xj45g5zfi537hrap17ph3wvfyrcf4zpy0b8rzharj"))
        (patches
         (list
          (local-file (repository-file "packages/hexagonrpc-sns-registry.patch")
