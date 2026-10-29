@@ -60,6 +60,23 @@ tried on the phone.
 
 ---
 
+## Branch `next` (2026-10-29 evening, build-tested only, not deployed)
+
+To deploy and test once the phone takes deploys again (Tailscale):
+- modem: UIM provisioning before ModemManager (SIM not detected);
+- Bluetooth: BlueZ powered at start; kernel BT_LE, BT_RFCOMM;
+- audio and camera: PipeWire, WirePlumber (patched libcamera),
+  pipewire-pulse in the Phosh and Sway sessions; ALSA_CONFIG_UCM2;
+  SailfishOS's card re-probe only if the first probe is silent here;
+- sensors: iio-sensor-proxy started after QRTR 400 (nothing started it);
+  open: is hexagonrpcd up before the 11 s sensor_process crash?;
+- Phosh brightness: sysfs write without logind (patch);
+- Sxmo: /etc/profile.d path fixed, session log; superd not packaged;
+- screen off: moWerk's panel display-off patch (kernel);
+- clock from the RTC with a saved offset; 16x32 console font from boot;
+- kernel.scm: package lookup by name failed (current-source-directory).
+The kernel changed: reboot needed, with the U-Boot fallback in mind.
+
 ## Next steps (author's order, 2026-10-29)
 
 1. **Phosh settings and power key** (in progress).
