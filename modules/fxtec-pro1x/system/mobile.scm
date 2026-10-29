@@ -498,7 +498,7 @@ Dracula palette, no kernel messages over the greeter.")
      snapshot
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
-     gsettings-desktop-schemas
+     gsettings-desktop-schemas pro1x-gsettings-defaults
      ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
      ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
      gnome-settings-daemon)

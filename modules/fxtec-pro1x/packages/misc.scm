@@ -736,6 +736,40 @@ It runs on top of the Phoc compositor.")
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-gsettings-defaults — system-wide GSettings defaults
+;;; An override in the system profile's share/glib-2.0/schemas, which Guix's
+;;; glib-schemas profile hook compiles together with every schema there (an
+;;; override in phosh-pro1x's own directory only reaches Phosh's schemas).
+;;;   - sound above 100%: the speaker is quiet even at full gain (author,
+;;;     2026-10-29); GNOME's slider then goes to 150%, Sway's keys stop at 120%.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-gsettings-defaults
+  (package
+    (name "pro1x-gsettings-defaults")
+    (version "0.1")
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((dir (string-append #$output "/share/glib-2.0/schemas")))
+            (mkdir-p dir)
+            (call-with-output-file
+                (string-append dir "/91_pro1x-defaults.gschema.override")
+              (lambda (port)
+                (display "[org.gnome.desktop.sound]
+allow-volume-above-100-percent=true
+" port)))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "GSettings defaults for the F(x)tec Pro1X")
+    (description
+     "System-wide GSettings overrides for the Pro1X: volume above 100%.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
 ;;; libadwaita-1.9 — for phosh-mobile-settings only
 ;;; Guix ships 1.8.4; phosh-mobile-settings 0.56 uses AdwSidebar and the
 ;;; view-stack section API, new in 1.9.  Same dependencies as 1.8.4.  Built
