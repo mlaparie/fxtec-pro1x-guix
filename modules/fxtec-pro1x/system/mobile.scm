@@ -75,6 +75,24 @@
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services usb-network))
 
+;; What phoc starts: gsd-media-keys, then the shell.  Phosh does not
+;; handle the volume keys itself; in GNOME sessions gnome-session starts
+;; gnome-settings-daemon's media-keys helper, which grabs them through
+;; Phosh.  Without it the volume keys did nothing (tested on the phone,
+;; 2026-10-29: they work with it).  Its logind and session-manager
+;; warnings are harmless.
+(define phosh-pro1x-shell
+  (program-file "phosh-pro1x-shell"
+    #~(begin
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append gnome-settings-daemon
+                                "/libexec/gsd-media-keys")
+                 "gsd-media-keys"))
+        ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
+        ;; wants gnome-session.
+        (execl #$(file-append phosh-pro1x "/libexec/phosh") "phosh"))))
+
 ;; Phosh session launch script for greetd.  Uses absolute store paths so it
 ;; works regardless of PATH at session startup.
 (define phosh-pro1x-session
@@ -107,9 +125,7 @@
                #$pro1x-audio-session
                #$(file-append phoc-pro1x "/bin/phoc")
                "-S" "-C" "/etc/phoc.ini" "-E"
-               ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
-               ;; wants gnome-session.
-               #$(file-append phosh-pro1x "/libexec/phosh")))))
+               #$phosh-pro1x-shell))))
 
 ;; Sxmo on sway, for greetd.  Logs to /tmp/sxmo-UID.log (greetd discards
 ;; session output).  Sxmo also needs superd, its user service manager, not
