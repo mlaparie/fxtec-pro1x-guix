@@ -21,8 +21,8 @@ Display (BOE AMOLED, 60 Hz)      Working
 GPU (Adreno 610)                 Untested
 Touchscreen                      Untested
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
-Keyboard backlight               Broken     not yet working
-Keyboard slider switch           Untested
+Keyboard backlight               Working    on while slid out and the screen is on
+Keyboard slider switch           Working    drives the backlight; slide-out wakes sway
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
 Bluetooth                        Untested
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
@@ -31,7 +31,7 @@ Microphones                      Untested
 Vibration motor                  Untested   (only verified in Phosh, not TTY)
 Calls                            Untested
 SMS / mobile data                Untested
-Rear camera (IMX582)             Untested   libcamera-pro1x with sensor patches
+Rear camera (IMX582)             Broken     sensor registers; no PipeWire/WirePlumber yet (TODO)
 Front camera (S5K4H7)            Untested
 Sensors (accel, gyro, ALS, prox) Untested   ADSP via hexagonrpcd + iio-sensor-proxy
 Battery / charging               Untested
@@ -271,7 +271,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   esc  1    2    3    4    5    6    7    8    9    0    -    =    bspc
   tab  q    w    e    r    t    y    u    i    o    p    [    ]    del
     caps a    s    d    f    g    h    j    k    l    ;    '    ret
-  sft  `    z    x    c    v    b    n    m    ,    .    /    up   sft
+  sft  `~   z    x    c    v    b    n    m    ,    .    /    up   sft
   ctl  sup  fx   alt  /?   spc ──────────────  ctl  sup  lft  down rght
 
  Fn layer: hold fx (· = as in the base layer)
@@ -286,7 +286,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   fx    F(x) key: hold for the Fn layer
   /?    key labelled Sym: / (Shift: ?); with fx it is AltGr (agr),
         so fx+Sym+letter types é, ñ, … on us-intl
-  `     sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
+  `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth
   bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media
 
@@ -306,6 +306,12 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
 ```
 
 `keyd monitor` (as root) shows what each key sends.
+
+The keyboard backlight is on while the keyboard is slid out and the screen
+is on (service `pro1x-kbd-backlight`).  Sliding the keyboard out with the
+screen off turns the screen on in sway (not yet in Phosh).  To switch the
+light by hand: `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
+stays that way until the next slide or screen change.
 
 ## Session selection
 
