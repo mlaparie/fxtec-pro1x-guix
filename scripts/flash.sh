@@ -239,7 +239,7 @@ fi
 if [[ "$SYSTEM" == "systems/mobile-encrypted.scm" ]]; then
     echo "==> System image ($SYSTEM)"
     DISK_IMAGE=$(guix_select_or_build "system image" \
-        guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
+        guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
     [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
     export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE"
     exec bash "$SCRIPT_DIR/flash-encrypted.sh"
@@ -258,7 +258,7 @@ elif [[ -f "rootfs.img" ]]; then
     echo "    local file: rootfs.img"
 elif command -v guix >/dev/null 2>&1; then
     DISK_IMAGE=$(guix_select_or_build "system image" \
-        guix system image --image-type=efi-raw --system="$ARCH" -L . "$SYSTEM")
+        guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
     [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
     NEED_EXTRACT=true
 else

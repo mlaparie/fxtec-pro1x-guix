@@ -43,10 +43,10 @@ Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash
 ## Layout
 
 ```
-fxtec-pro1x/packages/        kernel, u-boot, firmware, audio, misc
-fxtec-pro1x/packages/sxmo.scm  clickclack, sxmo-utils (Sxmo packages)
-fxtec-pro1x/services/        Shepherd services: audio, boot, camera, fde, hardware,
-                             keyboard, modem, sensors, usb-network
+modules/                     The channel's Guile modules (.guix-channel: directory)
+modules/fxtec-pro1x/packages/  kernel, u-boot, firmware, audio, misc, sxmo
+modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels,
+                             fde, hardware, keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
 systems/mobile.scm           Phosh + Sxmo desktop (greetd/tuigreet session picker)
 systems/mobile-encrypted.scm Phosh with LUKS2 full-disk encryption
@@ -95,8 +95,8 @@ GitHub mirror: `https://github.com/mlaparie/fxtec-pro1x-guix`
 ## Building
 
 ```sh
-guix system build --system=aarch64-linux systems/minimal.scm
-guix system build --system=aarch64-linux systems/mobile.scm
+guix system build -L modules --system=aarch64-linux systems/minimal.scm
+guix system build -L modules --system=aarch64-linux systems/mobile.scm
 ```
 
 The flash script builds automatically; no need to run this first.

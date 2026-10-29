@@ -20,7 +20,7 @@
     (name "pro1x-audio")
     (version "1")
     ;; Source lives in device/audio/ within this repo.
-    (source (local-file "../../device/audio" "pro1x-audio-src" #:recursive? #t))
+    (source (local-file "../../../device/audio" "pro1x-audio-src" #:recursive? #t))
     (build-system gnu-build-system)
     (inputs
      (list alsa-lib alsa-utils pipewire pulseaudio

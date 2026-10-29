@@ -46,7 +46,7 @@
                          (string-append layout "+" variant))))
     (list
      `("keyd/default.conf"
-       ,(local-file "../../device/input/keyd.conf" "keyd.conf"))
+       ,(local-file "../../../device/input/keyd.conf" "keyd.conf"))
      ;; dconf system-db that persists the XKB layout across reboots.
      `("dconf/profile/user"
        ,(plain-file "dconf-profile-user"

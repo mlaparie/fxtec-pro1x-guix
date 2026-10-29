@@ -45,7 +45,7 @@
   (let* ((top    (pro1x-hardware-display-top-gap    config))
          (bottom (pro1x-hardware-display-bottom-gap config))
          (gap?   (> (+ top bottom) 0))
-         (base   (local-file "../../device/udev/60-pro1x.rules"
+         (base   (local-file "../../../device/udev/60-pro1x.rules"
                              "60-pro1x.rules")))
     (if gap?
         (let* ((even   (lambda (g) (- g (modulo g 2))))

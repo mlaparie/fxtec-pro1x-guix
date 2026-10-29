@@ -3,7 +3,7 @@
 ;;; The source is the sm6115-mainline tree (not linux-libre).  Build infra-
 ;;; structure is borrowed from the nonguix `linux` package so we skip deblob-
 ;;; bing.  To get the sha256 after the first attempt:
-;;;   guix build --system=aarch64-linux linux-pro1x -L .
+;;;   guix build --system=aarch64-linux linux-pro1x -L modules
 ;;; Guix will print the expected hash on failure.
 
 (define-module (fxtec-pro1x packages kernel)
@@ -19,7 +19,7 @@
 
 ;;; The 14 device patches, applied in the same order as the NixOS port.
 (define %pro1x-patch-dir
-  (string-append (dirname (current-filename)) "/../../device/kernel/patches/"))
+  (string-append (current-source-directory) "/../../../device/kernel/patches/"))
 
 (define %pro1x-patches
   (map (lambda (n)
@@ -70,8 +70,8 @@
             (replace 'configure
               (lambda _
                 (copy-file
-                 #$(local-file (string-append (dirname (current-filename))
-                                              "/../../device/kernel/config.aarch64")
+                 #$(local-file (string-append (current-source-directory)
+                                              "/../../../device/kernel/config.aarch64")
                                "pro1x.config")
                  ".config")
                 (invoke "make" "ARCH=arm64" "olddefconfig")))))))

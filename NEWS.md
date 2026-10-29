@@ -1,5 +1,20 @@
 # Release notes
 
+## 0.1.1 — 2026-10-29
+
+- The channel can be pulled: `guix pull` failed to build it, because
+  Guix compiles every `.scm` file in a channel's directory and the
+  repository also holds scripts and system files.  The modules now live
+  under `modules/` (`.guix-channel`: `(directory "modules")`); in a
+  checkout, use `-L modules` instead of `-L .`.  The kernel module no
+  longer uses `current-filename`, which is unset when Guix builds a
+  channel.  Built systems are unchanged (same derivations as 0.1.0).
+- The U-Boot "previous generation" entries are refreshed whenever
+  `extlinux.conf` changes (deploy, reconfigure, delete-generations,
+  roll-back, switch-generation), no longer only at boot.  Not tested on
+  the phone yet.
+- Keymap: Sym types `\` and `|`; Fn+l, Fn+p, Fn+/ give `;`, `\`, `|`.
+
 ## 0.1.0 — 2026-10-29
 
 First release of GNU Guix System for the F(x)tec Pro¹x (QX1050,

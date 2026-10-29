@@ -98,7 +98,7 @@ KERNEL_PATH=$(echo "$EXTLINUX_CONF" | grep -i '^\s*KERNEL\s' | head -1 | awk '{p
     debugfs -R "dump $KERNEL_PATH $TMPDIR/vmlinuz" "$TMPDIR/root.ext4" 2>/dev/null || true
 
 if [[ ! -s "$TMPDIR/vmlinuz" ]]; then
-    SYS=$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/.." \
+    SYS=$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/../modules" \
         systems/mobile-encrypted.scm 2>/dev/null | grep '^/gnu/store' | tail -1)
     for name in Image Image.gz bzImage; do
         [[ -f "$SYS/kernel/$name" ]] && cp "$SYS/kernel/$name" "$TMPDIR/vmlinuz" && break
@@ -110,7 +110,7 @@ INITRD_PATH=$(echo "$EXTLINUX_CONF" | grep -i '^\s*INITRD\s' | head -1 | awk '{p
 [[ -n "$INITRD_PATH" ]] && \
     debugfs -R "dump $INITRD_PATH $TMPDIR/initrd.img" "$TMPDIR/root.ext4" 2>/dev/null || true
 if [[ ! -s "$TMPDIR/initrd.img" ]]; then
-    SYS=${SYS:-$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/.." \
+    SYS=${SYS:-$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/../modules" \
         systems/mobile-encrypted.scm 2>/dev/null | grep '^/gnu/store' | tail -1)}
     cp "$(readlink -f "$SYS/initrd")" "$TMPDIR/initrd.img"
 fi
@@ -155,7 +155,7 @@ unset PASSPHRASE1 PASSPHRASE2
 
 # ── pro1x-xts-encrypt ────────────────────────────────────────────────────────
 echo "==> pro1x-xts-encrypt"
-XTS_PKG=$(guix build pro1x-xts-encrypt -L "$SCRIPT_DIR/.." --fallback \
+XTS_PKG=$(guix build pro1x-xts-encrypt -L "$SCRIPT_DIR/../modules" --fallback \
     2>&1 | grep '^/gnu/store' | grep -v '\.drv$' | tail -1)
 XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 [[ -x "$XTS_ENC" ]] || die "pro1x-xts-encrypt not found at $XTS_ENC"

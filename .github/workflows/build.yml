@@ -150,7 +150,7 @@ jobs:
         run: |
           guix time-machine --disable-authentication -C channels-ci.scm -- \
             build u-boot-pro1x \
-            -L . \
+            -L modules \
             --no-grafts \
             --fallback \
             2>&1 | tee /tmp/uboot.log || true
@@ -199,7 +199,7 @@ jobs:
         run: |
           TM="guix time-machine --disable-authentication -C channels-ci.scm --"
           mkdir -p /tmp/prefetch
-          $TM repl -L . .github/prefetch-sources.scm > /tmp/prefetch/list
+          $TM repl -L modules .github/prefetch-sources.scm > /tmp/prefetch/list
           cat /tmp/prefetch/list
           while read -r url name; do
             curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors \
@@ -208,7 +208,7 @@ jobs:
               || { echo "WARNING: prefetch failed: $url"; rm -f "/tmp/prefetch/$name"; }
           done < /tmp/prefetch/list
           ls /tmp/prefetch/*.tar.gz >/dev/null 2>&1 \
-            && $TM repl -L . .github/prefetch-sources.scm /tmp/prefetch/*.tar.gz
+            && $TM repl -L modules .github/prefetch-sources.scm /tmp/prefetch/*.tar.gz
           rm -rf /tmp/prefetch
 
       # ── Build system image ────────────────────────────────────────────────
@@ -219,7 +219,7 @@ jobs:
             system image \
             --image-type=efi-raw \
             --no-grafts \
-            -L . \
+            -L modules \
             systems/mobile.scm \
             2>&1 | tee /tmp/image.log || true
           IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)

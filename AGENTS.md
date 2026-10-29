@@ -22,7 +22,7 @@ assume NixOS and systemd and have to be translated, not copied.
 |---|---|
 | Author (the person who owns the work) | mlaparie |
 | Device, SoC | F(x)tec Pro¹x (QX1050), SM6115 / Snapdragon 662 |
-| Kernel | `linux-pro1x` in `fxtec-pro1x/packages/kernel.scm`; patches and config in `device/kernel/` (from the NixOS port) |
+| Kernel | `linux-pro1x` in `modules/fxtec-pro1x/packages/kernel.scm`; patches and config in `device/kernel/` (from the NixOS port) |
 | Target OS | Guix System; channel commits pinned in `channels-lock.scm` (local) and `channels-ci.scm` (CI) |
 | Repositories | sr.ht `~mlaparie/fxtec-pro1x-guix` (primary, `origin`), GitHub `mlaparie/fxtec-pro1x-guix` (mirror, CI) |
 | How the agent reaches the device | `ssh user@172.16.42.1` over USB gadget Ethernet, then `sudo` |

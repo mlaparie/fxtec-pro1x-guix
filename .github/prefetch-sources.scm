@@ -1,14 +1,14 @@
 ;;; .github/prefetch-sources.scm — list GitHub tarball sources of this channel
 ;;;
-;;; Prints "URL FILE-NAME" for each package in fxtec-pro1x/packages whose
+;;; Prints "URL FILE-NAME" for each package in modules/fxtec-pro1x/packages whose
 ;;; source is a url-fetch from github.com.  CI downloads these with retries
 ;;; and adds them to the store, because the daemon's own anonymous download
 ;;; gets HTTP 429 from codeload.github.com on runners and no Guix mirror
 ;;; carries these tarballs.  Same file name and hash, so the store path is
 ;;; the one the package expects.
 ;;;
-;;; Usage: guix repl -L . .github/prefetch-sources.scm          list
-;;;        guix repl -L . .github/prefetch-sources.scm FILE...  add to store
+;;; Usage: guix repl -L modules .github/prefetch-sources.scm          list
+;;;        guix repl -L modules .github/prefetch-sources.scm FILE...  add to store
 ;;;
 ;;; add-to-store sends the file's contents over the daemon socket, so the
 ;;; daemon never needs to see the file itself.
@@ -31,7 +31,7 @@
   (exit 0))
 
 (define modules
-  (all-modules `((,(getcwd) . "fxtec-pro1x/packages"))))
+  (all-modules `((,(string-append (getcwd) "/modules") . "fxtec-pro1x/packages"))))
 
 (define (github-source package)
   (let ((source (package-source package)))

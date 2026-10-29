@@ -26,6 +26,6 @@ cd "$(dirname "$0")/.."
 
 PRO1X_SYSTEM="${1:-systems/mobile.scm}" \
 PRO1X_HOST="${2:-172.16.42.1}" \
-    guix deploy -L . deploy/pro1x.scm
+    guix deploy -L modules deploy/pro1x.scm
 
 echo "Deployed.  Reboot the phone if the kernel, initrd or firmware changed."

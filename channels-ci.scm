@@ -1,6 +1,6 @@
 ;;; channels-ci.scm — pinned guix+nonguix for GitHub Actions builds
 ;;;
-;;; Does NOT include fxtec-pro1x — the CI workflow uses -L . instead
+;;; Does NOT include fxtec-pro1x — the CI workflow uses -L modules instead
 ;;; so it always builds the current checkout, not a pinned commit.
 ;;;
 ;;; Update commits with: git ls-remote <url> refs/heads/master
