@@ -201,6 +201,13 @@ files root may log in with."
 
      (service seatd-service-type)
      (service dbus-root-service-type)
+     ;; BlueZ.  The WCN3950 works when powered from boot; on Linux 7.1 it
+     ;; does not answer again after a power-down (reported on SailfishOS,
+     ;; gone on 7.3), so it is powered at start and toggling it off in the
+     ;; shell can need a reboot to bring it back.
+     (service bluetooth-service-type
+              (bluetooth-configuration
+               (auto-enable? #t)))
      (service network-manager-service-type
               (network-manager-configuration
                ;; In conf.d, not through etc-service-type: an /etc entry

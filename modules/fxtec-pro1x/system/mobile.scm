@@ -109,6 +109,29 @@
                ;; wants gnome-session.
                #$(file-append phosh-pro1x "/libexec/phosh")))))
 
+;; Sxmo on sway, for greetd.  Logs to /tmp/sxmo-UID.log (greetd discards
+;; session output).  Sxmo also needs superd, its user service manager, not
+;; packaged yet: its start hook waits for `superctl status' (TODO.md).
+(define sxmo-session
+  (program-file "start-sxmo"
+    #~(begin
+        (setenv "WLR_BACKENDS" "drm,libinput")
+        (let ((d (getenv "XDG_DATA_DIRS")))
+          (setenv "XDG_DATA_DIRS"
+                  (string-append "/run/current-system/profile/share"
+                                 (if d (string-append ":" d) ""))))
+        (unless (getenv "XDG_RUNTIME_DIR")
+          (setenv "XDG_RUNTIME_DIR"
+                  (string-append "/run/user/" (number->string (getuid)))))
+        (let ((log (open-file (string-append "/tmp/sxmo-"
+                                             (number->string (getuid))
+                                             ".log")
+                              "w")))
+          (dup2 (fileno log) 1)
+          (dup2 (fileno log) 2))
+        (execl #$(file-append sxmo-utils "/bin/sxmo_swayinit.sh")
+               "sxmo_swayinit.sh"))))
+
 ;; Bare sway session for greetd.
 (define sway-session
   (program-file "start-sway"
@@ -258,7 +281,7 @@ files root may log in with."
         `("wayland-sessions/swmo.desktop"
           ,(mixed-text-file "swmo.desktop"
              "[Desktop Entry]\nName=Sxmo + Sway\nExec="
-             (file-append sxmo-utils "/bin/sxmo_swayinit.sh")
+             sxmo-session
              "\nType=Application\n"))
         `("wayland-sessions/sway.desktop"
           ,(mixed-text-file "sway.desktop"
@@ -363,6 +386,13 @@ Dracula palette, no kernel messages over the greeter.")
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
+     ;; BlueZ.  The WCN3950 works when powered from boot; on Linux 7.1 it
+     ;; does not answer again after a power-down (reported on SailfishOS,
+     ;; gone on 7.3), so it is powered at start and toggling it off in the
+     ;; shell can need a reboot to bring it back.
+     (service bluetooth-service-type
+              (bluetooth-configuration
+               (auto-enable? #t)))
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type
