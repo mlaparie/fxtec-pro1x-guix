@@ -366,8 +366,9 @@
      ;; Mobile UIs
      phoc-pro1x
      phosh-pro1x
-     ;; GNOME Settings, opened by the gear in Phosh's top panel.  Phosh
-     ;; Mobile Settings is not packaged yet (TODO.md).
+     ;; Phosh Mobile Settings opens from the gear in Phosh's top panel,
+     ;; GNOME Settings from a long press on a quick setting.
+     phosh-mobile-settings
      gnome-control-center
      sxmo-utils
      clickclack
