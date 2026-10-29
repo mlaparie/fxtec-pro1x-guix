@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Stub schema extracted from gnome-shell 49.4 for use without gnome-shell installed.
+     Phosh uses g_settings_new("org.gnome.shell.keybindings") for screenshot shortcuts. -->
+<schemalist>
+  <schema id="org.gnome.shell.keybindings" path="/org/gnome/shell/keybindings/">
+    <key name="shift-overview-up" type="as"><default>["&lt;Super&gt;&lt;Alt&gt;Up"]</default></key>
+    <key name="shift-overview-down" type="as"><default>["&lt;Super&gt;&lt;Alt&gt;Down"]</default></key>
+    <key name="toggle-application-view" type="as"><default>["&lt;Super&gt;a"]</default></key>
+    <key name="toggle-overview" type="as"><default>[]</default></key>
+    <key name="toggle-message-tray" type="as"><default>["&lt;Super&gt;v","&lt;Super&gt;m"]</default></key>
+    <key name="toggle-quick-settings" type="as"><default>["&lt;Super&gt;s"]</default></key>
+    <key name="focus-active-notification" type="as"><default>["&lt;Super&gt;n"]</default></key>
+    <key name="switch-to-application-1" type="as"><default>["&lt;Super&gt;1"]</default></key>
+    <key name="switch-to-application-2" type="as"><default>["&lt;Super&gt;2"]</default></key>
+    <key name="switch-to-application-3" type="as"><default>["&lt;Super&gt;3"]</default></key>
+    <key name="switch-to-application-4" type="as"><default>["&lt;Super&gt;4"]</default></key>
+    <key name="switch-to-application-5" type="as"><default>["&lt;Super&gt;5"]</default></key>
+    <key name="switch-to-application-6" type="as"><default>["&lt;Super&gt;6"]</default></key>
+    <key name="switch-to-application-7" type="as"><default>["&lt;Super&gt;7"]</default></key>
+    <key name="switch-to-application-8" type="as"><default>["&lt;Super&gt;8"]</default></key>
+    <key name="switch-to-application-9" type="as"><default>["&lt;Super&gt;9"]</default></key>
+    <key name="open-new-window-application-1" type="as"><default>["&lt;Super&gt;&lt;Control&gt;1"]</default></key>
+    <key name="open-new-window-application-2" type="as"><default>["&lt;Super&gt;&lt;Control&gt;2"]</default></key>
+    <key name="open-new-window-application-3" type="as"><default>["&lt;Super&gt;&lt;Control&gt;3"]</default></key>
+    <key name="open-new-window-application-4" type="as"><default>["&lt;Super&gt;&lt;Control&gt;4"]</default></key>
+    <key name="open-new-window-application-5" type="as"><default>["&lt;Super&gt;&lt;Control&gt;5"]</default></key>
+    <key name="open-new-window-application-6" type="as"><default>["&lt;Super&gt;&lt;Control&gt;6"]</default></key>
+    <key name="open-new-window-application-7" type="as"><default>["&lt;Super&gt;&lt;Control&gt;7"]</default></key>
+    <key name="open-new-window-application-8" type="as"><default>["&lt;Super&gt;&lt;Control&gt;8"]</default></key>
+    <key name="open-new-window-application-9" type="as"><default>["&lt;Super&gt;&lt;Control&gt;9"]</default></key>
+    <key name="show-screenshot-ui" type="as"><default>["Print"]</default></key>
+    <key name="show-screen-recording-ui" type="as"><default>["&lt;Ctrl&gt;&lt;Shift&gt;&lt;Alt&gt;R"]</default></key>
+    <key name="screenshot-window" type="as"><default>["&lt;Alt&gt;Print"]</default></key>
+    <key name="screenshot" type="as"><default>["&lt;Shift&gt;Print"]</default></key>
+    <key name="screen-brightness-up" type="as"><default>['XF86MonBrightnessUp']</default></key>
+    <key name="screen-brightness-up-monitor" type="as"><default>['&lt;Shift&gt;XF86MonBrightnessUp']</default></key>
+    <key name="screen-brightness-down" type="as"><default>['XF86MonBrightnessDown']</default></key>
+    <key name="screen-brightness-down-monitor" type="as"><default>['&lt;Shift&gt;XF86MonBrightnessDown']</default></key>
+    <key name="screen-brightness-cycle" type="as"><default>['XF86MonBrightnessCycle']</default></key>
+    <key name="screen-brightness-cycle-monitor" type="as"><default>['&lt;Shift&gt;XF86MonBrightnessCycle']</default></key>
+  </schema>
+</schemalist>
