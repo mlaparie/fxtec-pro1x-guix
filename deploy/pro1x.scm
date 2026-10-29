@@ -7,9 +7,9 @@
 ;;; Kernel, initrd and firmware changes need a reboot.  The previous
 ;;; generations stay in the U-Boot menu.
 ;;;
-;;; Needs on the phone: root SSH login with keys/pro1x-guix.pub (set in the
-;;; systems/*.scm openssh configuration).  Its private key is
-;;; ~/.ssh/pro1x-guix on the host, a key used for nothing else.
+;;; Needs on the phone: root SSH login with ~/.ssh/pro1x-guix.pub, the key
+;;; scripts/flash.sh made on this host (systems/*.scm read it).  Its private
+;;; key is ~/.ssh/pro1x-guix, a key used for nothing else.
 ;;;
 ;;; The host's signing key (/etc/guix/signing-key.pub) is added to the
 ;;; deployed system's guix-configuration authorized-keys.  guix deploy

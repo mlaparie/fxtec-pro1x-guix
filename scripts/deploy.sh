@@ -9,8 +9,11 @@
 # scripts/flash.sh, so unchanged store items are not copied again), copies
 # the closure as root over SSH, and activates it as a new generation, like
 # guix system reconfigure.  Kernel, initrd and firmware changes need a
-# reboot.  Older generations stay in the U-Boot menu (hold volume-down).  Needs an image flashed with root SSH by key
-# (keys/pro1x-guix.pub); the private key is ~/.ssh/pro1x-guix.
+# reboot.  Older generations stay in the U-Boot menu (hold volume-down).
+# Needs root SSH by the key scripts/flash.sh made, ~/.ssh/pro1x-guix: on in
+# the system as flashed; in a configuration made from /etc/guix/config.scm
+# only if its #:root-ssh-keys line is uncommented.  It deploys
+# systems/mobile.scm, the port's system, replacing such a configuration.
 #
 # After a reflash the phone has a new SSH host key and guix deploy stops
 # with "known-changed".  Refresh it (USB link to your own phone):

@@ -1,41 +1,6 @@
 # Release notes
 
-## 0.1.3 — 2026-10-29
-
-- A configuration to start from on the phone: `/etc/guix/config.scm`
-  inherits the port's system from the channel (new module
-  `(fxtec-pro1x system mobile)`, procedure
-  `pro1x-mobile-operating-system`), so `guix pull` still brings the
-  port's changes to a customised system.  It lists root's SSH keys
-  inline, with what they are for (`guix deploy` from a PC) and how to
-  drop them.  See README "Your system configuration".
-- `systems/mobile.scm` only adds the key from `keys/pro1x-guix.pub`;
-  the system it builds is unchanged apart from that file.
-- The minimal and encrypted systems still define everything themselves.
-
-## 0.1.2 — 2026-10-29
-
-- CI can publish releases: the release step was refused ("Resource not
-  accessible by integration") because the workflow did not ask for
-  `contents: write`; 0.1.0 and 0.1.1 have tags but no GitHub release.
-  Otherwise the same as 0.1.1.
-
-## 0.1.1 — 2026-10-29
-
-- The channel can be pulled: `guix pull` failed to build it, because
-  Guix compiles every `.scm` file in a channel's directory and the
-  repository also holds scripts and system files.  The modules now live
-  under `modules/` (`.guix-channel`: `(directory "modules")`); in a
-  checkout, use `-L modules` instead of `-L .`.  The kernel module no
-  longer uses `current-filename`, which is unset when Guix builds a
-  channel.  Built systems are unchanged (same derivations as 0.1.0).
-- The U-Boot "previous generation" entries are refreshed whenever
-  `extlinux.conf` changes (deploy, reconfigure, delete-generations,
-  roll-back, switch-generation), no longer only at boot.  Not tested on
-  the phone yet.
-- Keymap: Sym types `\` and `|`; Fn+l, Fn+p, Fn+/ give `;`, `\`, `|`.
-
-## 0.1.0 — 2026-10-29
+## 0.1.0 — not released yet
 
 First release of GNU Guix System for the F(x)tec Pro¹x (QX1050,
 SM6115): a near-mainline Linux 7.1 kernel, U-Boot chainloaded from the
@@ -59,17 +24,23 @@ built by CI from `systems/mobile.scm`:
   locally (needs Guix).
 
 Log in as `user`, password `123456`; change it.  Release images carry no
-root SSH key: `scripts/deploy.sh` needs your own key in `keys/` and an
-image or generation built with it.
+root SSH key: `scripts/deploy.sh` needs an image built by
+`scripts/flash.sh`, which makes the key (`~/.ssh/pro1x-guix`).
+
+To customise the system, copy `/etc/guix/config.scm` and
+`/etc/guix/channels.scm` to `~/.config/guix/` on the phone (README, "Your
+system configuration"): the configuration inherits the port's system
+from the channel, and root SSH for deploys is opt-in there.
 
 ### Works (tested on the phone)
 
 - Boot through U-Boot and extlinux; earlier generations in the boot menu
   (hold volume-down at power-on); A/B slot marking.
+- `guix pull` of this channel, and `guix system reconfigure` on the
+  phone from `/etc/guix/config.scm`.
 - `guix system delete-generations`, `roll-back` and `switch-generation`
-  on the phone (for generations from this release on); run
-  `sudo herd start pro1x-boot-menu` afterwards to refresh the U-Boot
-  menu.
+  on the phone; the U-Boot "previous generation" entries follow every
+  change of the boot menu (refresh on each change: not tested yet).
 - Updates without reflashing: `scripts/deploy.sh` (guix deploy over USB
   Ethernet).
 - Display (60 Hz), touch, landscape console with a Dracula palette.

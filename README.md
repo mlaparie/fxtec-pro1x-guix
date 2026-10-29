@@ -133,7 +133,11 @@ guix shell -m manifest.scm -- bash scripts/flash.sh systems/minimal.scm
 ```
 
 Builds U-Boot, wraps it as an Android boot image, disables vbmeta, erases
-`dtbo_a`, flashes boot + rootfs to slot A, reboots.
+`dtbo_a`, flashes boot + rootfs to slot A, reboots.  Before building, it
+makes a key pair on your PC, `~/.ssh/pro1x-guix`, if there is none: the
+flashed system lets it log in as root for `scripts/deploy.sh`, and keeps
+its public half on the phone as `~/.ssh/pro1x-guix.pub` (see "Your system
+configuration").
 
 Log in as `user` (password `123456` — **change it**) on the console or over
 USB Ethernet:
@@ -144,45 +148,49 @@ ssh user@172.16.42.1
 
 ## Your system configuration
 
-On the phone, `/etc/guix/config.scm` is a short starting configuration:
-it inherits the port's system from the channel
-(`pro1x-mobile-operating-system` in `(fxtec-pro1x system mobile)`), so
-`guix pull` keeps bringing the port's fixes while your changes stay in
-your file.  To make it yours:
+As flashed, the phone runs the port's system unchanged.  To customise it
+beyond that (your own packages, services, users, timezone, channels),
+copy the two starting files the phone ships into `~/.config/guix/` and
+edit them there:
 
 ```sh
-cp /etc/guix/channels.scm /etc/guix/config.scm ~/.config/guix/
+cp /etc/guix/config.scm /etc/guix/channels.scm ~/.config/guix/
 guix pull                    # then log out and back in once
 sudo guix system reconfigure ~/.config/guix/config.scm
 ```
 
-Add your own channels to `channels.scm`, and packages, services or users
-to `config.scm` (it shows how).  The file lists root's SSH keys inline:
-they let `guix deploy` from a PC update the phone (next section).  Keep
-them to allow that, delete them to turn it off.  Do not start from
-`/run/current-system/configuration.scm`: that is the port's full
-definition and freezes it.  `guix system delete-generations`, `roll-back`
-and `switch-generation` work on the phone and refresh the U-Boot menu.
+- `channels.scm` lists guix, nonguix and fxtec-pro1x; add your own
+  channels to it.
+- `config.scm` inherits the port's system from the channel
+  (`pro1x-mobile-operating-system` in `(fxtec-pro1x system mobile)`), so
+  `guix pull` keeps bringing the port's fixes while your changes stay in
+  your file.  It shows where your changes go.  It holds no key and no
+  password, so you can keep it with your other dotfiles.
+- Root SSH login, used by `scripts/deploy.sh` (next section), is **off**
+  in it: to allow deploys from your PC, uncomment the `#:root-ssh-keys`
+  line.  It refers to `~/.ssh/pro1x-guix.pub` on the phone, the public
+  key of your PC that `scripts/flash.sh` put there.
+
+Do not start from `/run/current-system/configuration.scm`: that is the
+port's own system file, not meant to be edited.  `guix system
+delete-generations`, `roll-back` and `switch-generation` work on the phone
+and refresh the U-Boot menu.
 
 ## Updating without reflashing
 
-`scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`): builds on the
-host, copies over SSH as root, adds a generation and activates it, like
-`guix system reconfigure`.  Kernel, initrd and firmware changes need a
-reboot.  Previous generations are selectable from the U-Boot menu (hold
-volume-down at power-on).  It deploys `systems/mobile.scm`, the port's
-system as shipped, so it replaces a configuration made on the phone.
+`scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`) from your PC:
+builds there, copies over SSH as root, adds a generation and activates
+it, like `guix system reconfigure`.  Kernel, initrd and firmware changes
+need a reboot.  Previous generations are selectable from the U-Boot menu
+(hold volume-down at power-on).  It deploys `systems/mobile.scm`, the
+port's system as shipped, so it replaces a configuration made on the
+phone; it is a tool for working on the port.
 
-It logs in as root with your own key.  Create it **before building the image
-you flash**, because the image only lets in the key present at build time:
-
-```sh
-ssh-keygen -t ed25519 -C pro1x-guix -f ~/.ssh/pro1x-guix
-cp ~/.ssh/pro1x-guix.pub keys/pro1x-guix.pub   # not tracked by git
-```
-
-Without `keys/pro1x-guix.pub` the image has no root SSH login at all (CI
-images never have one).  Then, with the phone on USB:
+It logs in as root with the key `scripts/flash.sh` makes on your PC,
+`~/.ssh/pro1x-guix` (without a passphrase: guix deploy cannot ask for
+one).  The flashed system lets that key in; images flashed from a
+ready-made rootfs (`--rootfs`, CI images) have no root SSH login.  With
+the phone on USB:
 
 ```sh
 bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1

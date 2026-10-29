@@ -4,8 +4,8 @@
 ;;;   guix pull -C channels-lock.scm
 ;;;   guix system -C channels-lock.scm reconfigure systems/mobile.scm
 ;;;
-;;; guix and nonguix: the commits release 0.1.3 was built and tested with
-;;; (same as channels-ci.scm).  fxtec-pro1x: the release tag.
+;;; guix and nonguix: the commits this port is built and tested with (same
+;;; as channels-ci.scm).  fxtec-pro1x: main until the first release.
 ;;;
 ;;; Regenerate with:
 ;;;   guix describe --format=channels > channels-lock.scm
@@ -37,5 +37,4 @@
  (channel
   (name 'fxtec-pro1x)
   (url "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-  (branch "main")
-  (commit "v0.1.3")))  ; a tag: Guix resolves commit as tag-or-commit
+  (branch "main")))  ; pinned to the release tag once 0.1.0 is released

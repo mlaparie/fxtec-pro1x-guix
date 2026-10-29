@@ -7,7 +7,7 @@ backup-*/
 *.img
 
 # Owner-specific root SSH key for scripts/deploy.sh (see README).
-keys/*.pub
+keys/*.pub   # old location of the deploy key, now ~/.ssh/pro1x-guix.pub
 
 # Python bytecode written when scripts/mkvbmeta.py runs
 __pycache__/

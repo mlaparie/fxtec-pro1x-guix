@@ -4,11 +4,24 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-10-29):** generations deployed with `scripts/deploy.sh`
-from the commits named below; the last one *booted* is 7 (3b1c86d), later
-ones (up to 15, ad1b59d) were only activated, with the same kernel and
-initrd.  `guix system list-generations` on the phone; the boot menu keeps
-the newest one plus three previous (`prev1-3`).
+**On the phone (2026-10-29, evening):** generations 1 (flashed image), 25,
+26 (booted) and 27 (keymap), deployed from the PC before the channel
+layout change; off the network until the author pulls the channel and
+reconfigures from `/etc/guix/config.scm`.  Not yet on the phone: the
+U-Boot slot watcher, `modules/` layout, `/etc/guix/config.scm`, the
+opt-in root key.  No release yet: tags v0.1.0-v0.1.3 were deleted
+(author); the first release follows this round of fixes.
+
+**Configuration workflow (2026-10-29):** the systems live in the channel
+(`(fxtec-pro1x system mobile|minimal|mobile-encrypted)`); `systems/*.scm`
+add root's key, read from `~/.ssh/pro1x-guix.pub` on the build host (made
+by `scripts/flash.sh`) or `/home/user/.ssh/pro1x-guix.pub` on the phone.
+The flashed system puts that public key in the user's home (skeleton) and
+ships `/etc/guix/config.scm`, which inherits the system and has the
+`#:root-ssh-keys` line commented out (opt-in, no key in the file).
+Evaluated on the PC for the three systems: template as shipped has no
+root key; uncommented gives the stock system's derivation exactly.  Not
+tried on the phone.
 
 **Reference repos** (clone to /tmp when needed):
 - NixOS port (working hardware reference):
