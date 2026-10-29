@@ -22,8 +22,12 @@
              (gnu packages gnome)
              (gnu packages linux)
              (gnu packages networking)
+             (gnu packages ntp)
              (gnu packages ssh)
+             (gnu packages freedesktop)    ; libqmi, libqrtr-glib
              (gnu packages version-control)
+             (gnu packages emacs)
+             (gnu packages video)
              (gnu packages vim)
              (gnu packages gnuzilla)
              (gnu packages web-browsers)
@@ -41,6 +45,7 @@
              (fxtec-pro1x packages misc)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services fde)
              (fxtec-pro1x services hardware)
@@ -56,6 +61,16 @@
     (source "/dev/disk/by-partlabel/userdata")
     (targets '("pro1x-crypt"))
     (type luks-pro1x-device-mapping))))
+
+;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
+;; each owner puts their own public key there (README, "Updating without
+;; reflashing").  Without it, root has no SSH login.
+(define %root-ssh-keys
+  (let ((file (string-append (dirname (or (current-filename) "systems/."))
+                             "/../keys/pro1x-guix.pub")))
+    (if (file-exists? file)
+        `(("root" ,(local-file (canonicalize-path file) "pro1x-guix.pub")))
+        '())))
 
 (operating-system
   (host-name "pro1x")
@@ -90,7 +105,9 @@
    (bootloader-configuration
     (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Encrypted device + filesystems ────────────────────────────────────────
   (mapped-devices %fde-mapped-devices)
@@ -103,13 +120,13 @@
       (mount-point "/boot")
       (type "ext4")
       (check? #f)
-      (options "noatime"))
+      (flags '(no-atime)))
     ;; Encrypted root on the LUKS2 device.
     (file-system
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime")
+      (flags '(no-atime))
       (dependencies %fde-mapped-devices))
     %base-file-systems))
 
@@ -121,7 +138,7 @@
      (group "users")
      (home-directory "/home/user")
      (supplementary-groups
-      '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd" "seat"))
      (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
 
@@ -131,19 +148,16 @@
     (list
      (service pro1x-hardware-service-type)
 
-     (simple-service 'nm-unmanaged-usb0 etc-service-type
-       (list `("NetworkManager/conf.d/unmanaged.conf"
-               ,(plain-file "nm-unmanaged.conf"
-                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
-               (xkb-layout "fi")
-               (xkb-variant "nodeadkeys")))
+               (xkb-layout "us")
+               (xkb-variant "intl")))
      (service pro1x-modem-service-type)
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
      (service pro1x-sensors-service-type)
+     (service pro1x-rootfs-resize-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))
@@ -152,8 +166,8 @@
        (list
         (shepherd-service
          (provision '(phosh))
-         (requirement '(user-processes udev dbus-system file-systems))
-         (documentation "Phosh mobile shell (phoc + squeekboard)")
+         (requirement '(user-processes udev dbus-system elogind file-systems))
+         (documentation "Phosh mobile shell (phoc-pro1x + phosh)")
          (start
           #~(make-forkexec-constructor
              (list "/bin/sh" "-c"
@@ -163,9 +177,12 @@
                     " && chmod 0700 /run/user/1000"
                     " && exec " #$(file-append shadow "/bin/su")
                     " -l user -s /bin/sh -c"
-                    " 'exec env XDG_RUNTIME_DIR=/run/user/1000 "
-                    #$(file-append phoc-pro1x "/bin/phoc")
-                    " -C /etc/phoc.ini -E squeekboard'"))
+                    " 'exec env"
+                    " XDG_RUNTIME_DIR=/run/user/1000"
+                    " WLR_BACKENDS=drm,libinput"
+                    " " #$(file-append phoc-pro1x "/bin/phoc")
+                    " -S -C /etc/phoc.ini -E "
+                    #$(file-append phosh-pro1x "/libexec/phosh") "'"))
              #:log-file "/var/log/phosh.log"))
          (stop #~(make-kill-destructor))
          (respawn? #t))))
@@ -176,16 +193,48 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
-     (service elogind-service-type)
+     ;; /etc/pam.d/phosh: the lock screen checks the passcode with PAM
+     ;; service "phosh"; without it PAM falls back to "other" and denies.
+     (simple-service 'phosh-pam pam-root-service-type
+       (list (unix-pam-service "phosh")))
+
+     (service seatd-service-type)
      (service dbus-root-service-type)
-     (service network-manager-service-type)
+     (service network-manager-service-type
+              (network-manager-configuration
+               ;; In conf.d, not through etc-service-type: an /etc entry
+               ;; makes /etc/NetworkManager a read-only store link, and NM's
+               ;; activation then fails to create system-connections.
+               (extra-configuration-files
+                (list
+                 ;; Leave usb0 to pro1x-usb-network (static IP, dnsmasq).
+                 `("unmanaged.conf"
+                   ,(plain-file "nm-unmanaged.conf"
+                                "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))
+                 ;; Saved connections stay where earlier images put them.
+                 `("connections.conf"
+                   ,(plain-file "nm-connections.conf"
+                                "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))))
      (service wpa-supplicant-service-type)
+
+     ;; NTP — no hardware RTC; -g allows stepping the clock from 1970
+     (service ntp-service-type
+              (ntp-configuration
+               (allow-large-adjustment? #t)))
 
      (service openssh-service-type
               (openssh-configuration
-               (password-authentication? #t))))
+               (password-authentication? #t)
+               ;; Root by key only, for guix deploy (scripts/deploy.sh).
+               (permit-root-login 'prohibit-password)
+               (authorized-keys %root-ssh-keys))))
 
     (modify-services %base-services
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)
@@ -199,7 +248,10 @@
     (list
      icecat
      gnome-console
-     iw usbutils vim git font-terminus
-     gsettings-desktop-schemas
-     phoc-pro1x)
+     libqmi libqrtr-glib
+     iw ntp usbutils vim git font-terminus
+     gsettings-desktop-schemas mutter
+     phoc-pro1x
+     phosh-pro1x
+     emacs mpv nnn)
     %base-packages)))

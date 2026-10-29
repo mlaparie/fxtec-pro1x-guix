@@ -34,10 +34,21 @@
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services hardware)
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
              (fxtec-pro1x services usb-network))
+
+;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
+;; each owner puts their own public key there (README, "Updating without
+;; reflashing").  Without it, root has no SSH login.
+(define %root-ssh-keys
+  (let ((file (string-append (dirname (or (current-filename) "systems/."))
+                             "/../keys/pro1x-guix.pub")))
+    (if (file-exists? file)
+        `(("root" ,(local-file (canonicalize-path file) "pro1x-guix.pub")))
+        '())))
 
 (operating-system
   (host-name "pro1x")
@@ -84,7 +95,9 @@
     ;; U-Boot looks for extlinux.conf via sysboot on the ext4 userdata partition.
     (targets '("/dev/disk/by-partlabel/userdata"))
     (menu-entries '())           ; extra entries managed by pro1x-boot-menu
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
@@ -95,7 +108,7 @@
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime"))
+      (flags '(no-atime)))
     %base-file-systems))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────
@@ -120,13 +133,6 @@
      ;; Hardware baseline: udev rules, feedbackd group
      (service pro1x-hardware-service-type)
 
-     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
-     ;; assign the static IP and run dnsmasq without interference.
-     (simple-service 'nm-unmanaged-usb0 etc-service-type
-       (list `("NetworkManager/conf.d/unmanaged.conf"
-               ,(plain-file "nm-unmanaged.conf"
-                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
-
      ;; USB gadget Ethernet + DHCP server
      (service pro1x-usb-network-service-type)
 
@@ -150,14 +156,26 @@
                (generations 3)))
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
-     (service network-manager-service-type)
+     (service network-manager-service-type
+              (network-manager-configuration
+               ;; In conf.d, not through etc-service-type: an /etc entry
+               ;; makes /etc/NetworkManager a read-only store link, and NM's
+               ;; activation then fails to create system-connections.
+               (extra-configuration-files
+                (list
+                 ;; Leave usb0 to pro1x-usb-network (static IP, dnsmasq).
+                 `("unmanaged.conf"
+                   ,(plain-file "nm-unmanaged.conf"
+                                "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))))
      (service wpa-supplicant-service-type)
 
      ;; SSH for USB-ethernet access
      (service openssh-service-type
               (openssh-configuration
                (password-authentication? #t)
-               (permit-root-login 'prohibit-password)))
+               ;; Root by key only, for guix deploy (scripts/deploy.sh).
+               (permit-root-login 'prohibit-password)
+               (authorized-keys %root-ssh-keys)))
 
      ;; tuigreet on tty1; plain agreety on tty2-6
      (service greetd-service-type
@@ -186,6 +204,11 @@
 
     ;; Base Guix services — large font, remove getty (greetd takes over)
     (modify-services %base-services
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
       (console-font-service-type config =>
         (map (match-lambda
                ((tty . _)

@@ -1,7 +1,9 @@
 ;;; systems/mobile.scm — Pro1X Guix mobile desktop system
 ;;;
-;;; Default compositor: Phosh (phoc-pro1x + squeekboard on-screen keyboard)
-;;; Fallback: sway + foot (if Phosh fails, herd stop phosh && XDG_RUNTIME_DIR=/run/user/1000 sway)
+;;; Session selection: greetd + tuigreet on VT1
+;;;   • Phosh   — phoc-pro1x compositor + phosh-pro1x shell
+;;;   • Sxmo    — sway/Wayland via sxmo_swayinit.sh (sxmo-utils)
+;;;   • Sway    — bare sway + foot (manual fallback; see README)
 ;;;
 ;;; Includes:
 ;;;   • Camera stack (libcamera-pro1x, cameractrl)
@@ -11,20 +13,33 @@
 (define-module (systems mobile))
 
 (use-modules (gnu)
+             (guix gexp)
              (fxtec-pro1x packages bootloader)
+             (gnu packages bash)
              (gnu packages fonts)
              (ice-9 match)
              (gnu packages admin)
+             (gnu packages glib)
              (gnu packages base)
              (gnu packages gnome)
              (gnu packages linux)
              (gnu packages networking)
+             (gnu packages ntp)
              (gnu packages ssh)
+             (gnu packages freedesktop)    ; libqmi, libqrtr-glib
              (gnu packages version-control)
              (gnu packages vim)
+             (gnu packages messaging)
              (gnu packages gnuzilla)
              (gnu packages terminals)
+             (gnu packages image)          ; grim, slurp
+             (gnu packages music)          ; playerctl
+             (gnu packages rust-apps)      ; i3status-rust
+             (gnu packages web)            ; jq
+             (gnu packages xdisorg)        ; wl-clipboard
              (gnu packages web-browsers)
+             (gnu packages emacs)
+             (gnu packages video)
              (gnu packages window-management)
              (nongnu packages linux)
              (gnu services base)
@@ -38,14 +53,86 @@
              (fxtec-pro1x packages firmware)
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x packages misc)
+             (fxtec-pro1x packages sxmo)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services hardware)
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services usb-network))
+
+;; Phosh session launch script for greetd.  Uses absolute store paths so it
+;; works regardless of PATH at session startup.
+(define phosh-pro1x-session
+  (program-file "start-phosh-pro1x"
+    #~(begin
+        (setenv "WLR_BACKENDS" "drm,libinput")
+        (setenv "MOZ_ENABLE_WAYLAND" "1")
+        ;; Upstream's session file has DesktopNames=Phosh;GNOME; which
+        ;; greetd does not turn into XDG_CURRENT_DESKTOP.  Without it GNOME
+        ;; Settings (OnlyShowIn=GNOME) is hidden and does not start.
+        (setenv "XDG_CURRENT_DESKTOP" "Phosh:GNOME")
+        (let ((d (getenv "XDG_DATA_DIRS")))
+          (setenv "XDG_DATA_DIRS"
+                  (string-append "/run/current-system/profile/share"
+                                 (if d (string-append ":" d) ""))))
+        ;; greetd's pam_mount creates /run/user/UID; fall back just in case.
+        (unless (getenv "XDG_RUNTIME_DIR")
+          (setenv "XDG_RUNTIME_DIR"
+                  (string-append "/run/user/" (number->string (getuid)))))
+        ;; Keep the session's output (greetd discards it): /tmp/phosh-UID.log.
+        (let ((log (open-file (string-append "/tmp/phosh-"
+                                             (number->string (getuid))
+                                             ".log")
+                              "w")))
+          (dup2 (fileno log) 1)
+          (dup2 (fileno log) 2))
+        (execl #$(file-append dbus "/bin/dbus-run-session")
+               "dbus-run-session" "--"
+               #$(file-append phoc-pro1x "/bin/phoc")
+               "-S" "-C" "/etc/phoc.ini" "-E"
+               ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
+               ;; wants gnome-session.
+               #$(file-append phosh-pro1x "/libexec/phosh")))))
+
+;; Bare sway session for greetd.
+(define sway-session
+  (program-file "start-sway"
+    #~(begin
+        (setenv "WLR_BACKENDS" "drm,libinput")
+        (setenv "MOZ_ENABLE_WAYLAND" "1")
+        (let ((d (getenv "XDG_DATA_DIRS")))
+          (setenv "XDG_DATA_DIRS"
+                  (string-append "/run/current-system/profile/share"
+                                 (if d (string-append ":" d) ""))))
+        (unless (getenv "XDG_RUNTIME_DIR")
+          (setenv "XDG_RUNTIME_DIR"
+                  (string-append "/run/user/" (number->string (getuid)))))
+        ;; Keep the session's output (greetd discards it): /tmp/sway-UID.log.
+        (let ((log (open-file (string-append "/tmp/sway-"
+                                             (number->string (getuid))
+                                             ".log")
+                              "w")))
+          (dup2 (fileno log) 1)
+          (dup2 (fileno log) 2))
+        ;; A session bus for mako and other clients, as for Phosh.  The
+        ;; config is ~/.config/sway/config (skeleton below).
+        (execl #$(file-append dbus "/bin/dbus-run-session")
+               "dbus-run-session" "--"
+               #$(file-append sway "/bin/sway")))))
+
+;; Root SSH key for scripts/deploy.sh.  keys/pro1x-guix.pub is not in git:
+;; each owner puts their own public key there (README, "Updating without
+;; reflashing").  Without it, root has no SSH login.
+(define %root-ssh-keys
+  (let ((file (string-append (dirname (or (current-filename) "systems/."))
+                             "/../keys/pro1x-guix.pub")))
+    (if (file-exists? file)
+        `(("root" ,(local-file (canonicalize-path file) "pro1x-guix.pub")))
+        '())))
 
 (operating-system
   (host-name "pro1x")
@@ -59,6 +146,8 @@
     (list
      "console=ttyMSM0,115200n8"
      "console=tty1"
+     ;; Text console (tuigreet) in landscape, like sway (keyboard out).
+     "fbcon=rotate:1"
      "loglevel=4"
      "g_cdc.host_addr=02:50:31:e8:00:01"
      "g_cdc.dev_addr=02:50:31:e8:00:02")
@@ -75,7 +164,9 @@
    (bootloader-configuration
     (bootloader pro1x-extlinux-bootloader)
     (targets '("/dev/disk/by-partlabel/userdata"))
-    (timeout 3)))
+    ;; "GNU Guix Boot Options" stays 10 s (it cannot be navigated with the
+    ;; phone buttons; hold volume-down at power-on for the U-Boot menu).
+    (timeout 10)))
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
@@ -84,8 +175,17 @@
       (device (file-system-label "guix"))
       (mount-point "/")
       (type "ext4")
-      (options "noatime"))
+      (flags '(no-atime)))
     %base-file-systems))
+
+  ;; ── Home skeleton: sway and bar configs for new accounts ─────────────────
+  (skeletons
+   (append
+    `((".config/sway/config"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
+      (".config/i3status-rust/config.toml"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml")))
+    (default-skeletons)))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────
   (users
@@ -95,12 +195,21 @@
      (group "users")
      (home-directory "/home/user")
      (supplementary-groups
-      '("wheel" "netdev" "video" "input" "audio" "feedbackd"))
+      '("wheel" "netdev" "video" "input" "audio" "feedbackd" "seat"))
      ;; Change this before relying on it.
      (password (crypt "123456" "$6$abc")))
     %base-user-accounts))
 
   ;; feedbackd group is added by pro1x-hardware-service-type via account-service-type
+
+  ;; Guix's default sudoers, plus tuigreet's power menu (F12): the greeter
+  ;; runs as "greeter", and halt/reboot need root (Shepherd's socket).
+  (sudoers-file
+   (plain-file "sudoers"
+               (string-append (plain-file-content %sudoers-specification)
+                              "greeter ALL=(root) NOPASSWD: "
+                              "/run/current-system/profile/sbin/halt, "
+                              "/run/current-system/profile/sbin/reboot\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
@@ -108,55 +217,49 @@
     (list
      ;; ── Hardware
      (service pro1x-hardware-service-type)
+     ;; Backlight writable by the video group (brightnessctl's rules).
+     (udev-rules-service 'brightnessctl brightnessctl)
 
-     ;; Tell NetworkManager to leave usb0 alone so pro1x-usb-network can
-     ;; assign the static IP and run dnsmasq without interference.
-     (simple-service 'nm-unmanaged-usb0 etc-service-type
-       (list `("NetworkManager/conf.d/unmanaged.conf"
-               ,(plain-file "nm-unmanaged.conf"
-                            "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))))
      (service pro1x-usb-network-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
-               (xkb-layout "fi")
-               (xkb-variant "nodeadkeys")))
+               (xkb-layout "us")
+               (xkb-variant "intl")))
      (service pro1x-modem-service-type)
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
      (service pro1x-sensors-service-type)
+     (service pro1x-rootfs-resize-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration (generations 3)))
 
-     ;; elogind: provides org.freedesktop.login1 D-Bus interface that
-     ;; wlroots/libseat uses to open a DRM session (needed by phoc and sway).
-     (service elogind-service-type)
+     ;; seatd: minimal seat manager; libseat uses its socket to open a DRM
+     ;; session without needing a PAM login.  Provides the 'elogind symbol so
+     ;; services that require elogind also wait for seatd.
+     (service seatd-service-type)
 
-     ;; ── Phosh desktop
-     ;; phoc-pro1x ignores SW_KEYPAD_SLIDE so the keyboard slider
-     ;; doesn't crash-loop the compositor.  Auto-started as 'user' on VT1.
-     (simple-service 'phosh shepherd-root-service-type
+     ;; ── Session desktop files ─────────────────────────────────────────────
+     ;; phosh.desktop and swmo.desktop installed to /etc/wayland-sessions so
+     ;; tuigreet can find them.  Both use absolute store paths in Exec= so they
+     ;; work regardless of login-shell PATH.
+     (simple-service 'wayland-sessions etc-service-type
        (list
-        (shepherd-service
-         (provision '(phosh))
-         (requirement '(user-processes udev dbus-system file-systems))
-         (documentation "Phosh mobile shell (phoc + squeekboard)")
-         (start
-          #~(make-forkexec-constructor
-             (list "/bin/sh" "-c"
-                   (string-append
-                    ;; Create XDG_RUNTIME_DIR as root before dropping privs.
-                    "mkdir -p /run/user/1000"
-                    " && chown 1000:1000 /run/user/1000"
-                    " && chmod 0700 /run/user/1000"
-                    " && exec " #$(file-append shadow "/bin/su")
-                    " -l user -s /bin/sh -c"
-                    " 'exec env XDG_RUNTIME_DIR=/run/user/1000 "
-                    #$(file-append phoc-pro1x "/bin/phoc")
-                    " -C /etc/phoc.ini -E squeekboard'"))
-             #:log-file "/var/log/phosh.log"))
-         (stop #~(make-kill-destructor))
-         (respawn? #t))))
+        `("wayland-sessions/phosh.desktop"
+          ,(mixed-text-file "phosh.desktop"
+             "[Desktop Entry]\nName=Phosh\nExec="
+             phosh-pro1x-session
+             "\nType=Application\n"))
+        `("wayland-sessions/swmo.desktop"
+          ,(mixed-text-file "swmo.desktop"
+             "[Desktop Entry]\nName=Sxmo + Sway\nExec="
+             (file-append sxmo-utils "/bin/sxmo_swayinit.sh")
+             "\nType=Application\n"))
+        `("wayland-sessions/sway.desktop"
+          ,(mixed-text-file "sway.desktop"
+             "[Desktop Entry]\nName=Sway\nExec="
+             sway-session
+             "\nType=Application\n"))))
 
      ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
      (simple-service 'phosh-config etc-service-type
@@ -165,39 +268,166 @@
           ,(plain-file "phoc.ini"
                        "[core]\n[output:DSI-1]\nscale=2\n"))))
 
+     ;; /etc/pam.d/phosh: the lock screen checks the passcode with PAM
+     ;; service "phosh"; without it PAM falls back to "other" and denies.
+     (simple-service 'phosh-pam pam-root-service-type
+       (list (unix-pam-service "phosh")))
+
+     ;; Console font for tuigreet: 16x32, double the kernel's 8x16.  Guix's
+     ;; console-font-service-type needs mingetty's term-ttyN, removed here.
+     (simple-service 'pro1x-console-font shepherd-root-service-type
+       (list (shepherd-service
+              (provision '(pro1x-console-font))
+              (requirement '(virtual-terminal))
+              (one-shot? #t)
+              (documentation "Console for tuigreet: 16x32 font on tty1,
+Dracula palette, no kernel messages over the greeter.")
+              (start #~(lambda _
+                         (system* #$(file-append kbd "/bin/setfont")
+                                  "-C" "/dev/tty1"
+                                  #$(file-append
+                                     kbd "/share/consolefonts/"
+                                     "latarcyrheb-sun32.psfu.gz"))
+                         ;; Dracula (draculatheme.com) as the 16 console
+                         ;; colours, red/green/blue rows; colour 0 is the
+                         ;; background #282a36.  Not vt.default_* on the
+                         ;; kernel command line: U-Boot refuses command
+                         ;; lines over 511 bytes (CONFIG_SYS_CBSIZE=512).
+                         (system* #$(file-append kbd "/bin/setvtrgb")
+                                  #$(plain-file "dracula.vtrgb" "\
+40,255,80,241,189,255,139,248,98,255,105,255,214,255,164,255
+42,85,250,250,147,121,233,248,114,110,255,255,172,146,255,255
+54,85,123,140,249,198,253,242,164,110,148,165,255,223,255,255
+"))
+                         ;; Late driver errors and warnings went over
+                         ;; tuigreet; they stay in dmesg.
+                         (system* #$(file-append util-linux "/bin/dmesg")
+                                  "-n" "1")
+                         #t)))))
+
+     ;; ── greetd + tuigreet session picker ─────────────────────────────────
+     ;; Replaces the direct phosh shepherd service.  tuigreet shows a session
+     ;; menu on VT1; sessions are in /etc/wayland-sessions (above).
+     ;; --session-wrapper "bash -lc" sources the login profile so PATH and
+     ;; XDG_DATA_DIRS are populated before the session script runs.
+     (service greetd-service-type
+              (greetd-configuration
+               (terminals
+                (list
+                 (greetd-terminal-configuration
+                  (terminal-vt "1")
+                  (terminal-switch #t)
+                  (extra-shepherd-requirement
+                   '(udev dbus-system seatd pro1x-console-font))
+                  (default-session-command
+                    (program-file "tuigreet-session"
+                      #~(execl #$(file-append tuigreet "/bin/tuigreet")
+                               "tuigreet"
+                               "--time"
+                               "--asterisks"
+                               ;; Running kernel, read when tuigreet starts.
+                               "--greeting"
+                               (string-append "GNU Guix System on the F(x)tec Pro¹x"
+                                              " · Linux "
+                                              (utsname:release (uname))
+                                              " (tty1)")
+                               ;; Named colours map to the Dracula console
+                               ;; palette set by pro1x-console-font.
+                               "--theme"
+                               (string-append
+                                "border=magenta;text=cyan;prompt=green;"
+                                "time=red;action=blue;button=yellow;"
+                                "container=black;input=red")
+                               "--remember"
+                               "--remember-user-session"
+                               ;; F12 power menu; sudoers allows exactly these.
+                               "--power-shutdown"
+                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/halt"
+                               "--power-reboot"
+                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/reboot"
+                               "--sessions" "/etc/wayland-sessions"
+                               ;; No logind here: without LIBSEAT_BACKEND
+                               ;; libseat fails ("Unable to create seat:
+                               ;; Function not implemented") and every
+                               ;; session exits at once.
+                               "--session-wrapper"
+                               (string-append
+                                #$(file-append coreutils "/bin/env")
+                                " LIBSEAT_BACKEND=seatd "
+                                #$(file-append bash "/bin/bash") " -lc")))))))))
+
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
-     (service network-manager-service-type)
+     (service network-manager-service-type
+              (network-manager-configuration
+               ;; In conf.d, not through etc-service-type: an /etc entry
+               ;; makes /etc/NetworkManager a read-only store link, and NM's
+               ;; activation then fails to create system-connections.
+               (extra-configuration-files
+                (list
+                 ;; Leave usb0 to pro1x-usb-network (static IP, dnsmasq).
+                 `("unmanaged.conf"
+                   ,(plain-file "nm-unmanaged.conf"
+                                "[keyfile]\nunmanaged-devices=interface-name:usb0\n"))
+                 ;; Saved connections stay where earlier images put them.
+                 `("connections.conf"
+                   ,(plain-file "nm-connections.conf"
+                                "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))))
      (service wpa-supplicant-service-type)
+
+     ;; NTP — no hardware RTC; -g allows stepping the clock from 1970
+     (service ntp-service-type
+              (ntp-configuration
+               (allow-large-adjustment? #t)))
 
      ;; SSH
      (service openssh-service-type
               (openssh-configuration
-               (password-authentication? #t))))
+               (password-authentication? #t)
+               ;; Root by key only, for guix deploy (scripts/deploy.sh).
+               (permit-root-login 'prohibit-password)
+               (authorized-keys %root-ssh-keys))))
 
-    ;; Base services — override console font for phone's high-DPI screen
+    ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
+    ;; console-font depends on term-ttyN provided by mingetty so must go too).
     (modify-services %base-services
-      (console-font-service-type config =>
-        (map (match-lambda
-               ((tty . _)
-                (cons tty (file-append font-terminus
-                                       "/share/consolefonts/ter-128n.psf.gz"))))
-             config)))))
+      ;; /etc/guix/channels.scm: guix, nonguix, fxtec-pro1x.
+      (guix-service-type config =>
+        (guix-configuration
+          (inherit config)
+          (channels %pro1x-channels)))
+      (delete login-service-type)
+      (delete mingetty-service-type)
+      (delete console-font-service-type))))
 
   ;; ── System packages ───────────────────────────────────────────────────────
   (packages
    (append
     (list
-     ;; Mobile apps
-     icecat
-     gnome-console
-     foot sway
-     ;; Calls (dialer) requires ModemManager + callaudiod — install here
-     ;; and wire through dconf when available in Guix packages
-     ;; chatty (SMS/MMS) — add once dependency on libolm is resolved
-     iw usbutils vim git font-terminus
+     ;; Mobile UIs
+     phoc-pro1x
+     phosh-pro1x
+     ;; Phosh Mobile Settings opens from the gear in Phosh's top panel,
+     ;; GNOME Settings from a long press on a quick setting.
+     phosh-mobile-settings
+     gnome-control-center
+     sxmo-utils
+     clickclack
+     ;; Sway session (config: device/sway, Super = yellow arrows)
+     foot sway wdisplays swayidle mako
+     sway-launcher-desktop pro1x-sway-config fzf jq
+     i3status-rust font-awesome
+     grim slurp wl-clipboard brightnessctl playerctl
+     ;; Browser, terminal, editors
+     icecat gnome-console
+     emacs mpv nnn
+     calls chatty
+     libqmi libqrtr-glib
+     iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas
-     phoc-pro1x)
+     ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
+     ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
+     gnome-settings-daemon)
     %base-packages)))
