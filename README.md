@@ -142,13 +142,36 @@ USB Ethernet:
 ssh user@172.16.42.1
 ```
 
+## Your system configuration
+
+On the phone, `/etc/guix/config.scm` is a short starting configuration:
+it inherits the port's system from the channel
+(`pro1x-mobile-operating-system` in `(fxtec-pro1x system mobile)`), so
+`guix pull` keeps bringing the port's fixes while your changes stay in
+your file.  To make it yours:
+
+```sh
+cp /etc/guix/channels.scm /etc/guix/config.scm ~/.config/guix/
+guix pull                    # then log out and back in once
+sudo guix system reconfigure ~/.config/guix/config.scm
+```
+
+Add your own channels to `channels.scm`, and packages, services or users
+to `config.scm` (it shows how).  The file lists root's SSH keys inline:
+they let `guix deploy` from a PC update the phone (next section).  Keep
+them to allow that, delete them to turn it off.  Do not start from
+`/run/current-system/configuration.scm`: that is the port's full
+definition and freezes it.  `guix system delete-generations`, `roll-back`
+and `switch-generation` work on the phone and refresh the U-Boot menu.
+
 ## Updating without reflashing
 
 `scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`): builds on the
 host, copies over SSH as root, adds a generation and activates it, like
 `guix system reconfigure`.  Kernel, initrd and firmware changes need a
 reboot.  Previous generations are selectable from the U-Boot menu (hold
-volume-down at power-on).  Not tested yet.
+volume-down at power-on).  It deploys `systems/mobile.scm`, the port's
+system as shipped, so it replaces a configuration made on the phone.
 
 It logs in as root with your own key.  Create it **before building the image
 you flash**, because the image only lets in the key present at build time:

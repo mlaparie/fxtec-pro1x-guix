@@ -1,5 +1,18 @@
 # Release notes
 
+## 0.1.3 — 2026-10-29
+
+- A configuration to start from on the phone: `/etc/guix/config.scm`
+  inherits the port's system from the channel (new module
+  `(fxtec-pro1x system mobile)`, procedure
+  `pro1x-mobile-operating-system`), so `guix pull` still brings the
+  port's changes to a customised system.  It lists root's SSH keys
+  inline, with what they are for (`guix deploy` from a PC) and how to
+  drop them.  See README "Your system configuration".
+- `systems/mobile.scm` only adds the key from `keys/pro1x-guix.pub`;
+  the system it builds is unchanged apart from that file.
+- The minimal and encrypted systems still define everything themselves.
+
 ## 0.1.2 — 2026-10-29
 
 - CI can publish releases: the release step was refused ("Resource not
