@@ -103,6 +103,8 @@
           (dup2 (fileno log) 2))
         (execl #$(file-append dbus "/bin/dbus-run-session")
                "dbus-run-session" "--"
+               ;; PipeWire, WirePlumber, pipewire-pulse for the session.
+               #$pro1x-audio-session
                #$(file-append phoc-pro1x "/bin/phoc")
                "-S" "-C" "/etc/phoc.ini" "-E"
                ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
@@ -156,6 +158,8 @@
         ;; config is ~/.config/sway/config (skeleton below).
         (execl #$(file-append dbus "/bin/dbus-run-session")
                "dbus-run-session" "--"
+               ;; PipeWire, WirePlumber, pipewire-pulse for the session.
+               #$pro1x-audio-session
                #$(file-append sway "/bin/sway")))))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
