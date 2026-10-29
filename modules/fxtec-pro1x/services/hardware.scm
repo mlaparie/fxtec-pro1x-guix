@@ -15,7 +15,10 @@
 
 (define-module (fxtec-pro1x services hardware)
   #:use-module (gnu services)
+  #:use-module (gnu packages base)          ; coreutils
+  #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module (gnu services base)
+  #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
   #:use-module (guix gexp)
@@ -63,6 +66,53 @@
           (mixed-text-file "60-pro1x.rules" base touch-rule))
         base)))
 
+;;; The clock from the RTC.  The PMIC's RTC keeps running but Linux cannot
+;;; set it (TrustZone; moWerk's SailfishOS notes), so the clock came up in
+;;; 1970 until NTP stepped it, and not at all without network.  Keep the
+;;; offset between real time and the RTC: saved when the service stops (at
+;;; shutdown), applied at boot.  Only a time after 2025 counts as real, so a
+;;; boot without network never saves a 1970 offset.  The first boot after a
+;;; flash has no offset yet.
+;;;
+;;; State: not yet run on the phone.
+(define pro1x-clock-script
+  (mixed-text-file
+   "pro1x-clock"
+   "#!" (file-append bash-minimal "/bin/sh") "
+PATH=" coreutils "/bin
+rtc=/sys/class/rtc/rtc0/since_epoch
+state=/var/lib/pro1x-clock/offset
+real=1735689600   # 2025-01-01: anything earlier is not a real time
+[ -r \"$rtc\" ] || { echo \"pro1x-clock: no $rtc\"; exit 0; }
+case \"$1\" in
+  restore)
+    [ -r \"$state\" ] || { echo 'pro1x-clock: no saved offset yet'; exit 0; }
+    now=$(date +%s)
+    [ \"$now\" -ge \"$real\" ] && { echo 'pro1x-clock: clock already set'; exit 0; }
+    t=$(( $(cat \"$rtc\") + $(cat \"$state\") ))
+    date -u -s \"@$t\" >/dev/null && echo \"pro1x-clock: clock set from the RTC: $(date -u)\" ;;
+  save)
+    now=$(date +%s)
+    [ \"$now\" -ge \"$real\" ] || { echo 'pro1x-clock: clock not set, offset not saved'; exit 0; }
+    mkdir -p \"${state%/*}\"
+    echo $(( now - $(cat \"$rtc\") )) > \"$state.new\" && mv \"$state.new\" \"$state\"
+    echo \"pro1x-clock: offset saved ($(cat \"$state\") s)\" ;;
+esac
+"))
+
+(define (pro1x-clock-shepherd-service config)
+  (list
+   (shepherd-service
+    (provision '(pro1x-clock))
+    (requirement '(file-systems))
+    (documentation "Set the clock from the RTC at boot, save its offset at shutdown")
+    (start #~(lambda _
+               (system* "/bin/sh" #$pro1x-clock-script "restore")
+               #t))
+    (stop #~(lambda _
+              (system* "/bin/sh" #$pro1x-clock-script "save")
+              #f)))))
+
 (define (pro1x-hardware-account-groups config)
   (list (user-group (name "feedbackd") (system? #t))))
 
@@ -85,7 +135,10 @@
                                                  (pro1x-udev-rules config)))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
-                        pro1x-hardware-account-groups)))
+                        pro1x-hardware-account-groups)
+     ;; clock from the RTC (pro1x-clock)
+     (service-extension shepherd-root-service-type
+                        pro1x-clock-shepherd-service)))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
 cameras, haptics, GPIO slider, and optional touch calibration for display gaps.")))
