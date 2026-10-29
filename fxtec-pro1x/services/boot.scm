@@ -5,7 +5,7 @@
   #:use-module (fxtec-pro1x packages misc)   ; qbootctl
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
-  #:use-module (gnu packages linux)          ; e2fsprogs
+  #:use-module (gnu packages linux)          ; e2fsprogs, inotify-tools
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -76,17 +76,41 @@
   (if (> (pro1x-boot-menu-generations config) 0)
       (let ((split (pro1x-boot-menu-split-script config)))
         (list
+         ;; Not a one-shot: the slots must follow every rewrite of
+         ;; extlinux.conf (deploy, reconfigure, and delete-generations,
+         ;; roll-back, switch-generation run on the phone), not only boot.
          (shepherd-service
           (provision '(pro1x-boot-menu))
           (requirement '(file-systems))
-          (documentation "Write /boot/extlinux/prev*.conf for the U-Boot menu")
-          (one-shot? #t)
+          (documentation "Write /boot/extlinux/prev*.conf for the U-Boot menu
+at start and whenever extlinux.conf changes.")
           (start
            #~(make-forkexec-constructor
-              (list #$split)
+              (list #$(pro1x-boot-menu-watch-script split))
               #:log-file "/var/log/pro1x-boot-menu.log"))
-          (stop #~(make-kill-destructor)))))
+          (stop #~(make-kill-destructor))
+          (respawn? #t))))
       '()))
+
+;;; Run SPLIT, then again each time extlinux.conf is written or renamed
+;;; into place (Guix writes a temporary file and renames it).
+(define (pro1x-boot-menu-watch-script split)
+  (program-file
+   "pro1x-boot-menu-watch"
+   #~(begin
+       (use-modules (ice-9 popen) (ice-9 rdelim))
+       (system* #$split)
+       (let ((events (open-pipe* OPEN_READ
+                                 #$(file-append inotify-tools
+                                                "/bin/inotifywait")
+                                 "-m" "-q" "-e" "close_write" "-e" "moved_to"
+                                 "--format" "%f" "/boot/extlinux")))
+         (let loop ()
+           (let ((file (read-line events)))
+             (unless (eof-object? file)
+               (when (string=? file "extlinux.conf")
+                 (system* #$split))
+               (loop))))))))
 
 (define pro1x-boot-menu-service-type
   (service-type
