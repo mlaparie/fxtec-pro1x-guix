@@ -41,7 +41,7 @@ jobs:
 
       # ── Host tools needed for image extraction ────────────────────────────
       - name: Install host tools
-        run: sudo apt-get install -y --no-install-recommends util-linux e2fsprogs
+        run: sudo apt-get install -y --no-install-recommends util-linux e2fsprogs zstd
 
       # ── Install Guix ──────────────────────────────────────────────────────
       - name: Install Guix
@@ -50,6 +50,7 @@ jobs:
             -o /tmp/guix-install.sh
           chmod +x /tmp/guix-install.sh
           echo | sudo -E /tmp/guix-install.sh
+          sudo guix --version
 
       - name: Authorize nonguix substitute server
         run: |
@@ -60,60 +61,97 @@ jobs:
             (curve Ed25519)
             (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))
           EOF
-          # Pass nonguix substitute URL to the daemon via its environment
+          # bordeaux.guix.gnu.org — has aarch64 substitutes that ci.guix.gnu.org lacks
+          sudo guix archive --authorize <<'EOF'
+          (public-key
+           (ecc
+            (curve Ed25519)
+            (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)))
+          EOF
+          # ARM runners lack CAP_SYS_ADMIN for build namespace mounts, so disable
+          # the chroot/sandbox entirely (--disable-chroot is the current Guix flag;
+          # --no-sandbox was removed).
+          # guix-install.sh (Guix 1.5) runs the daemon as an unprivileged
+          # guix-daemon user and creates no guixbuild group; builds run as
+          # that user.  It also loads AppArmor profiles (guix-daemon,
+          # guix-builder) that confine the daemon and its builders: builders
+          # may only use /tmp (TMPDIR=/var/tmp broke the kernel repack, run
+          # 40741411010) and a root daemon cannot bind its socket (run
+          # 40767260888).  Unload them; the rootfs partition.img builder's
+          # sqlite "database is locked" (run 40751831198) is suspected to be
+          # the same confinement.
+          for p in /etc/apparmor.d/guix-daemon /etc/apparmor.d/guix; do
+            [ -f "$p" ] && sudo apparmor_parser -R "$p" || true
+          done
+          sudo aa-status 2>/dev/null | grep -i guix || echo "no guix AppArmor profile loaded"
+
+          # Override ExecStart via drop-in; quote the substitute-urls value so
+          # systemd treats the space-separated list as one argument.
+          DAEMON=/var/guix/profiles/per-user/root/current-guix/bin/guix-daemon
+          SUBS="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"
+          # Mount a fresh, empty /tmp BEFORE restarting the daemon so it
+          # inherits the new mount.  guix perform-download calls
+          # mkdtemp("/tmp/...") which fails if the daemon was started before
+          # this remount.  It is a bind mount of root-disk space, not a tmpfs:
+          # the daemon builds in /tmp (--disable-chroot), and the rootfs
+          # partition.img builder stages the system closure plus the ext4
+          # image there, which overflowed a 4G tmpfs (run 40702633350).
+          # Building under TMPDIR=/var/tmp instead broke the kernel source
+          # repack (scandir of its build directory returned #f, run
+          # 40741411010), so the path stays /tmp.
+          sudo mkdir -p /var/guix-tmp && sudo chmod 1777 /var/guix-tmp
+          sudo mount --bind /var/guix-tmp /tmp
+          # Ensure git-minimal (used by git-fetch builders) can read gitconfig.
+          sudo touch /etc/gitconfig && sudo chmod 644 /etc/gitconfig
           sudo mkdir -p /etc/systemd/system/guix-daemon.service.d
-          # OOMPolicy and TasksMax from guix-install-action (PromyLOPh/guix-install-action):
-          # OOMPolicy=continue prevents systemd killing the whole daemon cgroup on a
-          # child OOM; TasksMax=8192 raises the default 1024-task limit that some
-          # large builds hit.  LANG=en_US.utf8 matches the job env (C.UTF-8 breaks
-          # glibc inside the sandbox).
-          printf '[Service]\nEnvironment="GUIX_DAEMON_OPTIONS=--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org https://substitutes.nonguix.org"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
-            | sudo tee /etc/systemd/system/guix-daemon.service.d/substitutes.conf
-          # Patch unit file directly (drop-in alone is unreliable)
-          SERVICE_FILE=$(systemctl show guix-daemon -p FragmentPath --value)
-          echo "Patching $SERVICE_FILE"
-          sudo sed -i 's/^PrivateTmp=yes/PrivateTmp=no/' "$SERVICE_FILE"
+          printf '[Service]\nExecStart=\nExecStart=%s --disable-chroot "--substitute-urls=%s"\nEnvironment="LANG=en_US.utf8"\nPrivateTmp=no\nOOMPolicy=continue\nTasksMax=8192\n' \
+            "$DAEMON" "$SUBS" \
+            | sudo tee /etc/systemd/system/guix-daemon.service.d/ci.conf
           sudo systemctl daemon-reload
-          sudo systemctl restart guix-daemon
-          # Enter the daemon's mount namespace and chmod /tmp there — the daemon
-          # may still have inherited a private tmpfs; nsenter fixes it directly.
-          DAEMON_PID=$(systemctl show guix-daemon -p MainPID --value)
-          echo "Daemon PID: $DAEMON_PID  PrivateTmp: $(systemctl show guix-daemon -p PrivateTmp --value)"
-          sudo nsenter -t "$DAEMON_PID" -m -- chmod 1777 /tmp
-          sudo nsenter -t "$DAEMON_PID" -m -- ls -ld /tmp
-          # Also fix host /tmp and /etc/gitconfig (git inside sandbox can't read it)
-          sudo chmod 1777 /tmp
-          sudo chmod 644 /etc/gitconfig 2>/dev/null || true
+          sudo systemctl restart guix-daemon || {
+            echo "==> guix-daemon failed to start:"; sudo journalctl -xeu guix-daemon --no-pager -n 50; exit 1
+          }
+          PID=$(systemctl show guix-daemon -p MainPID --value)
+          echo "Daemon PID: $PID, user: $(ps -o user= -p "$PID")"
           # Create per-user profile dir expected by guix on ubuntu-24.04
           # (missing by default; fix from SystemCrafters/guix-installer).
           sudo mkdir -p /var/guix/profiles/per-user/runner
+          sudo chown runner:runner /var/guix/profiles/per-user/runner
 
-      # ── Cache Guix store + pulled profile ────────────────────────────────
-      - name: Cache Guix store
-        uses: actions/cache@v4
+      # ── Guix build cache ──────────────────────────────────────────────────
+      # What this job builds itself (kernel, u-boot, packages without
+      # substitutes) is exported as a signed Guix archive at the end, even on
+      # failure, and imported here on the next run: see .github/guix-cache.sh.
+      # A raw /gnu/store cache does not work, since a fresh install has an
+      # empty Guix database.  Per-run keys; restore takes the newest entry.
+      #
+      # To update channel pins in channels-ci.scm:
+      #   git ls-remote https://codeberg.org/guix/guix refs/heads/master
+      #   git ls-remote https://gitlab.com/nonguix/nonguix refs/heads/master
+      - name: Restore Guix build cache
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            /gnu/store
-            /root/.config/guix
-            /var/guix/profiles/per-user/root
-          key: guix-${{ hashFiles('channels-ci.scm') }}
-          restore-keys: guix-
+          path: /var/tmp/guix-cache
+          key: guix-built-${{ github.run_id }}
+          restore-keys: guix-built-
 
-      # ── Pull pinned channels (guix + nonguix only; fxtec-pro1x via -L .) ─
-      - name: Pull pinned channels
-        run: |
-          sudo guix pull --disable-authentication -C channels-ci.scm
-          sudo ln -sf /root/.config/guix/current/bin/guix /usr/local/bin/guix
+      - name: Import Guix build cache
+        run: bash .github/guix-cache.sh import /var/tmp/guix-cache
 
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
       # because the current uboot.scm produces a derivation that fails to build
       # from source in CI (see TODO.md §6).  The system-image step must not be
       # gated on u-boot until that is fixed.
+      #
+      # guix time-machine handles channel module loading (including nonguix)
+      # automatically — no guix pull + GUILE_LOAD_PATH juggling needed.
       - name: Build u-boot-pro1x
         run: |
-          sudo guix build u-boot-pro1x \
+          guix time-machine --disable-authentication -C channels-ci.scm -- \
+            build u-boot-pro1x \
             -L . \
+            --no-grafts \
             --fallback \
             2>&1 | tee /tmp/uboot.log || true
           UBOOT=$(grep '^/gnu/store' /tmp/uboot.log | grep -v '\.drv' | tail -1)
@@ -124,27 +162,107 @@ jobs:
           else
             echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
             tail -50 /tmp/uboot.log
+            # Print the tail of each failed builder's own log.
+            for drv in $(grep -o "builder for \`[^']*" /tmp/uboot.log | sed 's/.*`//' | sort -u); do
+              base=$(basename "$drv")
+              echo "==> log of $base:"
+              sudo zcat "/var/log/guix/drvs/${base:0:2}/${base:2}.gz" 2>/dev/null | tail -60 \
+                || echo "(log not found)"
+            done
           fi
+
+      # ── Diagnose git-fetch network access ────────────────────────────────
+      # The daemon runs as the guix-daemon user; this test runs git as root.
+      - name: Test network access from guix build user
+        run: |
+          # Show daemon service (check for PrivateNetwork or other net restrictions)
+          systemctl cat guix-daemon || true
+          cat /etc/systemd/system/guix-daemon.service.d/ci.conf || true
+          # Test that git clone works as root (mimics guix-daemon git-fetch)
+          GIT=$(ls /gnu/store/*/bin/git 2>/dev/null | grep -v lfs | head -1)
+          echo "Guix git binary: ${GIT:-not found}"
+          if [ -n "$GIT" ]; then
+            sudo HOME=/root "$GIT" clone --bare --depth=1 \
+              https://github.com/andersson/tqftpserv.git /tmp/git-test 2>&1 \
+              && echo "git clone: OK" || echo "git clone FAILED (exit $?)"
+          fi
+
+      # ── Prefetch GitHub tarballs ──────────────────────────────────────────
+      # The daemon's anonymous downloads from codeload.github.com got HTTP 429
+      # (run 40731915977, kernel tarball) and no Guix mirror has them.  Fetch
+      # them here with the job token and retries, then add them to the store
+      # under the name and hash the packages expect.  A failure only warns:
+      # the daemon still tries its own download.
+      - name: Prefetch GitHub sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TM="guix time-machine --disable-authentication -C channels-ci.scm --"
+          mkdir -p /tmp/prefetch
+          $TM repl -L . .github/prefetch-sources.scm > /tmp/prefetch/list
+          cat /tmp/prefetch/list
+          while read -r url name; do
+            curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors \
+              --location-trusted -H "Authorization: Bearer $GH_TOKEN" \
+              -o "/tmp/prefetch/$name" "$url" \
+              || { echo "WARNING: prefetch failed: $url"; rm -f "/tmp/prefetch/$name"; }
+          done < /tmp/prefetch/list
+          ls /tmp/prefetch/*.tar.gz >/dev/null 2>&1 \
+            && $TM repl -L . .github/prefetch-sources.scm /tmp/prefetch/*.tar.gz
+          rm -rf /tmp/prefetch
 
       # ── Build system image ────────────────────────────────────────────────
       - name: Build system image (mobile)
         run: |
-          sudo guix system image \
+          echo "==> disk space before build:"; df -h /
+          guix time-machine --disable-authentication -C channels-ci.scm -- \
+            system image \
             --image-type=efi-raw \
+            --no-grafts \
             -L . \
             systems/mobile.scm \
-            2>&1 | tee /tmp/image.log
+            2>&1 | tee /tmp/image.log || true
           IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
-          [ -f "$IMG" ] || { echo "Image build failed"; cat /tmp/image.log; exit 1; }
+          if [ ! -f "$IMG" ]; then
+            echo "==> Image build failed — log:"; cat /tmp/image.log
+            df -h / /tmp
+            # Print the tail of each failed builder's own log.
+            for drv in $(grep -o "builder for \`[^']*" /tmp/image.log | sed 's/.*`//' | sort -u); do
+              base=$(basename "$drv")
+              echo "==> log of $base:"
+              sudo zcat "/var/log/guix/drvs/${base:0:2}/${base:2}.gz" 2>/dev/null | tail -60 \
+                || echo "(log not found)"
+            done
+            exit 1
+          fi
           echo "Built: $IMG"
           # Extract root ext4 partition (partition 2 in GPT efi-raw layout)
           PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
           PART_START=$(echo "$PART_INFO" | awk '{print $1}')
           PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
-          sudo dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
-          LABEL=$(sudo e2label rootfs.img 2>/dev/null || true)
-          [ "$LABEL" = "guix" ] || sudo e2label rootfs.img guix
+          dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
+          LABEL=$(e2label rootfs.img 2>/dev/null || true)
+          [ "$LABEL" = "guix" ] || e2label rootfs.img guix
           echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
+          # Shrink to the minimum: the phone grows it back on first boot
+          # (pro1x-rootfs-resize-service-type).
+          e2fsck -fy rootfs.img || [ $? -le 1 ]
+          resize2fs -M rootfs.img
+          echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
+          echo "==> disk space after extraction:"; df -h /
+
+      # ── Save Guix build cache (also after a failed build) ─────────────────
+      - name: Export Guix build cache
+        id: export-cache
+        if: always()
+        run: bash .github/guix-cache.sh export /var/tmp/guix-cache
+
+      - name: Save Guix build cache
+        if: always() && steps.export-cache.outputs.archive == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /var/tmp/guix-cache
+          key: guix-built-${{ github.run_id }}
 
       # ── Upload artifacts ──────────────────────────────────────────────────
       - name: Upload u-boot

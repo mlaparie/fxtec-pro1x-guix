@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# .github/guix-cache.sh — carry CI's own Guix builds over to the next run
+#
+#   bash .github/guix-cache.sh export DIR   after the build (also on failure)
+#   bash .github/guix-cache.sh import DIR   before the build
+#
+# A fresh runner has an empty Guix database, so caching /gnu/store as plain
+# files is useless: the daemon treats unregistered items as invalid.  This
+# exports what the job built itself (outputs of every derivation with a build
+# log in /var/log/guix/drvs; substituted items have none) with their closures,
+# as a signed archive, and imports it on the next run.  Items imported from
+# the previous cache are exported again (they leave no build log), so the
+# cache keeps them.  Only the public half of the exporting run's signing key
+# is cached; the importing run authorizes it.  Disk images and partitions
+# are skipped: they change on every commit.  "export" writes archive=true to
+# $GITHUB_OUTPUT only when it wrote an archive, so an empty cache is never
+# saved over a full one.
+
+imported=/var/tmp/guix-cache-imported.txt
+
+set -euo pipefail
+
+cmd=$1
+dir=$2
+
+case $cmd in
+  export)
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
+    : > "$dir/items.txt"
+    # Diagnostics: run 40741411010 found no logs here although it built.
+    echo "==> /var/log/guix: $(sudo ls -la /var/log/guix 2>&1 | tr '\n' ' ')"
+    echo "==> build logs: $(sudo find -L /var/log/guix -type f | wc -l)," \
+         "of which > 8 KiB: $(sudo find -L /var/log/guix -type f -size +8k | wc -l)"
+    sudo find -L /var/log/guix -type f | sed -n 1,3p   # not head: pipefail
+    # Logs under 8 KiB come from trivial builders (config files, profiles).
+    sudo find -L /var/log/guix/drvs -name '*.drv.gz' -size +8k | while read -r log; do
+      rel=${log#/var/log/guix/drvs/}
+      drv=/gnu/store/${rel%%/*}${rel#*/}
+      drv=${drv%.gz}
+      case $drv in
+        *disk-image*|*partition.img*|*genimage*) continue ;;
+      esac
+      [ -f "$drv" ] || continue
+      { grep -o '("[a-z0-9_-]*","/gnu/store/[^"]*"' "$drv" || true; } \
+        | sed 's/.*,"//; s/"$//' \
+        | while read -r out; do
+            if [ -e "$out" ]; then echo "$out"; fi
+          done
+    done > "$dir/built.txt"
+    # Imported items that are still valid: they were not rebuilt.
+    if [ -f "$imported" ]; then
+      while read -r item; do
+        if [ -e "$item" ]; then echo "$item"; fi
+      done < "$imported" >> "$dir/built.txt"
+    fi
+    sort -u "$dir/built.txt" > "$dir/items.txt"
+    rm -f "$dir/built.txt"
+    echo "==> $(wc -l < "$dir/items.txt") built items to cache"
+    if [ -s "$dir/items.txt" ]; then
+      # shellcheck disable=SC2046
+      sudo guix archive --export -r $(cat "$dir/items.txt") \
+        | zstd -T0 -3 -q > "$dir/items.nar.zst"
+      sudo cat /etc/guix/signing-key.pub > "$dir/signing-key.pub"
+      echo "archive=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+    fi
+    du -sh "$dir"
+    ;;
+  import)
+    if [ ! -f "$dir/items.nar.zst" ]; then
+      echo "==> no Guix build cache"
+      exit 0
+    fi
+    du -sh "$dir"
+    sudo guix archive --authorize < "$dir/signing-key.pub"
+    if zstd -dc "$dir/items.nar.zst" | sudo guix archive --import; then
+      cp "$dir/items.txt" "$imported"
+      echo "==> imported $(wc -l < "$imported") cached items"
+    else
+      echo "WARNING: importing the Guix build cache failed; building without it"
+    fi
+    rm -f "$dir/items.nar.zst"
+    ;;
+  *)
+    echo "usage: $0 export|import DIR" >&2
+    exit 2
+    ;;
+esac
