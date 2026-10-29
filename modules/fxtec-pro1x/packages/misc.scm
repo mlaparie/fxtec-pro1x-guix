@@ -934,6 +934,7 @@ window opened by a sway key binding.")
      (list
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
+          ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/"))
       #:phases
@@ -951,5 +952,7 @@ window opened by a sway key binding.")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description
      "Default sway configuration for the Pro1X in landscape with the keyboard
-out, an i3status-rust bar configuration, and an fzf window switcher.")
+out, the device settings every sway session shares (pro1x.conf, for
+/etc/sway/config.d), an i3status-rust bar configuration, and an fzf window
+switcher.")
     (license license:gpl3+)))

@@ -32,25 +32,13 @@ client.unfocused        #404552 #484b52 #eeeeee #ff5757 #262626
 client.urgent           #ff5757 #404552 #ffffff #555757 #EFEDEC
 client.background       #404552
 
-### Output: 1080x2160 portrait panel, used in landscape with the keyboard out
-output DSI-1 {
-    transform 90
-    scale 2
-    bg #1d2021 solid_color
-}
+### Device: panel rotation and scale, keyboard layout, touch mapping, in
+### /etc/sway/config.d/pro1x.conf (device/sway/pro1x.conf), shared with Sxmo.
+include /etc/sway/config.d/*
+
+output DSI-1 bg #1d2021 solid_color
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
-
-### Input
-input type:keyboard {
-    xkb_layout us
-    xkb_variant intl
-    repeat_delay 300
-    repeat_rate 30
-}
-# Touch follows the panel rotation.
-input type:touch map_to_output DSI-1
-seat * hide_cursor 3000
 
 ### Idle: panel off after 5 minutes; a touch or key press turns it back on.  No automatic lock: swaylock can only
 ### unlock when the system provides its PAM service (screen-locker-service-type).
