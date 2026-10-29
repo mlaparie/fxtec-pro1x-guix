@@ -92,7 +92,13 @@ trigger a vibration effect on each keypress.")
               (substitute* (append (find-files "scripts" "\\.sh$")
                                    (find-files "configs" "\\.sh$"))
                 (("/etc/profile\\.d/sxmo_init\\.sh")
-                 (string-append #$output "/etc/profile.d/sxmo_init.sh")))))
+                 (string-append #$output "/etc/profile.d/sxmo_init.sh")))
+              ;; foot 1.28 (Guix) refuses the whole file with the old
+              ;; section name ("[colors]: invalid section name: colors");
+              ;; it is [colors-dark] now.  Before 'build, so the file's configversion
+              ;; hash is computed over the fixed text.
+              (substitute* "configs/appcfg/foot.ini"
+                (("^\\[colors\\]") "[colors-dark]"))))
           (add-before 'install 'skip-setcap
             (lambda _
               ;; setcap cannot run in the build sandbox.  sxmo_sleep will work
