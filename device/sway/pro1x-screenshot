@@ -1,0 +1,47 @@
+#!/bin/sh
+# pro1x-screenshot full|region|colour — screenshots in Sway, as on the
+# author's PC
+#
+#   full     the whole screen        (Print, i.e. Fn+s; Super+Shift+p)
+#   region   a region drawn with slurp (Ctrl+Print; Super+Shift+s)
+#   colour   the colour under a point, as #rrggbb (Super+Shift+c)
+#
+# Screenshots go to ~/Pictures/Screenshots/ssYYYYMMDD-HHMMSS.png and to the
+# clipboard; a low-urgency notification says where.  The colour goes to the
+# clipboard.  The PC's Shift+Print upload to 0x0.st is left out (needs the
+# author's 0x0 script).
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+dir="$HOME/Pictures/Screenshots"
+
+notify() {                      # notify SUMMARY
+    gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.Notify \
+        screenshot 0 "" "$1" "" "[]" "{'urgency': <byte 1>}" 3000 >/dev/null 2>&1
+}
+
+case "${1:-}" in
+    full|region)
+        mkdir -p "$dir"
+        f="$dir/ss$(date +%Y%m%d-%H%M%S).png"
+        if [ "$1" = region ]; then
+            g=$(slurp) || exit 0
+            grim -g "$g" -l 7 "$f" || exit 1
+            what=Region
+        else
+            grim -l 7 "$f" || exit 1
+            what=Screen
+        fi
+        wl-copy < "$f"
+        notify "$what saved to ~/Pictures/Screenshots/$(basename "$f") and copied" ;;
+    colour)
+        p=$(slurp -p) || exit 0
+        c=$(grim -g "$p" -t ppm - | convert - -format '#%[hex:u.p{0,0}]' info:-)
+        printf '%s' "$c" | wl-copy
+        notify "Colour $c copied" ;;
+    *)
+        echo "usage: pro1x-screenshot full|region|colour" >&2
+        exit 2 ;;
+esac

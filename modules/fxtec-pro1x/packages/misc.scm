@@ -37,6 +37,7 @@
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages guile)
+  #:use-module (gnu packages image)        ; grim, slurp
   #:use-module (gnu packages imagemagick)
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
@@ -1214,6 +1215,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
+;;;   bin/pro1x-screenshot               screenshots and colour picker (grim)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1223,8 +1225,8 @@ window opened by a sway key binding.")
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
-                  guile-3.0 imagemagick jq lisgd procps sed swayidle
-                  (list glib "bin")))
+                  grim guile-3.0 imagemagick jq lisgd procps sed slurp swayidle
+                  wl-clipboard (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1244,7 +1246,8 @@ window opened by a sway key binding.")
           ("pro1x-gestures" "bin/")
           ("pro1x-term" "bin/")
           ("pro1x-call-watch" "bin/")
-          ("pro1x-status" "bin/"))
+          ("pro1x-status" "bin/")
+          ("pro1x-screenshot" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1301,6 +1304,14 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((sc (string-append #$output "/bin/pro1x-screenshot")))
+                  (chmod sc #o755)
+                  (wrap-program sc
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "glib" "grim" "imagemagick" "slurp"
+                              "wl-clipboard")))))
                 (let ((st (string-append #$output "/bin/pro1x-status")))
                   (chmod st #o755)
                   ;; mmcli and rfkill come from the system profile.

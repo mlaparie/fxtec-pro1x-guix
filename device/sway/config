@@ -101,7 +101,7 @@ bindsym $mod+q exec sway-quick-settings
 exec sway-quick-settings --resident
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
-bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r reload
 bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -B 'Exit' 'swaymsg exit'
 floating_modifier $mod normal
 
@@ -182,8 +182,13 @@ bindsym --locked XF86MonBrightnessUp exec brightnessctl set 5%+
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 
 ### Screenshots and clipboard
-bindsym $mod+Shift+s exec grim -g "$(slurp)" - | wl-copy
-bindsym $mod+Shift+p exec grim ~/screenshot-$(date +%Y%m%d-%H%M%S).png
+# Screenshots (pro1x-screenshot): to ~/Pictures/Screenshots and the
+# clipboard.  Print is Fn+s on the Pro1X keyboard (keyd).
+bindsym Print exec pro1x-screenshot full
+bindsym Ctrl+Print exec pro1x-screenshot region
+bindsym $mod+Shift+p exec pro1x-screenshot full
+bindsym $mod+Shift+s exec pro1x-screenshot region
+bindsym $mod+Shift+c exec pro1x-screenshot colour
 
 ########## BAR ##########
 ### Bar: i3status-rust with ~/.config/i3status-rust/config.toml
