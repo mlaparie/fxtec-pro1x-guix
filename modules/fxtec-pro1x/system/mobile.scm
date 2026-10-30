@@ -141,7 +141,8 @@
                             (slid-in! saved)))
                   (loop saved))))))))
 
-;; What phoc starts: gsd-media-keys, then the shell.  Phosh does not
+;; What phoc starts: gsd-media-keys, the slider helper, the idle dimmer,
+;; then the shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
 ;; Phosh.  Without it the volume keys did nothing (tested on the phone,
@@ -158,6 +159,15 @@
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))
+        ;; Dim the panel to 30% after a minute without input; Phosh only
+        ;; blanks (dimming is gnome-settings-daemon's power plugin, which
+        ;; needs logind).  Phosh still blanks after its own delay.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (let ((dim #$(file-append pro1x-sway-config "/bin/pro1x-dim")))
+            (execl #$(file-append swayidle "/bin/swayidle") "swayidle" "-w"
+                   "timeout" "60" (string-append dim " dim")
+                   "resume" (string-append dim " restore"))))
         ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
         ;; wants gnome-session.
         (execl #$(file-append phosh-pro1x "/libexec/phosh") "phosh"))))

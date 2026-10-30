@@ -979,23 +979,30 @@ window opened by a sway key binding.")
       #~'(("config" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
-          ("sway-window-switcher" "bin/"))
+          ("sway-window-switcher" "bin/")
+          ("pro1x-dim" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
             (lambda* (#:key inputs #:allow-other-keys)
-              (let ((bin (string-append #$output "/bin/sway-window-switcher")))
+              (let ((bin (string-append #$output "/bin/sway-window-switcher"))
+                    (dim (string-append #$output "/bin/pro1x-dim")))
                 (chmod bin #o755)
                 (wrap-program bin
                   `("PATH" ":" prefix
                     ,(map (lambda (p)
                             (string-append (assoc-ref inputs p) "/bin"))
-                          '("coreutils" "foot" "fzf" "jq"))))))))))
+                          '("coreutils" "foot" "fzf" "jq"))))
+                (chmod dim #o755)
+                (wrap-program dim
+                  `("PATH" ":" prefix
+                    (,(string-append (assoc-ref inputs "coreutils")
+                                     "/bin"))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description
      "Default sway configuration for the Pro1X in landscape with the keyboard
 out, the device settings every sway session shares (pro1x.conf, for
-/etc/sway/config.d), an i3status-rust bar configuration, and an fzf window
-switcher.")
+/etc/sway/config.d), an i3status-rust bar configuration, an fzf window
+switcher, and pro1x-dim, which dims the panel when idle.")
     (license license:gpl3+)))

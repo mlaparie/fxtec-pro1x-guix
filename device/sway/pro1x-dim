@@ -1,0 +1,50 @@
+#!/bin/sh
+# pro1x-dim — dim the panel when idle, restore it on activity
+#
+#   pro1x-dim dim       fade to 30% of the maximum, if brighter, and save the level
+#   pro1x-dim restore   fade back to the saved level
+#
+# Run by swayidle in the Sway and Phosh sessions (timeout 60 'pro1x-dim dim'
+# resume 'pro1x-dim restore').  It reads and writes the backlight's
+# `brightness' file only: reading actual_brightness sends DSI reads that
+# wedge the link on this panel (see AGENTS.md).  The saved level is in
+# $XDG_RUNTIME_DIR/pro1x-dim.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+set -eu
+
+bl=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n 1)
+[ -n "$bl" ] || exit 0
+saved="${XDG_RUNTIME_DIR:-/tmp}/pro1x-dim"
+max=$(cat "$bl/max_brightness")
+
+fade() {            # fade FROM TO, in 10 steps over about half a second
+    from=$1 to=$2 i=1
+    while [ "$i" -le 10 ]; do
+        echo $(( from + (to - from) * i / 10 )) > "$bl/brightness"
+        sleep 0.05
+        i=$(( i + 1 ))
+    done
+}
+
+case "${1:-}" in
+    dim)
+        cur=$(cat "$bl/brightness")
+        target=$(( max * 30 / 100 ))
+        if [ "$cur" -gt "$target" ]; then
+            echo "$cur" > "$saved"
+            fade "$cur" "$target"
+        fi
+        ;;
+    restore)
+        if [ -f "$saved" ]; then
+            fade "$(cat "$bl/brightness")" "$(cat "$saved")"
+            rm -f "$saved"
+        fi
+        ;;
+    *)
+        echo "usage: pro1x-dim dim|restore" >&2
+        exit 2
+        ;;
+esac
