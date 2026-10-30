@@ -31,36 +31,37 @@ The rest of this README is the reference for working on the port.
 
 ## Port status
 
-As observed on the phone (2026-10-30, Linux 7.1, branch `main`). "Untested"
-means nobody has tried it on this port yet.
+As observed on the phone (2026-10-30, Linux 7.1).  Phone comforts and the
+Sway session: [features.md](docs/features.md).
 
 ```
 Display (BOE AMOLED, 60 Hz)      Working
 GPU (Adreno 610)                 Working    freedreno; phoc renders on the GPU
 Touchscreen                      Working
-Auto-rotation                    Working    Phosh; landscape locked while the keyboard is out
+Auto-rotation                    Working    portrait with the keyboard closed, landscape out; optional sensor rotation
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
 Keyboard backlight               Working    on while slid out; off after 60 s without a key (configurable)
-Keyboard slider switch           Working    backlight, Phosh landscape, wakes sway
+Keyboard slider switch           Working    backlight, rotation, on-screen keyboard
 Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
 Bluetooth                        Working    on/off, scan, pairing, audio to a speaker
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
-Speaker                          Working    pops at login (open)
+Speaker                          Working
 Earpiece                         Working    in calls
 Headphones                       Untested
 Microphones                      Working    in calls
-Vibration motor                  Working    feedbackd (calls, notifications); Sway untested
+Vibration motor                  Working    feedbackd
 Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
 SMS                              Working    Chatty
-MMS                              Working    receiving (mmsd-tng + Chatty, MMS settings in Chatty); sending untested
-Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
+MMS                              Working    mmsd-tng + Chatty
+Mobile data                      Working    3G and LTE seen
 Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
-Proximity, light, gyroscope      Untested
+Proximity sensor                 Working    calls (Sway), no wake in a pocket
+Light sensor, gyroscope          Untested
 Battery                          Working    UPower: level and charging state in Phosh
-Screen dimming, blank, lock      Working    dim 20% at 30 s, off at 60 s, locked 2 min later (configurable)
-Double tap to wake               Working    pro1x-doubletap (configurable)
+Screen dimming, blank, lock      Working    dim at 150 s, off at 180 s, locked 2 min later (configurable)
+Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested
@@ -395,36 +396,18 @@ screen off turns the screen on in sway (not yet in Phosh).  To switch the
 light by hand: `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
 stays that way until the next slide or screen change.
 
-## Session selection
+## Sessions
 
-`systems/mobile.scm` boots into a **greetd + tuigreet** session picker on VT1.
-tuigreet remembers the last user and each user's last session.  Three
-sessions are offered, in this order:
+greetd + tuigreet on VT1 offers, in this order (it remembers the last user
+and session):
 
-| Session | Description |
+| Session | |
 |---|---|
-| **1 Sway** | sway with `~/.config/sway/config` (device settings in `/etc/sway/config.d/pro1x.conf`) |
-| **2 Phosh** | phoc-pro1x compositor + phosh-pro1x shell |
-| **3 Sxmo + Sway** | Sxmo on sway, same device settings; needs superd (not packaged yet) |
+| **Sway** | `~/.config/sway/config`; device settings in `/etc/sway/config.d/pro1x.conf`; see [features.md](docs/features.md#sway-on-the-phone) |
+| **Phosh** | phoc-pro1x + phosh-pro1x |
+| **Sxmo + Sway** | needs superd (not packaged yet) |
 
-Desktop files live in `/etc/wayland-sessions/` with absolute store paths in
-`Exec=`, so they work regardless of the user's `PATH` at session start.
-
-## Sway fallback
-
-`systems/mobile.scm` also ships `foot`, `sway`, and `wdisplays`. To drop to a
-bare sway session from the phone (confirmed working):
-
-```sh
-# from a tuigreet session or SSH:
-XDG_RUNTIME_DIR=/run/user/1000 sway
-```
-
-Or from an existing Wayland session, launch it on a new VT:
-
-```sh
-XDG_RUNTIME_DIR=/run/user/1000 WLR_BACKENDS=drm,libinput sway
-```
+Session files in `/etc/wayland-sessions/` use store paths in `Exec=`.
 
 ## Services
 

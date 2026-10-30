@@ -24,10 +24,12 @@ session; F12 for shutdown and reboot):
 | | |
 |---|---|
 | power key | screen off / on |
-| double tap | screen on, while it is off |
-| idle 30 s | dims to 20% |
-| idle 60 s | screen off; locked 2 min later |
-| rotation tile (quick settings) | tap: lock or unlock auto-rotation; long press: auto or manual |
+| double tap, Esc | screen on, while it is off (not in a pocket) |
+| idle 150 s | dims to 20% |
+| idle 180 s | screen off; locked 2 min later |
+| keyboard slid in / out | portrait / landscape |
+| rotation (Phosh tile, Sway quick settings) | sensor rotation on or off |
+| Sway: edge swipes | top: quick settings, bottom: on-screen keyboard, right: launcher, left: window switcher |
 
 Times and levels are options in `config.scm` ([configure.md](configure.md)).
 

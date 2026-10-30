@@ -43,8 +43,7 @@ bash scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img
 
 ## 4. First boot
 
-The root file system grows to the partition (a few minutes), then
-tuigreet.  User `user`, password `123456`: change it with `passwd`.
+The root file system grows to the partition, then tuigreet.  User `user`, password `123456`: change it with `passwd`.
 
 ## 5. Connect
 

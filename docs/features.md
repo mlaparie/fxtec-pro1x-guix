@@ -1,42 +1,72 @@
 # GNU Guix System on the F(x)tec Pro¹x
 
-Near-mainline Linux, U-Boot and GNU Guix System (Shepherd, no systemd)
-on the Pro¹x.  No Android, vendor kernel or Halium underneath; nonfree
-parts are firmware only.  Work in progress.
-
-<!-- picture or video: to come -->
+Near-mainline Linux, U-Boot and GNU Guix System (Shepherd, no systemd).
+No Android, vendor kernel or Halium; nonfree parts are firmware only.
+Work in progress.
 
 ## Sessions
 
-Chosen at the text login (tuigreet; remembers user and session):
+Picked at the text login (tuigreet, remembers user and session):
 
-- **Sway**: tiling desktop for the keyboard, landscape.
-- **Phosh**: phone shell with GNOME Settings, Calls, Chatty, Snapshot.
+- **Sway**: keyboard-first desktop, made for the phone (below).
+- **Phosh**: phone shell (GNOME Settings, Calls, Chatty, Snapshot).
 - **Sxmo on Sway**: starts; needs superd, not packaged yet.
 
-## Works (observed 2026-10-30, Linux 7.1)
+## Works (2026-10-30, Linux 7.1)
 
-Display, touch, GPU; keyboard with Fn layer and backlight; slider
-(keyboard out: landscape locked); Wi-Fi; Bluetooth (with audio);
-USB SSH; speaker, earpiece, microphones, volume keys; both cameras
-(Snapshot, very early); auto-rotation; battery state; SIM and data on
-3G; calls (earpiece only), SMS and MMS; vibration and ringtone; idle dimming;
-double tap to wake;
+Display, touch, GPU; keyboard, Fn layer, backlight; Wi-Fi; Bluetooth
+(audio too); USB SSH; speaker, earpiece, microphones; both cameras
+(Snapshot, early); accelerometer, proximity sensor; battery and charge
+limit; SIM, SMS, MMS, calls (earpiece), mobile data; vibration;
 Tailscale.
+
+## Phone comforts
+
+- Double tap or Esc wakes the screen; not while in a pocket
+  (proximity sensor).
+- Screen off and touch disabled near the face during calls (Sway).
+- Portrait with the keyboard closed, landscape with it out; optional
+  auto-rotation that ignores quick tilts.
+- On-screen keyboard (stevia) when the keyboard is closed, never when it
+  is out; Super key in its terminal layout.
+- Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
+- Charge limit (85/80 %), shown in quick settings.
+- Notification LED: per-event colours in config.scm; breathing yellow
+  while charging, green when full or held, red blip on low battery.
+- Keyboard backlight only while slid out, off after 60 s idle.
+- Speaker pops at login removed.
+- Wi-Fi, mobile data and rotation settings kept across reboots;
+  keep-screen-on (caffeine) is not.
+
+## Sway on the phone
+
+- Edge swipes: top, quick settings; bottom, on-screen keyboard; right,
+  app launcher; left, window switcher.  Same swipe again closes.
+- Quick settings (Super+q): toggles with Left/Right, battery, network
+  details, SIM PIN entry, notification dock, lock, charge limit.
+- Status bar: temperature, disk, mobile signal, volume, Bluetooth,
+  brightness, battery.
+- Lock screen with the unread notifications per app.
+- Notifications briefly light a dark screen, dimly.
+- Incoming calls show over the lock screen (not yet tried with a call);
+  Calls and the camera open fullscreen in portrait, the previous
+  rotation comes back after.
+- Chatty and Calls run in the background.
+- Screenshots: Fn+Alt+P (region: with Ctrl).
+- Foot server for fast menus and terminals; 80 % opaque foot.
 
 ## Not yet
 
-LTE, GPS, speakerphone and mute in calls, headphones,
-proximity and
-light sensors, suspend.  Speaker pops at login.  Details:
-[README](../README.md#port-status), [TODO.md](../TODO.md).
+LTE, GPS, speakerphone and mute in calls, headphones, light sensor,
+suspend.  Details: [README](../README.md#port-status),
+[TODO.md](../TODO.md).
 
 ## How it is run
 
-The phone's whole system is `~/.config/guix/config.scm`, which inherits
-the port's system ([configure.md](configure.md)).  Your PC builds it and
-installs it over USB or Tailscale; each update is a boot-menu entry you
-can go back to ([update.md](update.md)).
+The phone's whole system is `~/.config/guix/config.scm`, inheriting the
+port's ([configure.md](configure.md)).  The PC builds it and installs it
+over USB or Tailscale; each update is a boot-menu entry
+([update.md](update.md)).
 
 [install.md](install.md) · [usage.md](usage.md) · [configure.md](configure.md) ·
 [update.md](update.md) · [channels.md](channels.md) ·
