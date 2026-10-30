@@ -1,5 +1,6 @@
 #!/bin/sh
-# pro1x-osk-slider — no on-screen keyboard in Sway while the keyboard is out
+# pro1x-osk-slider — follow the keyboard slide in Sway: on-screen keyboard
+# and panel orientation
 #
 # stevia ignores hardware keyboards here (the Pro¹x keyboard is always
 # attached; GSettings default mobi.phosh.osk ignore-hw-keyboards), so
@@ -7,7 +8,10 @@
 # (org.gnome.desktop.a11y.applications).  In Phosh, phosh-pro1x-slider sets
 # it from the slider; this does the same in Sway: slid out, it remembers
 # the value, sets it false and hides stevia; slid in, it puts the value
-# back.  Started by the Sway config; ends when Sway's IPC socket is gone.
+# back.  Orientation: slid out, landscape (transform 90, the keyboard
+# landscape); slid in, portrait, unless auto-rotation is on (sway-autorotate,
+# off by default), which then follows the sensor.  Started by the Sway
+# config; ends when Sway's IPC socket is gone.
 #
 # State: written 2026-10-30, not yet run on the phone.
 
@@ -17,7 +21,10 @@ key=screen-keyboard-enabled
 saved="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-slider.saved"
 events="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-slider.events"
 
+rotation="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/sway-autorotate"
+
 slid_out() {
+    swaymsg output DSI-1 transform 90 >/dev/null 2>&1
     [ -f "$saved" ] || gsettings get "$schema" "$key" > "$saved"
     gsettings set "$schema" "$key" false
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
@@ -25,6 +32,13 @@ slid_out() {
 }
 
 slid_in() {
+    if [ "$(cat "$rotation" 2>/dev/null || echo off)" = on ]; then
+        # Off and on: monitor-sensor reports changes only, and a fresh one
+        # starts with the current orientation.
+        sway-autorotate off; sway-autorotate on
+    else
+        swaymsg output DSI-1 transform normal >/dev/null 2>&1
+    fi
     if [ -f "$saved" ]; then
         gsettings set "$schema" "$key" "$(cat "$saved")"
         rm -f "$saved"

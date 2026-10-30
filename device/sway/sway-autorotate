@@ -9,7 +9,8 @@
 # iio-sensor-proxy (monitor-sensor).  While the keyboard is slid out the
 # panel stays in landscape (transform 90, as in the Sway device settings).
 # The on/off state is ~/.local/state/pro1x/sway-autorotate ($XDG_STATE_HOME),
-# so it survives reboots (default on).
+# so it survives reboots (default off: portrait with the keyboard closed,
+# landscape with it out, pro1x-osk-slider; author, 2026-10-30).
 #
 # Like Phosh (rotation-manager.c), the accelerometer is only held while
 # auto-rotation is on and the panel is powered: every batch of the sensor
@@ -61,15 +62,19 @@ poke() {                        # tell the running daemon to re-check
     return 0
 }
 
+# Off with the keyboard closed: back to portrait.
+portrait_unless_slid_out() { slider_out || set_transform normal; }
+
 case "${1:-}" in
-    on|off) echo "$1" > "$state"; poke; exit 0 ;;
+    on) echo on > "$state"; poke; exit 0 ;;
+    off) echo off > "$state"; poke; portrait_unless_slid_out; exit 0 ;;
     toggle)
-        if [ "$(cat "$state" 2>/dev/null)" = off ]; then
-            echo on > "$state"
+        if [ "$(cat "$state" 2>/dev/null || echo off)" = off ]; then
+            echo on > "$state"; poke
         else
-            echo off > "$state"
+            echo off > "$state"; poke; portrait_unless_slid_out
         fi
-        poke; exit 0 ;;
+        exit 0 ;;
     normal) echo off > "$state"; poke; set_transform normal; exit 0 ;;
     left) echo off > "$state"; poke; set_transform 90; exit 0 ;;
     right) echo off > "$state"; poke; set_transform 270; exit 0 ;;
@@ -81,7 +86,7 @@ esac
 
 # ── Daemon ───────────────────────────────────────────────────────────────────
 
-[ -f "$state" ] || echo on > "$state"
+[ -f "$state" ] || echo off > "$state"
 echo $$ > "$pidfile"
 rm -f "$fifo" "$events"; mkfifo "$fifo" "$events"
 sensor=                         # monitor-sensor's PID while held

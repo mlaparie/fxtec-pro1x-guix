@@ -129,12 +129,18 @@
                      "--output" "DSI-1" "--transform" "270")
             saved))
 
+        ;; With the rotation lock on (the default, phosh-pro1x's schema
+        ;; override), closing the keyboard goes back to portrait: the lock
+        ;; would otherwise keep the keyboard landscape (author, 2026-10-30).
         (define (slid-in! saved)
           (match saved
             ((lock . osk)
              (set-setting! schema "orientation-lock" lock)
              (set-setting! osk-schema "screen-keyboard-enabled" osk))
             (#f #t))
+          (when (string=? (setting schema "orientation-lock") "true")
+            (system* #$(file-append wlr-randr "/bin/wlr-randr")
+                     "--output" "DSI-1" "--transform" "normal"))
           #f)
 
         ;; Let the shell start before the first change.
