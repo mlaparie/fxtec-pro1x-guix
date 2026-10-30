@@ -15,7 +15,7 @@
 ;;;       (modify-services (operating-system-user-services base)
 ;;;         (pro1x-hardware-service-type
 ;;;          config => (pro1x-hardware-configuration
-;;;                     (inherit config) (dim-after 120) (dim-level 20))))
+;;;                     (inherit config) (dim-after 120) (dim-level 10))))
 ;;;
 ;;; The operating-system record in systems/ provides the kernel, firmware and
 ;;; bootloader directly — see systems/minimal.scm.
@@ -52,7 +52,7 @@
   ;; Dim the panel after this many seconds without input (#f: never), to
   ;; this percentage of its maximum brightness.
   (dim-after          pro1x-hardware-dim-after          (default 60))
-  (dim-level          pro1x-hardware-dim-level          (default 30)))
+  (dim-level          pro1x-hardware-dim-level          (default 20)))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a

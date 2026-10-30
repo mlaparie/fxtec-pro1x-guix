@@ -53,7 +53,7 @@ Rear and front cameras           Working    picture in GNOME Snapshot (libcamera
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity, light, gyroscope      Untested
 Battery                          Working    UPower: level and charging state in Phosh
-Screen dimming                   Working    30% after 60 s idle (configurable)
+Screen dimming                   Working    20% after 60 s idle (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested

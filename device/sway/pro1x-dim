@@ -1,7 +1,7 @@
 #!/bin/sh
 # pro1x-dim — dim the panel when idle, restore it on activity
 #
-#   pro1x-dim dim       fade to DIM_LEVEL% of the maximum (default 30), if
+#   pro1x-dim dim       fade to DIM_LEVEL% of the maximum (default 20), if
 #                       brighter, and save the level
 #   pro1x-dim restore   back to the saved level at once
 #
@@ -19,14 +19,14 @@ bl=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n 1)
 [ -n "$bl" ] || exit 0
 saved="${XDG_RUNTIME_DIR:-/tmp}/pro1x-dim"
 max=$(cat "$bl/max_brightness")
-DIM_LEVEL=30
+DIM_LEVEL=20
 [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
 
-fade() {            # fade FROM TO, in 20 steps over about 1.5 s
+fade() {            # fade FROM TO, in 15 steps over about 0.75 s
     from=$1 to=$2 i=1
-    while [ "$i" -le 20 ]; do
-        echo $(( from + (to - from) * i / 20 )) > "$bl/brightness"
-        sleep 0.075
+    while [ "$i" -le 15 ]; do
+        echo $(( from + (to - from) * i / 15 )) > "$bl/brightness"
+        sleep 0.05
         i=$(( i + 1 ))
     done
 }

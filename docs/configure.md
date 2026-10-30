@@ -47,7 +47,7 @@ once, so combine changes in one expression:
 | keyboard `backlight-timeout` | `60` | seconds without a key before the keyboard light goes off; `#f` never |
 | keyboard `xkb-layout`, `xkb-variant` | `"us"`, `"intl"` | session keyboard layout |
 | hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
-| hardware `dim-level` | `30` | dim level, % of maximum |
+| hardware `dim-level` | `20` | dim level, % of maximum |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
 
