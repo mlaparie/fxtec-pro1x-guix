@@ -240,9 +240,11 @@ jobs:
                 build -L modules --no-grafts linux-pro1x 2>/tmp/kernel.log | tail -1)
           if [ -d "$K" ]; then
             mkdir -p kernel-export
+            # A fresh runner has no signing key (as in guix-cache.sh).
+            [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
             sudo guix archive --export "$K" > kernel-export/linux-pro1x.nar
             echo "$K" > kernel-export/linux-pro1x.path
-            cp /etc/guix/signing-key.pub kernel-export/ci-signing-key.pub
+            sudo cat /etc/guix/signing-key.pub > kernel-export/ci-signing-key.pub
             ls -l kernel-export
           else
             echo "WARNING: no kernel output to export"; tail -30 /tmp/kernel.log
