@@ -17,6 +17,10 @@
 # Phosh leaves idle detection to gnome-session, absent here, so it never
 # blanked by itself.  Started by the Phosh session and the Sway config.
 #
+# Caffeine (Sway): while ~/.local/state/pro1x/caffeine says on, --sway
+# starts no swayidle at all (no dim, blank or lock); sway-quick-settings
+# stops and starts it when the setting changes.
+#
 # State: dimming tested 2026-10-30; Phosh blank and lock tested by hand with
 # the same SetActive call (author); Sway lock untested.
 
@@ -27,6 +31,8 @@ sway=
 if [ "${1:-}" = --sway ]; then
     sway=1
     shift
+    caffeine="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/caffeine"
+    [ "$(cat "$caffeine" 2>/dev/null)" = on ] && exit 0
 fi
 # The user's values if set, else config.scm's defaults (GSettings).
 if command -v gsettings >/dev/null 2>&1; then

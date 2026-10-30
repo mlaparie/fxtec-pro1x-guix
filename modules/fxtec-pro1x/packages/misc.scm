@@ -1165,7 +1165,7 @@ window opened by a sway key binding.")
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils evtest foot fzf gawk grep guile-3.0 jq
-                  sed swayidle (list glib "bin")))
+                  procps sed swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1220,7 +1220,7 @@ window opened by a sway key binding.")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "foot" "fzf" "gawk" "glib"
-                                "grep" "sed"))))))
+                                "grep" "procps" "sed"))))))
                 (let ((n (string-append #$output "/bin/sway-notifications")))
                   (chmod n #o755)
                   (wrap-program n

@@ -8,7 +8,8 @@
 # rot8 reads raw IIO sysfs, which the SSC accelerometer is not; this follows
 # iio-sensor-proxy (monitor-sensor).  While the keyboard is slid out the
 # panel stays in landscape (transform 90, as in the Sway device settings).
-# The on/off state is $XDG_RUNTIME_DIR/sway-autorotate (default on).
+# The on/off state is ~/.local/state/pro1x/sway-autorotate ($XDG_STATE_HOME),
+# so it survives reboots (default on).
 #
 # Like Phosh (rotation-manager.c), the accelerometer is only held while
 # auto-rotation is on and the panel is powered: every batch of the sensor
@@ -24,7 +25,9 @@
 # Sway not checked yet.
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-state="$rt/sway-autorotate"
+statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
+mkdir -p "$statedir"
+state="$statedir/sway-autorotate"
 pidfile="$rt/sway-autorotate.pid"
 fifo="$rt/sway-autorotate.fifo"          # monitor-sensor -> follow
 events="$rt/sway-autorotate.events"      # swaymsg subscribe -> main loop

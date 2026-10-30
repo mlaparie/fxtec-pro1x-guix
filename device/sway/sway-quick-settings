@@ -3,8 +3,9 @@
 #
 # Opened by Super+q in a floating foot (app id quicksettings).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
-# data, SIM, Bluetooth, airplane mode, auto-rotation, torch, feedback
-# profile (full/quiet/silent), brightness, volume, mute, notifications.
+# data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
+# (caffeine: no dimming, blanking or locking), torch, feedback profile
+# (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles or opens; Left/Right step brightness and volume; Esc
 # closes.  One fzf stays open and reloads its lines after each action.
 #
@@ -23,6 +24,8 @@
 # steps, the SIM line and the notification dock.
 
 torch=/sys/class/leds/white:flash-0/brightness
+statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
+caffeine="$statedir/caffeine"
 self=$0
 
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
@@ -118,7 +121,8 @@ lines() {
     else
         plane=off
     fi
-    rot=$(cat "${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate" 2>/dev/null || echo on)
+    rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo on)
+    caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
     case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
@@ -129,6 +133,7 @@ lines() {
         "bluetooth   Bluetooth            $bt" \
         "airplane    Airplane mode        $plane" \
         "rotation    Auto-rotation        $rot" \
+        "caffeine    Keep screen on       $caf" \
         "torch       Torch                $t" \
         "feedback    Feedback             $(cat "$d/fb")  (full / quiet / silent)" \
         "bright      Brightness           $(cat "$d/br")  (← →)" \
@@ -164,6 +169,18 @@ act() {
                 nmcli radio all off; rfkill block bluetooth
             fi ;;
         rotation) sway-autorotate toggle ;;
+        caffeine)
+            mkdir -p "$statedir"
+            if [ "$(cat "$caffeine" 2>/dev/null)" = on ]; then
+                echo off > "$caffeine"
+                swaymsg exec "pro1x-idle --sway" >/dev/null
+            else
+                echo on > "$caffeine"
+                # This session's swayidle (pro1x-idle --sway); Phosh has
+                # its own caffeine.
+                for p in $(pgrep -u "$(id -u)" -x swayidle); do kill "$p"; done
+                pro1x-dim restore 2>/dev/null
+            fi ;;
         torch)
             if [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
                 echo 0 > "$torch"
