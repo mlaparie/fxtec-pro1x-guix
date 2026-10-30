@@ -322,7 +322,8 @@
                "dbus-run-session" "--"
                ;; PipeWire, WirePlumber, pipewire-pulse for the session.
                #$pro1x-audio-session
-               #$(file-append sway "/bin/sway")))))
+               ;; SwayFX: Sway with blur and rounded corners (author).
+               #$(file-append swayfx "/bin/sway")))))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
@@ -683,7 +684,7 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot sway wdisplays swayidle swaylock mako
+     foot swayfx wdisplays swayidle swaylock mako
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia
@@ -692,6 +693,8 @@ Dracula palette, no kernel messages over the greeter.")
      sound-theme-freedesktop
      ;; Sway and Phosh backgrounds (light and dark).
      pro1x-wallpapers
+     ;; Bluetooth manager for Sway's quick settings (Right on Bluetooth).
+     bluetuith
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors

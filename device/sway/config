@@ -24,6 +24,13 @@ font pango:monospace 9
 ### Gaps between windows (author, 2026-10-30)
 gaps inner 6
 
+### SwayFX: blur behind translucent windows (foot at 90%), small rounded
+### corners.  These commands need SwayFX; plain sway rejects them.
+blur enable
+blur_passes 2
+blur_radius 4
+corner_radius 6
+
 ### Windows: no title bars; colours from mlaparie's guix-config
 default_border pixel 2
 default_floating_border pixel 2
@@ -62,6 +69,9 @@ exec pro1x-gestures
 ### back afterwards (pro1x-portrait-apps; Sway rotates whole outputs).
 for_window [app_id="^org.gnome.Snapshot$"] fullscreen enable
 exec pro1x-portrait-apps
+
+### A very dim white LED while the screen is blank but not locked.
+exec pro1x-blank-led
 
 ### foot server: quick settings, the launcher and the window switcher open
 ### as footclient windows (pro1x-term), faster than a new foot, and so does

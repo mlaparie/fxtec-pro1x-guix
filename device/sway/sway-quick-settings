@@ -178,6 +178,65 @@ sim_unlock() {
     pin=
 }
 
+dim() {                         # grey for off states
+    case "$1" in
+        off|hidden|"not running"|*"(muted)") printf '\033[90m%s\033[0m' "$1" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# Mobile data options, cycled with Enter/Right (next) and Left (back).
+# The chosen one shows on its line for 2 s, then the status again.
+MOBILE_OPTS="off 234 34 23 3 roam-on roam-off"
+mobile_label() {
+    case "$1" in
+        off) echo "mobile data off" ;;   234) echo "2G/3G/4G" ;;
+        34) echo "3G/4G" ;;              23) echo "2G/3G" ;;
+        3) echo "3G only" ;;             roam-on) echo "roaming on" ;;
+        roam-off) echo "roaming off" ;;
+    esac
+}
+mobile_flash() {                # label if an option was set < 2 s ago
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    [ -f "$f" ] || return 1
+    read -r opt when < "$f"
+    [ $(( $(date +%s) - when )) -lt 2 ] || return 1
+    mobile_label "$opt"
+}
+mobile_cycle() {                # mobile_cycle + | -
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    cur=$( [ -f "$f" ] && cut -d' ' -f1 "$f")
+    set -- "$1" $MOBILE_OPTS
+    dir=$1; shift
+    n=$#; i=1; idx=0
+    for o in "$@"; do [ "$o" = "$cur" ] && idx=$i; i=$((i + 1)); done
+    if [ "$dir" = + ]; then idx=$(( idx % n + 1 ))
+    else idx=$(( (idx + n - 2) % n + 1 )); fi
+    eval "opt=\${$idx}"
+    gsm=$(nmcli -t -f NAME,TYPE connection show 2>/dev/null |
+              awk -F: '$2 == "gsm" { print $1; exit }')
+    case "$opt" in
+        off) nmcli radio wwan off ;;
+        234|34|23|3)
+            nmcli radio wwan on
+            case "$opt" in
+                234) mmcli -m any --set-allowed-modes='2g|3g|4g' --set-preferred-mode=4g ;;
+                34) mmcli -m any --set-allowed-modes='3g|4g' --set-preferred-mode=4g ;;
+                23) mmcli -m any --set-allowed-modes='2g|3g' --set-preferred-mode=3g ;;
+                3) mmcli -m any --set-allowed-modes='3g' ;;
+            esac >/dev/null 2>&1 ;;
+        roam-on|roam-off)
+            [ -n "$gsm" ] || return
+            nmcli connection modify "$gsm" gsm.home-only \
+                "$( [ "$opt" = roam-on ] && echo no || echo yes)"
+            nmcli connection up "$gsm" >/dev/null 2>&1 & ;;
+    esac
+    echo "$opt $(date +%s)" > "$f"
+    # The status again once the 2 s are over.
+    ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
+          -d "reload($self --lines)" >/dev/null 2>&1 ) &
+}
+
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
 blocked() {                     # rfkill type -> on/off (on = not blocked)
@@ -256,25 +315,29 @@ lines() {
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
-    case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
+    case "$vol" in
+        *muted) vol=$(dim "${vol%% *} (muted)") ;;
+    esac
+    mobile="$(dim "$wwan")$(mobile_info "$kv")"
+    flash=$(mobile_flash) && mobile="→ $flash"
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
         "notif       Notifications        $(cat "$d/notif")" \
         "lock        Lock screen" \
-        "wifi        Wi-Fi                $wifi$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
-        "wwan        Mobile data          $wwan$(mobile_info "$kv")" \
+        "camera      Camera" \
+        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wwan        Mobile data          $mobile" \
         "sim         SIM                  $(sim_state "$kv")" \
-        "bluetooth   Bluetooth            $bt" \
-        "airplane    Airplane mode        $plane" \
-        "rotation    Auto-rotation        $rot" \
-        "caffeine    Keep screen on       $caf" \
-        "osk         Keyboard             $(cat "$d/osk")" \
-        "torch       Torch                $t" \
+        "bluetooth   Bluetooth            $(dim "$bt")" \
+        "airplane    Airplane mode        $(dim "$plane")" \
+        "rotation    Auto-rotation        $(dim "$rot")" \
+        "caffeine    Keep screen on       $(dim "$caf")" \
+        "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
+        "torch       Torch                $(dim "$t")" \
         "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
         "bright      Brightness           $(cat "$d/br")" \
-        "volume      Volume               ${vol%% *}" \
-        "mute        Mute                 $mute" \
+        "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
@@ -343,11 +406,24 @@ feedback_step() {               # + towards full, - towards silent
     gsettings set org.sigxcpu.feedbackd profile "$next"
 }
 
+# Keys, the same on every line: Enter does the line's main thing (toggle;
+# mute for Volume; cycle Mobile data and Feedback; open Lock, Camera, SIM,
+# Notifications).  Right is "more": the Wi-Fi or Bluetooth tool, the next
+# Mobile data option, a step up, on.  Left goes back: off, a step down,
+# the previous Mobile data option.
+open_tool() {                   # a terminal tool in a floating foot
+    qs_hide
+    swaymsg exec "pro1x-term --app-id=qs-tool -e $1" >/dev/null
+}
+
 act() {                         # Enter
     case "$1" in
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
+        camera) qs_hide; swaymsg exec snapshot >/dev/null ;;
+        wwan) mobile_cycle + ;;
+        volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -363,6 +439,11 @@ act() {                         # Enter
 
 step() {                        # Right (+) and Left (-)
     case "$1$2" in
+        wifi+) open_tool pro1x-wifi ;;
+        bluetooth+) open_tool bluetuith ;;
+        wwan+) mobile_cycle + ;;
+        wwan-) mobile_cycle - ;;
+        lock+|camera+) act "$1" ;;
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
@@ -454,7 +535,8 @@ set --
 lines |
     fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
         --with-nth=2.. --info=hidden --header-lines=1 --cycle \
-        --preview="$self --notif-summary" --preview-window=hidden,down,50%,wrap \
+        --ansi --preview="$self --notif-summary" --preview-window=hidden,down,50%,wrap \
+        --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
@@ -464,10 +546,10 @@ lines |
         --bind="right:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  charge|lock) ;;
+                  charge) ;;
                   *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  sim|notif|charge|lock) ;;
+                  sim|notif|charge|lock|camera) ;;
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null

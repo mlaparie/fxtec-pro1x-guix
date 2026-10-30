@@ -43,6 +43,7 @@
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
+  #:use-module (nonguix build-system binary)  ; bluetuith
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
@@ -986,6 +987,37 @@ sends a power-key press when it sees two quick taps close together.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
+;;; bluetuith — Bluetooth manager in the terminal, for Sway's quick settings
+;;; From the author's guix-private-channel (mlaparie/packages/bluetuith.scm):
+;;; upstream's release binary (Go, MIT).  Fixed to the arm64 build here: the
+;;; original picks the build from %current-system when the package is
+;;; defined, which is the PC's when the PC builds for the phone.
+;;; ---------------------------------------------------------------------------
+(define-public bluetuith
+  (package
+    (name "bluetuith")
+    (version "0.1.9")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/darkhz/bluetuith/releases/download/v"
+                           version "/bluetuith_" version "_Linux_arm64.tar.gz"))
+       (sha256
+        (base32 "0h1hynihinvrpf1l67d5yxhrfhiq3x4xi84f3fzfcbwndd7lfsl9"))))
+    (supported-systems '("aarch64-linux"))
+    (build-system binary-build-system)
+    (arguments
+     (list
+      #:install-plan #~'(("bluetuith" "bin/"))
+      #:strip-binaries? #t))
+    (inputs (list bluez))
+    (home-page "https://github.com/darkhz/bluetuith")
+    (synopsis "Bluetooth manager in the terminal")
+    (description "bluetuith manages Bluetooth adapters and devices from a
+terminal interface.")
+    (license license:expat)))
+
+;;; ---------------------------------------------------------------------------
 ;;; pro1x-wallpapers — the Sway and Phosh backgrounds, made for the port
 ;;;   light.png  a low-poly gradient (coral, plum, deep teal), generated
 ;;;   dark.png   Guix's gnu (guix-backgrounds, CC-BY-SA 4.0), lilac on slate
@@ -1284,6 +1316,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-portrait-apps            portrait while Snapshot or Calls is focused
 ;;;   bin/pro1x-menu                     resident menus, toggled from the scratchpad
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
+;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
+;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1319,7 +1353,9 @@ window opened by a sway key binding.")
           ("pro1x-screenshot" "bin/")
           ("pro1x-portrait-apps" "bin/")
           ("pro1x-menu" "bin/")
-          ("pro1x-switcher" "bin/"))
+          ("pro1x-switcher" "bin/")
+          ("pro1x-wifi" "bin/")
+          ("pro1x-blank-led" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1388,7 +1424,7 @@ window opened by a sway key binding.")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
                                  '("coreutils" "curl" "fzf" "jq")))))))
-                 '("pro1x-menu" "pro1x-switcher"))
+                 '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa
