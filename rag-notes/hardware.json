@@ -261,6 +261,14 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "monitor-sensor and iio-sensor-proxy log on the phone; commit e4051eb"
+      },
+      {
+        "title": "ADSP 'Handover signaled, but it already happened' repeats with every SSC sensor batch",
+        "general": "On qcom PAS remoteprocs the handover SMP2P bit is meant to rise once at start; the q6v5 driver logs an error for each later rising edge. A streaming sensor client on an SSC (sensors on the ADSP) makes the ADSP raise its ready and handover bits again with each batch, so a running accelerometer stream floods the kernel log; count the smp2p and q6v5 lines in /proc/interrupts over 10 s with and without the client before suspecting a crash.",
+        "instance": "Pro1x, kernel 7.1.0 (sm6115-mainline 8cd9520d), generation 33: smp2p-adsp, q6v5 ready and q6v5 handover 43-44 per 10 s with monitor-sensor --accel (iio-sensor-proxy 3.9, libssc) running, 0 without; wdog and fatal 0; ADSP stays up and audio keeps working. Started at the first login, when sway-autorotate started monitor-sensor.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "/proc/interrupts on the phone; drivers/remoteproc/qcom_q6v5.c q6v5_handover_interrupt; arch/arm64/boot/dts/qcom/sm6115.dtsi remoteproc@a400000 interrupts"
       }
     ]
   }
