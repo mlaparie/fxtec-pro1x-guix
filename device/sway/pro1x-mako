@@ -3,7 +3,8 @@
 #
 # mako keeps no arrival times, and the Sway lock screen (pro1x-lock) shows
 # the time of the latest notification of each app.  mako's on-notify runs
-# `sway-notifications log "$id"' for each new one.  mako reads only
+# `pro1x-notify "$id"' for each new one (logs it, wakes the panel briefly,
+# refreshes the lock screen).  mako reads only
 # ~/.mako/config or ~/.config/mako/config and has no command-line option for
 # on-notify, so this writes a config with that line first (global options
 # come before any [section]) followed by the user's own config, whose
@@ -14,7 +15,7 @@
 conf="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mako.config"
 {
     echo '# Written by pro1x-mako; edit ~/.config/mako/config instead.'
-    echo 'on-notify=exec sway-notifications log "$id"'
+    echo 'on-notify=exec pro1x-notify "$id"'
     for f in "$HOME/.mako/config" "${XDG_CONFIG_HOME:-$HOME/.config}/mako/config"; do
         if [ -r "$f" ]; then cat "$f"; break; fi
     done

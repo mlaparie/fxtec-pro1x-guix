@@ -771,10 +771,15 @@ It runs on top of the Phoc compositor.")
                     ;; Read by phoc, which aborts at start without it.
                     #$(local-file (repository-file "device/phosh/org.gnome.mutter.gschema.xml"))))
                   ;; Show all apps in the overview, not only adaptive ones.
+                  ;; Rotation locked by default: portrait with the keyboard
+                  ;; closed (phosh-pro1x-slider), landscape with it out.
                   (call-with-output-file
                       (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
                     (lambda (port)
-                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
+                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n
+[org.gnome.settings-daemon.peripherals.touchscreen]\norientation-lock=true\n
+[org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n"
+                               port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
 
@@ -831,7 +836,13 @@ ModemManager, for clients such as Chatty.")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))))
+        (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))
+       ;; Ours: phoc's device-state protocol optional, so stevia also
+       ;; runs in Sway (it never drew its keyboard there).
+       (patches
+        (list (local-file
+               (repository-file "device/phosh/stevia-optional-device-state.patch")
+               "stevia-optional-device-state.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
@@ -1192,6 +1203,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
+;;;   bin/pro1x-notify                   on a notification: log, wake, relock
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1216,7 +1228,8 @@ window opened by a sway key binding.")
           ("sway-notifications" "bin/")
           ("pro1x-osk-slider" "bin/")
           ("pro1x-lock" "bin/")
-          ("pro1x-mako" "bin/"))
+          ("pro1x-mako" "bin/")
+          ("pro1x-notify" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1267,10 +1280,20 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "gawk" "imagemagick" "jq" "sed"))))
+                              '("coreutils" "gawk" "imagemagick" "jq" "procps"
+                                "sed"))))
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((notify (string-append #$output "/bin/pro1x-notify")))
+                  (chmod notify #o755)
+                  ;; swaymsg comes from the system profile.
+                  (wrap-program notify
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "jq" "procps" "swayidle"))))))
                 (let ((mako (string-append #$output "/bin/pro1x-mako")))
                   (chmod mako #o755)
                   ;; sway-notifications for on-notify; mako from the system.

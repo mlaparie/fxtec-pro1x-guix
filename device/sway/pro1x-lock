@@ -2,14 +2,17 @@
 # pro1x-lock — swaylock with a GNU Guix banner and unread notifications
 #
 #   pro1x-lock [swaylock arguments...]
+#   pro1x-lock --refresh     redraw while locked (pro1x-notify, new
+#                            notification): a new picture, then the running
+#                            swaylock is replaced by one showing it; Sway
+#                            stays locked meanwhile (ext-session-lock)
 #
 # swaylock draws no text of its own, so this renders a picture of the size
 # of the panel (ImageMagick, DejaVu Sans Mono): a "GNU Guix" banner (figlet,
 # standard font), the date and time of locking, and one line per app with
 # notifications still shown by mako: how many, and when the latest arrived
-# (sway-notifications summary; times logged by pro1x-mako).  The picture is
-# made once, when locking: notifications arriving while locked show only
-# after the next lock.  Used by pro1x-idle --sway.
+# (sway-notifications summary; times logged by pro1x-mako).  Used by
+# pro1x-idle --sway and the Lock line of sway-quick-settings.
 #
 # State: written 2026-10-30, not yet run on the phone.
 
@@ -67,6 +70,18 @@ convert -size "$size" "xc:$bg" -font "$PRO1X_LOCK_FONT" \
     -fill "$dim" -pointsize "$pt" \
     -annotate +0+$((pt * 15)) "$(esc "$notes")" \
     "$png" 2>/dev/null
+
+if [ "${1:-}" = --refresh ]; then
+    shift
+    old=$(pgrep -u "$(id -u)" -x swaylock)
+    [ -n "$old" ] || exit 0
+    kill $old
+    # The session stays locked without a client; wait for it to go.
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -u "$(id -u)" -x swaylock >/dev/null || break
+        sleep 0.2
+    done
+fi
 
 if [ -s "$png" ]; then
     exec swaylock -f -c "${bg#\#}" -i "$output:$png" -s center "$@"
