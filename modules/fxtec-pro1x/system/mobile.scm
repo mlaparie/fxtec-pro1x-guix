@@ -83,8 +83,10 @@
 ;; (author, 2026-10-30).  On slide-out: remember the user's orientation
 ;; lock, lock, and turn the panel to landscape (transform 270: with 90,
 ;; as in Sway's config, Phosh came out upside down, author 2026-10-30);
-;; Phosh leaves the transform alone while locked.  On slide-in: restore the
-;; remembered lock, so auto-rotation resumes if it was on.
+;; Phosh leaves the transform alone while locked.  The on-screen keyboard
+;; is turned off too while the keyboard is out (author).  On slide-in:
+;; restore both remembered settings, so auto-rotation and the on-screen
+;; keyboard come back if they were on.
 (define phosh-pro1x-slider
   (program-file "phosh-pro1x-slider"
     #~(begin
@@ -97,6 +99,7 @@
         (define slider "/dev/input/pro1x-slider")
         (define gsettings (string-append #$glib:bin "/bin/gsettings"))
         (define schema "org.gnome.settings-daemon.peripherals.touchscreen")
+        (define osk-schema "org.gnome.desktop.a11y.applications")
 
         (define (slider-open?)
           ;; `evtest --query' exits with 10 when the switch is set.
@@ -104,33 +107,41 @@
                  (system* #$(file-append evtest "/bin/evtest") "--query"
                           slider "EV_SW" "SW_KEYPAD_SLIDE"))))
 
-        (define (orientation-lock)
-          (let* ((port (open-pipe* OPEN_READ gsettings "get" schema
-                                   "orientation-lock"))
+        (define (setting schema key)
+          (let* ((port (open-pipe* OPEN_READ gsettings "get" schema key))
                  (value (read-line port)))
             (close-pipe port)
             (if (eof-object? value) "false" value)))
 
-        (define (set-orientation-lock! value)
-          (system* gsettings "set" schema "orientation-lock" value))
+        (define (set-setting! schema key value)
+          (system* gsettings "set" schema key value))
 
+        ;; SAVED: (orientation-lock . screen-keyboard-enabled) before
+        ;; slide-out.
         (define (slid-out! saved)
-          (let ((lock (or saved (orientation-lock))))
-            (set-orientation-lock! "true")
+          (let ((saved (or saved
+                           (cons (setting schema "orientation-lock")
+                                 (setting osk-schema
+                                          "screen-keyboard-enabled")))))
+            (set-setting! schema "orientation-lock" "true")
+            (set-setting! osk-schema "screen-keyboard-enabled" "false")
             (system* #$(file-append wlr-randr "/bin/wlr-randr")
                      "--output" "DSI-1" "--transform" "270")
-            lock))
+            saved))
 
         (define (slid-in! saved)
-          (when saved
-            (set-orientation-lock! saved))
+          (match saved
+            ((lock . osk)
+             (set-setting! schema "orientation-lock" lock)
+             (set-setting! osk-schema "screen-keyboard-enabled" osk))
+            (#f #t))
           #f)
 
         ;; Let the shell start before the first change.
         (sleep 3)
         (let ((port (open-input-file slider #:binary #t)))
           (setvbuf port 'none)
-          ;; SAVED: the user's lock before slide-out, #f while slid in.
+          ;; SAVED: the user's settings before slide-out, #f while slid in.
           (let loop ((saved (if (slider-open?) (slid-out! #f) #f)))
             ;; struct input_event on aarch64: 16-byte timeval, u16 type,
             ;; u16 code, s32 value.  EV_SW 5, SW_KEYPAD_SLIDE 10.
