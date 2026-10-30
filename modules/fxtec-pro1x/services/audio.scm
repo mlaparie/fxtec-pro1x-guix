@@ -96,6 +96,17 @@
                pid)))
 
        (setenv "ALSA_CONFIG_UCM2" #$(pro1x-ucm-dir pro1x-audio))
+       ;; The previous session leaves the Speaker device's amplifier switches
+       ;; on.  WirePlumber's profile probe then opens and closes the playback
+       ;; PCM about eight times in one second, and each open powered both
+       ;; aw87339 amplifiers: the pops at login.  With the switches off the
+       ;; probe never powers them; the Speaker EnableSequence turns them on
+       ;; after the probe (DAPM log, 2026-10-30).
+       (for-each (lambda (control)
+                   (system* #$(file-append alsa-utils "/bin/amixer")
+                            "-q" "-c" "0" "cset"
+                            (string-append "name=" control) "0"))
+                 '("Spk0 OUT Switch" "Spk1 OUT Switch"))
        (let* ((pipewire (spawn #$(file-append pipewire "/bin/pipewire")))
               (pulse    (spawn #$(file-append pipewire "/bin/pipewire-pulse")))
               (wireplumber
