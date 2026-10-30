@@ -696,6 +696,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Bluetooth manager for Sway's quick actions (Right on Bluetooth).
      bluetuith
      i3status-rust font-awesome
+     ;; foot's font (skeleton foot.ini).
+     font-iosevka-term
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
      ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
