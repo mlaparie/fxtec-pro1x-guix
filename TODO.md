@@ -235,7 +235,6 @@ and Phosh itself.  Not set up yet.
   warm-up step (da730ed) is in run 41025825198.  Then `sudo guix archive --authorize
   < ci-signing-key.pub` on the PC (author), import, deploy, reboot.  Merge next into main after
   that kernel boots.
-- MMS sending: untested.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.
 
@@ -313,7 +312,8 @@ and Phosh itself.  Not set up yet.
    combined APN for data and MMS; the separate MMS APN entered at first
    (and later a mistyped proxy port) was the whole problem.  After
    correcting the settings in Chatty, mmsd-tng (restarted to reprocess
-   its queue) fetched the four waiting MMS at once.  Sending untested.
+   its queue) fetched the four waiting MMS at once.  Sending works (author,
+   2026-10-30, Chatty).
    History below.
    mmsd-tng 2.6.4 packaged and started with Phosh (ff2261c).
    It receives the MMS notifications (WAP push: transaction id, location)
