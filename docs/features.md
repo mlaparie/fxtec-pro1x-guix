@@ -31,7 +31,8 @@ Tailscale.
   is out; Super key in its terminal layout.
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
 - Charge limit (85/80 %), shown in quick actions.
-- Notification LED: per-event colours in config.scm; breathing yellow
+- Notification LED: blue for messages, purple for missed calls, white
+  for the terminal bell (config.scm); breathing yellow
   while charging, green when full or held, red blip on low battery.
 - Keyboard backlight only while slid out, off after 60 s idle.
 - Speaker pops at login removed.

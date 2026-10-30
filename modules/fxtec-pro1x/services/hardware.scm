@@ -23,9 +23,10 @@
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
 ;;;   • notification LED colours (notification-leds): a feedbackd device
 ;;;     theme, share/feedbackd/themes/fxtec,pro1x.json in the system profile,
-;;;     which feedbackd loads for its default theme on this phone.  In
-;;;     config.scm, (notification-leds '(("message-missed-sms" "green")
-;;;     ("phone-missed-call" "#FF8000" 1000))).  Events: battery-caution,
+;;;     which feedbackd loads for its default theme on this phone.
+;;;     Default: messages blue, missed calls purple, terminal bell white.
+;;;     In config.scm, (notification-leds '(("message-missed-sms" "green")
+;;;     ("phone-missed-call" "#FF8000" 1000))) replaces that list.  Events: battery-caution,
 ;;;     message-missed-email, -instant, -notification, -sms,
 ;;;     notification-missed-generic, phone-missed-call;
 ;;;   • battery on the notification LED (charging-led, charged-led,
@@ -104,8 +105,14 @@
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
-  ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.
-  (notification-leds  pro1x-hardware-notification-leds (default '()))
+  ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
+  ;; (author): blue for messages, purple for missed calls, white for the
+  ;; terminal bell (foot's [bell], feedbackd's bell-terminal event).
+  (notification-leds  pro1x-hardware-notification-leds
+                      (default '(("message-missed-sms" "blue")
+                                 ("message-missed-instant" "blue")
+                                 ("phone-missed-call" "#8000FF")
+                                 ("bell-terminal" "white"))))
   ;; The notification LED while charging (breathing), once full or held
   ;; at the charge limit (steady), and on battery at or below
   ;; low-battery-level percent (a short blip every 4 s): "#RRGGBB" or a
