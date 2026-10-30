@@ -259,7 +259,7 @@ bindsym $mod+Shift+s exec pro1x-screenshot region
 ### Bar: i3status-rust with ~/.config/i3status-rust/config.toml
 bar {
     position top
-    font pango:monospace, FontAwesome 8
+    font pango:monospace, FontAwesome 10
     status_command i3status-rs
     colors {
         statusline #ebdbb2
