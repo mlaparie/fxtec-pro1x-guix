@@ -224,10 +224,13 @@ and Phosh itself.  Not set up yet.
 
 ## Waiting for the author (2026-10-30, 04:30)
 
-- Login pops: the call helper no longer piles up or runs keep-alives
-  outside calls, and the card is back on HiFi (7aff1ef, deployed); tested
-  by SSH (one copy, no keep-alives, exits after 20 s).  Needs a login to
-  hear whether the pops are gone.
+- Login pops (still there after 7aff1ef, author 2026-10-30): mechanism
+  found (rag-notes hardware/audio): WirePlumber's probe opens the
+  playback PCM ~8 times in 1.2 s and each open powered both aw87339 amps,
+  because the last session left Spk0/Spk1 OUT Switch on.  2624e73 turns
+  them off before PipeWire starts; with that, the probe left the amps off
+  (hand restart).  Next: a real logout/login by the agent (author's
+  permission each time), and the author's ear.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
 - CI kernel (charge limit, LED pattern trigger): runs 40997348185 and

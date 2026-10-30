@@ -243,6 +243,14 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "amixer cget/events on the phone; author 2026-10-30"
+      },
+      {
+        "title": "Login pops: the PipeWire probe opens the playback PCM repeatedly and each open powers the speaker amplifiers when their switches are left on",
+        "general": "On ASoC cards whose speaker amplifiers are DAPM widgets behind a mixer switch, a PCM open alone powers the whole path, amplifiers included, if the switch is on. WirePlumber/ACP opens and closes each PCM several times while it probes profiles at startup, so a switch left on by the previous session gives one amplifier power cycle per open: audible pops at every login. Turn the switches off before the audio daemon starts and let the UCM EnableSequence turn them on after the probe. Without ftrace, polling the DAPM debugfs widget files (/sys/kernel/debug/asoc/<card>/<component>/dapm/<widget>) every 10 ms together with /proc/asound/card*/pcm*/sub0/status gives a usable power timeline.",
+        "instance": "Pro1x, two aw87339 amplifiers (aw87339.1-0059/005a, widgets Spk0/Spk1 SPK PA) fed by the wcd937x HPH stage; controls Spk0/Spk1 OUT Switch. Restarting the Sway session PipeWire 1.6.8 + WirePlumber 0.5.17 by hand (generation 29): with the switches on, pcm0p opened about 8 times in 1.2 s and both amps plus HPHL/HPHR PGA were on from +0.57 s to +1.75 s, with one full off/on cycle. With both switches set to 0 first: 24 probe opens, amps never on; WirePlumber set the switches back on at +1.9 s (Speaker EnableSequence). Fix in pro1x-audio-session (amixer before pipewire). The kernel has no tracefs.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "DAPM/PCM logs /root/pops/082612 and the AMPS_OFF run on the phone; commit 2624e73; whether the pops are gone by ear not yet checked"
       }
     ],
     "sensors": [
