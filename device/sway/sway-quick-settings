@@ -25,7 +25,7 @@
 
 torch=/sys/class/leds/white:flash-0/brightness
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
-caffeine="$statedir/caffeine"
+caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
 self=$0
 
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
@@ -170,7 +170,6 @@ act() {
             fi ;;
         rotation) sway-autorotate toggle ;;
         caffeine)
-            mkdir -p "$statedir"
             if [ "$(cat "$caffeine" 2>/dev/null)" = on ]; then
                 echo off > "$caffeine"
                 swaymsg exec "pro1x-idle --sway" >/dev/null

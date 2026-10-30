@@ -274,9 +274,10 @@ and Phosh itself.  Not set up yet.
   Phosh (tested by hand in the session); 26bd986 notification-leds in
   pro1x-hardware-configuration (feedbackd device theme; colours tested
   through a user theme); 0b75620 Sway caffeine quick setting and
-  rotation/caffeine state in ~/.local/state (tested by hand in the
-  session).  After deploying and rebooting: check that rotation and
-  caffeine states survive the reboot, the device theme loads (set a
+  rotation state in ~/.local/state (tested by hand in the session);
+  caffeine back in $XDG_RUNTIME_DIR, not kept across reboots (author).
+  After deploying and rebooting: check that the rotation state survives
+  the reboot and caffeine does not, the device theme loads (set a
   colour in config.scm), term-console stops respawning, no handover
   lines.
 - RGB LED colours (2026-10-30): sysfs red, green, blue, white, #800080,
