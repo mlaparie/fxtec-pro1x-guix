@@ -5,7 +5,6 @@
 ;;; pro1x-hardware-service-type handles what CAN be a service:
 ;;;
 ;;;   • udev rules (cameras, haptics, slider)
-;;;   • Bluetooth on/off kept across reboots (rfkill state saved by udev)
 ;;;   • kernel parameters
 ;;;   • feedbackd group
 ;;;   • optional USB serial getty
@@ -377,41 +376,6 @@ esac
 ;; notification LED (rgb:status) is tagged for feedbackd, gets the pattern
 ;; trigger (ledtrig-pattern, CONFIG_LEDS_TRIGGER_PATTERN) and its
 ;; attributes are given to group feedbackd by fbd-ledctrl.
-;; Bluetooth on/off across reboots, as systemd-rfkill does: every change of
-;; the Bluetooth rfkill switch (Sway quick settings, rfkill, a desktop's
-;; toggle through rfkill) saves its soft-block state, and when the switch
-;; appears at boot the saved state is put back.  Wi-Fi and the modem are
-;; left to NetworkManager, which keeps their state itself.  On Linux 7.1
-;; the WCN3950 came back from an rfkill block and from a BlueZ power-off
-;; (2026-10-30), so a Bluetooth kept off from boot can be turned on later.
-(define pro1x-rfkill-state
-  (program-file
-   "pro1x-rfkill-state"
-   #~(begin
-       (use-modules (ice-9 match) (ice-9 rdelim))
-       (define saved "/var/lib/pro1x/rfkill-bluetooth")
-       (match (command-line)
-         ((_ "save" dev)
-          (let ((soft (call-with-input-file (string-append dev "/soft")
-                        read-line)))
-            (unless (file-exists? "/var/lib/pro1x")
-              (mkdir "/var/lib/pro1x"))
-            (call-with-output-file saved
-              (lambda (port) (display soft port) (newline port)))))
-         ((_ "restore" dev)
-          (when (and (file-exists? saved)
-                     (equal? "1" (call-with-input-file saved read-line)))
-            (call-with-output-file (string-append dev "/soft")
-              (lambda (port) (display "1" port)))))))))
-
-(define pro1x-rfkill-rules
-  (mixed-text-file
-   "61-pro1x-rfkill.rules"
-   "SUBSYSTEM==\"rfkill\", ATTR{type}==\"bluetooth\", ACTION==\"add\", "
-   "RUN+=\"" pro1x-rfkill-state " restore %S%p\"\n"
-   "SUBSYSTEM==\"rfkill\", ATTR{type}==\"bluetooth\", ACTION==\"change\", "
-   "RUN+=\"" pro1x-rfkill-state " save %S%p\"\n"))
-
 (define pro1x-feedbackd-led-rules
   (mixed-text-file
    "90-pro1x-feedbackd-led.rules"
@@ -492,9 +456,6 @@ esac
                         (lambda (config)
                           (list (file->udev-rule "60-pro1x.rules"
                                                  (pro1x-udev-rules config))
-                                (file->udev-rule
-                                 "61-pro1x-rfkill.rules"
-                                 pro1x-rfkill-rules)
                                 (file->udev-rule
                                  "90-pro1x-feedbackd-led.rules"
                                  pro1x-feedbackd-led-rules))))
