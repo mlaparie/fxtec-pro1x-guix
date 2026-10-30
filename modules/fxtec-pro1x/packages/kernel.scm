@@ -45,7 +45,10 @@
          ;; ends in one corrupted full-brightness frame.
          "panel-display-off"
          ;; Ours, on top of "power": charge_enable for a charge limit.
-         "charge-control")))
+         "charge-control"
+         ;; Ours: the ADSP repeats its handover with every sensor batch;
+         ;; log the repeats at debug level, not as errors.
+         "q6v5-handover")))
 
 (define-public linux-pro1x
   (package

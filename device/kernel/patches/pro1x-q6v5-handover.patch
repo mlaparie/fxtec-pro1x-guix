@@ -1,0 +1,30 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] remoteproc: qcom_q6v5: repeated handover at debug level
+
+On the Pro1x (SM6115) the ADSP raises its SMP2P ready and handover bits
+again with every batch of an SSC sensor stream: 4.4 a second while
+iio-sensor-proxy streams the accelerometer (smp2p-adsp interrupts 43 per
+10 s with the stream, 0 without; wdog and fatal interrupts 0, the ADSP
+stays up).  Each repeat logged "Handover signaled, but it already
+happened" as an error, about 390000 lines a day.  Log it at debug level;
+the first handover is handled as before.
+
+Tested: interrupt counts on the phone (kernel 7.1.0, 8cd9520d); the patch
+itself was not built locally (CI builds the kernel).
+---
+--- a/drivers/remoteproc/qcom_q6v5.c
++++ b/drivers/remoteproc/qcom_q6v5.c
+@@ -165,7 +165,12 @@
+ 	struct qcom_q6v5 *q6v5 = data;
+ 
+ 	if (q6v5->handover_issued) {
+-		dev_err(q6v5->dev, "Handover signaled, but it already happened\n");
++		/*
++		 * The SM6115 ADSP raises its ready and handover bits again with
++		 * every batch of a sensor stream (several a second), so this is
++		 * not an error there.
++		 */
++		dev_dbg(q6v5->dev, "Handover signaled, but it already happened\n");
+ 		return IRQ_HANDLED;
+ 	}
+ 
