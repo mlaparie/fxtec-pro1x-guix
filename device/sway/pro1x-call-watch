@@ -1,0 +1,53 @@
+#!/bin/sh
+# pro1x-call-watch — let Calls answer an incoming call over the Sway lock
+#
+# Nothing can be drawn above Sway's lock screen (ext-session-lock), so an
+# incoming call could not be answered while locked (author, 2026-10-30).
+# This follows ModemManager's CallAdded and CallDeleted signals on the
+# system bus.  For an incoming call (Call Direction 1) while swaylock runs,
+# it unlocks (SIGUSR1, swaylock's own way out) and lights the panel; Calls
+# then shows its window fullscreen (Sway config rule).  When that call is
+# deleted (hung up, rejected or missed), it locks again (pro1x-lock).
+# Meanwhile the phone is unlocked for as long as the call lasts: the price
+# of answering from the lock screen here.  Started by the Sway config; ends
+# with Sway (socket gone).
+#
+# State: written 2026-10-30, not yet run on the phone (needs a call).
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+flag="$rt/pro1x-call-unlocked"        # path of the call we unlocked for
+
+incoming() {                          # incoming <call object path>
+    gdbus call --system --dest org.freedesktop.ModemManager1 \
+        --object-path "$1" \
+        --method org.freedesktop.DBus.Properties.Get \
+        org.freedesktop.ModemManager1.Call Direction 2>/dev/null |
+        grep -q '<1>'
+}
+
+if [ -n "${SWAYSOCK:-}" ]; then
+    # Sway's exec double-forks: stop when its IPC socket goes away.
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill $$ ) &
+fi
+
+# Lines such as
+#   /org/freedesktop/ModemManager1/Modem/0: org.freedesktop.ModemManager1.Modem.Voice.CallAdded (objectpath '/org/freedesktop/ModemManager1/Call/1',)
+gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
+    while IFS= read -r line; do
+        call=$(printf '%s\n' "$line" | sed -n "s/.*objectpath '\([^']*\)'.*/\1/p")
+        case "$line" in
+            *Modem.Voice.CallAdded*)
+                if [ -n "$call" ] && incoming "$call" &&
+                   pgrep -u "$(id -u)" -x swaylock >/dev/null; then
+                    echo "$call" > "$flag"
+                    pkill -USR1 -u "$(id -u)" -x swaylock
+                    swaymsg 'output * power on' >/dev/null
+                    pro1x-dim restore 2>/dev/null
+                fi ;;
+            *Modem.Voice.CallDeleted*)
+                if [ -f "$flag" ] && [ "$(cat "$flag")" = "$call" ]; then
+                    rm -f "$flag"
+                    swaymsg exec pro1x-lock >/dev/null
+                fi ;;
+        esac
+    done

@@ -68,7 +68,7 @@ if [ "${1:-}" = --bar ]; then
         exec "$0"
     fi
     osk true
-    QS_IN_FOOT=1 foot --app-id=quicksettings -o pad=24x16 "$0"
+    QS_IN_FOOT=1 pro1x-term --app-id=quicksettings -o pad=24x16 "$0"
     osk false
     exit
 fi
@@ -81,7 +81,7 @@ if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ] &&
 fi
 
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
-    QS_IN_FOOT=1 exec foot --app-id=quicksettings -o pad=24x16 "$0"
+    QS_IN_FOOT=1 exec pro1x-term --app-id=quicksettings -o pad=24x16 "$0"
 fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }

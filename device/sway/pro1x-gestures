@@ -32,7 +32,7 @@ fi
 dev=/dev/input/by-path/platform-i2c-touchscreen-event
 output=DSI-1
 events="${XDG_RUNTIME_DIR:-/tmp}/pro1x-gestures.events"
-launcher='foot --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop'
+launcher='pro1x-term --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop'
 
 transform() {
     swaymsg -t get_outputs -r 2>/dev/null |

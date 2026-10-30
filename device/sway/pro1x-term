@@ -1,0 +1,18 @@
+#!/bin/sh
+# pro1x-term [foot options] — a foot window, quickly
+#
+# Uses footclient, which opens a window from the foot server the Sway
+# config starts (foot --server) instead of starting a new foot process:
+# quick settings, the launcher and the window switcher came up too slowly
+# (author, 2026-10-30).  Falls back to a plain foot when the server's
+# socket is missing (not started, or crashed); Super+Return always starts
+# a plain foot.  -E: the client's environment (PATH of the wrappers,
+# QS_IN_FOOT), not the server's.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+sock="${XDG_RUNTIME_DIR:-/tmp}/foot-${WAYLAND_DISPLAY:-wayland-0}.sock"
+if [ -S "$sock" ]; then
+    exec footclient -E "$@"
+fi
+exec foot "$@"

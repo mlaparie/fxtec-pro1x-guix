@@ -1205,6 +1205,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
 ;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
+;;;   bin/pro1x-term                     footclient, or foot without the server
+;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1231,7 +1233,9 @@ window opened by a sway key binding.")
           ("pro1x-lock" "bin/")
           ("pro1x-mako" "bin/")
           ("pro1x-notify" "bin/")
-          ("pro1x-gestures" "bin/"))
+          ("pro1x-gestures" "bin/")
+          ("pro1x-term" "bin/")
+          ("pro1x-call-watch" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1241,9 +1245,10 @@ window opened by a sway key binding.")
                 (chmod bin #o755)
                 (wrap-program bin
                   `("PATH" ":" prefix
-                    ,(map (lambda (p)
-                            (string-append (assoc-ref inputs p) "/bin"))
-                          '("coreutils" "foot" "fzf" "jq"))))
+                    (,(string-append #$output "/bin")   ;pro1x-term
+                     ,@(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "foot" "fzf" "jq")))))
                 (chmod dim #o755)
                 (wrap-program dim
                   `("PATH" ":" prefix
@@ -1287,6 +1292,20 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((cw (string-append #$output "/bin/pro1x-call-watch")))
+                  (chmod cw #o755)
+                  ;; swaymsg from the system profile.
+                  (wrap-program cw
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "glib" "grep" "procps" "sed"))))))
+                (let ((term (string-append #$output "/bin/pro1x-term")))
+                  (chmod term #o755)
+                  (wrap-program term
+                    `("PATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "foot") "/bin")))))
                 (let ((g (string-append #$output "/bin/pro1x-gestures")))
                   (chmod g #o755)
                   ;; swaymsg, foot and the menus: system profile and $output.

@@ -4,7 +4,7 @@
 # systems/mobile.scm); edit it there.  Keys: the yellow slant arrows are Super ($mod), the
 # F(x) key is Fn (F1-F12, media, brightness, PgUp/PgDn/Home/End; see
 # device/input/keyd.conf).  Super+m opens the launcher, Super+Tab the window
-# switcher, Super+Return a terminal, Super+BackSpace or Super+Shift+q
+# switcher, Super+Return a terminal (Super+Shift+Return without the foot server), Super+BackSpace or Super+Shift+q
 # closes a window, Super+Ctrl+h shows the key bindings, Super+Shift+e exits.  Launcher, switcher and bar follow mlaparie's
 # guix-config.
 #
@@ -15,8 +15,8 @@ set $left h
 set $down j
 set $up k
 set $right l
-set $term foot
-set $launcher foot --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop
+set $term pro1x-term
+set $launcher pro1x-term --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop
 
 xwayland disable
 font pango:monospace 9
@@ -53,6 +53,12 @@ exec sway-autorotate
 ### the bottom, the launcher; in from a side, the window switcher.
 exec pro1x-gestures
 
+### foot server: quick settings, the launcher and the window switcher open
+### as footclient windows (pro1x-term), faster than a new foot, and so does
+### Super+Return ($term); Super+Shift+Return is a plain foot, in case the
+### server is gone.
+exec foot --server
+
 ### Notifications (pro1x-mako: mako, noting arrival times for the lock screen)
 exec pro1x-mako
 
@@ -62,6 +68,9 @@ exec gnome-calls --gapplication-service
 ### Calls' window (an incoming call, or opened to dial): fullscreen, focused,
 ### portrait.  Slide the keyboard or rotate to leave portrait afterwards.
 for_window [app_id="^org.gnome.Calls$"] fullscreen enable, focus, output DSI-1 transform normal
+### An incoming call unlocks the screen until it ends (pro1x-call-watch):
+### nothing can show above the lock screen.
+exec pro1x-call-watch
 
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
@@ -83,6 +92,7 @@ bindsym $mod+Ctrl+h exec foot --app-id=swayhelp -e sh -c 'swaymsg -t get_config 
 
 ### Basics
 bindsym $mod+Return exec $term
+bindsym $mod+Shift+Return exec foot
 bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
 bindsym $mod+o exec sway-autorotate toggle
