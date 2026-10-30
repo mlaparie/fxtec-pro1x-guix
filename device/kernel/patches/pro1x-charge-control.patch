@@ -1,0 +1,74 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] power: pro1x-charger-icl: charge_enable, to hold charging off
+
+A charge limit (stop at 85%, resume below 80%) needs a way to stop
+charging while USB keeps powering the phone.  charge_enable=0 clears
+the PMI632 CHGR_ENABLE_CMD bit on every poll and skips the watchdog
+recovery toggle; charge_enable=1 sets the bit again.  Applies on top
+of pro1x-power.patch (NixOS port), which adds the driver.
+
+Untested on hardware.
+---
+--- a/drivers/power/supply/pro1x-charger-icl.c
++++ b/drivers/power/supply/pro1x-charger-icl.c
+@@ -6,9 +6,12 @@
+  * battery on its own, but its input current limit comes from battery-charger
+  * detection (APSD) and stays at the USB default of 500 mA unless software
+  * raises it, which Android's smb5 driver does for dedicated chargers and for
+- * Type-C sources that advertise 1.5/3 A. This driver does the same, and only
+- * that: it never lowers anything and never touches the charge current or
+- * voltage settings.
++ * Type-C sources that advertise 1.5/3 A. This driver does the same: it never
++ * lowers anything and never touches the charge current or voltage settings.
++ *
++ * charge_enable=0 holds charging off (CHGR_ENABLE_CMD cleared) while USB
++ * stays the power source, so the battery rests: for a charge limit kept by
++ * userspace, which sets it back to 1 below its lower threshold.
+  *
+  * Register names and layout follow the vendor smb5 headers.
+  */
+@@ -59,6 +62,10 @@
+ module_param(min_icl_ma, uint, 0644);
+ MODULE_PARM_DESC(min_icl_ma, "Raise the input limit to at least this (mA) on any source, even one detected as plain USB (0 = off). The chip's AICL still backs off if the source sags. Never exceeds max_icl_ma.");
+ 
++static bool charge_enable = true;
++module_param(charge_enable, bool, 0644);
++MODULE_PARM_DESC(charge_enable, "Allow battery charging; 0 holds charging off while USB still powers the phone (charge limit)");
++
+ static bool pet_wdog = true;
+ module_param(pet_wdog, bool, 0644);
+ MODULE_PARM_DESC(pet_wdog, "Pet the charger watchdog while USB is present, and re-enable charging if it already bit");
+@@ -166,7 +173,8 @@
+ 				dev_info(c->dev, "charger state %u\n", st);
+ 			c->last_state = st;
+ 			rd(c, CHGR_ENABLE_CMD, &en);
+-			if (st == CHGR_STATE_DISABLED && (en & CHGR_ENABLE) && !c->recovered) {
++			if (charge_enable && st == CHGR_STATE_DISABLED &&
++			    (en & CHGR_ENABLE) && !c->recovered) {
+ 				c->recovered = true;
+ 				regmap_update_bits(c->map, c->base + CHGR_ENABLE_CMD, CHGR_ENABLE, 0);
+ 				msleep(50);
+@@ -175,6 +183,23 @@
+ 			}
+ 		}
+ 	}
++
++	{
++		unsigned int en = 0;
++
++		/* Hold charging off, or turn it back on, as charge_enable says. */
++		if (!rd(c, CHGR_ENABLE_CMD, &en)) {
++			if (!charge_enable && (en & CHGR_ENABLE)) {
++				regmap_update_bits(c->map, c->base + CHGR_ENABLE_CMD,
++						   CHGR_ENABLE, 0);
++				dev_info(c->dev, "charging held off (charge_enable=0)\n");
++			} else if (charge_enable && !(en & CHGR_ENABLE)) {
++				regmap_update_bits(c->map, c->base + CHGR_ENABLE_CMD,
++						   CHGR_ENABLE, CHGR_ENABLE);
++				dev_info(c->dev, "charging enabled again\n");
++			}
++		}
++	}
+ 
+ 	want = wanted_ma(apsd, snk);
+ 	if (want > icl && want > c->applied_ma) {
