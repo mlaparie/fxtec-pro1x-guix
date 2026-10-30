@@ -77,6 +77,17 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                 (operating-system-packages base)))
   ;; (services (cons (service some-service-type)
   ;;                 (operating-system-user-services base)))
+  ;; Keyboard light timeout and panel dimming (seconds; #f for never);
+  ;; needs (fxtec-pro1x services keyboard) and (fxtec-pro1x services
+  ;; hardware) in use-modules, and only one services field:
+  ;; (services
+  ;;  (modify-services (operating-system-user-services base)
+  ;;    (pro1x-keyboard-service-type
+  ;;     config => (pro1x-keyboard-configuration
+  ;;                (inherit config) (backlight-timeout 60)))
+  ;;    (pro1x-hardware-service-type
+  ;;     config => (pro1x-hardware-configuration
+  ;;                (inherit config) (dim-after 60) (dim-level 30)))))
   )
 "))
 
