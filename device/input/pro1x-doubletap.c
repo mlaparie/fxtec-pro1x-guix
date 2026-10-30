@@ -7,12 +7,15 @@
  * userspace, as SailfishOS's mce does.  While the DSI connector's dpms is
  * "Off", two touch-downs less than INTERVAL_MS apart and within DISTANCE
  * touchscreen units of each other send a power-key press from a uinput
- * device; Phosh, Sway (XF86PowerOff) and Sxmo all wake on it.  Nothing
- * happens while the panel is on.
+ * device; Phosh, Sway (XF86PowerOff) and Sxmo all wake on it.  Esc on the
+ * hardware keyboard does the same while the panel is off (read from keyd's
+ * virtual keyboard, since keyd grabs the real one).  Nothing happens while
+ * the panel is on.
  *
  * Usage: pro1x-doubletap [interval-ms [distance]]   (defaults 400, 150)
  *
- * State: written 2026-10-30, not yet run on the phone.
+ * State: double tap tested on the phone (author, 2026-10-30); Esc written
+ * 2026-10-30, not yet run.
  */
 
 #include <dirent.h>
@@ -29,6 +32,7 @@
 #include <unistd.h>
 
 #define TOUCH_NAME "Goodix Capacitive TouchScreen"
+#define KEYBOARD_NAME "keyd virtual keyboard"
 
 static long interval_ms = 400;
 static long distance = 150;
@@ -69,7 +73,7 @@ static int panel_off(void)
 	return off;
 }
 
-static int open_touch(void)
+static int open_named(const char *want)
 {
 	for (int i = 0; i < 32; i++) {
 		char path[64], name[256] = "";
@@ -80,7 +84,7 @@ static int open_touch(void)
 		if (fd < 0)
 			continue;
 		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0 &&
-		    !strcmp(name, TOUCH_NAME))
+		    !strcmp(name, want))
 			return fd;
 		close(fd);
 	}
@@ -131,7 +135,7 @@ int main(int argc, char **argv)
 	if (argc > 2)
 		distance = atol(argv[2]);
 
-	touch = open_touch();
+	touch = open_named(TOUCH_NAME);
 	if (touch < 0) {
 		fprintf(stderr, "pro1x-doubletap: no \"%s\" device\n", TOUCH_NAME);
 		return 1;
@@ -144,20 +148,44 @@ int main(int argc, char **argv)
 	fprintf(stderr, "pro1x-doubletap: watching, interval %ld ms, distance %ld\n",
 		interval_ms, distance);
 
+	int kbd = open_named(KEYBOARD_NAME);	/* -1 until keyd made it */
+
 	for (;;) {
-		struct pollfd p = { .fd = touch, .events = POLLIN };
+		struct pollfd p[2] = {
+			{ .fd = touch, .events = POLLIN },
+			{ .fd = kbd, .events = POLLIN },
+		};
 		struct input_event ev;
 
-		if (poll(&p, 1, -1) < 0) {
+		if (poll(p, kbd >= 0 ? 2 : 1, kbd >= 0 ? -1 : 5000) < 0) {
 			if (errno == EINTR)
 				continue;
 			perror("poll");
 			return 1;
 		}
-		if (p.revents & (POLLERR | POLLHUP)) {
+		if (p[0].revents & (POLLERR | POLLHUP)) {
 			fprintf(stderr, "pro1x-doubletap: touch device gone\n");
 			return 1;	/* Shepherd respawns us */
 		}
+		if (kbd < 0) {
+			kbd = open_named(KEYBOARD_NAME);
+		} else if (p[1].revents & (POLLERR | POLLHUP)) {
+			close(kbd);	/* keyd restarted: reopen later */
+			kbd = -1;
+		} else if (p[1].revents & POLLIN) {
+			while (read(kbd, &ev, sizeof ev) == sizeof ev) {
+				long t = now_ms();
+
+				if (ev.type == EV_KEY && ev.code == KEY_ESC &&
+				    ev.value == 1 && t >= quiet_until && panel_off()) {
+					press_power(out);
+					fprintf(stderr, "pro1x-doubletap: Esc, power key sent\n");
+					quiet_until = t + 1500;
+				}
+			}
+		}
+		if (!(p[0].revents & POLLIN))
+			continue;
 		while (read(touch, &ev, sizeof ev) == sizeof ev) {
 			long t;
 
