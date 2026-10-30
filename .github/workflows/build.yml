@@ -223,6 +223,31 @@ jobs:
           echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
           echo "==> disk space after extraction:"; df -h /
 
+      # ── Export the kernel ─────────────────────────────────────────────────
+      # The kernel as a signed Guix archive, so a PC can import it and deploy
+      # it to a phone without building it under QEMU (hours) and without
+      # reflashing: on the PC, `sudo guix archive --authorize <
+      # ci-signing-key.pub', `guix archive --import < linux-pro1x.nar', then
+      # scripts/deploy.sh.  Same pinned guix and nonguix and the same tree as
+      # the deploy, hence the same derivation.  The key is this run's own.
+      # Channels are authenticated here (their introductions are in
+      # channels-ci.scm); the step cannot fail the job.
+      - name: Export kernel
+        if: always()
+        continue-on-error: true
+        run: |
+          K=$(guix time-machine -C channels-ci.scm -- \
+                build -L modules --no-grafts linux-pro1x 2>/tmp/kernel.log | tail -1)
+          if [ -d "$K" ]; then
+            mkdir -p kernel-export
+            sudo guix archive --export "$K" > kernel-export/linux-pro1x.nar
+            echo "$K" > kernel-export/linux-pro1x.path
+            cp /etc/guix/signing-key.pub kernel-export/ci-signing-key.pub
+            ls -l kernel-export
+          else
+            echo "WARNING: no kernel output to export"; tail -30 /tmp/kernel.log
+          fi
+
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # After the image step: the first guix time-machine of a job builds
       # its own guix, and that has failed grafting glib-2.86.5 in this step
@@ -283,6 +308,14 @@ jobs:
           path: |
             u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
+          retention-days: 30
+
+      - name: Upload kernel
+        if: hashFiles('kernel-export/linux-pro1x.nar') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-pro1x
+          path: kernel-export/
           retention-days: 30
 
       - name: Upload rootfs
