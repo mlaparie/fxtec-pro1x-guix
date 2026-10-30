@@ -245,15 +245,24 @@ and Phosh itself.  Not set up yet.
   three Wi-Fi profiles are all in /var/lib/NetworkManager with their PSK.
   One of the older ones has autoconnect=false.  10:57-11:05 the new one
   dropped 8 times: deauth reason 1, then ssid-not-found (the AP went
-  away; a hotspot sleeping?  inferred); stable since.  Possible
+  away: the phone is on a 4G phone hotspot (author), which fits);
+  stable since.  Possible
   improvement: a reminder for the SIM PIN at login, since mobile data
   (and Tailscale) depend on it.
 - ADSP log spam: "qcom_q6v5_pas a400000.remoteproc: Handover signaled,
-  but it already happened" ~4.5 times a second (93 in 20 s), from 9 s
-  after boot; ADSP running, no crash lines.  Not new with generation 30:
-  the previous boot (generation 29 kernel) logged 60618 of them in
-  /var/log/messages.  Not monitor-sensor (same rate with it stopped).
-  Costs about 390000 log lines a day; cause not looked into yet.
+  but it already happened", 4.4 a second (confirmed 2026-10-30).  Cause:
+  the accelerometer stream that sway-autorotate's monitor-sensor keeps
+  open through iio-sensor-proxy and libssc.  The ADSP raises its SMP2P
+  "ready" and "handover" bits again with each sensor batch (equal
+  counts, 15502/15501; wdog and fatal 0); the driver logs every rising
+  handover edge after the first (q6v5_handover_interrupt).  Measured:
+  smp2p-adsp interrupts 43/10 s with monitor-sensor, 0 without, 44 after
+  restarting it.  It started at the first login (10:19), not at boot.
+  (An earlier note here said "not monitor-sensor": that test killed
+  nothing, the process is named .monitor-sensor.)  About 390000 log lines
+  a day, and the ADSP woken 4 times a second while rotation is on.
+  Options: a kernel patch logging repeats once or at debug level;
+  stopping the sensor stream while the screen is off.
 - Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
   PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
   phone), Left/Right on Brightness/Volume, Mute shows muted or the
@@ -266,6 +275,12 @@ and Phosh itself.  Not set up yet.
   monitor-sensor (.monitor-sensor, wrapped); fixed in the next commit.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.
+
+- term-console restarts every 10 s (4566 times in /var/log/messages):
+  Guix's serial getty runs on the console= of the kernel command line,
+  ttyMSM0, and /dev/ttyMSM0 does not exist (no UART enabled), so agetty
+  exits with 1.  Fix: drop console=ttyMSM0,115200n8 from the kernel
+  arguments (mobile, minimal, mobile-encrypted); needs a reboot.
 
 ## Research notes (2026-10-30, agent)
 
