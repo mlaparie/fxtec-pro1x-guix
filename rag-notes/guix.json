@@ -467,6 +467,30 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "commits 6d6cc2a, ff2261c, 1a3b582, 3473f61, acc408c"
+      },
+      {
+        "title": "A GSettings override in the system profile does not reach programs whose wrapper puts their own schemas first",
+        "general": "Guix's glib-or-gtk wrappers prepend each package's share to XDG_DATA_DIRS. GSettings takes a schema from the first directory whose gschemas.compiled has it, so an override compiled into the system profile is ignored by a program that ships that schema itself (or whose wrapper lists gsettings-desktop-schemas first). Put the override into that package's own schema directory, and run glib-compile-schemas there in your phase: the build system had already compiled the schemas before an add-after 'install phase. Check with gsettings in the program's own environment (copy XDG_DATA_DIRS and XDG_CURRENT_DESKTOP from /proc/PID/environ), not a login shell's.",
+        "instance": "stevia 0.56.0 (on-screen keyboard) read mobi.phosh.osk ignore-hw-keyboards false although the system profile's override said true; true after the override and glib-compile-schemas went into stevia's own share/glib-2.0/schemas (generation 40, 2026-10-30).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 4a17fa5, f083a22, 223a2fa; gsettings with GSETTINGS_SCHEMA_DIR on the stevia package"
+      },
+      {
+        "title": "Desktop-specific GSettings overrides ([schema:Phosh]) beat plain ones in that desktop",
+        "general": "glib-compile-schemas supports [schema:DESKTOP] sections that apply when XDG_CURRENT_DESKTOP contains DESKTOP, ahead of the plain [schema] section whatever the file order. A shell that ships such overrides (Phosh's 00_mobi.Phosh.gschema.override) wins over a distribution default written without the suffix; write both sections.",
+        "instance": "Phosh 0.56 sets [org.gnome.desktop.session:Phosh] idle-delay=60; our idle-delay=180 applied in Sway but Phosh kept blanking at 60 s until the override also wrote the :Phosh section (generation 40: swayidle blanks at 180).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 59ad954; schema test compiled with both overrides, XDG_CURRENT_DESKTOP=Phosh"
+      },
+      {
+        "title": "GTK 3 on Guix finds its input-method modules only through GUIX_GTK3_IM_MODULE_FILE",
+        "general": "Guix's gtk+ reads the IM module cache from GUIX_GTK3_IM_MODULE_FILE and has no cache in its own output; the variable comes from gtk+'s search path, which is only set when gtk+ itself is in the profile. Without it GTK 3 text fields never use the Wayland IM module, and on-screen keyboards are never asked for. Set it for the session (session-environment-service-type) to the profile's lib/gtk-3.0/3.0.0/immodules-gtk3.cache.",
+        "instance": "Phosh session on the Pro1x, generation 36+: no OSK for GTK 3 fields before; /etc/environment now sets it.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit d6641f0; strings of libgtk-3.so (GUIX_GTK3_IM_MODULE_FILE); stevia debug log"
       }
     ]
   }

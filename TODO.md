@@ -299,6 +299,11 @@ and Phosh itself.  Not set up yet.
   find out: a logger that survives the hang (dmesg -w over SSH to the
   PC) and the author's go-ahead.  Torch and caffeine: not persisted on
   purpose.
+- Blank after 180 s, dim at 150 s (3ee97f9, 59ad954): Phosh's own
+  [org.gnome.desktop.session:Phosh] idle-delay=60 had kept Phosh at 60 s;
+  generation 40's Phosh session: swayidle dims at 150, blanks at 180
+  (confirmed).  Sway lock screen (f083a22, pro1x-lock): rendered on the
+  PC only; check at the next Sway lock.
 - Generation 34 (2026-10-30 13:33): CI kernel 3zg5vbvf (handover patch),
   no console=ttyMSM0: 0 handover lines, term-console idle ("no serial
   port console requested"), no respawns (confirmed).
@@ -306,19 +311,15 @@ and Phosh itself.  Not set up yet.
   22e3cff starts it from the Sway config, Super+k and a Keyboard line in
   quick settings show/hide it (the Sway config is a skeleton: existing
   accounts need the lines).  Drawn and typing in Sway: not yet seen.
-  Phosh: works since generation 37 (author saw it on a text field,
-  2026-10-30).  Two causes: GTK 3 had no input-method modules
-  (GUIX_GTK3_IM_MODULE_FILE unset; d6641f0 sets it) and stevia stayed
-  disabled because phoc reports the always-attached Pro1X keyboard
-  (debug log: handle_activate, active 1, enabled 0; 4a17fa5 sets
-  mobi.phosh.osk ignore-hw-keyboards true by default; showing it is then
-  left to screen-keyboard-enabled, set by phosh-pro1x-slider).  Open:
-  check it hides with the keyboard slid out.  Sway: 9d04238
-  pro1x-osk-slider (generation 38; added to the author's
-  ~/.config/sway/config with stevia and Super+k, backups beside it) sets
-  screen-keyboard-enabled from the slider as the Phosh helper does.  At
-  the next Sway login, check: stevia on a text field slid in, none slid
-  out, Super+k, the Keyboard line, the bar gear.
+  Phosh: works in generation 40 (author, 2026-10-30): stevia on text
+  fields with the keyboard closed, hidden with it out.  Causes found:
+  GTK 3 had no IM modules (d6641f0), stevia disabled itself for the
+  always-attached keyboard (ignore-hw-keyboards), and the override did
+  not reach stevia until it went into stevia's own compiled schemas
+  (f083a22, 223a2fa).  Sway: 9d04238 pro1x-osk-slider (added to the
+  author's ~/.config/sway/config with stevia and Super+k, backups
+  beside it).  At the next Sway login, check: stevia on a text field
+  slid in, none slid out, Super+k, the Keyboard line, the bar gear.
 - Quick settings (33a09c7, 7f8d774): battery header, Wi-Fi network and
   signal, mobile technology/signal/operator, charge limit line (from
   /etc/pro1x/charge.conf), Right on / Left off for every toggle, bar gear
