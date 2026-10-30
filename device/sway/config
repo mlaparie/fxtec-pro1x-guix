@@ -52,6 +52,10 @@ exec sway-autorotate
 ### Notifications (pro1x-mako: mako, noting arrival times for the lock screen)
 exec pro1x-mako
 
+### Chatty and Calls in the background, for messages and incoming calls
+exec chatty --gapplication-service
+exec gnome-calls --gapplication-service
+
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
 ### and on demand: Super+i, the Keyboard line in quick settings, the gear.
