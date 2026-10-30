@@ -100,6 +100,15 @@ then deploys of next up to cc16582; generation 2 and later):
   voice ps-preferred: without IMS/VoLTE a voice-centric UE leaves LTE
   if the operator lacks CSFB (inferred, not measured).  moWerk's notes:
   LTE registered on this phone (NixOS, SailfishOS) with another operator.
+  Later the same night: GNOME Settings' "4G only" fails ("the given
+  combination of allowed and preferred modes is not supported"):
+  ModemManager's supported list has no 4G-only entry (2G, 3G, 2G+3G,
+  2G+4G, 3G+4G, 2G+3G+4G).  Cell info (qmicli
+  --nas-get-cell-location-info, read-only): one UMTS serving cell, one
+  UMTS neighbour, the "Neighboring LTE" section empty while another phone
+  gets LTE/5G there.  So the modem does not measure or report LTE cells:
+  points at the modem's configuration (voice-centric, carrier profile)
+  rather than coverage (inferred).
   Author's decision, 2026-10-30: wait; poor coverage is possible.  ASK
   THE AUTHOR AGAIN if they never see 4G while moving around: the test is
   data-centric usage, which the modem keeps in its NV (modemst via
