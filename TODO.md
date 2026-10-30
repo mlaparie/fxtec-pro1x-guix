@@ -222,6 +222,22 @@ and URL added to the phone's guix-configuration (authorized-keys,
 substitute-urls) in config.scm.  Otherwise the phone builds the kernel
 and Phosh itself.  Not set up yet.
 
+## Waiting for the author (2026-10-30, 04:30)
+
+- Login pops: the call helper no longer piles up or runs keep-alives
+  outside calls, and the card is back on HiFi (7aff1ef, deployed); tested
+  by SSH (one copy, no keep-alives, exits after 20 s).  Needs a login to
+  hear whether the pops are gone.
+- On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
+  Fetch MMS launcher: deploying (deploy30); need a relog and a try.
+- CI kernel (charge limit, LED pattern trigger): building in run
+  40997348185; then `sudo guix archive --authorize < ci-signing-key.pub`
+  on the PC (author), import, deploy, reboot.  Merge next into main after
+  that kernel boots.
+- MMS sending: untested.
+- guix pull as user on the phone: running (window 3).
+- Calls speaker/mute: a measurement call when the author has time.
+
 ## Next big items (author, 2026-10-30)
 
 1. **Guix Home** for the user's files: Sway config, foot, i3status-rust,
