@@ -49,6 +49,7 @@ once, so combine changes in one expression:
 | hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
+| hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
 

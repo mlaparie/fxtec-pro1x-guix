@@ -10,6 +10,12 @@
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
 ;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
+;;;   • charge limit: stop charging at charge-limit percent, resume at or
+;;;     below charge-resume (hysteresis, as Android's charge-limit tools
+;;;     do), through pro1x_charger_icl's charge_enable (kernel patch
+;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
+;;;     The percentage is estimated from voltage, which drops when charging
+;;;     stops: keep the gap wider than that drop (not measured yet);
 ;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
 ;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
 ;;;     In config.scm:
@@ -57,7 +63,11 @@
   (dim-after          pro1x-hardware-dim-after          (default 60))
   (dim-level          pro1x-hardware-dim-level          (default 20))
   ;; Wake the panel with a double tap while it is off.
-  (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t)))
+  (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
+  ;; Stop charging at this battery percentage (#f: charge to full), and
+  ;; charge again at or below charge-resume.
+  (charge-limit       pro1x-hardware-charge-limit       (default 85))
+  (charge-resume      pro1x-hardware-charge-resume      (default 80)))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -136,6 +146,61 @@ esac
         (respawn? #t)))
       '()))
 
+(define (pro1x-charge-limit-program limit resume)
+  (program-file
+   "pro1x-charge-limit"
+   #~(begin
+       (use-modules (ice-9 rdelim))
+       (define param
+         "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+       (define capacity "/sys/class/power_supply/battery/capacity")
+       (define (read-file file)
+         (false-if-exception (call-with-input-file file read-line)))
+       (define (set-charging! on?)
+         (call-with-output-file param
+           (lambda (port) (display (if on? "1" "0") port)))
+         (format #t "~a%: charging ~a~%" (read-file capacity)
+                 (if on? "allowed" "held off"))
+         (force-output))
+       (if (not (file-exists? param))
+           (begin
+             (format #t "~a missing: this kernel has no charge control~%"
+                     param)
+             (force-output)
+             ;; Stay up (no respawn loop) and do nothing.
+             (let idle () (sleep 3600) (idle)))
+           (let loop ()
+             (let ((pct (string->number (or (read-file capacity) "")))
+                   (on? (equal? "Y" (read-file param))))
+               (cond ((not pct) #t)
+                     ((and on? (>= pct #$limit)) (set-charging! #f))
+                     ((and (not on?) (<= pct #$resume)) (set-charging! #t))))
+             (sleep 60)
+             (loop))))))
+
+(define (pro1x-charge-limit-shepherd-service config)
+  (let ((limit (pro1x-hardware-charge-limit config)))
+    (if limit
+        (list
+         (shepherd-service
+          (provision '(pro1x-charge-limit))
+          (requirement '(file-systems))
+          (documentation "Stop charging at the charge limit, resume below it.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-charge-limit-program
+                             limit (pro1x-hardware-charge-resume config)))
+                    #:log-file "/var/log/pro1x-charge-limit.log"))
+          ;; Stopping the service lets the battery charge to full again.
+          (stop #~(lambda (running . args)
+                    (apply (make-kill-destructor) running args)
+                    (false-if-exception
+                     (call-with-output-file
+                         "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                       (lambda (port) (display "1" port))))
+                    #f))
+          (respawn? #t)))
+        '())))
+
 (define (pro1x-clock-shepherd-service config)
   (list
    (shepherd-service
@@ -185,7 +250,9 @@ esac
      (service-extension shepherd-root-service-type
                         (lambda (config)
                           (append (pro1x-clock-shepherd-service config)
-                                  (pro1x-doubletap-shepherd-service config))))))
+                                  (pro1x-doubletap-shepherd-service config)
+                                  (pro1x-charge-limit-shepherd-service
+                                   config))))))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
 cameras, haptics, GPIO slider, and optional touch calibration for display gaps.")))
