@@ -253,6 +253,10 @@ and Phosh itself.  Not set up yet.
    feedbackd 0.8.1 drives LEDs for events (fbd-ledctrl) when a udev rule
    tags them; check it handles multicolour LEDs.  moWerk drives the same
    LED with mce (53d590a).  Author, 2026-10-30.
+9. **MMS**: an MMS from an Android phone did not arrive (author,
+   2026-10-30).  Chatty needs mmsd-tng, not in Guix at the pin: package
+   it (meson; glib, libsoup, c-ares, ModemManager), start it per session,
+   document the MMSC and MMS APN settings in Chatty.  SMS work.
 8. **Fingerprint reader**: research first: which sensor, whether it is
    reachable on SPI or only through TrustZone (likely, on Qualcomm),
    any mainline port or libfprint driver.  Author, 2026-10-30.
