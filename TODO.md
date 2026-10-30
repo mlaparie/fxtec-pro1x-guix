@@ -160,6 +160,26 @@ then deploys of next up to cc16582; generation 2 and later):
   failure: glib graft cannot read glib's etc/ld.so.cache (permission
   denied) under the unprivileged daemon.
 
+Deploys (2026-10-30): scripts/deploy.sh now builds the phone's own
+~/.config/guix/config.scm with its channels.scm (guix time-machine), on
+the PC, plus -L modules for this tree; --repo for the old behaviour.
+The phone user's config.scm and channels.scm were written from
+/etc/guix's with Tailscale added (channel pinned to eac0696).  First run
+in progress: builds go-std and Tailscale for aarch64 under QEMU (slow,
+once).  After it: `sudo tailscale up' on the phone (author's account),
+then deploy/pro1x.scm's host can be the tailnet name.
+
+Waiting for the next deploy and a test on the phone:
+- keyboard light off after 60 s without a key (backlight-timeout);
+- panel dimmed to 30% after 60 s idle (pro1x-dim, Sway and Phosh);
+- tuigreet remembers the last user and session (/var/cache/tuigreet);
+- bluetoothctl installed: the adapter is powered (BlueZ over D-Bus);
+  what fails in the UI is not known yet (ask the author);
+- feedbackd (vibration), phoc rotation without black shield, Phosh
+  landscape across lock/unlock with the keyboard out: deployed
+  (deploy12), not yet tested.
+- GPS logger running (3 h from 00:59, standalone, no coordinates).
+
 Tailscale on the phone (author, 2026-10-30: soon), so the agent can
 deploy while the phone is away from the PC (GPS tests outdoors, for
 one).  The PC's tailscale package comes from umanwizard's channel
