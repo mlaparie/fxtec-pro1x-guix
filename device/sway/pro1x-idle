@@ -25,7 +25,7 @@
 # State: dimming tested 2026-10-30; Phosh blank and lock tested by hand with
 # the same SetActive call (author); Sway lock untested.
 
-DIM_AFTER=30 BLANK_AFTER=60 LOCK_AFTER=120
+DIM_AFTER=150 BLANK_AFTER=180 LOCK_AFTER=120
 [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
 
 sway=

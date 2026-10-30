@@ -80,11 +80,13 @@
   (console-rotation   pro1x-hardware-console-rotation   (default #f))
   ;; Dim the panel after this many seconds without input (#f: never), to
   ;; this percentage of its maximum brightness.
-  (dim-after          pro1x-hardware-dim-after          (default 30))
+  (dim-after          pro1x-hardware-dim-after          (default 150))
   (dim-level          pro1x-hardware-dim-level          (default 20))
   ;; Blank the panel after this many seconds without input, and lock this
   ;; many seconds after blanking (0: when it blanks; #f: never lock).
-  (blank-after        pro1x-hardware-blank-after        (default 60))
+  ;; 60 s was too short in Phosh and Sway (author, 2026-10-30); dimming
+  ;; comes 30 s before the blank.
+  (blank-after        pro1x-hardware-blank-after        (default 180))
   (lock-after         pro1x-hardware-lock-after         (default 120))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
