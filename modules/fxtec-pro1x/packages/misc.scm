@@ -36,6 +36,8 @@
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages guile)
+  #:use-module (gnu packages imagemagick)
+  #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
@@ -838,7 +840,25 @@ ModemManager, for clients such as Chatty.")
       #:configure-flags
       #~(list "-Dman=false" "-Dgtk_doc=false" "-Dtests=false"
               (string-append "-Dsystemd_user_unit_dir=" #$output
-                             "/lib/systemd/user"))))
+                             "/lib/systemd/user"))
+      #:phases
+      #~(modify-phases %standard-phases
+          ;; Ignore hardware keyboards: the Pro1X keyboard is always
+          ;; attached, slid in or not, and stevia stayed disabled for every
+          ;; text field (handle_activate, active 1, enabled 0).  Whether to
+          ;; offer it is left to screen-keyboard-enabled, which the slider
+          ;; helpers set.  Here, not only in pro1x-gsettings-defaults: the
+          ;; wrapper puts this package's schemas first in XDG_DATA_DIRS, so
+          ;; stevia never saw the profile's override (2026-10-30).
+          ;; glib-or-gtk-compile-schemas compiles it after install.
+          (add-after 'install 'pro1x-ignore-hw-keyboards
+            (lambda _
+              (call-with-output-file
+                  (string-append #$output "/share/glib-2.0/schemas/"
+                                 "90_fxtec-pro1x.gschema.override")
+                (lambda (port)
+                  (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n"
+                           port))))))))
     ;; python: tools/write-layout-info.py generates layouts.json.
     (native-inputs (list pkg-config (list glib "bin") gettext-minimal python
                          wayland-protocols))
@@ -1167,6 +1187,8 @@ window opened by a sway key binding.")
 ;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
 ;;;   bin/sway-notifications             mako's notifications for its dock
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
+;;;   bin/pro1x-lock                     swaylock with a banner and notifications
+;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1175,8 +1197,8 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils evtest foot fzf gawk grep guile-3.0 jq
-                  procps sed swayidle (list glib "bin")))
+    (inputs (list bash coreutils evtest font-dejavu foot fzf gawk grep guile-3.0
+                  imagemagick jq procps sed swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1189,7 +1211,9 @@ window opened by a sway key binding.")
           ("sway-autorotate" "bin/")
           ("sway-quick-settings" "bin/")
           ("sway-notifications" "bin/")
-          ("pro1x-osk-slider" "bin/"))
+          ("pro1x-osk-slider" "bin/")
+          ("pro1x-lock" "bin/")
+          ("pro1x-mako" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1233,6 +1257,24 @@ window opened by a sway key binding.")
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "evtest" "foot" "fzf" "gawk"
                                 "glib" "grep" "procps" "sed"))))))
+                (let ((lock (string-append #$output "/bin/pro1x-lock")))
+                  (chmod lock #o755)
+                  (wrap-program lock
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "gawk" "imagemagick" "jq" "sed"))))
+                    `("PRO1X_LOCK_FONT" =
+                      (,(string-append (assoc-ref inputs "font-dejavu")
+                                       "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((mako (string-append #$output "/bin/pro1x-mako")))
+                  (chmod mako #o755)
+                  ;; sway-notifications for on-notify; mako from the system.
+                  (wrap-program mako
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,(string-append (assoc-ref inputs "coreutils") "/bin")))))
                 (let ((o (string-append #$output "/bin/pro1x-osk-slider")))
                   (chmod o #o755)
                   (wrap-program o

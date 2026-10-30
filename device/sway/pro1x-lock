@@ -1,0 +1,75 @@
+#!/bin/sh
+# pro1x-lock — swaylock with a GNU Guix banner and unread notifications
+#
+#   pro1x-lock [swaylock arguments...]
+#
+# swaylock draws no text of its own, so this renders a picture of the size
+# of the panel (ImageMagick, DejaVu Sans Mono): a "GNU Guix" banner (figlet,
+# standard font), the date and time of locking, and one line per app with
+# notifications still shown by mako: how many, and when the latest arrived
+# (sway-notifications summary; times logged by pro1x-mako).  The picture is
+# made once, when locking: notifications arriving while locked show only
+# after the next lock.  Used by pro1x-idle --sway.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+output=DSI-1
+png="${XDG_RUNTIME_DIR:-/tmp}/pro1x-lock.png"
+bg='#1d2021' fg='#d5c4a1' dim='#928374'
+
+banner='  ____ _   _ _   _    ____       _
+ / ___| \ | | | | |  / ___|_   _(_)_  __
+| |  _|  \| | | | | | |  _| | | | \ \/ /
+| |_| | |\  | |_| | | |_| | |_| | |>  <
+ \____|_| \_|\___/   \____|\__,_|_/_/\_\'
+# ImageMagick centres each line on its own: pad them to one width.
+banner=$(printf '%s\n' "$banner" | awk '{ printf "%-41s\n", $0 }')
+
+# The panel's size as drawn: its mode, swapped when rotated a quarter turn.
+size=$(swaymsg -t get_outputs -r 2>/dev/null | jq -r --arg o "$output" '
+    .[] | select(.name == $o) |
+    if (.transform == "90" or .transform == "270"
+        or .transform == "flipped-90" or .transform == "flipped-270")
+    then "\(.current_mode.height)x\(.current_mode.width)"
+    else "\(.current_mode.width)x\(.current_mode.height)" end')
+[ -n "$size" ] || size=1080x2160
+w=${size%x*} h=${size#*x}
+
+when() {                        # epoch -> "14:32", or "Mon 14:32" before today
+    [ "$1" -gt 0 ] 2>/dev/null || { echo "?"; return; }
+    if [ "$(date -d "@$1" +%F)" = "$(date +%F)" ]; then
+        date -d "@$1" +%H:%M
+    else
+        date -d "@$1" '+%a %d %H:%M'
+    fi
+}
+
+notes=$(sway-notifications summary 2>/dev/null |
+            while IFS='	' read -r app n last; do
+                printf '%-16.16s %3s unread   last %s\n' "$app" "$n" "$(when "$last")"
+            done)
+[ -n "$notes" ] || notes='No unread notifications'
+# Pad to the longest line, for the same reason as the banner.
+notes=$(printf '%s\n' "$notes" |
+            awk '{ l[NR] = $0; if (length($0) > m) m = length($0) }
+                 END { for (i = 1; i <= NR; i++) printf "%-*s\n", m, l[i] }')
+
+# About 44 columns across, and room for some 26 lines down, portrait or
+# landscape (keyboard out).
+pt=$((w / 44)); [ $((h / 26)) -lt "$pt" ] && pt=$((h / 26))
+# -annotate reads \ and % as escapes.
+esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/%/%%/g'; }
+convert -size "$size" "xc:$bg" -font "$PRO1X_LOCK_FONT" \
+    -fill "$fg" -pointsize "$pt" -gravity north \
+    -annotate +0+$((pt * 3)) "$(esc "$banner")" \
+    -pointsize $((pt * 3 / 2)) \
+    -annotate +0+$((pt * 11)) "$(esc "$(date '+%A %d %B, %H:%M')")" \
+    -fill "$dim" -pointsize "$pt" \
+    -annotate +0+$((pt * 15)) "$(esc "$notes")" \
+    "$png" 2>/dev/null
+
+if [ -s "$png" ]; then
+    exec swaylock -f -c "${bg#\#}" -i "$output:$png" -s center "$@"
+else
+    exec swaylock -f -c "${bg#\#}" "$@"
+fi

@@ -7,7 +7,8 @@
 # from config.scm (pro1x-hardware-configuration dim-after, dim-level), and runs
 # swayidle -w with `timeout DIM_AFTER pro1x-dim dim resume pro1x-dim restore'
 # followed by the session's own arguments.  --sway also blanks the panel after
-# BLANK_AFTER seconds and locks with swaylock LOCK_AFTER seconds later (empty:
+# BLANK_AFTER seconds and locks with pro1x-lock (swaylock with a banner and the
+# unread notifications) LOCK_AFTER seconds later (empty:
 # no lock).  For those two it reads the same GSettings keys as Phosh, GNOME
 # Settings and Phosh Mobile Settings (org.gnome.desktop.session idle-delay,
 # org.gnome.desktop.screensaver lock-enabled and lock-delay), whose defaults
@@ -56,7 +57,7 @@ if [ -z "$sway" ] && [ -n "$BLANK_AFTER" ]; then
         "$@"
 fi
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
-    set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'swaylock -f -c 1d2021' "$@"
+    set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'pro1x-lock' "$@"
 fi
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
     set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \

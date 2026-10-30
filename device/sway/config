@@ -49,8 +49,8 @@ exec pro1x-idle --sway
 ### while it is out.  Super+o toggles auto-rotation.
 exec sway-autorotate
 
-### Notifications
-exec mako
+### Notifications (pro1x-mako: mako, noting arrival times for the lock screen)
+exec pro1x-mako
 
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),

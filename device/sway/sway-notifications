@@ -9,6 +9,13 @@
 ;;;                                    the full text of each to
 ;;;                                    $XDG_RUNTIME_DIR/sway-notifications/KIND-ID
 ;;;   sway-notifications actions ID    "key<TAB>label" per action of a current one
+;;;   sway-notifications log ID        note when notification ID arrived (mako's
+;;;                                    on-notify, set by pro1x-mako), in
+;;;                                    $XDG_RUNTIME_DIR/sway-notifications.log
+;;;   sway-notifications summary       per app with current notifications:
+;;;                                    "app<TAB>count<TAB>epoch of the latest"
+;;;                                    (0 when its arrival was not logged); for
+;;;                                    pro1x-lock
 ;;;
 ;;; makoctl list prints no bodies, so this asks mako over D-Bus
 ;;; (fr.emersion.Mako ListNotifications/ListHistory, aa{sv}) with gdbus and
@@ -160,6 +167,47 @@
             (begin (closedir d) acc)
             (loop (cons e acc)))))))
 
+(define (arrival-log)
+  (string-append (or (getenv "XDG_RUNTIME_DIR") "/tmp")
+                 "/sway-notifications.log"))
+
+(define (log-arrival id)
+  ;; mako has no arrival times; note ours.  "epoch<TAB>id" per line.
+  (let ((port (open-file (arrival-log) "a")))
+    (format port "~a\t~a~%" (current-time) id)
+    (close-port port)))
+
+(define (arrivals)
+  ;; id -> epoch of its last arrival
+  (if (file-exists? (arrival-log))
+      (call-with-input-file (arrival-log)
+        (lambda (port)
+          (let loop ((acc '()))
+            (match (read-line port)
+              ((? eof-object?) acc)
+              (line
+               (match (string-split line #\tab)
+                 ((epoch id) (loop (cons (cons id (string->number epoch)) acc)))
+                 (_ (loop acc))))))))
+      '()))
+
+(define (summary)
+  (let ((times (arrivals)))
+    (for-each
+     (match-lambda
+       ((app . ns)
+        (format #t "~a\t~a\t~a~%" app (length ns)
+                (apply max 0 (map (lambda (n)
+                                    (or (assoc-ref times (field n "id")) 0))
+                                  ns)))))
+     (fold (lambda (n acc)
+             (let ((app (one-line (field n "app-name"))))
+               (match (assoc app acc)
+                 ((_ . ns) (cons (cons app (cons n ns)) (alist-delete app acc)))
+                 (#f (cons (list app n) acc)))))
+           '()
+           (mako-call "ListNotifications")))))
+
 (define (list-actions id)
   (for-each (lambda (n)
               (when (string=? (field n "id") id)
@@ -173,5 +221,8 @@
 (match (command-line)
   ((_ "list") (list-notifications))
   ((_ "actions" id) (list-actions id))
-  (_ (format (current-error-port) "usage: sway-notifications list | actions ID~%")
+  ((_ "log" id) (log-arrival id))
+  ((_ "summary") (summary))
+  (_ (format (current-error-port)
+             "usage: sway-notifications list | actions ID | log ID | summary~%")
      (exit 2)))
