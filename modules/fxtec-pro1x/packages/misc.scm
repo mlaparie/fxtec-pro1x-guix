@@ -707,7 +707,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/volume-above-100-percent.patch"))
                       ;; Keyboard out: keep landscape across lock and unlock.
                       (local-file
-                       (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch")))))))
+                       (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch"))
+                      ;; Snapshot stays in portrait whatever the rotation.
+                      (local-file
+                       (repository-file "device/phosh/portrait-apps.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)

@@ -1,0 +1,135 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] rotation-manager: keep portrait-only apps in portrait
+
+A camera viewfinder (GNOME Snapshot) wants the whole panel in portrait
+whatever the sensor or the orientation lock say (author).  While an
+app listed in portrait_apps is the activated toplevel, apply the
+normal (portrait) transform and do not follow the sensor; when it is
+no longer active, follow the sensor again, or restore the transform
+from before when orientation is locked.  Applies after
+lockscreen-keep-locked-orientation.patch.  phosh 0.56.0.
+---
+--- a/src/rotation-manager.c
++++ b/src/rotation-manager.c
+@@ -11,6 +11,8 @@
+ #include "rotation-manager.h"
+ #include "shell-priv.h"
+ #include "sensor-proxy-manager.h"
++#include "toplevel.h"
++#include "toplevel-manager.h"
+ #include "util.h"
+ 
+ #define ORIENTATION_LOCK_SCHEMA_ID "org.gnome.settings-daemon.peripherals.touchscreen"
+@@ -56,11 +58,19 @@
+   GSettings               *settings;
+   gboolean                 orientation_locked;
+ 
++  /* An app that must stay in portrait is active (portrait_apps) */
++  gboolean                 portrait_app;
++  PhoshMonitorTransform    pre_app_transform;
++
+   PhoshRotationManagerMode mode;
+ } PhoshRotationManager;
+ 
+ G_DEFINE_TYPE (PhoshRotationManager, phosh_rotation_manager, G_TYPE_OBJECT);
+ 
++/* Apps that use the whole panel in portrait whatever the sensor says (a
++ * camera viewfinder) */
++static const char *const portrait_apps[] = { "org.gnome.Snapshot", NULL };
++
+ 
+ static gboolean
+ is_phone (PhoshRotationManager *self)
+@@ -117,6 +127,9 @@
+   if (self->orientation_locked || !self->claimed || self->mode == PHOSH_ROTATION_MANAGER_MODE_OFF)
+     return FALSE;
+ 
++  if (self->portrait_app)
++    return FALSE;
++
+   if (phosh_lockscreen_manager_get_locked (self->lockscreen_manager) && is_phone (self))
+     return FALSE;
+ 
+@@ -144,6 +157,56 @@
+   return TRUE;
+ }
+ 
++static gboolean
++portrait_app_active (void)
++{
++  PhoshToplevelManager *manager;
++  guint n;
++
++  manager = phosh_shell_get_toplevel_manager (phosh_shell_get_default ());
++  if (!manager)
++    return FALSE;
++
++  n = phosh_toplevel_manager_get_num_toplevels (manager);
++  for (guint i = 0; i < n; i++) {
++    PhoshToplevel *toplevel = phosh_toplevel_manager_get_toplevel (manager, i);
++    const char *app_id = phosh_toplevel_get_app_id (toplevel);
++
++    if (phosh_toplevel_is_activated (toplevel) && app_id &&
++        g_strv_contains (portrait_apps, app_id))
++      return TRUE;
++  }
++  return FALSE;
++}
++
++/* Portrait while a portrait app is active; afterwards the sensor's
++ * orientation, or the transform from before when there is none (locked) */
++static void
++update_portrait_app (PhoshRotationManager *self)
++{
++  gboolean active = portrait_app_active ();
++
++  if (active == self->portrait_app || !self->monitor)
++    return;
++
++  self->portrait_app = active;
++  if (active) {
++    self->pre_app_transform = phosh_monitor_get_transform (self->monitor);
++    apply_transform (self, PHOSH_MONITOR_TRANSFORM_NORMAL);
++  } else if (!match_orientation (self)) {
++    apply_transform (self, self->pre_app_transform);
++  }
++}
++
++static void
++on_toplevel_added (PhoshRotationManager *self, PhoshToplevel *toplevel)
++{
++  g_signal_connect_object (toplevel, "notify::activated",
++                           G_CALLBACK (update_portrait_app), self,
++                           G_CONNECT_SWAPPED);
++  update_portrait_app (self);
++}
++
+ static void
+ on_accelerometer_claimed (PhoshSensorProxyManager *sensor_proxy_manager,
+                           GAsyncResult            *res,
+@@ -493,6 +556,25 @@
+                             self);
+   on_lockscreen_manager_locked (self, NULL, self->lockscreen_manager);
+ 
++  {
++    PhoshToplevelManager *manager =
++      phosh_shell_get_toplevel_manager (phosh_shell_get_default ());
++
++    if (manager) {
++      guint n = phosh_toplevel_manager_get_num_toplevels (manager);
++
++      g_signal_connect_object (manager, "toplevel-added",
++                               G_CALLBACK (on_toplevel_added), self,
++                               G_CONNECT_SWAPPED);
++      /* Emitted after a closed toplevel is removed */
++      g_signal_connect_object (manager, "notify::num-toplevels",
++                               G_CALLBACK (update_portrait_app), self,
++                               G_CONNECT_SWAPPED);
++      for (guint i = 0; i < n; i++)
++        on_toplevel_added (self, phosh_toplevel_manager_get_toplevel (manager, i));
++    }
++  }
++
+   self->blanked = !!(phosh_shell_get_state (phosh_shell_get_default ()) & PHOSH_STATE_BLANKED);
+   g_signal_connect_object (phosh_shell_get_default (),
+                            "notify::shell-state",
