@@ -61,7 +61,8 @@ esac
 if [ -n "${SWAYSOCK:-}" ]; then
     (
         while [ -S "$SWAYSOCK" ]; do sleep 10; done
-        pkill -P $$ -x monitor-sensor
+        # Not -x monitor-sensor: the wrapped binary runs as .monitor-sensor.
+        pkill -P $$
     ) &
 fi
 monitor-sensor --accel 2>/dev/null |
