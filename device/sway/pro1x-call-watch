@@ -67,8 +67,10 @@ incoming() {                          # incoming <call object path>
 }
 
 if [ -n "${SWAYSOCK:-}" ]; then
-    # Sway's exec double-forks: stop when its IPC socket goes away.
-    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill $$ ) &
+    # Sway's exec double-forks: stop when its IPC socket goes away.  The
+    # whole process group (kill 0), not only this shell: gdbus monitor and
+    # the loop kept an old copy alive after a logout (2026-10-30).
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; proximity_stop; kill 0 ) &
 fi
 
 # Lines such as
