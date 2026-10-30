@@ -232,7 +232,7 @@ and Phosh itself.  Not set up yet.
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
 - CI kernel (charge limit, LED pattern trigger): runs 40997348185 and
   41007214587 both failed in Prefetch on the glib graft (see §5); the
-  next run carries the warm-up step.  Then `sudo guix archive --authorize
+  warm-up step (da730ed) is in run 41025825198.  Then `sudo guix archive --authorize
   < ci-signing-key.pub` on the PC (author), import, deploy, reboot.  Merge next into main after
   that kernel boots.
 - MMS sending: untested.
