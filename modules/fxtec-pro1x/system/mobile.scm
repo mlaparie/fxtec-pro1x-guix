@@ -38,6 +38,7 @@
              (gnu packages ntp)
              (gnu packages ssh)
              (gnu packages freedesktop)    ; libqmi, libqrtr-glib
+             (gnu packages telephony)      ; libcallaudio (callaudiod)
              (gnu packages version-control)
              (gnu packages vim)
              (gnu packages messaging)
@@ -628,6 +629,11 @@ Dracula palette, no kernel messages over the greeter.")
      icecat gnome-console
      emacs mpv nnn
      calls chatty
+     ;; callaudiod: Calls switches speaker and earpiece and mutes the
+     ;; microphone through it (org.mobian_project.CallAudio).  It was only a
+     ;; library dependency of Calls, so its D-Bus service was not found and
+     ;; the speaker and mute buttons did nothing (author, 2026-10-30).
+     libcallaudio
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
      ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
      snapshot
