@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # make-wallpapers.py GUIX-DISC-SVG OUTDIR — the Pro¹x backgrounds
 #
-#   light.svg  a low-poly gradient (pink, violet, teal), drawn here
+#   light.svg  a low-poly gradient (coral, plum, deep teal), drawn here
 #   gnu.svg    Guix's gnu from guix-backgrounds' guix-disc-flat-16-9.svg
 #              (CC-BY-SA 4.0), alone and recoloured, for the dark one
 #
@@ -12,12 +12,12 @@
 import random, re, sys
 
 src, out = sys.argv[1], sys.argv[2]
-SIZE, CELLS = 2160, 9
+SIZE, CELLS = 2160, 7
 
 def mix(a, b, t):
     return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
 
-STOPS = [(0.0, (238, 120, 120)), (0.45, (150, 105, 160)), (1.0, (25, 110, 140))]
+STOPS = [(0.0, (246, 146, 108)), (0.5, (128, 92, 168)), (1.0, (18, 92, 122))]
 
 def gradient(t):
     t = min(max(t, 0.0), 1.0)
@@ -38,7 +38,8 @@ for j in range(CELLS):
         tris = [(a, b, c), (a, c, d)] if rnd.random() < 0.5 else [(a, b, d), (b, c, d)]
         for t in tris:
             cx = sum(p[0] for p in t) / 3; cy = sum(p[1] for p in t) / 3
-            col = gradient((cx + cy) / (2 * SIZE) + rnd.uniform(-0.06, 0.06))
+            # Top right to bottom left.
+            col = gradient(((SIZE - cx) + cy) / (2 * SIZE) + rnd.uniform(-0.07, 0.07))
             col = tuple(min(255, max(0, v + rnd.randint(-8, 8))) for v in col)
             polys.append('<polygon points="%s" fill="#%02x%02x%02x"/>' % (
                 " ".join("%.1f,%.1f" % p for p in t), *col))
@@ -51,7 +52,7 @@ with open(out + "/light.svg", "w") as f:
 s = open(src).read()
 style = ('<style>path, rect, circle, ellipse, use, image, text '
          '{ display: none !important; } '
-         '#path3190-3 { display: inline !important; fill: #c8cdf2 !important; '
+         '#path3190-3 { display: inline !important; fill: #ddd0f7 !important; '
          'stroke: none !important; }</style>')
 s = re.sub(r'(<svg\b[^>]*>)', r'\1' + style, s, count=1)
 with open(out + "/gnu.svg", "w") as f:
