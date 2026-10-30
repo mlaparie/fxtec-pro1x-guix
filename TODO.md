@@ -245,10 +245,15 @@ and Phosh itself.  Not set up yet.
   NMEA at all, not even fixless sentences (confirmed, indoors).  moWerk's
   direct QMI LOC client (LOC service 16 over QRTR, REG_EVENTS + START)
   gets NMEA at 1 Hz indoors without a fix (reported,
-  sailfishos-pro1x-mainline notes/gnss.md).  So ModemManager probably
-  never starts a LOC session here, or misses its indications.  Next: MM
-  debug log while enabling gps-nmea; compare with moWerk's probe; then
-  geoclue (modem source) and XTRA/time injection for faster fixes.
+  sailfishos-pro1x-mainline notes/gnss.md).
+  ModemManager's debug log (confirmed): it sends LOC Register Events and
+  Start, reads the NMEA types and gets "none", and no NMEA or position
+  indication ever arrives.  moWerk got NMEA after setting the types.
+  Next (asks the author: it changes a modem setting that may persist;
+  revert is setting "none" again):
+  `qmicli -d qrtr://0 --loc-set-nmea-types="gga|gsa|gsv|rmc|vtg"`, then
+  re-enable gps-nmea in ModemManager; then geoclue (modem source) and
+  XTRA/time injection for faster fixes.
 - **Fingerprint**: side sensor; nothing in the mainline device tree, the
   NixOS port or moWerk's notes, and no mainline or libfprint support found.
   Qualcomm phones usually route such sensors through TrustZone (inferred,
