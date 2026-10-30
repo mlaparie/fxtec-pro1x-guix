@@ -111,14 +111,20 @@ then deploys of next up to cc16582; generation 2 and later):
   allow_active only needs its package in polkit-service-type and a rule
   (ModemManager, NetworkManager: netdev; sensors: users).  polkitd does
   not see a new /etc/polkit-1 after a deploy until restarted (or reboot).
-- crackle on reaching tuigreet (session audio stopping): probably the
-  speaker pop at power-down also seen on NixOS (moWerk's notes); kernel.
 - Sway: volume keys through wpctl, capped at 120%; Sway volume keys not
   yet tested by the author.  GNOME volume above 100% via
   pro1x-gsettings-defaults, not yet tested.
 - Sxmo: same device settings (/etc/sway/config.d/pro1x.conf), bus and
   audio as Sway; still needs superd.
 - Phosh lock keypad flickers once on wake (low priority).
+- Phosh rotation: auto-rotation works (tile: tap locks, long press
+  switches auto/manual).  Each rotation flashes the screen black briefly
+  (probably phoc's modeset on transform change; not investigated).
+  Snapshot should stay in portrait to use the whole panel; Phosh has no
+  per-app rotation lock (author's wish, 2026-10-30).
+- crackle when Phosh starts and on reaching tuigreet: the session's
+  audio coming up or stopping; probably the speaker pop at amp power
+  changes also seen on NixOS (moWerk's notes); kernel side.
 - CI: U-Boot only changes with uboot.scm; reuse the last artifact when
   its derivation is unchanged instead of rebuilding.  The U-Boot step's
   failure: glib graft cannot read glib's etc/ld.so.cache (permission
