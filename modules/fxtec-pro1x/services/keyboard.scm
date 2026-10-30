@@ -12,8 +12,18 @@
 ;;; the panel on in every running sway (swaymsg on its IPC socket); sway's
 ;;; bindswitch knows only lid and tablet switches.  Not done for Phosh yet.
 ;;;
+;;; It also turns off after BACKLIGHT-TIMEOUT seconds without a key press
+;;; (default 60, #f for never), and on again at the next key, slide-out or
+;;; panel-on.  Key presses are read from keyd's virtual keyboard: keyd grabs
+;;; the real one.  In config.scm:
+;;;   (modify-services (operating-system-user-services base)
+;;;     (pro1x-keyboard-service-type
+;;;      config => (pro1x-keyboard-configuration
+;;;                 (inherit config) (backlight-timeout 120))))
+;;;
 ;;; State: slide in/out and the power key follow the LED (2026-10-28,
-;;; generation 4); panel wake on slide-out not tested yet.
+;;; generation 4); panel wake on slide-out not tested yet; the timeout is
+;;; build-tested only (2026-10-30).
 
 (define-module (fxtec-pro1x services keyboard)
   #:use-module (fxtec-pro1x files)
@@ -35,7 +45,10 @@
   pro1x-keyboard-configuration make-pro1x-keyboard-configuration
   pro1x-keyboard-configuration?
   (xkb-layout  pro1x-keyboard-xkb-layout  (default "us"))
-  (xkb-variant pro1x-keyboard-xkb-variant (default "intl")))
+  (xkb-variant pro1x-keyboard-xkb-variant (default "intl"))
+  ;; Seconds without a key press before the keyboard light goes off; #f:
+  ;; never (the light then follows only the slider and the panel).
+  (backlight-timeout pro1x-keyboard-backlight-timeout (default 60)))
 
 ;;; /etc/keyd/default.conf
 (define (pro1x-keyboard-etc config)
@@ -75,8 +88,9 @@
          (invoke #$(file-append dconf "/bin/dconf") "compile"
                  #$output "keyfiles")))))
 
-;;; Keyboard backlight: on while slid out and the panel is on.
-(define pro1x-kbd-backlight-program
+;;; Keyboard backlight: on while slid out, the panel is on and a key was
+;;; pressed less than TIMEOUT seconds ago.
+(define (pro1x-kbd-backlight-program timeout)
   (program-file
    "pro1x-kbd-backlight"
    #~(begin
@@ -84,7 +98,8 @@
                     (ice-9 ftw)
                     (ice-9 match)
                     (ice-9 rdelim)
-                    (rnrs bytevectors))
+                    (rnrs bytevectors)
+                    (srfi srfi-1))
 
        (define slider "/dev/input/pro1x-slider")
        (define led "/sys/class/leds/white:kbd_backlight/brightness")
@@ -132,37 +147,99 @@
          (call-with-output-file led
            (lambda (port) (display value port))))
 
+       (define timeout #$timeout)
+       (define ev-key 1)
+
+       ;; keyd's virtual keyboard, where key presses arrive (keyd grabs the
+       ;; real keyboard).  #f until keyd has created it.
+       (define (open-keyboard)
+         (let ((event (find (lambda (e)
+                              (false-if-exception
+                               (string=? "keyd virtual keyboard"
+                                         (call-with-input-file
+                                             (string-append
+                                              "/sys/class/input/" e
+                                              "/device/name")
+                                           read-line))))
+                            (or (scandir "/sys/class/input"
+                                         (lambda (f)
+                                           (string-prefix? "event" f)))
+                                '()))))
+           (and event
+                (false-if-exception
+                 (let ((port (open-input-file
+                              (string-append "/dev/input/" event)
+                              #:binary #t)))
+                   (setvbuf port 'none)
+                   port)))))
+
+       (define (read-event port)
+         ;; struct input_event on aarch64: 16-byte timeval, u16 type,
+         ;; u16 code, s32 value.  #f at end of file (device gone).
+         (let ((event (get-bytevector-n port 24)))
+           (and (bytevector? event) (= 24 (bytevector-length event))
+                event)))
+
        (let ((port (open-input-file slider #:binary #t)))
          (setvbuf port 'none)
-         (let loop ((open? (slider-open?)) (last #f))
-           (let ((value (if (and open? (panel-on?)) "1" "0")))
+         ;; ACTIVE: time of the last key press, slide-out or panel-on.
+         (let loop ((open? (slider-open?)) (last #f) (keyboard #f)
+                    (active (current-time)) (panel? (panel-on?)))
+           (let* ((keyboard (or keyboard (open-keyboard)))
+                  (panel-now? (panel-on?))
+                  (active (if (and panel-now? (not panel?))
+                              (current-time)
+                              active))
+                  (recent? (or (not timeout)
+                               (< (- (current-time) active) timeout)))
+                  (value (if (and open? panel-now? recent?) "1" "0")))
              (unless (equal? value last)
                (set-led! value))
-             ;; struct input_event on aarch64: 16-byte timeval, u16 type,
-             ;; u16 code, s32 value.  Poll dpms once a second meanwhile.
-             (match (select (list port) '() '() 1)
-               (((_) () ())
-                (let* ((event (get-bytevector-n port 24))
-                       (open-now?
-                        (if (and (= ev-sw (bytevector-u16-native-ref event 16))
-                                 (= sw-keypad-slide
-                                    (bytevector-u16-native-ref event 18)))
-                            (= 1 (bytevector-s32-native-ref event 20))
-                            open?)))
-                  (when (and open-now? (not open?) (not (panel-on?)))
-                    (wake-sway!))
-                  (loop open-now? value)))
-               (_ (loop open? value)))))))))
+             ;; Poll dpms and the timeout once a second meanwhile.
+             (match (select (if keyboard (list port keyboard) (list port))
+                            '() '() 1)
+               ((ready () ())
+                (cond
+                 ((and keyboard (memq keyboard ready))
+                  (let ((event (read-event keyboard)))
+                    (cond
+                     ((not event)
+                      (close-port keyboard)
+                      (loop open? value #f active panel-now?))
+                     ((and (= ev-key (bytevector-u16-native-ref event 16))
+                           (= 1 (bytevector-s32-native-ref event 20)))
+                      (loop open? value keyboard (current-time) panel-now?))
+                     (else
+                      (loop open? value keyboard active panel-now?)))))
+                 ((memq port ready)
+                  (let* ((event (get-bytevector-n port 24))
+                         (open-now?
+                          (if (and (= ev-sw (bytevector-u16-native-ref event 16))
+                                   (= sw-keypad-slide
+                                      (bytevector-u16-native-ref event 18)))
+                              (= 1 (bytevector-s32-native-ref event 20))
+                              open?)))
+                    (when (and open-now? (not open?) (not panel-now?))
+                      (wake-sway!))
+                    (loop open-now? value keyboard
+                          (if (and open-now? (not open?))
+                              (current-time)
+                              active)
+                          panel-now?)))
+                 (else (loop open? value keyboard active panel-now?))))
+               (_ (loop open? value keyboard active panel-now?)))))))))
 
 ;;; Shepherd services: keyd, keyboard backlight
 (define (pro1x-keyboard-shepherd-services config)
   (list
    (shepherd-service
     (provision '(pro1x-kbd-backlight))
-    (requirement '(udev))
-    (documentation "Keyboard backlight on while slid out and the panel is on.")
+    (requirement '(udev keyd))
+    (documentation "Keyboard backlight on while slid out, the panel is on
+and a key was pressed recently.")
     (start #~(make-forkexec-constructor
-              (list #$pro1x-kbd-backlight-program)
+              (list #$(pro1x-kbd-backlight-program
+                       (pro1x-keyboard-backlight-timeout config)))
               #:log-file "/var/log/pro1x-kbd-backlight.log"))
     (stop #~(make-kill-destructor))
     (respawn? #t))
