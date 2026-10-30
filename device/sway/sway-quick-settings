@@ -187,13 +187,12 @@ dim() {                         # grey for off states
 
 # Mobile data options, cycled with Enter/Right (next) and Left (back).
 # The chosen one shows on its line for 2 s, then the status again.
-MOBILE_OPTS="off 234 34 23 3 roam-on roam-off"
+MOBILE_OPTS="off 234 34 23 3"
 mobile_label() {
     case "$1" in
         off) echo "mobile data off" ;;   234) echo "2G/3G/4G" ;;
         34) echo "3G/4G" ;;              23) echo "2G/3G" ;;
-        3) echo "3G only" ;;             roam-on) echo "roaming on" ;;
-        roam-off) echo "roaming off" ;;
+        3) echo "3G only" ;;
     esac
 }
 mobile_flash() {                # label if an option was set < 2 s ago
@@ -213,8 +212,6 @@ mobile_cycle() {                # mobile_cycle + | -
     if [ "$dir" = + ]; then idx=$(( idx % n + 1 ))
     else idx=$(( (idx + n - 2) % n + 1 )); fi
     eval "opt=\${$idx}"
-    gsm=$(nmcli -t -f NAME,TYPE connection show 2>/dev/null |
-              awk -F: '$2 == "gsm" { print $1; exit }')
     case "$opt" in
         off) nmcli radio wwan off ;;
         234|34|23|3)
@@ -225,16 +222,24 @@ mobile_cycle() {                # mobile_cycle + | -
                 23) mmcli -m any --set-allowed-modes='2g|3g' --set-preferred-mode=3g ;;
                 3) mmcli -m any --set-allowed-modes='3g' ;;
             esac >/dev/null 2>&1 ;;
-        roam-on|roam-off)
-            [ -n "$gsm" ] || return
-            nmcli connection modify "$gsm" gsm.home-only \
-                "$( [ "$opt" = roam-on ] && echo no || echo yes)"
-            nmcli connection up "$gsm" >/dev/null 2>&1 & ;;
     esac
     echo "$opt $(date +%s)" > "$f"
     # The status again once the 2 s are over.
     ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
           -d "reload($self --lines)" >/dev/null 2>&1 ) &
+}
+
+# Roaming: its own line, so it combines with any Mobile data option.  It
+# is the gsm.home-only setting of the mobile connection (on = not
+# home-only); the connection comes up again to apply it.
+gsm_conn() {
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null |
+        awk -F: '$2 == "gsm" { print $1; exit }'
+}
+roaming() {                     # roaming: on, off or "no connection"
+    c=$(gsm_conn)
+    [ -n "$c" ] || { echo "no connection"; return; }
+    [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
 }
 
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
@@ -328,6 +333,7 @@ lines() {
         "camera      Camera" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "wwan        Mobile data          $mobile" \
+        "roaming     Roaming              $(dim "$(roaming)")" \
         "sim         SIM                  $(sim_state "$kv")" \
         "bluetooth   Bluetooth            $(dim "$bt")" \
         "airplane    Airplane mode        $(dim "$plane")" \
@@ -373,6 +379,12 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        roaming)
+            c=$(gsm_conn); [ -n "$c" ] || return
+            [ "$(roaming)" = "$2" ] && return
+            nmcli connection modify "$c" gsm.home-only \
+                "$( [ "$2" = on ] && echo no || echo yes)"
+            nmcli connection up "$c" >/dev/null 2>&1 & ;;
         mute)
             if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
             else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
@@ -393,6 +405,7 @@ state_of() {                    # state_of <setting>: on or off
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
+        roaming) roaming ;;
     esac
 }
 
