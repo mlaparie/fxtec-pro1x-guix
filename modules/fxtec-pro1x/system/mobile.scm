@@ -193,7 +193,12 @@
                ;; PipeWire, WirePlumber, pipewire-pulse for the session.
                #$pro1x-audio-session
                #$(file-append phoc-pro1x "/bin/phoc")
-               "-S" "-C" "/etc/phoc.ini" "-E"
+               "-S" "-C"
+               ;; The user's phoc.ini if there is one (scale), else ours.
+               (let ((own (string-append (getenv "HOME")
+                                         "/.config/phoc/phoc.ini")))
+                 (if (file-exists? own) own "/etc/phoc.ini"))
+               "-E"
                #$phosh-pro1x-shell))))
 
 ;; Sxmo on sway, for greetd.  Logs to /tmp/sxmo-UID.log (greetd discards
@@ -398,12 +403,15 @@ files root may log in with."
         `("sway/config.d/pro1x.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/pro1x.conf"))))
 
-     ;; /etc/phoc.ini — scale ×2 for 1080×2160 panel
+     ;; /etc/phoc.ini — scale 1.75 for the 1080×2160 panel (author's
+     ;; default, 2026-10-30; was 2).  Phosh does not save display changes,
+     ;; so a scale set in Settings lasts until logout; to keep one, copy
+     ;; this file to ~/.config/phoc/phoc.ini and edit it there.
      (simple-service 'phosh-config etc-service-type
        (list
         `("phoc.ini"
           ,(plain-file "phoc.ini"
-                       "[core]\n[output:DSI-1]\nscale=2\n"))))
+                       "[core]\n[output:DSI-1]\nscale=1.75\n"))))
 
      ;; /etc/pam.d/phosh: the lock screen checks the passcode with PAM
      ;; service "phosh"; without it PAM falls back to "other" and denies.
@@ -571,6 +579,10 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
      ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
      snapshot
+     ;; Portals: libadwaita apps read dark/light from the Settings portal
+     ;; (gtk backend per Phosh's portals.conf); without them GNOME
+     ;; Settings' dark mode changed nothing (2026-10-30).
+     xdg-desktop-portal xdg-desktop-portal-gtk
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas pro1x-gsettings-defaults
