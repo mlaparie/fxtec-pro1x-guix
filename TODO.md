@@ -241,8 +241,11 @@ and Phosh itself.  Not set up yet.
 4. **Sway quick settings** (low priority, author 2026-10-30): an fzf menu
    like sway-window-switcher for Wi-Fi (the author's nmcli-fzf), mobile
    data, Bluetooth, torch, auto-rotate, brightness, volume, later
-   location.  Auto-rotate needs a Sway rotation helper (monitor-sensor
-   to swaymsg output transform, landscape while the keyboard is out).
+   location.  Auto-rotate needs a Sway rotation helper: rot8 1.0 (in
+   Guix, author's suggestion) reads only raw IIO sysfs, which the SSC
+   accelerometer is not, so sway-autorotate following monitor-sensor
+   --accel, with an on/off toggle, a force (sway-rotate, which turns
+   auto off) and landscape while the keyboard is out.
 5. **On-screen keyboard**: none in Guix at the pin; package stevia (C,
    GTK 4) rather than squeekboard (Rust).
 6. **Camera**: port moWerk's libcamera 0.7.2 patches (AfWindows, manual
