@@ -109,6 +109,14 @@ then deploys of next up to cc16582; generation 2 and later):
   gets LTE/5G there.  So the modem does not measure or report LTE cells:
   points at the modem's configuration (voice-centric, carrier profile)
   rather than coverage (inferred).
+  Network scan (qmicli --nas-network-scan; stores nothing): LTE networks
+  are heard (radio type lte, beside umts); data stayed on UMTS.  So RF and
+  bands work and the modem chooses not to use LTE: configuration
+  (voice-centric without IMS, or carrier profile), still inferred.  The
+  data-centric test needs a libqmi program (qmicli 1.34 cannot set the
+  usage preference); its change-duration "power cycle" may or may not be
+  honoured by this firmware, so it may persist in NV: not done, author
+  wants no risk (2026-10-30).
   Author's decision, 2026-10-30: wait; poor coverage is possible.  ASK
   THE AUTHOR AGAIN if they never see 4G while moving around: the test is
   data-centric usage, which the modem keeps in its NV (modemst via

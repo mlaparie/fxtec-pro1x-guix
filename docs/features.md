@@ -19,7 +19,7 @@ Chosen at the text login (tuigreet; remembers user and session):
 Display, touch, GPU; keyboard with Fn layer and backlight; slider
 (keyboard out: landscape locked); Wi-Fi; USB SSH; speaker, volume keys;
 both cameras (Snapshot); auto-rotation; battery state; SIM and data on
-3G; vibration and ringtone; idle dimming; Tailscale.
+3G; vibration and ringtone; idle dimming; double tap to wake; Tailscale.
 
 ## Not yet
 

@@ -55,6 +55,7 @@ Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-s
 Proximity, light, gyroscope      Untested
 Battery                          Working    UPower: level and charging state in Phosh
 Screen dimming                   Working    20% after 60 s idle (configurable)
+Double tap to wake               Working    pro1x-doubletap (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested
