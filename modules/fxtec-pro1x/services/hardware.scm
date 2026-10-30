@@ -439,8 +439,16 @@ esac
               (call-with-output-file
                   (string-append dir "/92_pro1x-idle.gschema.override")
                 (lambda (port)
-                  (format port "[org.gnome.desktop.session]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver]~%lock-enabled=~a~%lock-delay=uint32 ~a~%"
-                          #$blank #$(if lock "true" "false") #$(or lock 0))))))))
+                  ;; Twice: Phosh's own override sets idle-delay=60 for
+                  ;; the Phosh desktop ([...:Phosh], when XDG_CURRENT_DESKTOP
+                  ;; has Phosh), which beat the plain section there: the
+                  ;; Phosh session kept blanking after 60 s (2026-10-30).
+                  (for-each
+                   (lambda (suffix)
+                     (format port "[org.gnome.desktop.session~a]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver~a]~%lock-enabled=~a~%lock-delay=uint32 ~a~%~%"
+                             suffix #$blank suffix
+                             #$(if lock "true" "false") #$(or lock 0)))
+                   '("" ":Phosh"))))))))
       (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
       (synopsis "Pro1X blank and lock delays for Phosh")
       (description "GSettings defaults for the blank and lock delays.")
