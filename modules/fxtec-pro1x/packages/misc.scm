@@ -972,7 +972,7 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils foot fzf jq))
+    (inputs (list bash coreutils foot fzf jq swayidle))
     (arguments
      (list
       #:install-plan
@@ -980,7 +980,8 @@ window opened by a sway key binding.")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
-          ("pro1x-dim" "bin/"))
+          ("pro1x-dim" "bin/")
+          ("pro1x-idle" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -997,12 +998,20 @@ window opened by a sway key binding.")
                 (wrap-program dim
                   `("PATH" ":" prefix
                     (,(string-append (assoc-ref inputs "coreutils")
-                                     "/bin"))))))))))
+                                     "/bin"))))
+                (let ((idle (string-append #$output "/bin/pro1x-idle")))
+                  (chmod idle #o755)
+                  (wrap-program idle
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,(string-append (assoc-ref inputs "swayidle") "/bin")
+                       ,(string-append (assoc-ref inputs "coreutils")
+                                       "/bin")))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description
      "Default sway configuration for the Pro1X in landscape with the keyboard
 out, the device settings every sway session shares (pro1x.conf, for
 /etc/sway/config.d), an i3status-rust bar configuration, an fzf window
-switcher, and pro1x-dim, which dims the panel when idle.")
+switcher, and pro1x-idle and pro1x-dim, which dim the panel when idle.")
     (license license:gpl3+)))

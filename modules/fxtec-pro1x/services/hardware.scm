@@ -9,6 +9,13 @@
 ;;;   • feedbackd group
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
+;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
+;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
+;;;     In config.scm:
+;;;       (modify-services (operating-system-user-services base)
+;;;         (pro1x-hardware-service-type
+;;;          config => (pro1x-hardware-configuration
+;;;                     (inherit config) (dim-after 120) (dim-level 20))))
 ;;;
 ;;; The operating-system record in systems/ provides the kernel, firmware and
 ;;; bootloader directly — see systems/minimal.scm.
@@ -41,7 +48,11 @@
   ;; Extra kernel verbosity (earlycon, ignore_loglevel)
   (verbose?           pro1x-hardware-verbose?           (default #f))
   ;; fbcon rotation: 0 portrait, 1 clockwise, 2 upside-down, 3 CCW
-  (console-rotation   pro1x-hardware-console-rotation   (default #f)))
+  (console-rotation   pro1x-hardware-console-rotation   (default #f))
+  ;; Dim the panel after this many seconds without input (#f: never), to
+  ;; this percentage of its maximum brightness.
+  (dim-after          pro1x-hardware-dim-after          (default 60))
+  (dim-level          pro1x-hardware-dim-level          (default 30)))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -118,9 +129,16 @@ esac
   (list (user-group (name "feedbackd") (system? #t))))
 
 (define (pro1x-hardware-etc config)
-  ;; Nothing in /etc for the base hardware layer; udev rules go via the udev
-  ;; extension.  Left as a hook for callers that want to extend.
-  '())
+  ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim.
+  (let ((after (pro1x-hardware-dim-after config)))
+    `(("pro1x/dim.conf"
+       ,(plain-file "dim.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "DIM_AFTER=" (if after (number->string after) "") "\n"
+                     "DIM_LEVEL="
+                     (number->string (pro1x-hardware-dim-level config))
+                     "\n"))))))
 
 (define pro1x-hardware-service-type
   (service-type
@@ -134,6 +152,8 @@ esac
                         (lambda (config)
                           (list (file->udev-rule "60-pro1x.rules"
                                                  (pro1x-udev-rules config)))))
+     ;; /etc/pro1x/dim.conf
+     (service-extension etc-service-type pro1x-hardware-etc)
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)

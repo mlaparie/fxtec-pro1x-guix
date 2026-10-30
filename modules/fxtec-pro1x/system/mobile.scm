@@ -159,15 +159,14 @@
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))
-        ;; Dim the panel to 30% after a minute without input; Phosh only
-        ;; blanks (dimming is gnome-settings-daemon's power plugin, which
-        ;; needs logind).  Phosh still blanks after its own delay.
+        ;; Dim the panel when idle (/etc/pro1x/dim.conf, from config.scm);
+        ;; Phosh only blanks (dimming is gnome-settings-daemon's power
+        ;; plugin, which needs logind).  Phosh still blanks after its own
+        ;; delay.
         (when (zero? (primitive-fork))
           (setsid)
-          (let ((dim #$(file-append pro1x-sway-config "/bin/pro1x-dim")))
-            (execl #$(file-append swayidle "/bin/swayidle") "swayidle" "-w"
-                   "timeout" "60" (string-append dim " dim")
-                   "resume" (string-append dim " restore"))))
+          (execl #$(file-append pro1x-sway-config "/bin/pro1x-idle")
+                 "pro1x-idle"))
         ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
         ;; wants gnome-session.
         (execl #$(file-append phosh-pro1x "/libexec/phosh") "phosh"))))

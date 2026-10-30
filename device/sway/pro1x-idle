@@ -1,0 +1,22 @@
+#!/bin/sh
+# pro1x-idle — swayidle with the panel dimming set in the system configuration
+#
+#   pro1x-idle [swayidle arguments...]
+#
+# Reads DIM_AFTER (seconds, empty for never) from /etc/pro1x/dim.conf, written
+# from config.scm (pro1x-hardware-configuration dim-after, dim-level), and runs
+# swayidle -w with `timeout DIM_AFTER pro1x-dim dim resume pro1x-dim restore'
+# followed by the session's own arguments (Sway adds its blanking; Phosh blanks
+# by itself).  Started by the Phosh session and by the Sway config.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+DIM_AFTER=60
+[ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
+
+if [ -n "$DIM_AFTER" ]; then
+    exec swayidle -w timeout "$DIM_AFTER" 'pro1x-dim dim' \
+         resume 'pro1x-dim restore' "$@"
+else
+    exec swayidle -w "$@"
+fi
