@@ -170,7 +170,7 @@
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$(file-append mmsd-tng "/bin/mmsdtng") "mmsdtng"))
-        ;; Asks before switching to the MMS APN to fetch waiting MMS.
+        ;; Reminds about waiting MMS; the "Fetch MMS" launcher fetches them.
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$(file-append pro1x-mms-fetch "/bin/pro1x-mms-fetch")
@@ -644,6 +644,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; library dependency of Calls, so its D-Bus service was not found and
      ;; the speaker and mute buttons did nothing (author, 2026-10-30).
      libcallaudio
+     ;; Fetch MMS launcher (the session starts the reminder).
+     pro1x-mms-fetch
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
      ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
      snapshot

@@ -806,7 +806,8 @@ ModemManager, for clients such as Chatty.")
                   sed))
     (arguments
      (list
-      #:install-plan #~'(("pro1x-mms-fetch" "bin/"))
+      #:install-plan #~'(("pro1x-mms-fetch" "bin/")
+                         ("pro1x-mms-fetch.desktop" "share/applications/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap

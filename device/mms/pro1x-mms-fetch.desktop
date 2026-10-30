@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Fetch MMS
+Comment=Download waiting MMS over the MMS APN (mobile internet pauses briefly)
+Exec=pro1x-mms-fetch --now
+Icon=mail-message-new
+Terminal=false
+Categories=Network;
+Actions=ignore;
+X-Purism-FormFactor=Workstation;Mobile;
+
+[Desktop Action ignore]
+Name=Ignore waiting MMS
+Exec=pro1x-mms-fetch --ignore
