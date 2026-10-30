@@ -231,7 +231,7 @@ and Phosh itself.  Not set up yet.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
 - CI kernel (charge limit, LED pattern trigger): building in run
-  40997348185; then `sudo guix archive --authorize < ci-signing-key.pub`
+  41007214587 (next 56b2bca; 40997348185 failed early on the glib graft); then `sudo guix archive --authorize < ci-signing-key.pub`
   on the PC (author), import, deploy, reboot.  Merge next into main after
   that kernel boots.
 - MMS sending: untested.

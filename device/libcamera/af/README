@@ -19,4 +19,7 @@ source repository states no licence of its own.
 The Af block in ../imx582.yaml is moWerk's, measured on their unit.
 
 State: applies cleanly on Guix's libcamera 0.7.2 with our sensor patches
-(2026-10-30); build and Snapshot test pending.
+(2026-10-30).  On the phone (deploy, 2026-10-30): cam lists both cameras,
+captures 20 rear frames without error, and the rear camera exposes AfMode
+(continuous by default), AfWindows, AfMetering, ExposureTime(Mode),
+AnalogueGain(Mode) and ExposureValue.  Focus quality in Snapshot: untested.
