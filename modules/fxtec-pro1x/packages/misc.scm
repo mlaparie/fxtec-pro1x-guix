@@ -704,7 +704,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/backlight-sysfs-without-logind.patch"))
                       ;; Volume slider above 100% when the setting allows.
                       (local-file
-                       (repository-file "device/phosh/volume-above-100-percent.patch")))))))
+                       (repository-file "device/phosh/volume-above-100-percent.patch"))
+                      ;; Keyboard out: keep landscape across lock and unlock.
+                      (local-file
+                       (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)

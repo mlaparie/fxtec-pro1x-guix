@@ -1,0 +1,28 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] rotation-manager: keep a locked orientation on lock and unlock
+
+On phones phosh rotates the lock screen to portrait and restores the
+pre-lock transform on unlock.  With the Pro1X keyboard slid out the
+orientation is locked in landscape; the session starts locked, so the
+saved pre-lock transform was portrait and unlocking turned the shell
+to portrait with the keyboard out.  When the orientation is locked,
+leave the transform alone (the landscape lock screen works at this
+panel size).  phosh 0.56.0.
+---
+--- a/src/rotation-manager.c
++++ b/src/rotation-manager.c
+@@ -262,6 +262,14 @@
+   if (!is_phone (self))
+     return;
+ 
++  /* Orientation locked (on the Pro1X: keyboard slid out, landscape):
++   * keep the current orientation for the lock screen, and do not
++   * restore an older one on unlock. */
++  if (self->orientation_locked) {
++    self->prelock_transform = -1;
++    return;
++  }
++
+   /* Don't mess with transforms on external screens either */
+   if (!phosh_monitor_is_builtin (self->monitor))
+     return;
