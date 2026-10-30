@@ -155,9 +155,12 @@ then deploys of next up to cc16582; generation 2 and later):
 
 Tailscale on the phone (author, 2026-10-30: soon), so the agent can
 deploy while the phone is away from the PC (GPS tests outdoors, for
-one).  The PC's tailscale package comes from the btv channel
-(btv/tailscale.scm, 1.96.4), which the phone does not follow: either add
-btv to the phone's channels or package Tailscale here; author's choice.
+one).  The PC's tailscale package comes from umanwizard's channel
+github.com/umanwizard/guix-tailscale (module (btv tailscale), 1.96.4;
+built from source with go-build-system and vendored modules, BSD-3), which
+the phone does not follow: either add that channel to the phone's
+channels (it has no .guix-channel, so as a plain channel in channels.scm)
+or package Tailscale here; author's choice.
 Then a Shepherd service for tailscaled, and deploy/pro1x.scm's host
 switched to the phone's tailnet name.
 
