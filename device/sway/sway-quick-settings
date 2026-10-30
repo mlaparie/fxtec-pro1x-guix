@@ -1,0 +1,119 @@
+#!/bin/sh
+# sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
+#
+# Opened by Super+q in a floating foot (app id quicksettings).  One line
+# per setting with its current state; Enter toggles or steps it, and the
+# menu stays open (redrawn) until Esc.  Like Phosh's tiles: Wi-Fi, mobile
+# data, Bluetooth, airplane mode, auto-rotation, torch, feedback profile
+# (quiet/vibrate/sound), and brightness and volume steps.
+#
+# Needs: nmcli, rfkill, brightnessctl, wpctl (system profile); gsettings,
+# fzf, sway-autorotate (in this package's PATH).  The user is in netdev
+# (NetworkManager, /dev/rfkill) and input (flash LEDs).
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+torch=/sys/class/leds/white:flash-0/brightness
+
+if [ -z "${QS_IN_FOOT:-}" ]; then
+    QS_IN_FOOT=1 exec foot --app-id=quicksettings "$0"
+fi
+
+onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
+
+blocked() {                     # rfkill type -> on/off (on = not blocked)
+    if rfkill list "$1" 2>/dev/null | grep -q "Soft blocked: yes"; then
+        echo off
+    else
+        echo on
+    fi
+}
+
+state() {
+    wifi=$(onoff "$(nmcli radio wifi 2>/dev/null)")
+    wwan=$(onoff "$(nmcli radio wwan 2>/dev/null)")
+    bt=$(blocked bluetooth)
+    if [ "$wifi" = off ] && [ "$wwan" = off ] && [ "$bt" = off ]; then
+        plane=on
+    else
+        plane=off
+    fi
+    rot=$(cat "${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate" 2>/dev/null || echo on)
+    [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
+    fb=$(gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'")
+    br=$(brightnessctl -m 2>/dev/null | cut -d, -f4)
+    vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
+              awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }')
+    printf '%s\n' \
+        "wifi        Wi-Fi                $wifi" \
+        "wwan        Mobile data          $wwan" \
+        "bluetooth   Bluetooth            $bt" \
+        "airplane    Airplane mode        $plane" \
+        "rotation    Auto-rotation        $rot" \
+        "torch       Torch                $t" \
+        "feedback    Feedback             ${fb:-?}  (full / quiet / silent)" \
+        "bright+     Brightness +10%      $br" \
+        "bright-     Brightness -10%      $br" \
+        "vol+        Volume +5%           $vol" \
+        "vol-        Volume -5%           $vol" \
+        "mute        Mute                 $vol"
+}
+
+toggle_radio() {                # nmcli radio <wifi|wwan>
+    if [ "$(onoff "$(nmcli radio "$1")")" = on ]; then
+        nmcli radio "$1" off
+    else
+        nmcli radio "$1" on
+    fi
+}
+
+act() {
+    state >/dev/null            # sets $plane, $t, $fb in this shell
+    case "$1" in
+        wifi|wwan) toggle_radio "$1" ;;
+        bluetooth)
+            if [ "$(blocked bluetooth)" = on ]; then
+                rfkill block bluetooth
+            else
+                rfkill unblock bluetooth
+            fi ;;
+        airplane)
+            if [ "$plane" = on ]; then
+                nmcli radio all on; rfkill unblock bluetooth
+            else
+                nmcli radio all off; rfkill block bluetooth
+            fi ;;
+        rotation) sway-autorotate toggle ;;
+        torch)
+            if [ "$t" = on ]; then
+                echo 0 > "$torch"
+            else
+                # The torch guard service turns it off after its timeout.
+                cat "${torch%/brightness}/max_brightness" > "$torch"
+            fi ;;
+        feedback)
+            case "$fb" in
+                full) next=quiet ;;
+                quiet) next=silent ;;
+                *) next=full ;;
+            esac
+            gsettings set org.sigxcpu.feedbackd profile "$next" ;;
+        bright+) brightnessctl -q set +10% ;;
+        bright-) brightnessctl -q set 10%- ;;
+        vol+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+        vol-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+        mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    esac
+}
+
+pos=1
+while :; do
+    lines=$(state)
+    choice=$(printf '%s\n' "$lines" |
+                 fzf --prompt="quick settings > " --no-sort --layout=reverse \
+                     --with-nth=2.. --sync --bind "load:pos($pos)") || exit 0
+    key=${choice%% *}
+    pos=$(printf '%s\n' "$lines" | grep -n "^$key " | cut -d: -f1)
+    act "$key" >/dev/null 2>&1
+    sleep 0.3                   # let NetworkManager and rfkill settle
+done

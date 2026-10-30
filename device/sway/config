@@ -56,6 +56,7 @@ exec mako
 for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2
 for_window [app_id="^launcher$"] move position center
 for_window [app_id="^windowswitcher$"] floating enable, sticky enable, resize set 45 ppt 35 ppt, border pixel 2, move position center
+for_window [app_id="^quicksettings$"] floating enable, sticky enable, resize set 60 ppt 60 ppt, border pixel 2, move position center
 for_window [app_id="^swayhelp$"] floating enable, sticky enable, resize set 90 ppt 80 ppt, border pixel 2, move position center
 
 ########## KEYBINDINGS ##########
@@ -67,6 +68,7 @@ bindsym $mod+Return exec $term
 bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
 bindsym $mod+r exec sway-autorotate toggle
+bindsym $mod+q exec sway-quick-settings
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+c reload

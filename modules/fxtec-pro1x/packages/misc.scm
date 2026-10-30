@@ -1133,6 +1133,7 @@ window opened by a sway key binding.")
 ;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
+;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1141,7 +1142,7 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils evtest foot fzf jq sed swayidle
+    (inputs (list bash coreutils evtest foot fzf gawk grep jq sed swayidle
                   (list glib "bin")))
     (arguments
      (list
@@ -1152,7 +1153,8 @@ window opened by a sway key binding.")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
           ("pro1x-idle" "bin/")
-          ("sway-autorotate" "bin/"))
+          ("sway-autorotate" "bin/")
+          ("sway-quick-settings" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1186,7 +1188,16 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "evtest" "sed")))))))))))
+                            '("coreutils" "evtest" "sed")))))
+                (let ((qs (string-append #$output "/bin/sway-quick-settings")))
+                  (chmod qs #o755)
+                  (wrap-program qs
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "foot" "fzf" "gawk" "glib"
+                                "grep"))))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description
