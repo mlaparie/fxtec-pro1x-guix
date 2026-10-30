@@ -501,6 +501,19 @@ Dracula palette, no kernel messages over the greeter.")
                                 " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
+     ;; tuigreet's --remember and --remember-user-session write the last
+     ;; user and each user's last session in /var/cache/tuigreet, which did
+     ;; not exist (no /var/cache at all), so nothing was remembered.
+     (simple-service 'tuigreet-cache activation-service-type
+       (with-imported-modules '((guix build utils))
+         #~(begin
+             (use-modules (guix build utils))
+             (let ((dir "/var/cache/tuigreet")
+                   (greeter (false-if-exception (getpwnam "greeter"))))
+               (mkdir-p dir)
+               (when greeter
+                 (chown dir (passwd:uid greeter) (passwd:gid greeter)))))))
+
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
      ;; BlueZ.  The WCN3950 works when powered from boot; on Linux 7.1 it
@@ -587,6 +600,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; It was only a dependency, not in the profile, so its D-Bus session
      ;; service was not found and nothing vibrated.  fbcli to test.
      feedbackd
+     ;; bluetoothctl, btmgmt: the BlueZ tools were missing, so Bluetooth
+     ;; could not be tested from a shell (the daemon came from the service).
+     bluez
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas pro1x-gsettings-defaults
