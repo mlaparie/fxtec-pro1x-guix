@@ -16,27 +16,35 @@ kernel patches, firmware, and flash approach originate there.
 
 ## Port status
 
+As observed on the phone (2026-10-30, Linux 7.1, branch `main`). "Untested"
+means nobody has tried it on this port yet.
+
 ```
 Display (BOE AMOLED, 60 Hz)      Working
-GPU (Adreno 610)                 Untested
-Touchscreen                      Untested
+GPU (Adreno 610)                 Working    freedreno; phoc renders on the GPU
+Touchscreen                      Working
+Auto-rotation                    Working    Phosh; landscape locked while the keyboard is out
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
-Keyboard backlight               Working    on while slid out and the screen is on
-Keyboard slider switch           Working    drives the backlight; slide-out wakes sway
+Keyboard backlight               Working    on while slid out; off after 60 s idle (configurable, untested)
+Keyboard slider switch           Working    backlight, Phosh landscape, wakes sway
+Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
-Bluetooth                        Untested
+Bluetooth                        Partial    adapter powered (BlueZ); not working from the UI, cause not found yet
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
-Speaker / earpiece / headphones  Untested   audio stack incomplete (see TODO §1)
+Speaker                          Working    pops at login (open)
+Earpiece / headphones            Untested
 Microphones                      Untested
-Vibration motor                  Untested   (only verified in Phosh, not TTY)
-Calls                            Untested
-SMS / mobile data                Untested
-Rear camera (IMX582)             Broken     sensor registers; no PipeWire/WirePlumber yet (TODO)
-Front camera (S5K4H7)            Untested
-Sensors (accel, gyro, ALS, prox) Untested   ADSP via hexagonrpcd + iio-sensor-proxy
-Battery / charging               Untested
+Vibration motor                  Untested   feedbackd installed 2026-10-30
+Calls / SMS                      Untested
+Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
+Rear and front cameras           Working    picture in GNOME Snapshot (libcamera via PipeWire)
+Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
+Proximity, light, gyroscope      Untested
+Battery                          Working    UPower: level and charging state in Phosh
+Screen dimming                   Untested   30% after 60 s idle (configurable)
 Suspend                          Untested
-GPS, NFC, video codecs           Untested
+GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
+NFC, video codecs                Untested
 Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash-encrypted.sh
 ```
 
@@ -178,22 +186,33 @@ and refresh the U-Boot menu.
 
 ## Updating without reflashing
 
-`scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`) from your PC:
-builds there, copies over SSH as root, adds a generation and activates
-it, like `guix system reconfigure`.  Kernel, initrd and firmware changes
-need a reboot.  Previous generations are selectable from the U-Boot menu
-(hold volume-down at power-on).  It deploys `systems/mobile.scm`, the
-port's system as shipped, so it replaces a configuration made on the
-phone; it is a tool for working on the port.
+`scripts/deploy.sh` builds on your PC what `sudo guix system reconfigure
+~/.config/guix/config.scm` would build on the phone, and installs it:
+
+1. it copies the phone user's `~/.config/guix/config.scm` and `channels.scm`
+   (or `/etc/guix`'s if the user has none), and `~/.ssh/*.pub`;
+2. it runs `guix deploy` (`deploy/pro1x.scm`) under `guix time-machine`
+   with the phone's channels, so your changes in `config.scm` are kept;
+3. it copies the result over SSH as root, adds a generation and
+   activates it.  Kernel, initrd and firmware changes need a reboot.
+
+Previous generations are selectable from the U-Boot menu (hold
+volume-down at power-on).  `-L modules` puts this tree's modules in front
+of the channel's, so unpushed changes to the port are tested on top of
+your configuration.  `bash scripts/deploy.sh --repo [system-file]`
+deploys a system file from this tree instead, replacing your
+configuration.
 
 It logs in as root with the key `scripts/flash.sh` makes on your PC,
 `~/.ssh/pro1x-guix` (without a passphrase: guix deploy cannot ask for
-one).  The flashed system lets that key in; images flashed from a
-ready-made rootfs (`--rootfs`, CI images) have no root SSH login.  With
-the phone on USB:
+one), and keeps that key in root's authorized keys whatever `config.scm`
+says.  Images flashed from a ready-made rootfs (`--rootfs`, CI images)
+have no root SSH login: add the key to `/root/.ssh/authorized_keys` once
+by hand.  With the phone on USB:
 
 ```sh
-bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
+bash scripts/deploy.sh                 # the phone's own configuration
+bash scripts/deploy.sh --repo          # systems/mobile.scm from this tree
 ```
 
 ## Your home configuration
@@ -360,12 +379,14 @@ stays that way until the next slide or screen change.
 ## Session selection
 
 `systems/mobile.scm` boots into a **greetd + tuigreet** session picker on VT1.
-Two sessions are offered:
+tuigreet remembers the last user and each user's last session.  Three
+sessions are offered, in this order:
 
 | Session | Description |
 |---|---|
-| **Phosh** | phoc-pro1x compositor + phosh-pro1x shell |
-| **Sxmo + Sway** | Minimalist sway/Wayland UI via `sxmo_swayinit.sh` |
+| **1 Sway** | sway with `~/.config/sway/config` (device settings in `/etc/sway/config.d/pro1x.conf`) |
+| **2 Phosh** | phoc-pro1x compositor + phosh-pro1x shell |
+| **3 Sxmo + Sway** | Sxmo on sway, same device settings; needs superd (not packaged yet) |
 
 Desktop files live in `/etc/wayland-sessions/` with absolute store paths in
 `Exec=`, so they work regardless of the user's `PATH` at session start.
