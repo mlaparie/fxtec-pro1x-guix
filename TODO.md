@@ -325,11 +325,12 @@ and Phosh itself.  Not set up yet.
   that ends the swipe taps inside the new launcher and starts an entry.
   Asked the author what they saw (they answer later).  The session runs
   the logging copy /tmp/gestures-dbg (pressed mode) until the next login.
-- Proximity (2026-10-30): iio-sensor-proxy reports "Has proximity sensor
-  (near: 0)" and ssccli --sensor proximity "FAR"; neither changed while
-  the author covered the sensor (twice; timing against the logger not
-  certain).  Not working so far; retry with the sensor covered before
-  the logger starts, then compare with moWerk's notes.
+- Proximity works (2026-10-30 21:44): iio-sensor-proxy (monitor-sensor
+  --proximity: 0/1) and ssccli (NEAR/FAR) followed every cover/uncover
+  by the author.  Two earlier tests saw no change: wrong timing against
+  the logger, or the first reading only (the corrected note said "not
+  working": wrong).  Next: blank the panel near the face during calls in
+  Sway (pro1x-call-watch); Phosh does its own.
 - Blank after 180 s, dim at 150 s (3ee97f9, 59ad954): Phosh's own
   [org.gnome.desktop.session:Phosh] idle-delay=60 had kept Phosh at 60 s;
   generation 40's Phosh session: swayidle dims at 150, blanks at 180
