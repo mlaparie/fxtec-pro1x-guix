@@ -850,15 +850,18 @@ ModemManager, for clients such as Chatty.")
           ;; helpers set.  Here, not only in pro1x-gsettings-defaults: the
           ;; wrapper puts this package's schemas first in XDG_DATA_DIRS, so
           ;; stevia never saw the profile's override (2026-10-30).
-          ;; glib-or-gtk-compile-schemas compiles it after install.
+          ;; Compiled here: the schemas were already compiled when this
+          ;; phase ran, without it (gsettings with GSETTINGS_SCHEMA_DIR on
+          ;; this package read false).
           (add-after 'install 'pro1x-ignore-hw-keyboards
             (lambda _
-              (call-with-output-file
-                  (string-append #$output "/share/glib-2.0/schemas/"
-                                 "90_fxtec-pro1x.gschema.override")
-                (lambda (port)
-                  (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n"
-                           port))))))))
+              (let ((dir (string-append #$output "/share/glib-2.0/schemas")))
+                (call-with-output-file
+                    (string-append dir "/90_fxtec-pro1x.gschema.override")
+                  (lambda (port)
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n"
+                             port)))
+                (invoke "glib-compile-schemas" dir)))))))
     ;; python: tools/write-layout-info.py generates layouts.json.
     (native-inputs (list pkg-config (list glib "bin") gettext-minimal python
                          wayland-protocols))
