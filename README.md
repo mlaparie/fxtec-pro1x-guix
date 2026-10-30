@@ -22,6 +22,7 @@ kernel patches, firmware, and flash approach originate there.
 | [docs/install.md](docs/install.md) | flashing the first time |
 | [docs/usage.md](docs/usage.md) | daily use: sessions, keys, screen, network; the change-deploy-rollback loop |
 | [docs/configure.md](docs/configure.md) | your config.scm and channels, the port's options |
+| [docs/home.md](docs/home.md) | home files: managed, seeded once, or left alone (Guix Home) |
 | [docs/update.md](docs/update.md) | updating, generations, rollback |
 | [docs/channels.md](docs/channels.md) | why pins, the channel files, adding channels, Guix on a phone vs a desktop |
 | [docs/troubleshoot.md](docs/troubleshoot.md) | logs, known problems, recovery |

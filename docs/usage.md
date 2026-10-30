@@ -59,5 +59,5 @@ downloads them (mobile internet pauses briefly).
 4. Broken?  `sudo guix system roll-back`, or volume-down at power-on and an
    older entry.
 
-Files Guix does not manage yet (Sway, foot, phoc scale) are edited in
-place in `~/.config` ([configure.md](configure.md#files-outside-configscm)).
+Files in `~/.config` (Sway, foot, phoc scale) are edited in place, or
+managed or seeded from `config.scm` with Guix Home ([home.md](home.md)).
