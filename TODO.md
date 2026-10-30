@@ -236,12 +236,18 @@ and Phosh itself.  Not set up yet.
   back to tuigreet; modem probes (Modem/0, SIM present, PIN-locked as
   after every boot: the author enters the PIN).  Charge limit and LED
   trigger not tested yet.  Merge next into main: author's call.
-- After the reboot into 30 the phone "forgot the Wi-Fi passwords"
-  (author): NetworkManager logged "secrets are required" for the AP at
-  10:28 and the author re-entered them; the keyfiles in
-  /var/lib/NetworkManager/system-connections have psk in the file
-  (psk-flags 0) and older files are still there.  Why the stored one
-  was not used is not known yet.
+- "Forgot the Wi-Fi passwords" after the reboot into 30 (author): not a
+  loss, from NetworkManager's log (confirmed in the log; the networks'
+  names compared only as hashes).  Before the reboot the phone had left
+  its saved Wi-Fi at 09:03 and was on mobile data; after the reboot the
+  SIM was PIN-locked (no data, so offline), and the Wi-Fi in reach had
+  never been saved (its SSID and PSK match neither saved profile).  The
+  three Wi-Fi profiles are all in /var/lib/NetworkManager with their PSK.
+  One of the older ones has autoconnect=false.  10:57-11:05 the new one
+  dropped 8 times: deauth reason 1, then ssid-not-found (the AP went
+  away; a hotspot sleeping?  inferred); stable since.  Possible
+  improvement: a reminder for the SIM PIN at login, since mobile data
+  (and Tailscale) depend on it.
 - ADSP log spam: "qcom_q6v5_pas a400000.remoteproc: Handover signaled,
   but it already happened" ~4.5 times a second (93 in 20 s), from 9 s
   after boot; ADSP running, no crash lines.  Not new with generation 30:
