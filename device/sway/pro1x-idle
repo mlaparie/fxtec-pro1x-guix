@@ -1,22 +1,37 @@
 #!/bin/sh
 # pro1x-idle — swayidle with the panel dimming set in the system configuration
 #
-#   pro1x-idle [swayidle arguments...]
+#   pro1x-idle [--sway] [swayidle arguments...]
 #
 # Reads DIM_AFTER (seconds, empty for never) from /etc/pro1x/dim.conf, written
 # from config.scm (pro1x-hardware-configuration dim-after, dim-level), and runs
 # swayidle -w with `timeout DIM_AFTER pro1x-dim dim resume pro1x-dim restore'
-# followed by the session's own arguments (Sway adds its blanking; Phosh blanks
-# by itself).  Started by the Phosh session and by the Sway config.
+# followed by the session's own arguments.  --sway also blanks the panel after
+# BLANK_AFTER seconds and locks with swaylock LOCK_AFTER seconds later (empty:
+# no lock); Phosh blanks and locks by itself (GSettings defaults from the same
+# configuration).  Started by the Phosh session and by the Sway config.
 #
 # State: written 2026-10-30, not yet run on the phone.
 
-DIM_AFTER=60
+DIM_AFTER=60 BLANK_AFTER=300 LOCK_AFTER=0
 [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
 
-if [ -n "$DIM_AFTER" ]; then
-    exec swayidle -w timeout "$DIM_AFTER" 'pro1x-dim dim' \
-         resume 'pro1x-dim restore' "$@"
-else
-    exec swayidle -w "$@"
+sway=
+if [ "${1:-}" = --sway ]; then
+    sway=1
+    shift
 fi
+
+# Prepend the timeouts to the session's own arguments.
+if [ -n "$sway" ] && [ -n "$LOCK_AFTER" ]; then
+    set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'swaylock -f -c 1d2021' "$@"
+fi
+if [ -n "$sway" ]; then
+    set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \
+        resume 'swaymsg "output * power on"' "$@"
+fi
+if [ -n "$DIM_AFTER" ]; then
+    set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"
+fi
+
+exec swayidle -w "$@"

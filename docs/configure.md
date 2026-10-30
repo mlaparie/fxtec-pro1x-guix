@@ -48,6 +48,8 @@ once, so combine changes in one expression:
 | keyboard `xkb-layout`, `xkb-variant` | `"us"`, `"intl"` | session keyboard layout |
 | hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
+| hardware `blank-after` | `300` | idle seconds before the panel turns off |
+| hardware `lock-after` | `0` | seconds after blanking before locking; `#f` never.  In Phosh, a value set in GNOME Settings wins |
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |

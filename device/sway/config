@@ -40,13 +40,10 @@ output DSI-1 bg #1d2021 solid_color
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
-### Idle: panel dimmed after a while (pro1x-idle; time and level set in
-### config.scm, see /etc/pro1x/dim.conf), off after 5 minutes; a touch or key
-### press brings it back.  No automatic lock: swaylock can only unlock when the
-### system provides its PAM service (screen-locker-service-type).
-exec pro1x-idle \
-    timeout 300 'swaymsg "output * power off"' \
-    resume 'swaymsg "output * power on"'
+### Idle: dim, blank, then lock with swaylock (pro1x-idle --sway; times and
+### level set in config.scm, see /etc/pro1x/dim.conf); a touch or key press
+### brings the panel back.
+exec pro1x-idle --sway
 
 ### Notifications
 exec mako

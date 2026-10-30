@@ -56,6 +56,7 @@
              (gnu services base)
              (gnu services dbus)
              (gnu services desktop)
+             (gnu services xorg)            ; screen-locker-service-type
              (gnu services networking)
              (gnu services shepherd)
              (gnu services ssh)
@@ -510,6 +511,15 @@ Dracula palette, no kernel messages over the greeter.")
                                 " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
+     ;; swaylock's PAM service: without it swaylock cannot unlock, so Sway
+     ;; had no idle lock (pro1x-idle --sway locks after lock-after).
+     (service screen-locker-service-type
+              (screen-locker-configuration
+               (name "swaylock")
+               (program (file-append swaylock "/bin/swaylock"))
+               (using-pam? #t)
+               (using-setuid? #f)))
+
      ;; tuigreet's --remember and --remember-user-session write the last
      ;; user and each user's last session in /var/cache/tuigreet, which did
      ;; not exist (no /var/cache at all), so nothing was remembered.
@@ -590,7 +600,7 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot sway wdisplays swayidle mako
+     foot sway wdisplays swayidle swaylock mako
      sway-launcher-desktop pro1x-sway-config fzf jq
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl

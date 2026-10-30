@@ -16,6 +16,9 @@
 ;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
 ;;;     The percentage is estimated from voltage, which drops when charging
 ;;;     stops: keep the gap wider than that drop (not measured yet);
+;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
+;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
+;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
 ;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
 ;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
 ;;;     In config.scm:
@@ -38,7 +41,10 @@
   #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
+  #:use-module (guix build-system trivial)
   #:use-module (guix gexp)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
   #:use-module (guix records)
   #:use-module (srfi srfi-1)
   #:export (pro1x-hardware-configuration
@@ -62,6 +68,10 @@
   ;; this percentage of its maximum brightness.
   (dim-after          pro1x-hardware-dim-after          (default 60))
   (dim-level          pro1x-hardware-dim-level          (default 20))
+  ;; Blank the panel after this many seconds without input, and lock this
+  ;; many seconds after blanking (0: when it blanks; #f: never lock).
+  (blank-after        pro1x-hardware-blank-after        (default 300))
+  (lock-after         pro1x-hardware-lock-after         (default 0))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Stop charging at this battery percentage (#f: charge to full), and
@@ -227,7 +237,42 @@ esac
                      "DIM_AFTER=" (if after (number->string after) "") "\n"
                      "DIM_LEVEL="
                      (number->string (pro1x-hardware-dim-level config))
+                     "\n"
+                     "BLANK_AFTER="
+                     (number->string (pro1x-hardware-blank-after config))
+                     "\n"
+                     "LOCK_AFTER="
+                     (let ((lock (pro1x-hardware-lock-after config)))
+                       (if lock (number->string lock) ""))
                      "\n"))))))
+
+(define (pro1x-idle-gsettings config)
+  ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
+  ;; override in the system profile, compiled by Guix's glib-schemas hook.
+  (let ((blank (pro1x-hardware-blank-after config))
+        (lock (pro1x-hardware-lock-after config)))
+    (package
+      (name "pro1x-idle-gsettings")
+      (version "0.1")
+      (source #f)
+      (build-system trivial-build-system)
+      (arguments
+       (list
+        #:modules '((guix build utils))
+        #:builder
+        #~(begin
+            (use-modules (guix build utils))
+            (let ((dir (string-append #$output "/share/glib-2.0/schemas")))
+              (mkdir-p dir)
+              (call-with-output-file
+                  (string-append dir "/92_pro1x-idle.gschema.override")
+                (lambda (port)
+                  (format port "[org.gnome.desktop.session]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver]~%lock-enabled=~a~%lock-delay=uint32 ~a~%"
+                          #$blank #$(if lock "true" "false") #$(or lock 0))))))))
+      (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+      (synopsis "Pro1X blank and lock delays for Phosh")
+      (description "GSettings defaults for the blank and lock delays.")
+      (license license:gpl3+))))
 
 (define pro1x-hardware-service-type
   (service-type
@@ -243,6 +288,9 @@ esac
                                                  (pro1x-udev-rules config)))))
      ;; /etc/pro1x/dim.conf
      (service-extension etc-service-type pro1x-hardware-etc)
+     ;; Phosh's blank and lock delays
+     (service-extension profile-service-type
+                        (lambda (config) (list (pro1x-idle-gsettings config))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)
