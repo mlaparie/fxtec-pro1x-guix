@@ -56,8 +56,10 @@ files root may log in with."
   (kernel-arguments
    (append
     (list
-     ;; UART console (debug) + framebuffer console, loglevel quiet
-     "console=ttyMSM0,115200n8"
+     ;; Framebuffer console, loglevel quiet.
+     ;; No console=ttyMSM0: this phone has no UART device (/dev/ttyMSM0 is
+     ;; absent), and Guix's serial getty (term-console) on that console
+     ;; failed and was respawned every 10 s (2026-10-30).
      "console=tty1"
      "loglevel=4"
      ;; USB CDC gadget with fixed MACs for stable PC interface name

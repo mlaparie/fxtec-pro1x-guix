@@ -328,7 +328,9 @@ files root may log in with."
   (kernel-arguments
    (append
     (list
-     "console=ttyMSM0,115200n8"
+     ;; No console=ttyMSM0: this phone has no UART device (/dev/ttyMSM0 is
+     ;; absent), and Guix's serial getty (term-console) on that console
+     ;; failed and was respawned every 10 s (2026-10-30).
      "console=tty1"
      ;; Text console (tuigreet) in landscape, like sway (keyboard out).
      "fbcon=rotate:1"
