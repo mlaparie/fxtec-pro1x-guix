@@ -122,9 +122,18 @@ then deploys of next up to cc16582; generation 2 and later):
   (probably phoc's modeset on transform change; not investigated).
   Snapshot should stay in portrait to use the whole panel; Phosh has no
   per-app rotation lock (author's wish, 2026-10-30).
-- crackle when Phosh starts and on reaching tuigreet: the session's
-  audio coming up or stopping; probably the speaker pop at amp power
-  changes also seen on NixOS (moWerk's notes); kernel side.
+- crackle at Phosh login (not at logout, author 2026-10-30).  amixer
+  events during a login: PipeWire probes the Voice Call profile (Voice-
+  MMode1 routes on/off, 00:12:19.2-19.9), then HiFi Speaker (HPH gain
+  12->20 at 20.9).  Spk0 OUT Switch is on and never showed a change, not
+  even at logout: always on, or the driver does not notify it (unknown).
+  Inferred: route switches during the probe reach a live amplifier.
+  Next: read Spk0 OUT Switch while logged out; keep the amplifier off
+  during the probe.  moWerk's notes: pops at amp power changes, NixOS too.
+- a click just after login: probably the camera lens (DW9800 VCM) when
+  WirePlumber's libcamera monitor opens the cameras; moWerk's
+  sfos-dw9800-soft.patch (slower ramps, 2 s autosuspend, no park) makes
+  it softer.  Not verified here.
 - CI: U-Boot only changes with uboot.scm; reuse the last artifact when
   its derivation is unchanged instead of rebuilding.  The U-Boot step's
   failure: glib graft cannot read glib's etc/ld.so.cache (permission
