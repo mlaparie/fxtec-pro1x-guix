@@ -19,14 +19,18 @@
 output=DSI-1
 png="${XDG_RUNTIME_DIR:-/tmp}/pro1x-lock.png"
 bg='#1d2021' fg='#d5c4a1' dim='#928374'
+guix='#FFCC00'                  # Guix's yellow, for "Guix" in the banner
 
 banner='  ____ _   _ _   _    ____       _
  / ___| \ | | | | |  / ___|_   _(_)_  __
 | |  _|  \| | | | | | |  _| | | | \ \/ /
 | |_| | |\  | |_| | | |_| | |_| | |>  <
  \____|_| \_|\___/   \____|\__,_|_/_/\_\'
-# ImageMagick centres each line on its own: pad them to one width.
+# ImageMagick centres each line on its own: pad them to one width.  "GNU"
+# is columns 1-20, "Guix" the rest, drawn in its yellow.
 banner=$(printf '%s\n' "$banner" | awk '{ printf "%-41s\n", $0 }')
+gnu=$(printf '%s\n' "$banner" | cut -c1-20)
+guixpart=$(printf '%s\n' "$banner" | cut -c21-)
 
 # The panel's size as drawn: its mode, swapped when rotated a quarter turn.
 size=$(swaymsg -t get_outputs -r 2>/dev/null | jq -r --arg o "$output" '
@@ -62,9 +66,15 @@ notes=$(printf '%s\n' "$notes" |
 pt=$((w / 44)); [ $((h / 26)) -lt "$pt" ] && pt=$((h / 26))
 # -annotate reads \ and % as escapes.
 esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/%/%%/g'; }
+# The two halves side by side: DejaVu Sans Mono advances 0.602 em per
+# column; the 41-column banner is centred.
+cw=$((pt * 602 / 1000))
+x=$(( (w - 41 * cw) / 2 ))
 convert -size "$size" "xc:$bg" -font "$PRO1X_LOCK_FONT" \
-    -fill "$fg" -pointsize "$pt" -gravity north \
-    -annotate +0+$((pt * 3)) "$(esc "$banner")" \
+    -fill "$fg" -pointsize "$pt" -gravity northwest \
+    -annotate +$x+$((pt * 3)) "$(esc "$gnu")" \
+    -fill "$guix" -annotate +$((x + 20 * cw))+$((pt * 3)) "$(esc "$guixpart")" \
+    -fill "$fg" -gravity north \
     -pointsize $((pt * 3 / 2)) \
     -annotate +0+$((pt * 11)) "$(esc "$(date '+%A %d %B, %H:%M')")" \
     -fill "$dim" -pointsize "$pt" \
