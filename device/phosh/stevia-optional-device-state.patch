@@ -1,0 +1,51 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] Make phoc's device state protocol optional
+
+stevia required zphoc_device_state_v1, which only phoc implements, so in
+Sway it never created its input surface ("Wayland not yet ready, skipping
+input surface creation") and SetVisible did nothing.  The protocol only
+feeds the hardware keyboard tracker; without it, keep the keyboard
+allowed.  Every other required protocol is in Sway 1.12.
+---
+--- a/src/phosh-osk-stevia.c
++++ b/src/phosh-osk-stevia.c
+@@ -338,10 +338,11 @@
+                           "dead-zone",
+                           G_BINDING_SYNC_CREATE);
+ 
+-  g_signal_connect_object (self->hw_tracker, "notify::allow-active",
+-                           G_CALLBACK (on_hw_tracker_allow_active_changed),
+-                           im,
+-                           G_CONNECT_DEFAULT);
++  if (self->hw_tracker)
++    g_signal_connect_object (self->hw_tracker, "notify::allow-active",
++                             G_CALLBACK (on_hw_tracker_allow_active_changed),
++                             im,
++                             G_CONNECT_DEFAULT);
+ 
+   g_signal_connect_object (self->activation_filter, "layout-override",
+                            G_CALLBACK (on_layout_override),
+@@ -424,8 +425,11 @@
+ 
+   self->activation_filter =
+     pos_activation_filter_new (pos_wayland_get_zwlr_foreign_toplevel_manager_v1 (wayland));
+-  self->hw_tracker =
+-    pos_hw_tracker_new (pos_wayland_get_zphoc_device_state_v1 (wayland));
++  /* Without phoc's device state (Sway) there is no hardware keyboard
++   * tracking: the keyboard may always be active. */
++  if (pos_wayland_get_zphoc_device_state_v1 (wayland))
++    self->hw_tracker =
++      pos_hw_tracker_new (pos_wayland_get_zphoc_device_state_v1 (wayland));
+ 
+   maybe_create_input_surface (self);
+ }
+--- a/src/pos-wayland.c
++++ b/src/pos-wayland.c
+@@ -387,6 +387,6 @@
+           self->zwlr_foreign_toplevel_manager_v1 &&
+           self->layer_shell &&
+           self->zxdg_output_manager_v1 &&
+-          self->zphoc_device_state_v1 &&
++          /* zphoc_device_state_v1 is optional: phoc has it, Sway does not */
+           self->ext_data_control_manager);
+ }

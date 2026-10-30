@@ -29,14 +29,24 @@
   #:use-module (gnu packages serialization)  ; libyaml
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages fribidi)
+  #:use-module (gnu packages dns)           ; c-ares
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages messaging)     ; libphonenumber
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages curl)
+  #:use-module (gnu packages guile)
+  #:use-module (gnu packages image)        ; grim, slurp
+  #:use-module (gnu packages imagemagick)
+  #:use-module (gnu packages package-management) ; guix-backgrounds
+  #:use-module (gnu packages fonts)
+  #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages protobuf)
   #:use-module (gnu packages polkit)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages tls)
@@ -51,6 +61,7 @@
   #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix utils)
@@ -306,7 +317,27 @@ to build an FDE userdata image on the host before flashing.")
           (local-file (repository-file "device/libcamera/s5k4h7-sensor.patch")
                       "s5k4h7-sensor.patch")
           (local-file (repository-file "device/libcamera/imx582-sensor.patch")
-                      "imx582-sensor.patch"))))))
+                      "imx582-sensor.patch"))
+         ;; Autofocus, manual exposure and fixes from moWerk's SailfishOS
+         ;; port (device/libcamera/af/README).
+         (map (lambda (name)
+                (local-file (repository-file
+                             (string-append "device/libcamera/af/" name))
+                            name))
+              '("0004-libcamera-software_isp-Let-a-single-point-decide-abo.patch"
+                "0005-ipa-ipu3-Move-non-specific-parts-of-Af-to-libipa.patch"
+                "0006-libcamera-software_isp-Add-variance-to-stats.patch"
+                "0007-ipa-softisp-Add-Af-algorithm.patch"
+                "0008-libcamera-software_isp-Add-autofocus-controls.patch"
+                "0009-ipa-libipa-Use-autofocus-limits-if-available.patch"
+                "0010-software_isp-Compute-an-autofocus-sharpness-value.patch"
+                "0011-ipa-libipa-af-Make-the-scan-parameters-configurable.patch"
+                "0012-ipa-simple-agc-Manual-analogue-gain-exposure-time-an.patch"
+                "0013-software_isp-ipa-simple-af-Focus-on-AfWindows.patch"
+                "0014-gstreamer-Serialise-control-access-and-expose-AfStat.patch"
+                "0015-ipa-Focus-is-lost-only-when-sharpness-drops-AfModeAu.patch"
+                "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
+                "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
@@ -707,7 +738,13 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/volume-above-100-percent.patch"))
                       ;; Keyboard out: keep landscape across lock and unlock.
                       (local-file
-                       (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch")))))))
+                       (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch"))
+                      ;; Round volume knob; orange bar above 100%.
+                      (local-file
+                       (repository-file "device/phosh/volume-bar-amplified.patch"))
+                      ;; Torch: numbered flash LEDs, sysfs without logind.
+                      (local-file
+                       (repository-file "device/phosh/torch-without-logind.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
@@ -737,12 +774,258 @@ It runs on top of the Phoc compositor.")
                     ;; Read by phoc, which aborts at start without it.
                     #$(local-file (repository-file "device/phosh/org.gnome.mutter.gschema.xml"))))
                   ;; Show all apps in the overview, not only adaptive ones.
+                  ;; Rotation locked by default: portrait with the keyboard
+                  ;; closed (phosh-pro1x-slider), landscape with it out.
                   (call-with-output-file
                       (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
                     (lambda (port)
-                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
+                      (display "[sm.puri.phosh]\napp-filter-mode=@as []\n
+[org.gnome.settings-daemon.peripherals.touchscreen]\norientation-lock=true\n
+[org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n
+[org.gnome.desktop.background:Phosh]
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-uri-dark='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-options='zoom'
+primary-color='#000000'
+
+[org.gnome.desktop.screensaver:Phosh]
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-options='zoom'
+"
+                               port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
+
+;;; ---------------------------------------------------------------------------
+;;; mmsd-tng — MMS daemon for ModemManager, which Chatty uses for MMS
+;;; Not in Guix.  Without it, MMS did not arrive (author, 2026-10-30): the
+;;; notification comes as an SMS, mmsd-tng downloads the message from the
+;;; operator's MMSC over the MMS APN (set in Chatty's MMS settings).
+;;; Built against this channel's ModemManager 1.24, the running daemon.
+;;; Run per session (no D-Bus activation file): phosh-pro1x-shell starts it.
+;;; ---------------------------------------------------------------------------
+(define-public mmsd-tng
+  (package
+    (name "mmsd-tng")
+    (version "2.6.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.com/kop316/mmsd")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "13yq32m1v8qrfjs5b08vzv6bpqrp80ch9krl1bdnxnf2rqpfqwgy"))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config (list glib "bin")))
+    ;; protobuf: libphonenumber's headers include protobuf's.
+    (inputs (list c-ares glib libphonenumber libsoup
+                  mobile-broadband-provider-info modem-manager-1.24 protobuf))
+    (home-page "https://gitlab.com/kop316/mmsd")
+    (synopsis "MMS daemon for ModemManager")
+    (description
+     "mmsd-tng receives and sends MMS messages with a modem driven by
+ModemManager, for clients such as Chatty.")
+    (license license:gpl2)))
+
+;;; ---------------------------------------------------------------------------
+;;; stevia — Phosh's on-screen keyboard (formerly phosh-osk-stub)
+;;; Not in Guix.  Without it Phosh had no virtual keyboard ("The name
+;;; sm.puri.OSK0 was not provided").  0.56, matching Phosh 0.56.  It uses
+;;; logind (through libelogind) only to follow the session's lock state;
+;;; without logind it finds no session and carries on.  Started by
+;;; phosh-pro1x-shell.
+;;; ---------------------------------------------------------------------------
+(define-public stevia
+  (package
+    (name "stevia")
+    (version "0.56.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.gnome.org/World/Phosh/stevia")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))
+       ;; Ours: phoc's device-state protocol optional, so stevia also
+       ;; runs in Sway (it never drew its keyboard there).
+       (patches
+        (list (local-file
+               (repository-file "device/phosh/stevia-optional-device-state.patch")
+               "stevia-optional-device-state.patch")))))
+    (build-system meson-build-system)
+    (arguments
+     (list
+      #:glib-or-gtk? #t
+      #:tests? #f                       ;need a Wayland compositor
+      #:configure-flags
+      #~(list "-Dman=false" "-Dgtk_doc=false" "-Dtests=false"
+              (string-append "-Dsystemd_user_unit_dir=" #$output
+                             "/lib/systemd/user"))
+      #:phases
+      #~(modify-phases %standard-phases
+          ;; Super in the terminal layout's key bar, before stevia's own
+          ;; defaults (Sway needs it; author, 2026-10-30).
+          ;; Ignore hardware keyboards: the Pro1X keyboard is always
+          ;; attached, slid in or not, and stevia stayed disabled for every
+          ;; text field (handle_activate, active 1, enabled 0).  Whether to
+          ;; offer it is left to screen-keyboard-enabled, which the slider
+          ;; helpers set.  Here, not only in pro1x-gsettings-defaults: the
+          ;; wrapper puts this package's schemas first in XDG_DATA_DIRS, so
+          ;; stevia never saw the profile's override (2026-10-30).
+          ;; Compiled here: the schemas were already compiled when this
+          ;; phase ran, without it (gsettings with GSETTINGS_SCHEMA_DIR on
+          ;; this package read false).
+          (add-after 'install 'pro1x-ignore-hw-keyboards
+            (lambda _
+              (let ((dir (string-append #$output "/share/glib-2.0/schemas")))
+                (call-with-output-file
+                    (string-append dir "/90_fxtec-pro1x.gschema.override")
+                  (lambda (port)
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n
+[mobi.phosh.osk.Terminal]
+shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
+"
+                             port)))
+                (invoke "glib-compile-schemas" dir)))))))
+    ;; python: tools/write-layout-info.py generates layouts.json.
+    (native-inputs (list pkg-config (list glib "bin") gettext-minimal python
+                         wayland-protocols))
+    ;; hunspell: word completion (meson wants at least one completer).
+    (inputs (list dconf elogind feedbackd-0.8 glib gmobile gnome-desktop
+                  gsettings-desktop-schemas gtk+ hunspell json-glib libhandy
+                  libxkbcommon wayland))
+    (home-page "https://gitlab.gnome.org/World/Phosh/stevia")
+    (synopsis "On-screen keyboard for Phosh")
+    (description
+     "Stevia is the on-screen keyboard for the Phosh mobile shell, with word
+completion and several layouts.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-mms-fetch — MMS with a separate MMS APN (see the script's header)
+;;; mmsd-tng downloads only over the active connection with its MMS APN, and
+;;; the author's operator refuses a second connection on the MMS APN
+;;; (ServiceOptionNotSubscribed, 2026-10-30).  Asks the user, switches the
+;;; mobile connection to the MMS APN while mmsd-tng downloads, switches back.
+;;; Started by phosh-pro1x-shell.  Source: device/mms/pro1x-mms-fetch.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-mms-fetch
+  (package
+    (name "pro1x-mms-fetch")
+    (version "0.1")
+    (source (local-file (repository-file "device/mms") "pro1x-mms"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (inputs (list bash-minimal coreutils gawk grep libnotify network-manager
+                  sed))
+    (arguments
+     (list
+      #:install-plan #~'(("pro1x-mms-fetch" "bin/")
+                         ("pro1x-mms-fetch.desktop" "share/applications/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/pro1x-mms-fetch")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "gawk" "grep" "libnotify"
+                            "network-manager" "sed"))))))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Fetch MMS over a separate MMS APN, after asking")
+    (description
+     "pro1x-mms-fetch switches the mobile connection to the MMS APN while
+mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-doubletap — wake the panel with a double tap
+;;; The touchscreen keeps reporting touches with the panel off; two quick
+;;; taps then send a power-key press from a uinput device (as SailfishOS's
+;;; mce emulates it).  Run by pro1x-hardware-service-type
+;;; (double-tap-wake?).  Source: device/input/pro1x-doubletap.c.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-doubletap
+  (package
+    (name "pro1x-doubletap")
+    (version "0.1")
+    (source (local-file (repository-file "device/input/pro1x-doubletap.c")
+                        "pro1x-doubletap.c"))
+    (build-system trivial-build-system)
+    (native-inputs
+     (list (@ (gnu packages commencement) gcc-toolchain)
+           linux-libre-headers))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((bin (string-append #$output "/bin")))
+            (mkdir-p bin)
+            (setenv "PATH"
+                    (string-append #$(this-package-native-input "gcc-toolchain")
+                                   "/bin"))
+            (invoke "gcc" "-O2" "-Wall" "-o"
+                    (string-append bin "/pro1x-doubletap") #$source
+                    (string-append
+                     "-I" #$(this-package-native-input "linux-libre-headers")
+                     "/include"))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Wake the F(x)tec Pro1X panel with a double tap")
+    (description
+     "pro1x-doubletap watches the touchscreen while the panel is off and
+sends a power-key press when it sees two quick taps close together.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-background — the Sway and Phosh background
+;;; Guix's own disc emblem on black (guix-backgrounds, guix-disc-flat-16-9;
+;;; CC-BY-SA 4.0), rendered to a square 2160x2160 PNG with the emblem in the
+;;; middle, so it fills the panel in portrait and landscape; a PNG, since the
+;;; image loaders here did not take SVG backgrounds.  Black costs nothing on
+;;; the AMOLED panel.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-background
+  (package
+    (name "pro1x-background")
+    (version "0.1")
+    (source #f)
+    (build-system trivial-build-system)
+    (native-inputs (list guix-backgrounds imagemagick librsvg))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((dir (string-append #$output "/share/backgrounds/pro1x"))
+                (svg (string-append #$(this-package-native-input
+                                       "guix-backgrounds")
+                                    "/share/backgrounds/guix/"
+                                    "guix-disc-flat-16-9.svg"))
+                (wide "wide.png"))
+            (setenv "PATH"
+                    (string-append #$(this-package-native-input "librsvg")
+                                   "/bin:"
+                                   #$(this-package-native-input "imagemagick")
+                                   "/bin"))
+            (mkdir-p dir)
+            (invoke "rsvg-convert" "-h" "2160" svg "-o" wide)
+            (invoke "convert" wide "-gravity" "center" "-crop" "2160x2160+0+0"
+                    "+repage" (string-append dir "/guix-disc.png"))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Background image for the F(x)tec Pro1X sessions")
+    (description "Guix's disc emblem on black, as a square PNG for the
+Sway and Phosh backgrounds.")
+    (license license:cc-by-sa4.0)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-gsettings-defaults — system-wide GSettings defaults
@@ -751,6 +1034,12 @@ It runs on top of the Phoc compositor.")
 ;;; override in phosh-pro1x's own directory only reaches Phosh's schemas).
 ;;;   - sound above 100%: the speaker is quiet even at full gain (author,
 ;;;     2026-10-29); GNOME's slider then goes to 150%, Sway's keys stop at 120%.
+;;;   - stevia ignores hardware keyboards: the Pro1X keyboard is always
+;;;     attached, slid in or not, and stevia stayed disabled for every text
+;;;     field.  Whether to offer the on-screen keyboard is left to
+;;;     screen-keyboard-enabled, which phosh-pro1x-slider sets from the
+;;;     slider (on while slid in, off while out).  Tested by hand on the
+;;;     phone, 2026-10-30: stevia came up on a text field in Phosh.
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-gsettings-defaults
   (package
@@ -771,11 +1060,15 @@ It runs on top of the Phoc compositor.")
               (lambda (port)
                 (display "[org.gnome.desktop.sound]
 allow-volume-above-100-percent=true
+
+[mobi.phosh.osk]
+ignore-hw-keyboards=true
 " port)))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "GSettings defaults for the F(x)tec Pro1X")
     (description
-     "System-wide GSettings overrides for the Pro1X: volume above 100%.")
+     "System-wide GSettings overrides for the Pro1X: volume above 100%, an
+on-screen keyboard despite the always-attached hardware keyboard.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
@@ -964,6 +1257,19 @@ window opened by a sway key binding.")
 ;;;   share/pro1x-sway/i3status-rust.toml  ~/.config/i3status-rust/config.toml
 ;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
+;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
+;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
+;;;   bin/sway-notifications             mako's notifications for its dock
+;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
+;;;   bin/pro1x-lock                     swaylock with a banner and notifications
+;;;   bin/pro1x-mako                     mako, logging notification arrivals
+;;;   bin/pro1x-notify                   on a notification: log, wake, relock
+;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
+;;;   bin/pro1x-term                     footclient, or foot without the server
+;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
+;;;   bin/pro1x-status                   status texts for the i3status-rust bar
+;;;   bin/pro1x-screenshot               screenshots (grim, slurp)
+;;;   bin/pro1x-portrait-apps            portrait while Snapshot or Calls is focused
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -972,30 +1278,167 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils foot fzf jq))
+    (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
+                  grim guile-3.0 imagemagick jq lisgd procps sed slurp swayidle
+                  wl-clipboard (list glib "bin")))
     (arguments
      (list
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
-          ("sway-window-switcher" "bin/"))
+          ("foot.ini" "share/pro1x-sway/")
+          ("sway-window-switcher" "bin/")
+          ("pro1x-dim" "bin/")
+          ("pro1x-idle" "bin/")
+          ("sway-autorotate" "bin/")
+          ("sway-quick-settings" "bin/")
+          ("sway-notifications" "bin/")
+          ("pro1x-osk-slider" "bin/")
+          ("pro1x-lock" "bin/")
+          ("pro1x-mako" "bin/")
+          ("pro1x-notify" "bin/")
+          ("pro1x-gestures" "bin/")
+          ("pro1x-term" "bin/")
+          ("pro1x-call-watch" "bin/")
+          ("pro1x-status" "bin/")
+          ("pro1x-screenshot" "bin/")
+          ("pro1x-portrait-apps" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
             (lambda* (#:key inputs #:allow-other-keys)
-              (let ((bin (string-append #$output "/bin/sway-window-switcher")))
+              (let ((bin (string-append #$output "/bin/sway-window-switcher"))
+                    (dim (string-append #$output "/bin/pro1x-dim")))
                 (chmod bin #o755)
                 (wrap-program bin
                   `("PATH" ":" prefix
-                    ,(map (lambda (p)
-                            (string-append (assoc-ref inputs p) "/bin"))
-                          '("coreutils" "foot" "fzf" "jq"))))))))))
+                    (,(string-append #$output "/bin")   ;pro1x-term
+                     ,@(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "foot" "fzf" "jq")))))
+                (chmod dim #o755)
+                (wrap-program dim
+                  `("PATH" ":" prefix
+                    (,(string-append (assoc-ref inputs "coreutils")
+                                     "/bin"))))
+                (let ((idle (string-append #$output "/bin/pro1x-idle")))
+                  (chmod idle #o755)
+                  (wrap-program idle
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,(string-append (assoc-ref inputs "swayidle") "/bin")
+                       ,(string-append (assoc-ref inputs "glib") "/bin")
+                       ,(string-append (assoc-ref inputs "coreutils")
+                                       "/bin")))))
+                ;; monitor-sensor and swaymsg come from the system profile.
+                (let ((rot (string-append #$output "/bin/sway-autorotate")))
+                  (chmod rot #o755)
+                  (wrap-program rot
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "evtest" "jq" "sed")))))
+                (let ((qs (string-append #$output "/bin/sway-quick-settings")))
+                  (chmod qs #o755)
+                  (wrap-program qs
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "curl" "evtest" "foot" "fzf"
+                                "gawk" "glib" "grep" "jq" "procps" "sed"))))))
+                (let ((lock (string-append #$output "/bin/pro1x-lock")))
+                  (chmod lock #o755)
+                  (wrap-program lock
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "gawk" "imagemagick" "jq" "procps"
+                                "sed"))))
+                    `("PRO1X_LOCK_FONT" =
+                      (,(string-append (assoc-ref inputs "font-dejavu")
+                                       "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
+                  (chmod pa #o755)
+                  (wrap-program pa
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "evtest" "jq"))))))
+                (let ((sc (string-append #$output "/bin/pro1x-screenshot")))
+                  (chmod sc #o755)
+                  (wrap-program sc
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "glib" "grim" "slurp" "wl-clipboard")))))
+                (let ((st (string-append #$output "/bin/pro1x-status")))
+                  (chmod st #o755)
+                  ;; mmcli and rfkill come from the system profile.
+                  (wrap-program st
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "grep" "sed")))))
+                (let ((cw (string-append #$output "/bin/pro1x-call-watch")))
+                  (chmod cw #o755)
+                  ;; swaymsg from the system profile.
+                  (wrap-program cw
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "glib" "grep" "procps" "sed"))))))
+                (let ((term (string-append #$output "/bin/pro1x-term")))
+                  (chmod term #o755)
+                  (wrap-program term
+                    `("PATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "foot") "/bin")))))
+                (let ((g (string-append #$output "/bin/pro1x-gestures")))
+                  (chmod g #o755)
+                  ;; swaymsg, foot and the menus: system profile and $output.
+                  (wrap-program g
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "grep" "jq" "lisgd"))))))
+                (let ((notify (string-append #$output "/bin/pro1x-notify")))
+                  (chmod notify #o755)
+                  ;; swaymsg comes from the system profile.
+                  (wrap-program notify
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "jq" "procps" "swayidle"))))))
+                (let ((mako (string-append #$output "/bin/pro1x-mako")))
+                  (chmod mako #o755)
+                  ;; sway-notifications for on-notify; mako from the system.
+                  (wrap-program mako
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,(string-append (assoc-ref inputs "coreutils") "/bin")))))
+                (let ((o (string-append #$output "/bin/pro1x-osk-slider")))
+                  (chmod o #o755)
+                  (wrap-program o
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "evtest" "glib")))))
+                (let ((n (string-append #$output "/bin/sway-notifications")))
+                  (chmod n #o755)
+                  (wrap-program n
+                    `("PATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "glib") "/bin")))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description
      "Default sway configuration for the Pro1X in landscape with the keyboard
 out, the device settings every sway session shares (pro1x.conf, for
-/etc/sway/config.d), an i3status-rust bar configuration, and an fzf window
-switcher.")
+/etc/sway/config.d), an i3status-rust bar configuration, an fzf window
+switcher, and pro1x-idle and pro1x-dim, which dim the panel when idle.")
     (license license:gpl3+)))

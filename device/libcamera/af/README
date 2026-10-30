@@ -1,0 +1,25 @@
+Autofocus, manual exposure and state-keeping patches for libcamera 0.7.2's
+software ISP (simple pipeline), applied by libcamera-pro1x after the two
+sensor patches in ../.
+
+Origin: moWerk's SailfishOS mainline port of the Pro¹x,
+github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
+67ee012 (2026-10-30), copied unchanged.
+- 0004-0009: Milan Zamazal's softisp autofocus series, posted to the
+  libcamera list (Signed-off-by in each patch); 0009 is moWerk's backport
+  to 0.7.2.
+- 0010-0017: moWerk's (sharpness value, configurable scan, manual AGC,
+  AfWindows, gstreamer AfState, refocus rule, crop centring, keeping
+  exposure/colour/focus over a camera restart).
+Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
+../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
+Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The
+source repository states no licence of its own.
+
+The Af block in ../imx582.yaml is moWerk's, measured on their unit.
+
+State: applies cleanly on Guix's libcamera 0.7.2 with our sensor patches
+(2026-10-30).  On the phone (deploy, 2026-10-30): cam lists both cameras,
+captures 20 rear frames without error, and the rear camera exposes AfMode
+(continuous by default), AfWindows, AfMetering, ExposureTime(Mode),
+AnalogueGain(Mode) and ExposureValue.  Focus quality in Snapshot: untested.

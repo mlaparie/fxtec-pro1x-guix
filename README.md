@@ -1,7 +1,7 @@
-> **Work in progress — partially functional.**
-> Boot, display, hardware keyboard, USB SSH, and bare sway work.
-> Audio, modem, and several other features are unverified or broken.
-> Do not flash this on a device you depend on.
+> **Work in progress.**  Display, touch, GPU, keyboard, Wi-Fi, speaker,
+> cameras, auto-rotation and 3G data work; LTE, GPS, calls, SMS and
+> microphones do not yet (status below).  Do not flash this on a device
+> you depend on.
 
 # Guix System on the F(x)tec Pro¹x (QX1050)
 
@@ -14,29 +14,57 @@ kernel patches, firmware, and flash approach originate there.
 > Back up first (`scripts/backup-stock.sh`). Unlock the bootloader before
 > doing anything.
 
+## Documentation
+
+| page | |
+|---|---|
+| [docs/features.md](docs/features.md) | what it is and what works |
+| [docs/install.md](docs/install.md) | flashing the first time |
+| [docs/usage.md](docs/usage.md) | daily use: sessions, keys, screen, network; the change-deploy-rollback loop |
+| [docs/configure.md](docs/configure.md) | your config.scm and channels, the port's options |
+| [docs/home.md](docs/home.md) | home files: managed, seeded once, or left alone (Guix Home) |
+| [docs/update.md](docs/update.md) | updating, generations, rollback |
+| [docs/channels.md](docs/channels.md) | why pins, the channel files, adding channels, Guix on a phone vs a desktop |
+| [docs/troubleshoot.md](docs/troubleshoot.md) | logs, known problems, recovery |
+
+The rest of this README is the reference for working on the port.
+
 ## Port status
+
+As observed on the phone (2026-10-30, Linux 7.1).  Phone comforts and the
+Sway session: [features.md](docs/features.md).
 
 ```
 Display (BOE AMOLED, 60 Hz)      Working
-GPU (Adreno 610)                 Untested
-Touchscreen                      Untested
+GPU (Adreno 610)                 Working    freedreno; phoc renders on the GPU
+Touchscreen                      Working
+Auto-rotation                    Working    portrait with the keyboard closed, landscape out; optional sensor rotation
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
-Keyboard backlight               Working    on while slid out and the screen is on
-Keyboard slider switch           Working    drives the backlight; slide-out wakes sway
+Keyboard backlight               Working    on while slid out; off after 60 s without a key (configurable)
+Keyboard slider switch           Working    backlight, rotation, on-screen keyboard
+Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
-Bluetooth                        Untested
+Bluetooth                        Working    on/off, scan, pairing, audio to a speaker
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
-Speaker / earpiece / headphones  Untested   audio stack incomplete (see TODO §1)
-Microphones                      Untested
-Vibration motor                  Untested   (only verified in Phosh, not TTY)
-Calls                            Untested
-SMS / mobile data                Untested
-Rear camera (IMX582)             Broken     sensor registers; no PipeWire/WirePlumber yet (TODO)
-Front camera (S5K4H7)            Untested
-Sensors (accel, gyro, ALS, prox) Untested   ADSP via hexagonrpcd + iio-sensor-proxy
-Battery / charging               Untested
+Speaker                          Working
+Earpiece                         Working    in calls
+Headphones                       Untested
+Microphones                      Working    in calls
+Vibration motor                  Working    feedbackd
+Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
+SMS                              Working    Chatty
+MMS                              Working    mmsd-tng + Chatty
+Mobile data                      Working    3G and LTE seen
+Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
+Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
+Proximity sensor                 Working    calls (Sway), no wake in a pocket
+Light sensor, gyroscope          Untested
+Battery                          Working    UPower: level and charging state in Phosh
+Screen dimming, blank, lock      Working    dim at 150 s, off at 180 s, locked 2 min later (configurable)
+Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
-GPS, NFC, video codecs           Untested
+GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
+NFC, video codecs                Untested
 Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash-encrypted.sh
 ```
 
@@ -166,10 +194,10 @@ sudo guix system reconfigure ~/.config/guix/config.scm
   `guix pull` keeps bringing the port's fixes while your changes stay in
   your file.  It shows where your changes go.  It holds no key and no
   password, so you can keep it with your other dotfiles.
-- Root SSH login, used by `scripts/deploy.sh` (next section), is **off**
-  in it: to allow deploys from your PC, uncomment the `#:root-ssh-keys`
-  line.  It refers to `~/.ssh/pro1x-guix.pub` on the phone, the public
-  key of your PC that `scripts/flash.sh` put there.
+- Root SSH login is off in it (`#:root-ssh-keys` commented out).
+  `scripts/deploy.sh` keeps your PC's key in root's authorized keys
+  whatever the file says, so deploys keep working; the line matters only
+  for root SSH after a reconfigure on the phone.
 
 Do not start from `/run/current-system/configuration.scm`: that is the
 port's own system file, not meant to be edited.  `guix system
@@ -178,22 +206,33 @@ and refresh the U-Boot menu.
 
 ## Updating without reflashing
 
-`scripts/deploy.sh` runs `guix deploy` (`deploy/pro1x.scm`) from your PC:
-builds there, copies over SSH as root, adds a generation and activates
-it, like `guix system reconfigure`.  Kernel, initrd and firmware changes
-need a reboot.  Previous generations are selectable from the U-Boot menu
-(hold volume-down at power-on).  It deploys `systems/mobile.scm`, the
-port's system as shipped, so it replaces a configuration made on the
-phone; it is a tool for working on the port.
+`scripts/deploy.sh` builds on your PC what `sudo guix system reconfigure
+~/.config/guix/config.scm` would build on the phone, and installs it:
+
+1. it copies the phone user's `~/.config/guix/config.scm` and `channels.scm`
+   (or `/etc/guix`'s if the user has none), and `~/.ssh/*.pub`;
+2. it runs `guix deploy` (`deploy/pro1x.scm`) under `guix time-machine`
+   with the phone's channels, so your changes in `config.scm` are kept;
+3. it copies the result over SSH as root, adds a generation and
+   activates it.  Kernel, initrd and firmware changes need a reboot.
+
+Previous generations are selectable from the U-Boot menu (hold
+volume-down at power-on).  `-L modules` puts this tree's modules in front
+of the channel's, so unpushed changes to the port are tested on top of
+your configuration.  `bash scripts/deploy.sh --repo [system-file]`
+deploys a system file from this tree instead, replacing your
+configuration.
 
 It logs in as root with the key `scripts/flash.sh` makes on your PC,
 `~/.ssh/pro1x-guix` (without a passphrase: guix deploy cannot ask for
-one).  The flashed system lets that key in; images flashed from a
-ready-made rootfs (`--rootfs`, CI images) have no root SSH login.  With
-the phone on USB:
+one), and keeps that key in root's authorized keys whatever `config.scm`
+says.  Images flashed from a ready-made rootfs (`--rootfs`, CI images)
+have no root SSH login: add the key to `/root/.ssh/authorized_keys` once
+by hand.  With the phone on USB:
 
 ```sh
-bash scripts/deploy.sh                 # systems/mobile.scm to 172.16.42.1
+bash scripts/deploy.sh                 # the phone's own configuration
+bash scripts/deploy.sh --repo          # systems/mobile.scm from this tree
 ```
 
 ## Your home configuration
@@ -286,7 +325,7 @@ Userdata layout:
 
 ```
 [0, 256 MiB)  plain ext4 "guixboot"  — kernel, initrd, extlinux.conf
-[256 MiB, …)  LUKS2 header + encrypted ext4 root
+[256 MiB, end)  LUKS2 header + encrypted ext4 root
 ```
 
 Encryption is applied on the host during flash using `device/fde/xts-encrypt.c`
@@ -328,7 +367,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   sup   yellow slant arrows: Super, the sway modifier ($mod)
   fx    F(x) key: hold for the Fn layer
   \|    key labelled Sym: \ (Shift: |); with fx it is AltGr (agr),
-        so fx+Sym+letter types é, ñ, … on us-intl
+        so fx+Sym+letter types é, ñ etc. on us-intl
   ; \ |  on fx+l, fx+p, fx+/ as on the yellow keycaps
   `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth
@@ -357,34 +396,18 @@ screen off turns the screen on in sway (not yet in Phosh).  To switch the
 light by hand: `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
 stays that way until the next slide or screen change.
 
-## Session selection
+## Sessions
 
-`systems/mobile.scm` boots into a **greetd + tuigreet** session picker on VT1.
-Two sessions are offered:
+greetd + tuigreet on VT1 offers, in this order (it remembers the last user
+and session):
 
-| Session | Description |
+| Session | |
 |---|---|
-| **Phosh** | phoc-pro1x compositor + phosh-pro1x shell |
-| **Sxmo + Sway** | Minimalist sway/Wayland UI via `sxmo_swayinit.sh` |
+| **Sway** | `~/.config/sway/config`; device settings in `/etc/sway/config.d/pro1x.conf`; see [features.md](docs/features.md#sway-on-the-phone) |
+| **Phosh** | phoc-pro1x + phosh-pro1x |
+| **Sxmo + Sway** | needs superd (not packaged yet) |
 
-Desktop files live in `/etc/wayland-sessions/` with absolute store paths in
-`Exec=`, so they work regardless of the user's `PATH` at session start.
-
-## Sway fallback
-
-`systems/mobile.scm` also ships `foot`, `sway`, and `wdisplays`. To drop to a
-bare sway session from the phone (confirmed working):
-
-```sh
-# from a tuigreet session or SSH:
-XDG_RUNTIME_DIR=/run/user/1000 sway
-```
-
-Or from an existing Wayland session, launch it on a new VT:
-
-```sh
-XDG_RUNTIME_DIR=/run/user/1000 WLR_BACKENDS=drm,libinput sway
-```
+Session files in `/etc/wayland-sessions/` use store paths in `Exec=`.
 
 ## Services
 

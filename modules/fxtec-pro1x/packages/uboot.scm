@@ -61,6 +61,9 @@
                 "then sleep 1; else true; fi"))
              #t)))))))
 
+(define (native-aarch64?)
+  (string-prefix? "aarch64" (%current-system)))
+
 (define* (make-u-boot-pro1x #:key (previous-generations 3))
   (let* ((n previous-generations)
          ;; "bootmenu_1=Boot previous generation 1=sysboot …\n" × n
@@ -87,15 +90,24 @@
          (sha256
           (base32 "0vfryrywjwxvd1iddyx6hzc3c7mxxvci44853wrpnff1c0sx64jk"))))
       (build-system gnu-build-system)
+      ;; On an aarch64 build machine (CI) the native compiler builds
+      ;; U-Boot: a same-triplet cross-gcc bootstraps itself and fails
+      ;; ("Link tests are not allowed after GCC_NO_EXECUTABLES",
+      ;; stage2-libiberty, run 40988527489).
       (native-inputs
-       (list bison flex gnutls openssl perl python-minimal-wrapper xxd
-             cross-gcc-aarch64
-             (cross-binutils "aarch64-linux-gnu")))
+       (append
+        (list bison flex gnutls openssl perl python-minimal-wrapper xxd)
+        (if (native-aarch64?)
+            '()
+            (list cross-gcc-aarch64
+                  (cross-binutils "aarch64-linux-gnu")))))
       (arguments
        (list
         #:make-flags
         #~(list "ARCH=arm"
-                "CROSS_COMPILE=aarch64-linux-gnu-"
+                #$(if (native-aarch64?)
+                      "CROSS_COMPILE="
+                      "CROSS_COMPILE=aarch64-linux-gnu-")
                 "DEVICE_TREE=qcom/sm6115-fxtec-pro1x"
                 "HOSTCC=gcc")
         #:tests? #f

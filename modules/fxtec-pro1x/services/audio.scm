@@ -31,6 +31,7 @@
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
+  #:use-module (gnu system pam)             ; session-environment-service-type
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix records)
@@ -71,7 +72,13 @@
      ;; WirePlumber config fragment
      `("wireplumber/wireplumber.conf.d/52-pro1x-s16.conf"
        ,(file-append audio-pkg
-                     "/share/wireplumber/wireplumber.conf.d/52-pro1x-s16.conf")))))
+                     "/share/wireplumber/wireplumber.conf.d/52-pro1x-s16.conf"))
+     ;; No PulseAudio autospawn: a client started before pipewire-pulse
+     ;; listened ran `pulseaudio --start', which took the socket, so
+     ;; pipewire-pulse died and PulseAudio drove the card without our UCM
+     ;; (generic profiles, no sound; 2026-10-30).  Clients wait instead.
+     `("pulse/client.conf"
+       ,(plain-file "client.conf" "autospawn = no\n")))))
 
 ;;; pro1x-audio-session PROGRAM ARGS...: start the user's audio daemons,
 ;;; run PROGRAM (the compositor) and stop them when it exits.  Runs inside
@@ -89,6 +96,17 @@
                pid)))
 
        (setenv "ALSA_CONFIG_UCM2" #$(pro1x-ucm-dir pro1x-audio))
+       ;; The previous session leaves the Speaker device's amplifier switches
+       ;; on.  WirePlumber's profile probe then opens and closes the playback
+       ;; PCM about eight times in one second, and each open powered both
+       ;; aw87339 amplifiers: the pops at login.  With the switches off the
+       ;; probe never powers them; the Speaker EnableSequence turns them on
+       ;; after the probe (DAPM log, 2026-10-30).
+       (for-each (lambda (control)
+                   (system* #$(file-append alsa-utils "/bin/amixer")
+                            "-q" "-c" "0" "cset"
+                            (string-append "name=" control) "0"))
+                 '("Spk0 OUT Switch" "Spk1 OUT Switch"))
        (let* ((pipewire (spawn #$(file-append pipewire "/bin/pipewire")))
               (pulse    (spawn #$(file-append pipewire "/bin/pipewire-pulse")))
               (wireplumber
@@ -133,6 +151,11 @@
                         pro1x-audio-shepherd-services)
      (service-extension etc-service-type
                         pro1x-audio-etc)
+     ;; libpulse reads /etc/pulse/client.conf (autospawn = no) only when
+     ;; told to, as Guix's pulseaudio-service-type does.
+     (service-extension session-environment-service-type
+                        (const '(("PULSE_CLIENTCONFIG"
+                                  . "/etc/pulse/client.conf"))))
      (service-extension profile-service-type
                         pro1x-audio-packages)))
    (default-value (pro1x-audio-configuration))

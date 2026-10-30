@@ -1,0 +1,126 @@
+#!/bin/sh
+# pro1x-mms-fetch — download MMS when the operator has a separate MMS APN
+#
+# mmsd-tng downloads an MMS only over the active mobile-data connection, and
+# only when its APN is mmsd-tng's MMS_APN; it cannot open a second one, and
+# some operators refuse a second connection anyway.  So with a separate MMS
+# APN, MMS notifications arrive but the messages are never fetched.
+#
+#   pro1x-mms-fetch           watch: notify while MMS are waiting
+#   pro1x-mms-fetch --now     fetch them now (the "Fetch MMS" launcher)
+#   pro1x-mms-fetch --ignore  stop the reminders for the MMS waiting now
+#
+# Watching (started with the session): mmsd-tng's queue
+# (~/.mms/modemmanager/*.status with state=notification); for new waiting
+# MMS it shows a notification pointing to the "Fetch MMS" launcher, since
+# fetching stops mobile internet for a moment, and repeats it every 30 min
+# while they wait, until they are fetched or ignored (the launcher's
+# "Ignore waiting MMS" action, long press in Phosh).  Opening the launcher is the
+# user's go-ahead: it brings up a mobile connection on the MMS APN
+# (NetworkManager profile "pro1x-mms", made from mmsd-tng's settings), lets
+# mmsd-tng process its queue (AutoProcessOnConnection), waits until nothing
+# is left waiting (90 s at most), then brings back the data connection that
+# was up, or none.  (A notification with buttons and notify-send --wait did
+# not work reliably here: it returned at once without an answer.)
+#
+# Needs: nmcli, notify-send; NetworkManager allows the user through the
+# netdev polkit rule.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+dir="$HOME/.mms/modemmanager"
+settings="$dir/mms"
+ignored="$HOME/.mms/pro1x-mms-ignored"   # survives logins
+remind=1800                              # seconds between reminders
+profile="pro1x-mms"
+touch "$ignored"
+
+waiting() { grep -l '^state=notification' "$dir"/*.status 2>/dev/null; }
+
+mms_apn() { sed -n 's/^MMS_APN=//p' "$settings" 2>/dev/null; }
+
+active_gsm() {
+    nmcli -t -f NAME,TYPE connection show --active 2>/dev/null |
+        awk -F: '$2 == "gsm" { print $1; exit }'
+}
+
+active_apn() {
+    c=$(active_gsm)
+    [ -n "$c" ] && nmcli -g gsm.apn connection show "$c" 2>/dev/null
+}
+
+ensure_profile() {
+    apn=$(mms_apn)
+    [ -n "$apn" ] || return 1
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$profile"; then
+        nmcli connection modify "$profile" gsm.apn "$apn"
+    else
+        nmcli connection add type gsm ifname '*' con-name "$profile" \
+            apn "$apn" connection.autoconnect no >/dev/null
+    fi
+}
+
+fetch() {
+    prev=$(active_gsm)
+    [ "$prev" = "$profile" ] && prev=
+    if ! ensure_profile; then
+        notify-send -a Chatty "MMS" "No MMS APN set in Chatty's MMS settings."
+        return
+    fi
+    if ! nmcli connection up "$profile" >/dev/null 2>&1; then
+        notify-send -a Chatty "MMS" "Could not connect to the MMS APN."
+    else
+        i=0
+        while [ "$i" -lt 90 ] && [ -n "$(waiting)" ]; do
+            sleep 3
+            i=$((i + 3))
+        done
+    fi
+    if [ -n "$prev" ]; then
+        nmcli connection up "$prev" >/dev/null 2>&1
+    else
+        nmcli connection down "$profile" >/dev/null 2>&1
+    fi
+    if [ -n "$(waiting)" ]; then
+        notify-send -a Chatty "MMS" "Download did not finish; mobile data is back."
+    else
+        notify-send -a Chatty "MMS" "Downloaded; mobile data is back."
+    fi
+}
+
+if [ "${1:-}" = --ignore ]; then
+    n=$(waiting | grep -vxF -f "$ignored" | tee -a "$ignored" | wc -l)
+    notify-send -a Chatty "MMS" "$n waiting MMS ignored; no more reminders for them."
+    exit 0
+fi
+
+if [ "${1:-}" = --now ]; then
+    if [ -z "$(waiting)" ]; then
+        notify-send -a Chatty "MMS" "No MMS waiting."
+    else
+        notify-send -a Chatty "MMS" "Fetching; mobile internet pauses for a moment."
+        fetch
+    fi
+    exit 0
+fi
+
+last=0                                   # time of the last reminder
+before=""                                # waiting MMS at the last reminder
+while :; do
+    now=$(waiting | grep -vxF -f "$ignored")
+    # With a combined data/MMS APN mmsd-tng fetches by itself.
+    if [ -n "$now" ] && { [ -z "$(mms_apn)" ] ||
+                          [ "$(active_apn)" != "$(mms_apn)" ]; } &&
+       { [ "$now" != "$before" ] || [ $(( $(date +%s) - last )) -ge "$remind" ]; }
+    then
+        n=$(echo "$now" | wc -l)
+        # Counted as told only once the notification went out (Phosh may
+        # not be up yet right after login).
+        if notify-send -a Chatty -i mail-message-new "$n MMS waiting" \
+               "Open \"Fetch MMS\" to download (mobile internet pauses for about half a minute); long press it to ignore."; then
+            last=$(date +%s)
+            before=$now
+        fi
+    fi
+    sleep 15
+done

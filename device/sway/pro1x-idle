@@ -1,0 +1,70 @@
+#!/bin/sh
+# pro1x-idle — swayidle with the panel dimming set in the system configuration
+#
+#   pro1x-idle [--sway] [swayidle arguments...]   (Phosh without --sway)
+#
+# Reads DIM_AFTER (seconds, empty for never) from /etc/pro1x/dim.conf, written
+# from config.scm (pro1x-hardware-configuration dim-after, dim-level), and runs
+# swayidle -w with `timeout DIM_AFTER pro1x-dim dim resume pro1x-dim restore'
+# followed by the session's own arguments.  --sway also blanks the panel after
+# BLANK_AFTER seconds and locks with pro1x-lock (swaylock with a banner and the
+# unread notifications) LOCK_AFTER seconds later (empty:
+# no lock).  For those two it reads the same GSettings keys as Phosh, GNOME
+# Settings and Phosh Mobile Settings (org.gnome.desktop.session idle-delay,
+# org.gnome.desktop.screensaver lock-enabled and lock-delay), whose defaults
+# come from config.scm: a delay changed there applies to Sway too.  Without
+# --sway (Phosh) it activates Phosh's screen saver after BLANK_AFTER seconds
+# (org.gnome.ScreenSaver.SetActive), which blanks and locks after lock-delay:
+# Phosh leaves idle detection to gnome-session, absent here, so it never
+# blanked by itself.  Started by the Phosh session and the Sway config.
+#
+# Caffeine (Sway): while $XDG_RUNTIME_DIR/pro1x-caffeine says on, --sway
+# starts no swayidle at all (no dim, blank or lock); sway-quick-settings
+# stops and starts it when the setting changes.  Not kept across reboots,
+# on purpose (author, 2026-10-30).
+#
+# State: dimming tested 2026-10-30; Phosh blank and lock tested by hand with
+# the same SetActive call (author); Sway lock untested.
+
+DIM_AFTER=150 BLANK_AFTER=180 LOCK_AFTER=120
+[ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
+
+sway=
+if [ "${1:-}" = --sway ]; then
+    sway=1
+    shift
+    caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"
+    [ "$(cat "$caffeine" 2>/dev/null)" = on ] && exit 0
+fi
+# The user's values if set, else config.scm's defaults (GSettings).
+if command -v gsettings >/dev/null 2>&1; then
+    v=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null) &&
+        BLANK_AFTER=${v#uint32 }
+    if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = false ]; then
+        LOCK_AFTER=
+    else
+        v=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null) &&
+            LOCK_AFTER=${v#uint32 }
+    fi
+fi
+# idle-delay 0 is GNOME Settings' "Never".
+[ "$BLANK_AFTER" = 0 ] && BLANK_AFTER=
+
+# Prepend the timeouts to the session's own arguments.
+if [ -z "$sway" ] && [ -n "$BLANK_AFTER" ]; then
+    set -- timeout "$BLANK_AFTER" \
+        'gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.SetActive true' \
+        "$@"
+fi
+if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
+    set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'pro1x-lock' "$@"
+fi
+if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
+    set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \
+        resume 'swaymsg "output * power on"' "$@"
+fi
+if [ -n "$DIM_AFTER" ]; then
+    set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"
+fi
+
+exec swayidle -w "$@"

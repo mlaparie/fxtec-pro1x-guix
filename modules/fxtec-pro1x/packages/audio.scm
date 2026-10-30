@@ -9,6 +9,7 @@
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages pulseaudio)
+  #:use-module (gnu packages telephony)     ; libcallaudio
   #:use-module (guix build-system gnu)
   #:use-module (guix gexp)
   #:use-module (guix packages)
@@ -53,6 +54,8 @@
                                   (string-append #$coreutils "/bin")
                                   (string-append #$util-linux "/bin")
                                   (string-append #$modem-manager "/bin")
+                                  ;; callaudiocli: Calls' speaker button state
+                                  (string-append #$libcallaudio "/bin")
                                   bin)
                             ":")))
                 (mkdir-p bin)

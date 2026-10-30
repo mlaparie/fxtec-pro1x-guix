@@ -3,7 +3,7 @@
 ;;; The userdata partition is laid out as:
 ;;;   [0, 256 MiB)  : plain ext4 labelled "guixboot" (kernel, initrd,
 ;;;                   extlinux.conf; readable by U-Boot without decryption)
-;;;   [256 MiB, …)  : LUKS2 container (header + encrypted root ext4)
+;;;   [256 MiB, end)  : LUKS2 container (header + encrypted root ext4)
 ;;;
 ;;; luks-pro1x-device-mapping opens the LUKS2 header at offset 256 MiB within
 ;;; /dev/disk/by-partlabel/userdata, exposed as /dev/mapper/pro1x-crypt.

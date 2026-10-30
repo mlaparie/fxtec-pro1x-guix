@@ -187,6 +187,22 @@
         "confidence": "confirmed",
         "date": "2026-10-29",
         "source": "author pull log on the phone; GitLab API commit lookup (404 vs 200); /var/log/guix/drvs/gm/5smv8pyx…-fxtec-pro1x.drv.gz; guix/channels.scm %guix-channel-introduction"
+      },
+      {
+        "title": "Guix's iio-sensor-proxy polkit substitution eats a newline in 3.9",
+        "general": "A substitute* pattern ending in '.*' consumes the line's newline; it was harmless while the next line was empty. When inheriting a recipe for a newer version, check what its substitutions do to the new source.",
+        "instance": "iio-sensor-proxy 3.9 meson.build: 'polkit_gobject_dep\\\\..*' glued libssc's dependency line onto the policy directory ('meson.build:48:115: ERROR: Expecting eof'). Replaced with an exact pattern.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "reproduced with substitute* on the 3.9 source; commit e4051eb"
+      },
+      {
+        "title": "Tests that need a mock QMI server do not run in the build sandbox",
+        "general": "Stop after the second environment gap (missing /usr/bin/env, then PyGObject) and disable the tests with the reason, rather than rebuilding a test environment.",
+        "instance": "libssc 0.4.4: mock SSC server in Python; nixpkgs does not run the tests either. iio-sensor-proxy 3.9: SSC accel and proximity tests pass, compass and light time out under QEMU (skipped).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "build logs; commit e4051eb"
       }
     ],
     "ci": [
@@ -271,6 +287,46 @@
         "confidence": "confirmed",
         "date": "2026-10-29",
         "source": "author report of the boot screen; extlinux.conf and prev*.conf read over UMS; gnu/build/file-systems.scm (Guix fa73e81)"
+      },
+      {
+        "title": "Deploy the phone's own configuration, built on the PC",
+        "general": "Deploying a system file from the development tree replaces the owner's configuration. Copy the owner's config.scm and channels.scm from the device, build under guix time-machine with those channels, and put the tree's modules first with -L for unpushed work. Keep the deploy key in root's authorized keys whatever the config says.",
+        "instance": "scripts/deploy.sh since 2026-10-30; --repo keeps the old mode. First run built go-std and tailscaled for aarch64 under QEMU.",
+        "confidence": "handover",
+        "date": "2026-10-30",
+        "source": "commit cd12ad8"
+      },
+      {
+        "title": "Do not rewrite a bash script while it runs",
+        "general": "bash reads a script from disk as it executes; replacing it during a long command makes bash continue at the old byte offset in the new text. Keep edits aside until the run ends.",
+        "instance": "Pro1X: scripts/deploy.sh rewritten while guix deploy ran from it; restored byte for byte before the deploy returned.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "session 2026-10-30"
+      },
+      {
+        "title": "Deploys over Tailscale work; check the host key against the USB one",
+        "general": "guix deploy to the phone's tailnet address works as over USB. Add the tailnet address's host key only after comparing its fingerprint with the key seen over the cable. Keep the tailnet address out of git (add it to the private patterns).",
+        "instance": "Pro1X 2026-10-30: several deploys over the tailnet.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "TODO.md; session"
+      },
+      {
+        "title": "When deploying past unbuilt kernel changes, revert them all in the worktree and compare the kernel path",
+        "general": "To deploy userspace fixes while a kernel change waits for CI, deploy from a worktree where every kernel change is reverted (patches and config), and compare the worktree's kernel store path with the phone's (/run/current-system/parameters) before deploying; a missed config line starts a multi-hour kernel build under QEMU.",
+        "instance": "Pro1X: a worktree without the new patch but with the new CONFIG_LEDS_TRIGGER_PATTERN started a kernel build; caught and stopped.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "session 2026-10-30"
+      },
+      {
+        "title": "git commit <path> leaves new files out",
+        "general": "Committing with a path argument skips untracked files under it; a package that refers to such a file builds only from the working tree. Look at the ?? lines of git status before pushing, or build from a clean worktree.",
+        "instance": "device/sway/pro1x.conf was never committed (f725625), so main failed to build for others for hours; found by deploying from a worktree.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 0bc8d46, 453deb8"
       }
     ],
     "licensing": [
@@ -281,6 +337,160 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "clone of nyymi609/fxtec-pro1x-nixos at 579356e, root listing; GitHub API license field empty"
+      }
+    ],
+    "desktop": [
+      {
+        "title": "Without logind, every allow_active polkit action is refused: add the package's actions and a group rule",
+        "general": "polkit grants allow_active actions only to the active local session, which it learns from logind. With seatd it never knows, so ModemManager, NetworkManager, iio-sensor-proxy and friends refuse requests from the logged-in user. Two separate faults look the same: the package's actions not given to polkit-service-type ('Action ... is not registered', even as root), and no rule for the user ('Not Authorized'). Give the package to polkit-service-type and add a rule for a group.",
+        "instance": "Pro1X: GNOME Settings' SIM unlock closed without error (ModemManager: PolicyKit authorization failed); 'Action org.freedesktop.ModemManager1.Device.Control is not registered' even for root; 'net.hadess.SensorProxy.claim-sensor is not registered', then 'Sensor claim not allowed'. Fixed: modem-manager and iio-sensor-proxy in polkit-service-type, rules for netdev and users.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 84d1ca4, b3d83fb, bd2c999, dbf9f11; logs on the phone"
+      },
+      {
+        "title": "A deploy does not reload the system bus or polkitd",
+        "general": "After guix deploy or reconfigure, the running dbus-daemon keeps its old policy and polkitd its old actions and rules (it watched the previous /etc/polkit-1 store link): new D-Bus services and polkit actions work only after a reboot. Reload the bus (org.freedesktop.DBus.ReloadConfig) and stop polkitd at activation.",
+        "instance": "Pro1X: UPower exited with 'name lost, exiting' until ReloadConfig; polkit kept 'not registered' until polkitd was restarted. pro1x-reload-bus-service in system/common.scm does both when the bus runs.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 7d1b585; upowerd -v and polkit errors on the phone"
+      },
+      {
+        "title": "A package that is only a dependency exposes no D-Bus session service",
+        "general": "D-Bus-activated daemons (feedbackd, xdg-desktop-portal) start only if their service file is under a directory the session bus reads (XDG_DATA_DIRS: the system or user profile). Being in the store as a dependency of Phosh or Calls is not enough.",
+        "instance": "Pro1X: feedbackd 0.8.1 in the store, never started, no vibration; no xdg-desktop-portal, so libadwaita apps ignored dark mode; no UPower, so no battery in Phosh. All added to the system profile or as services.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits c3e5962, c5ee95c, ffeaad1"
+      },
+      {
+        "title": "Phosh without gnome-session: what gnome-session would have started",
+        "general": "Phosh leaves some jobs to helpers gnome-session starts: the volume keys to gnome-settings-daemon's gsd-media-keys (it grabs them through Phosh), dimming to gsd-power (which needs logind). Start what works without logind from the session wrapper, replace the rest.",
+        "instance": "Pro1X: volume keys did nothing until gsd-media-keys ran (author confirmed); its logind and session-manager warnings are harmless. Dimming done with swayidle + pro1x-dim instead of gsd-power.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 6420e80, ff32a09"
+      },
+      {
+        "title": "Phosh 0.56 never sets allow_volume_above_100_percent",
+        "general": "When a setting has no effect, check that the code reads it: a field can be declared and tested but never assigned.",
+        "instance": "phosh 0.56.0 src/settings/audio-settings.c: the field is only declared and read, so the slider stops at 100% whatever org.gnome.desktop.sound says. Patched here (device/phosh/volume-above-100-percent.patch).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 source; commit 4250db0"
+      },
+      {
+        "title": "phoc raises a black shield on every output transform change",
+        "general": "A black flash on each rotation in phoc is deliberate: the modeset shield hides layer-surface rearrangement and fades out in 150 ms. Every output configuration commit sets mode, scale and transform, so 'only the transform changed' must be found by comparing with the previous commit.",
+        "instance": "phoc 0.56.0 src/output.c (modeset_shield). Patch skipping it for rotation alone: device/phoc/rotation-without-shield.patch, untested on the phone.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phoc 0.56.0 source; commit 0491931"
+      },
+      {
+        "title": "Phosh restores a portrait pre-lock transform on unlock",
+        "general": "On phones Phosh forces the lock screen to portrait and restores the transform saved at lock time. A session that starts locked saves portrait, so anything that rotates the panel during the lock screen is undone at unlock.",
+        "instance": "Pro1X: keyboard out at login, lock screen landscape, shell portrait after unlocking. Patch: leave the transform alone when orientation is locked (device/phosh/lockscreen-keep-locked-orientation.patch), untested.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 src/rotation-manager.c; author 2026-10-30; commit 9a93e64"
+      },
+      {
+        "title": "Phosh saves no display configuration",
+        "general": "Phosh applies a scale chosen in Settings but writes it nowhere; each login starts from phoc's ini. Persist display settings in phoc.ini.",
+        "instance": "Pro1X: scale back to 2 at every login. Default now 1.75 in /etc/phoc.ini; the session uses ~/.config/phoc/phoc.ini when present.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 src/monitor-manager.c; commit c5ee95c"
+      },
+      {
+        "title": "GSettings overrides for other packages' schemas belong in the system profile",
+        "general": "An override compiled into one package's schema directory only reaches that package's schemas. For keys of gsettings-desktop-schemas, put the override in a package in the system profile: Guix's glib-schemas profile hook compiles all of them together.",
+        "instance": "Pro1X: org.gnome.desktop.sound allow-volume-above-100-percent via pro1x-gsettings-defaults; checked with GSETTINGS_BACKEND=memory gsettings against the phone's compiled schemas: true.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit cc16582"
+      },
+      {
+        "title": "tuigreet remembers nothing without /var/cache/tuigreet",
+        "general": "tuigreet's --remember flags write to /var/cache/tuigreet; a Guix system has no /var/cache by default. Create it at activation, owned by the greeter user.",
+        "instance": "Pro1X: no /var/cache at all; greeter uid 986.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "ls on the phone; commit d6257e1"
+      },
+      {
+        "title": "Phosh does not detect idleness: gnome-session does",
+        "general": "Phosh blanks and locks on idle only when gnome-session reports idle through its presence interface (it watches org.gnome.desktop.session idle-delay). Without gnome-session, Phosh never blanks or locks by itself. org.gnome.ScreenSaver.SetActive(true) from an idle daemon (swayidle) blanks and starts Phosh's lock-delay timer.",
+        "instance": "phosh 0.56 src/screen-saver-manager.c (comment and screen_saver_set_active). pro1x-idle calls SetActive after idle-delay; author confirmed blank and lock.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 288da1d; phosh source"
+      },
+      {
+        "title": "PulseAudio autospawn can take pipewire-pulse's socket",
+        "general": "With PulseAudio's libpulse and binary installed, a client starting before pipewire-pulse listens (or one left from the previous session when pipewire-pulse stops) runs `pulseaudio --start`, which takes the PulseAudio socket; pipewire-pulse then dies and PulseAudio drives the card without the session's UCM settings. Set autospawn = no in /etc/pulse/client.conf and PULSE_CLIENTCONFIG in the session environment (as Guix's pulseaudio-service-type does).",
+        "instance": "Pro1X: login with no sound, card named alsa_card.0 with generic profiles, pipewire-pulse defunct ('Address already in use'), pulseaudio started 15 s before PipeWire.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 32946bc; ps and session log on the phone"
+      },
+      {
+        "title": "A UCM verb's exec runs during PipeWire's profile probe too",
+        "general": "UCM EnableSequence exec commands run whenever the verb is set, including PipeWire's probe of every profile at session start. A helper started from a verb must be single-instance and must not act unless its condition (a call) holds; otherwise copies pile up across logins and their side effects (keep-alive streams, profile holds) run outside calls. Put the card back on the default profile after a call, or WirePlumber saves the call profile and restores it at every login.",
+        "instance": "Pro1X: three pro1x-voice-call copies from three logins, keep-alive streams running, card restored to Voice Call (Earpiece) at login; probable cause of the login pops (not yet confirmed by ear).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 7aff1ef; ps and WirePlumber state on the phone"
+      },
+      {
+        "title": "callaudiod's speaker switch does nothing with PipeWire 1.2+ per-output profiles",
+        "general": "callaudiod 0.1.9 switches sink ports, but PipeWire creates one card profile per output when outputs share a PCM (ConflictingDevice in UCM changes nothing). callaudiod upstream is deprecated; speaker switching in calls is open upstream (pipewire issue 4868). Following callaudiod's state with profile switches changes the profile but not necessarily the DSP voice route.",
+        "instance": "Pro1X: profile switched to Voice Call (Mic, Speaker) and back on the button, capture route off on mute, but no audible change (author). Two attempts, stopped.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "call logs 2026-10-30; callaudiod git history"
+      },
+      {
+        "title": "Phosh's notification banners show no action buttons",
+        "general": "Do not rely on notification actions (notify-send -A --wait) for a confirmation in Phosh: banners showed none, and notify-send returned at once without an answer. Use a launcher (with desktop actions for alternatives) and repeated reminders instead.",
+        "instance": "Pro1X, phosh 0.56: MMS confirmation redesigned as a Fetch MMS launcher plus 30-min reminders.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "author 2026-10-30; commit ca7725c"
+      },
+      {
+        "title": "Packages missing from the profile: callaudiod, mmsd-tng, stevia, xdg-user-dirs",
+        "general": "On a Phosh system without gnome-session, check what gnome-session or a distribution would start or install: callaudiod (Calls' audio routing), mmsd-tng (Chatty's MMS), the OSK (sm.puri.OSK0), xdg-user-dirs-update (Snapshot needs XDG_PICTURES_DIR), gsd-rfkill (Bluetooth state in Phosh and GNOME Settings, with /dev/rfkill writable without logind).",
+        "instance": "Pro1X 2026-10-30: each found missing from a user-visible symptom; mmsd-tng and stevia packaged here.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 6d6cc2a, ff2261c, 1a3b582, 3473f61, acc408c"
+      },
+      {
+        "title": "A GSettings override in the system profile does not reach programs whose wrapper puts their own schemas first",
+        "general": "Guix's glib-or-gtk wrappers prepend each package's share to XDG_DATA_DIRS. GSettings takes a schema from the first directory whose gschemas.compiled has it, so an override compiled into the system profile is ignored by a program that ships that schema itself (or whose wrapper lists gsettings-desktop-schemas first). Put the override into that package's own schema directory, and run glib-compile-schemas there in your phase: the build system had already compiled the schemas before an add-after 'install phase. Check with gsettings in the program's own environment (copy XDG_DATA_DIRS and XDG_CURRENT_DESKTOP from /proc/PID/environ), not a login shell's.",
+        "instance": "stevia 0.56.0 (on-screen keyboard) read mobi.phosh.osk ignore-hw-keyboards false although the system profile's override said true; true after the override and glib-compile-schemas went into stevia's own share/glib-2.0/schemas (generation 40, 2026-10-30).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 4a17fa5, f083a22, 223a2fa; gsettings with GSETTINGS_SCHEMA_DIR on the stevia package"
+      },
+      {
+        "title": "Desktop-specific GSettings overrides ([schema:Phosh]) beat plain ones in that desktop",
+        "general": "glib-compile-schemas supports [schema:DESKTOP] sections that apply when XDG_CURRENT_DESKTOP contains DESKTOP, ahead of the plain [schema] section whatever the file order. A shell that ships such overrides (Phosh's 00_mobi.Phosh.gschema.override) wins over a distribution default written without the suffix; write both sections.",
+        "instance": "Phosh 0.56 sets [org.gnome.desktop.session:Phosh] idle-delay=60; our idle-delay=180 applied in Sway but Phosh kept blanking at 60 s until the override also wrote the :Phosh section (generation 40: swayidle blanks at 180).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 59ad954; schema test compiled with both overrides, XDG_CURRENT_DESKTOP=Phosh"
+      },
+      {
+        "title": "GTK 3 on Guix finds its input-method modules only through GUIX_GTK3_IM_MODULE_FILE",
+        "general": "Guix's gtk+ reads the IM module cache from GUIX_GTK3_IM_MODULE_FILE and has no cache in its own output; the variable comes from gtk+'s search path, which is only set when gtk+ itself is in the profile. Without it GTK 3 text fields never use the Wayland IM module, and on-screen keyboards are never asked for. Set it for the session (session-environment-service-type) to the profile's lib/gtk-3.0/3.0.0/immodules-gtk3.cache.",
+        "instance": "Phosh session on the Pro1x, generation 36+: no OSK for GTK 3 fields before; /etc/environment now sets it.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit d6641f0; strings of libgtk-3.so (GUIX_GTK3_IM_MODULE_FILE); stevia debug log"
       }
     ]
   }

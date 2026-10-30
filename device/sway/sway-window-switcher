@@ -95,7 +95,7 @@ fi
 
 fifo=/tmp/sts-$(date +%s)
 mkfifo $fifo
-fifo=$fifo $SHELL -c "foot \
+fifo=$fifo $SHELL -c "pro1x-term \
     -W ${columns}x${lines} \
     -a windowswitcher \
     -e $SCRIPTPATH/$SCRIPTNAME"&

@@ -159,6 +159,19 @@ jobs:
               && echo "git clone: OK" || echo "git clone FAILED (exit $?)"
           fi
 
+      # ── Guix for channels-ci.scm ─────────────────────────────────────────
+      # The first time-machine call of a run builds the pinned Guix, and its
+      # glib-2.86.5 graft fails ("permission denied" on glib's
+      # etc/ld.so.cache) under the unprivileged daemon; the second call
+      # builds the same profile.drv fine (run 40946059940: U-Boot step
+      # failed, Prefetch then succeeded).  Since U-Boot moved after the
+      # image, Prefetch was the first call and failed the job (runs
+      # 40997348185, 41007214587).  Build it here, once more on failure.
+      - name: Build the pinned Guix
+        run: |
+          TM="guix time-machine --disable-authentication -C channels-ci.scm --"
+          $TM describe || { echo "==> first attempt failed; retrying"; $TM describe; }
+
       # ── Prefetch GitHub tarballs ──────────────────────────────────────────
       # The daemon's anonymous downloads from codeload.github.com got HTTP 429
       # (run 40731915977, kernel tarball) and no Guix mirror has them.  Fetch
@@ -223,6 +236,33 @@ jobs:
           echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
           echo "==> disk space after extraction:"; df -h /
 
+      # ── Export the kernel ─────────────────────────────────────────────────
+      # The kernel as a signed Guix archive, so a PC can import it and deploy
+      # it to a phone without building it under QEMU (hours) and without
+      # reflashing: on the PC, `sudo guix archive --authorize <
+      # ci-signing-key.pub', `guix archive --import < linux-pro1x.nar', then
+      # scripts/deploy.sh.  Same pinned guix and nonguix and the same tree as
+      # the deploy, hence the same derivation.  The key is this run's own.
+      # Channels are authenticated here (their introductions are in
+      # channels-ci.scm); the step cannot fail the job.
+      - name: Export kernel
+        if: always()
+        continue-on-error: true
+        run: |
+          K=$(guix time-machine -C channels-ci.scm -- \
+                build -L modules --no-grafts linux-pro1x 2>/tmp/kernel.log | tail -1)
+          if [ -d "$K" ]; then
+            mkdir -p kernel-export
+            # A fresh runner has no signing key (as in guix-cache.sh).
+            [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
+            sudo guix archive --export "$K" > kernel-export/linux-pro1x.nar
+            echo "$K" > kernel-export/linux-pro1x.path
+            sudo cat /etc/guix/signing-key.pub > kernel-export/ci-signing-key.pub
+            ls -l kernel-export
+          else
+            echo "WARNING: no kernel output to export"; tail -30 /tmp/kernel.log
+          fi
+
       # ── Build U-Boot ──────────────────────────────────────────────────────
       # After the image step: the first guix time-machine of a job builds
       # its own guix, and that has failed grafting glib-2.86.5 in this step
@@ -283,6 +323,14 @@ jobs:
           path: |
             u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
+          retention-days: 30
+
+      - name: Upload kernel
+        if: hashFiles('kernel-export/linux-pro1x.nar') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-pro1x
+          path: kernel-export/
           retention-days: 30
 
       - name: Upload rootfs

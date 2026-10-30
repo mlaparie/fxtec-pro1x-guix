@@ -1,0 +1,70 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] channel-bar: round knob and an orange bar above 100%
+
+With volume above 100% allowed, the bar adds a "100%" mark, and
+Adwaita draws a scale with marks with a pointed, rectangular slider:
+the volume knob looked glitched next to the round brightness one
+(author).  Drop the marks and show the amplified range instead by
+colouring the filled part of the bar orange while the value is above
+100% (author's idea).  phosh 0.56.0.
+---
+--- a/src/settings/channel-bar.c
++++ b/src/settings/channel-bar.c
+@@ -141,9 +141,24 @@
+ }
+ 
+ 
++/* Above 100%: the filled part of the bar turns orange (no marks, see
++ * phosh_channel_bar_set_is_amplified). */
++static void
++update_over_100 (PhoshChannelBar *self)
++{
++  GtkStyleContext *context = gtk_widget_get_style_context (self->scale);
++
++  if (gtk_adjustment_get_value (self->adjustment) > ADJUSTMENT_MAX_NORMAL)
++    gtk_style_context_add_class (context, "pro1x-over-100");
++  else
++    gtk_style_context_remove_class (context, "pro1x-over-100");
++}
++
++
+ static void
+ on_adjustment_value_changed (GtkAdjustment *adjustment, PhoshChannelBar *self)
+ {
++  update_over_100 (self);
+   if (!self->is_muted || self->click_lock)
+     g_signal_emit (self, signals[VALUE_CHANGED], 0);
+ }
+@@ -187,7 +202,9 @@
+   gtk_adjustment_set_upper (self->adjustment, ADJUSTMENT_MAX);
+   gtk_scale_clear_marks (GTK_SCALE (self->scale));
+ 
+-  if (amplified) {
++  /* No 100% mark: a GtkScale with marks draws a pointed, rectangular
++   * slider in Adwaita, unlike the brightness bar next to it. */
++  if (FALSE && amplified) {
+     g_autofree char *str = NULL;
+ 
+     if (G_APPROX_VALUE (self->base_volume, floor (ADJUSTMENT_MAX_NORMAL), DBL_EPSILON)) {
+@@ -365,6 +382,21 @@
+   gtk_adjustment_set_page_increment (self->adjustment, ADJUSTMENT_MAX_NORMAL / 10.0);
+ 
+   gtk_widget_add_events (self->scale, GDK_SCROLL_MASK);
++
++  {
++    static GtkCssProvider *provider;
++
++    if (!provider) {
++      provider = gtk_css_provider_new ();
++      gtk_css_provider_load_from_data (provider,
++                                       "scale.pro1x-over-100 trough highlight "
++                                       "{ background-color: #e66100; }",
++                                       -1, NULL);
++      gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
++                                                 GTK_STYLE_PROVIDER (provider),
++                                                 GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
++    }
++  }
+ }
+ 
+ 

@@ -4,24 +4,22 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-10-29, evening):** generations 1 (flashed image), 25,
-26 (booted) and 27 (keymap), deployed from the PC before the channel
-layout change; off the network until the author pulls the channel and
-reconfigures from `/etc/guix/config.scm`.  Not yet on the phone: the
-U-Boot slot watcher, `modules/` layout, `/etc/guix/config.scm`, the
-opt-in root key.  No release yet: tags v0.1.0-v0.1.3 were deleted
-(author); the first release follows this round of fixes.
+**On the phone (2026-10-30, 01:20):** flashed 2026-10-29 from the CI
+image of `next` (2d71b95, generation 1), then generations 2-13 deployed
+from the PC (USB).  Generation 13 is the first built from the phone's own
+`~/.config/guix/config.scm` and `channels.scm` (Tailscale added), with
+this tree's modules in front.  `main` = `next` (d6257e1 pushed to sr.ht
+and GitHub, 2026-10-30).  Root SSH by the PC's key, added by hand after
+the flash and kept by deploy/pro1x.scm.  No release yet: the first
+release follows this round of fixes.
 
-**Configuration workflow (2026-10-29):** the systems live in the channel
-(`(fxtec-pro1x system mobile|minimal|mobile-encrypted)`); `systems/*.scm`
-add root's key, read from `~/.ssh/pro1x-guix.pub` on the build host (made
-by `scripts/flash.sh`) or `/home/user/.ssh/pro1x-guix.pub` on the phone.
-The flashed system puts that public key in the user's home (skeleton) and
-ships `/etc/guix/config.scm`, which inherits the system and has the
-`#:root-ssh-keys` line commented out (opt-in, no key in the file).
-Evaluated on the PC for the three systems: template as shipped has no
-root key; uncommented gives the stock system's derivation exactly.  Not
-tried on the phone.
+**Configuration workflow (2026-10-30):** the systems live in the channel
+(`(fxtec-pro1x system mobile|minimal|mobile-encrypted)`).  The phone
+ships `/etc/guix/config.scm` (inherits the port's system; root SSH line
+commented out) and `/etc/guix/channels.scm` (pinned guix and nonguix);
+the owner copies them to `~/.config/guix/`.  `scripts/deploy.sh` builds
+that copy on the PC (time-machine with the phone's channels, `-L
+modules`); `--repo` deploys `systems/*.scm` instead.
 
 **Reference repos** (clone to /tmp when needed):
 - NixOS port (working hardware reference):
@@ -60,9 +58,9 @@ tried on the phone.
 
 ---
 
-## Branch `next` (2026-10-29 evening, build-tested only, not deployed)
+## Branch `next`, 2026-10-29 evening (now on `main` and the phone)
 
-To deploy and test once the phone takes deploys again (Tailscale):
+What the evening round contained (results below):
 - modem: UIM provisioning before ModemManager (SIM not detected);
 - Bluetooth: BlueZ powered at start; kernel BT_LE, BT_RFCOMM;
 - audio and camera: PipeWire, WirePlumber (patched libcamera),
@@ -75,7 +73,6 @@ To deploy and test once the phone takes deploys again (Tailscale):
 - screen off: moWerk's panel display-off patch (kernel);
 - clock from the RTC with a saved offset; 16x32 console font from boot;
 - kernel.scm: package lookup by name failed (current-source-directory).
-The kernel changed: reboot needed, with the U-Boot fallback in mind.
 
 Tested on the phone 2026-10-29/30 (flashed CI image of next, 2d71b95,
 then deploys of next up to cc16582; generation 2 and later):
@@ -103,6 +100,23 @@ then deploys of next up to cc16582; generation 2 and later):
   voice ps-preferred: without IMS/VoLTE a voice-centric UE leaves LTE
   if the operator lacks CSFB (inferred, not measured).  moWerk's notes:
   LTE registered on this phone (NixOS, SailfishOS) with another operator.
+  Later the same night: GNOME Settings' "4G only" fails ("the given
+  combination of allowed and preferred modes is not supported"):
+  ModemManager's supported list has no 4G-only entry (2G, 3G, 2G+3G,
+  2G+4G, 3G+4G, 2G+3G+4G).  Cell info (qmicli
+  --nas-get-cell-location-info, read-only): one UMTS serving cell, one
+  UMTS neighbour, the "Neighboring LTE" section empty while another phone
+  gets LTE/5G there.  So the modem does not measure or report LTE cells:
+  points at the modem's configuration (voice-centric, carrier profile)
+  rather than coverage (inferred).
+  Network scan (qmicli --nas-network-scan; stores nothing): LTE networks
+  are heard (radio type lte, beside umts); data stayed on UMTS.  So RF and
+  bands work and the modem chooses not to use LTE: configuration
+  (voice-centric without IMS, or carrier profile), still inferred.  The
+  data-centric test needs a libqmi program (qmicli 1.34 cannot set the
+  usage preference); its change-duration "power cycle" may or may not be
+  honoured by this firmware, so it may persist in NV: not done, author
+  wants no risk (2026-10-30).
   Author's decision, 2026-10-30: wait; poor coverage is possible.  ASK
   THE AUTHOR AGAIN if they never see 4G while moving around: the test is
   data-centric usage, which the modem keeps in its NV (modemst via
@@ -132,8 +146,12 @@ then deploys of next up to cc16582; generation 2 and later):
   switches auto/manual).  Each rotation flashes the screen black: phoc
   0.56 raises a black "modeset shield" on every transform change until
   the layer surfaces are rearranged, then fades it out in 150 ms
-  (src/output.c).  By design; no rotation animation exists.  Smoother
-  would need a phoc patch (low priority, author 2026-10-30).
+  (src/output.c).  By design; no rotation animation exists.  Patched to
+  skip the shield for rotation alone (0491931): "much better" (author,
+  2026-10-30), but still not instantaneous, with visible artifacts while
+  apps redraw.  Next: measure where the time goes (sensor-proxy event to
+  transform commit, client re-layout).  Snapshot must stay portrait
+  whatever the rotation mode (author: "should really never rotate").
   Snapshot should stay in portrait to use the whole panel; Phosh has no
   per-app rotation lock (author's wish, 2026-10-30).
 - crackle at Phosh login (not at logout, author 2026-10-30).  amixer
@@ -160,6 +178,31 @@ then deploys of next up to cc16582; generation 2 and later):
   failure: glib graft cannot read glib's etc/ld.so.cache (permission
   denied) under the unprivileged daemon.
 
+Deploys (2026-10-30): scripts/deploy.sh now builds the phone's own
+~/.config/guix/config.scm with its channels.scm (guix time-machine), on
+the PC, plus -L modules for this tree; --repo for the old behaviour.
+The phone user's config.scm and channels.scm were written from
+/etc/guix's with Tailscale added (channel pinned to eac0696).  First run
+in progress: builds go-std and Tailscale for aarch64 under QEMU (slow,
+once).  After it: `sudo tailscale up' on the phone (author's account),
+then deploy/pro1x.scm's host can be the tailnet name.
+
+Waiting for the next deploy and a test on the phone:
+- keyboard light off after 60 s without a key (backlight-timeout);
+- panel dimmed to 30% after 60 s idle (pro1x-dim, Sway and Phosh);
+- tuigreet remembers the last user and session (/var/cache/tuigreet);
+- bluetoothctl installed: the adapter is powered (BlueZ over D-Bus);
+  what fails in the UI is not known yet (ask the author);
+- feedbackd (vibration), phoc rotation without black shield, Phosh
+  landscape across lock/unlock with the keyboard out: deployed
+  (deploy12), not yet tested.
+- GPS logger running (3 h from 00:59, standalone, no coordinates).
+
+Tailscale deploys work (2026-10-30): bash scripts/deploy.sh <tailnet
+address> deployed generation 22 over the tailnet; the host key was checked
+against the USB one first (same SHA256).  The address itself stays out of
+git (tailscale ip -4 on the phone).
+
 Tailscale on the phone (author, 2026-10-30: soon), so the agent can
 deploy while the phone is away from the PC (GPS tests outdoors, for
 one).  The PC's tailscale package comes from umanwizard's channel
@@ -178,6 +221,272 @@ phone reconfigure from its own config.scm but download what the PC built,
 and URL added to the phone's guix-configuration (authorized-keys,
 substitute-urls) in config.scm.  Otherwise the phone builds the kernel
 and Phosh itself.  Not set up yet.
+
+## Waiting for the author (2026-10-30, 04:30)
+
+- Login pops: fixed (2624e73, generation 30): the author no longer hears
+  them (2026-10-30).  The agent's login on generation 31 logged the
+  session script setting the amp switches off and WirePlumber setting
+  them on 3 s later, with 0 amp power-ons during the probe.
+- On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
+  Fetch MMS launcher: deploying (deploy30); need a relog and a try.
+- CI kernel (charge limit, LED pattern trigger): run 41025825198 green
+  (warm-up step da730ed passed); kernel q1i51w54 imported on the PC,
+  generation 30 (2624e73 + 4de272d), booted 2026-10-30 ~10:07.  Comes
+  back to tuigreet; modem probes (Modem/0, SIM present, PIN-locked as
+  after every boot: the author enters the PIN).  Charge limit and LED
+  trigger not tested yet.  Merge next into main: author's call.
+- "Forgot the Wi-Fi passwords" after the reboot into 30 (author): not a
+  loss, from NetworkManager's log (confirmed in the log; the networks'
+  names compared only as hashes).  Before the reboot the phone had left
+  its saved Wi-Fi at 09:03 and was on mobile data; after the reboot the
+  SIM was PIN-locked (no data, so offline), and the Wi-Fi in reach had
+  never been saved (its SSID and PSK match neither saved profile).  The
+  three Wi-Fi profiles are all in /var/lib/NetworkManager with their PSK.
+  One of the older ones has autoconnect=false.  10:57-11:05 the new one
+  dropped 8 times: deauth reason 1, then ssid-not-found (the AP went
+  away: the phone is on a 4G phone hotspot (author), which fits);
+  stable since.  Possible
+  improvement: a reminder for the SIM PIN at login, since mobile data
+  (and Tailscale) depend on it.
+- ADSP log spam: "qcom_q6v5_pas a400000.remoteproc: Handover signaled,
+  but it already happened", 4.4 a second (confirmed 2026-10-30).  Cause:
+  the accelerometer stream that sway-autorotate's monitor-sensor keeps
+  open through iio-sensor-proxy and libssc.  The ADSP raises its SMP2P
+  "ready" and "handover" bits again with each sensor batch (equal
+  counts, 15502/15501; wdog and fatal 0); the driver logs every rising
+  handover edge after the first (q6v5_handover_interrupt).  Measured:
+  smp2p-adsp interrupts 43/10 s with monitor-sensor, 0 without, 44 after
+  restarting it.  It started at the first login (10:19), not at boot.
+  (An earlier note here said "not monitor-sensor": that test killed
+  nothing, the process is named .monitor-sensor.)  About 390000 log lines
+  a day, and the ADSP woken 4 times a second while rotation is on.
+  Kernel patch ceb256b logs the repeats at debug level: CI run
+  41048883373, then import, deploy, reboot.  Stopping the stream with
+  the screen off: not wanted for now (author: the accelerometer may be
+  useful with the screen off).  Phosh releases the accelerometer when
+  the screen blanks, rotation is locked or auto-rotation is off
+  (rotation-manager.c claim_or_release_accelerometer);
+  sway-autorotate keeps it while toggled off.
+- Not deployed yet (wait for CI run 41048883373's kernel, which
+  ceb256b needs): 63db506/e1da441 no console=ttyMSM0; 0c05b2d
+  sway-autorotate holds the accelerometer only while on and lit, like
+  Phosh (tested by hand in the session); 26bd986 notification-leds in
+  pro1x-hardware-configuration (feedbackd device theme; colours tested
+  through a user theme); 0b75620 Sway caffeine quick setting and
+  rotation state in ~/.local/state (tested by hand in the session);
+  caffeine back in $XDG_RUNTIME_DIR, not kept across reboots (author).
+  After deploying and rebooting: check that the rotation state survives
+  the reboot and caffeine does not, the device theme loads (set a
+  colour in config.scm), term-console stops respawning, no handover
+  lines.
+- RGB LED colours (2026-10-30): sysfs red, green, blue, white, #800080,
+  #00FFFF written in turn (multi_intensity, brightness 255); what the
+  author saw: asked.  feedbackd's defaults light it (SMS blue, missed
+  call cyan).
+- Toggle persistence: Wi-Fi and mobile radios (NetworkManager.state),
+  feedback profile (GSettings), volume and mute (WirePlumber) persist
+  already (from their storage; reboot not checked).  Auto-rotation kept
+  "off" across the reboot into 34, caffeine was gone (confirmed).
+  Bluetooth: NOT persisted.  33915ed restored an rfkill block at boot;
+  in generation 34, with Bluetooth blocked from boot, `rfkill unblock
+  bluetooth' never returned and the phone hung (black screen, red LED,
+  no keys; hard reboot, 2026-10-30 ~13:37).  /var/log/messages stops at
+  13:35:08, so the cause is inferred from the timing only.  Block and
+  unblock of a Bluetooth powered at boot did work (twice).  Reverted
+  (c9f6b8f, generation 35); /var/lib/pro1x/rfkill-bluetooth set to 0.
+  Do not unblock Bluetooth in a boot that started with it blocked.  To
+  find out: a logger that survives the hang (dmesg -w over SSH to the
+  PC) and the author's go-ahead.  Torch and caffeine: not persisted on
+  purpose.
+- 2026-10-30 evening round (generations 41-43), author's list:
+  quick settings (notifications and Lock first, signal % first, cycling,
+  Super+q closes, dock OK/Tab dismiss), portrait with the keyboard closed
+  (Sway and Phosh), Chatty and Calls in the background (Sway only),
+  stevia patched for Sway (phoc's device-state protocol optional; not yet
+  seen drawn), notification wake and lock refresh (pro1x-notify),
+  "Guix" in yellow on the lock screen, battery LED patterns (yellow
+  breathing charging, green full/held, red blip low; seen by hand),
+  freedesktop sound theme, edge swipes (pro1x-gestures: all three work in
+  landscape, author), Calls fullscreen/portrait rule.  Vibration works
+  (fbcli phone-incoming-call, author).  Ringtone: profile was quiet.
+  Need a Sway relog to test most of it; an incoming call for Calls.
+- Generations 44-45 (2026-10-30 evening): foot server with footclient
+  for quick settings, launcher, switcher and Super+Return (pro1x-term;
+  Super+Shift+Return plain foot); pro1x-call-watch (incoming call while
+  locked: unlock with swaylock SIGUSR1, relock when the call is deleted;
+  the phone stays unlocked during the call); notification wake at half
+  the dim level with the backlight at 0 across power-on (red flash,
+  author); Calls fullscreen/portrait rule.  The author's Sway config has
+  all of it (backups beside it).  Needs a Sway relog; calls need a call.
+- Swipes (pro1x-gestures): the switcher toggles (second swipe closes,
+  log), the launcher did not: at the second swipe no launcher window was
+  open, in released and pressed modes.  Guess, not checked: the lift
+  that ends the swipe taps inside the new launcher and starts an entry.
+  Asked the author what they saw (they answer later).  The session runs
+  the logging copy /tmp/gestures-dbg (pressed mode) until the next login.
+- Proximity works (2026-10-30 21:44): iio-sensor-proxy (monitor-sensor
+  --proximity: 0/1) and ssccli (NEAR/FAR) followed every cover/uncover
+  by the author.  Two earlier tests saw no change: wrong timing against
+  the logger, or the first reading only (the corrected note said "not
+  working": wrong).  Next: blank the panel near the face during calls in
+  Sway (pro1x-call-watch); Phosh does its own.
+- Blank after 180 s, dim at 150 s (3ee97f9, 59ad954): Phosh's own
+  [org.gnome.desktop.session:Phosh] idle-delay=60 had kept Phosh at 60 s;
+  generation 40's Phosh session: swayidle dims at 150, blanks at 180
+  (confirmed).  Sway lock screen (f083a22, pro1x-lock): rendered on the
+  PC only; check at the next Sway lock.
+- Generation 34 (2026-10-30 13:33): CI kernel 3zg5vbvf (handover patch),
+  no console=ttyMSM0: 0 handover lines, term-console idle ("no serial
+  port console requested"), no respawns (confirmed).
+- OSK: stevia runs in Sway (started by hand; Visible follows SetVisible).
+  22e3cff starts it from the Sway config, Super+k and a Keyboard line in
+  quick settings show/hide it (the Sway config is a skeleton: existing
+  accounts need the lines).  Drawn and typing in Sway: not yet seen.
+  Phosh: works in generation 40 (author, 2026-10-30): stevia on text
+  fields with the keyboard closed, hidden with it out.  Causes found:
+  GTK 3 had no IM modules (d6641f0), stevia disabled itself for the
+  always-attached keyboard (ignore-hw-keyboards), and the override did
+  not reach stevia until it went into stevia's own compiled schemas
+  (f083a22, 223a2fa).  Sway: 9d04238 pro1x-osk-slider (added to the
+  author's ~/.config/sway/config with stevia and Super+k, backups
+  beside it).  At the next Sway login, check: stevia on a text field
+  slid in, none slid out, Super+k, the Keyboard line, the bar gear.
+- Quick settings (33a09c7, 7f8d774): battery header, Wi-Fi network and
+  signal, mobile technology/signal/operator, charge limit line (from
+  /etc/pro1x/charge.conf), Right on / Left off for every toggle, bar gear
+  (skeleton i3status-rust config; the author's copy needs the block).
+  Modem on LTE now (signal 52-60%, 2026-10-30, after the PIN).
+- sway-autorotate (0c05b2d, run by hand): ended with the Sway session at
+  the logout (confirmed).
+- Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
+  PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
+  phone), Left/Right on Brightness/Volume, Mute shows muted or the
+  volume, notification dock (mako over D-Bus: preview, Enter default
+  action, Tab pick, Del dismiss, ^X all).  Tested on the PC with stubs
+  and the helpers as the user on the phone; works on the phone (author,
+  2026-10-30).
+- Sway landscapes upside down (author): 8430c1f swaps left-up/right-up
+  (generation 31); works (author, 2026-10-30).  4de272d's watcher did not stop
+  monitor-sensor (.monitor-sensor, wrapped); fixed in the next commit.
+- guix pull as user on the phone: running (window 3).
+- Calls speaker/mute: a measurement call when the author has time.
+
+- term-console restarts every 10 s (4566 times in /var/log/messages):
+  Guix's serial getty runs on the console= of the kernel command line,
+  ttyMSM0, and /dev/ttyMSM0 does not exist (no UART enabled), so agetty
+  exits with 1.  63db506 drops console=ttyMSM0 (mobile, minimal,
+  mobile-encrypted; flash-encrypted.sh and update-encrypted-boot.sh
+  keep theirs); deploy with the CI kernel, then reboot.
+
+## Research notes (2026-10-30, agent)
+
+- **GPS**: ModemManager (QMI) lists gps-raw, gps-nmea, agps-msa/msb and
+  has gps-raw and gps-nmea enabled, but `mmcli --location-get` returns no
+  NMEA at all, not even fixless sentences (confirmed, indoors).  moWerk's
+  direct QMI LOC client (LOC service 16 over QRTR, REG_EVENTS + START)
+  gets NMEA at 1 Hz indoors without a fix (reported,
+  sailfishos-pro1x-mainline notes/gnss.md).
+  ModemManager's debug log (confirmed): it sends LOC Register Events and
+  Start, reads the NMEA types and gets "none", and no NMEA or position
+  indication ever arrives.  moWerk got NMEA after setting the types.
+  Next (asks the author: it changes a modem setting that may persist;
+  revert is setting "none" again):
+  `qmicli -d qrtr://0 --loc-set-nmea-types="gga|gsa|gsv|rmc|vtg"`, then
+  re-enable gps-nmea in ModemManager; then geoclue (modem source) and
+  XTRA/time injection for faster fixes.
+- **Fingerprint**: side sensor; nothing in the mainline device tree, the
+  NixOS port or moWerk's notes, and no mainline or libfprint support found.
+  Qualcomm phones usually route such sensors through TrustZone (inferred,
+  not checked for this phone).  Needs the stock device tree or vendor
+  sources to identify the part and its bus; not worth more without them.
+
+## Next big items (author, 2026-10-30)
+
+1. **Guix Home** for the user's files: Sway config, foot, i3status-rust,
+   .bashrc, phoc.ini (scale), later the author's PC scripts.  The port
+   provides a default home environment the user's inherits (as config.scm
+   inherits the port's system); embedded in the system with
+   guix-home-service-type, so the same deploy builds both and one
+   generation rolls back both.  Per-path policy in the user's home
+   config, author's idea:
+   - managed: read-only store link, Guix Home wins (edit the home config);
+   - seeded: copied once when missing, then the user's (the user's file
+     wins; later port defaults do not overwrite it);
+   - unmanaged: left alone.
+   Seeded is the safe default for apps that write their own config (Sxmo
+   copies its defaults into ~/.config: foot.ini, sway).  dconf settings
+   (GNOME Settings) are not files and stay outside.  Tonight's hand edits
+   of the user's copies (sway config x3, foot.ini; .bak files beside them)
+   are what this replaces.
+2. **GPS**: see the GPS entry above (LOC present, no NMEA yet).
+3. **Bluetooth**: works from Phosh once gsd-rfkill runs and /dev/rfkill
+   is writable by netdev (acc408c; author, 2026-10-30).  Pairing with
+   a speaker works, and sound plays on it (author, 2026-10-30).
+4. **Sway quick settings** (low priority, author 2026-10-30): an fzf menu
+   like sway-window-switcher for Wi-Fi (the author's nmcli-fzf), mobile
+   data, Bluetooth, torch, auto-rotate, brightness, volume, later
+   location.  Auto-rotate needs a Sway rotation helper: rot8 1.0 (in
+   Guix, author's suggestion) reads only raw IIO sysfs, which the SSC
+   accelerometer is not, so sway-autorotate following monitor-sensor
+   --accel, with an on/off toggle, a force (sway-rotate, which turns
+   auto off) and landscape while the keyboard is out.
+5. **On-screen keyboard**: none in Guix at the pin; package stevia (C,
+   GTK 4) rather than squeekboard (Rust).
+7. **Notification LED**: rgb:status (multicolour) exists in sysfs.
+   feedbackd 0.8.1 drives LEDs for events (fbd-ledctrl) when a udev rule
+   tags them; check it handles multicolour LEDs.  moWerk drives the same
+   LED with mce (53d590a).  Author, 2026-10-30.
+10. **Calls: speaker and mute buttons** (2026-10-30, two attempts,
+   stopped).  Calls work (received a call, both directions).  Buttons
+   reach callaudiod; callaudiod 0.1.9 switches sink ports, which PipeWire
+   1.2+ does not have here (one profile per output; ConflictingDevice in
+   UCM changes nothing; callaudiod upstream deprecated, speaker switching
+   in calls open upstream, pipewire issue 4868).  Now pro1x-voice-call
+   follows callaudiod: test call 03:10 logged the profile switching to
+   Voice Call (Mic, Speaker) and back, and the VoiceMMode1 capture route
+   off/on with mute, keep-alives running; but no audible change (author:
+   no speaker, caller still heard while muted).  Next: measurement, not a
+   fix: amixer snapshots during a call before/after each button, to find
+   which routes the DSP voice session really uses.
+9. **MMS** (receiving works, 2026-10-30, author): the operator uses one
+   combined APN for data and MMS; the separate MMS APN entered at first
+   (and later a mistyped proxy port) was the whole problem.  After
+   correcting the settings in Chatty, mmsd-tng (restarted to reprocess
+   its queue) fetched the four waiting MMS at once.  Sending works (author,
+   2026-10-30, Chatty).
+   History below.
+   mmsd-tng 2.6.4 packaged and started with Phosh (ff2261c).
+   It receives the MMS notifications (WAP push: transaction id, location)
+   but does not download: the active mobile-data connection's APN differs
+   from the MMS APN, and mmsd-tng only downloads over the active bearer
+   when its APN equals MMS_APN (it opens no second bearer).  Its README
+   says so: "can only support one bearer at a time ... will not function
+   with carriers that have two APNs".  The author's operator has two;
+   MMS APN = data APN in Chatty did not help (the MMSC is only reached on
+   the MMS APN).  Options: (1) mobile data on the MMS APN, if the operator
+   routes data there; (2) a helper switching the NM connection to the MMS
+   APN while mmsd downloads, then back; (3) a second bearer in mmsd-tng
+   (upstream-sized).  Operator, APN and MMSC values stay out of git.
+   Option 3 (2026-10-30): the first two tests used a mistyped MMS APN
+   (author), so their "ServiceOptionNotSubscribed" proved nothing
+   (corrected).  With the right APN: the second link is created
+   (qmapmux0.1, mux id 2); without its own profile IPv4 failed with
+   "call-already-present" (same profile slot as data) and IPv6 with
+   option-unsubscribed; with its own 3GPP profile (MMS APN, IPv4, type
+   mms, author's OK) the network refuses: 3GPP cause 33, option
+   unsubscribed.  So this subscription allows no MMS context beside data,
+   on 3G at least: option 3 closed.  The profile was deleted and the
+   profile list compared with a snapshot: identical; data stayed up.
+   Option 2 (helper, with confirmation) it is; its notify-send returns at
+   once without an answer when the helper runs it (by hand it waits):
+   not solved yet.
+8. **Fingerprint reader**: research first: which sensor, whether it is
+   reachable on SPI or only through TrustZone (likely, on Qualcomm),
+   any mainline port or libfprint driver.  Author, 2026-10-30.
+6. **Camera**: port moWerk's libcamera 0.7.2 patches (AfWindows, manual
+   gain/exposure/EV, AfState, focus held), check what Snapshot exposes;
+   kernel flash-LED link (moWerk 0027) in a later kernel batch.
 
 ## Next steps (author's order, 2026-10-29)
 
@@ -222,35 +531,22 @@ and Phosh itself.  Not set up yet.
 
 ---
 
-## 1. PipeWire, WirePlumber, audio, camera
+## 1. Audio and camera
 
-NixOS (`modules/audio.nix`, `modules/camera.nix`):
-- `services.pipewire` with ALSA and Pulse, WirePlumber with the Pro¹x
-  config package, `pro1x-audio-init` as WirePlumber's ExecStartPre;
-- `ALSA_CONFIG_UCM2` pointing at alsa-ucm-conf merged with
-  `device/audio/ucm2`;
-- rtkit;
-- WirePlumber's user unit gets `LD_LIBRARY_PATH=<pro1x-libcamera>/lib`, so
-  PipeWire's libcamera SPA plugin uses the patched libcamera;
-- a `pro1x-voicepcm` user service for calls.
-
-Guix plan: user services through Guix Home (`home-pipewire-service-type`,
-`home-dbus-service-type`) applied to `user` by `guix-home-service-type`,
-or Shepherd user services started from the session scripts; rtkit;
-`pro1x-audio-init` before WirePlumber; merged UCM2 tree; WirePlumber's
-environment carrying the libcamera path.  Playback on speaker and headset
-first, then camera in cameractrl and Snapshot.  Packages: `pipewire`,
-`wireplumber` (gnu packages pulseaudio / linux), `rtkit`.
+Done 2026-10-29/30 (see "Tested on the phone" above): PipeWire,
+WirePlumber, pipewire-pulse per session from the session scripts (not
+Guix Home), patched libcamera in WirePlumber, speaker plays, both
+cameras in Snapshot.  Open: pops at login, earpiece, headphones,
+microphones, call audio (pro1x-voicepcm), rtkit (PipeWire warns it is
+missing; no audible effect noticed).
 
 ## 2. Modem
 
-ModemManager 1.24 sees the modem (2026-10-29).  With a SIM inserted there
-is no LTE network (author, 2026-10-29): not looked into yet; check SIM
-state (`mmcli -m 0`, UIM provisioning session, AGENTS.md §7), registration
-and the modem's crash log.  Next, with the author:
-SIM provisioning (UIM session, AGENTS.md §7), then SMS, calls, data.
-Shepherd `requirement` orders but does not pull in rmtfs; check MM does
-not start before rmtfs on a cold boot.
+SIM detected (UIM provisioning every boot), unlocked, data on 3G
+(2026-10-30).  Open: LTE (see "mobile data" above: ask the author again
+if no 4G while moving around), SMS, calls (ask before each, AGENTS.md
+§0).  Shepherd `requirement` orders but does not pull in rmtfs; check MM
+does not start before rmtfs on a cold boot.
 
 ## 3. Boot menu, rollback, bootloader
 
@@ -283,15 +579,17 @@ not start before rmtfs on a cold boot.
   encrypted system still needs `update-encrypted-boot.sh` after a deploy.
 - After a deploy that changes sessions, tuigreet shows the old session
   list until it restarts (log in and out once).
+- Since 2026-10-30 deploys build the phone's own config.scm; check
+  that a deploy after the owner edits config.scm keeps the edit.
 
 ## 4. Sensors
 
-`pro1x-sensors-service-type` extends D-Bus and udev (rules confirmed in
-place).  Open: the ADSP's `sensor_process` crashed at boot on 2026-10-29
-(`SNS_REG_INIT ... sns_registry_sensor.c:94`, "fatal error received");
-`qrtr-lookup` is not installed (needed to wait for QRTR service 400 before
-iio-sensor-proxy, as NixOS does).  Compare with sailfish-rag `Mainline/`
-sensors notes.
+Accelerometer and auto-rotation work (2026-10-30): hexagonrpcd 40e5041
+stopped the ADSP's SNS_REG_INIT crash, iio-sensor-proxy 3.9 with libssc
+reads the sensors, polkit lets users claim them.  qrtr-lookup is
+installed and iio-sensor-proxy waits for QRTR 400.  Open: proximity
+(screen off in calls), light, gyroscope; check the accelerometer axes in
+all four orientations (mount matrix from the NixOS port).
 
 ## 5. CI
 
@@ -299,6 +597,15 @@ sensors notes.
   `guix time-machine` (grafting glib-2.86.5) and the step hides failures;
   9d195b1 makes it print the failed builder's log.  The run for c372e3e
   was cancelled on purpose (author).
+- glib graft (2026-10-30, confirmed in the logs): it fails on the first
+  `guix time-machine` call of a run and the next call builds the same
+  profile.drv (hxsm7g0s…) without it failing (run 40946059940: U-Boot
+  failed, Prefetch then passed).  95c1257 moved U-Boot after the image,
+  so Prefetch became the first call and failed the job (40997348185,
+  41007214587).  The cause of the first failure is not known (a race
+  with the substituted glib under the unprivileged daemon is a guess).
+  Workaround: a "Build the pinned Guix" step that retries once.  If the
+  retry also fails, that is the second failed fix (AGENTS.md §4.5): stop.
 - Artifact: `rootfs-mobile`, 2.9 GB; `resize2fs -M` runs before upload.
   Releases only on tags (2 GiB per asset: split or zstd).
 

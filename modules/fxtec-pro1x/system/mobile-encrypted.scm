@@ -2,7 +2,7 @@
 ;;;
 ;;; Partition layout of /dev/disk/by-partlabel/userdata:
 ;;;   [0,  256 MiB) : plain ext4 "guixboot" — U-Boot reads kernel + extlinux.conf from here
-;;;   [256 MiB, …)  : LUKS2 container — passphrase entered in initrd, root mounted from here
+;;;   [256 MiB, end)  : LUKS2 container — passphrase entered in initrd, root mounted from here
 ;;;
 ;;; First flash:
 ;;;   bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
@@ -78,7 +78,9 @@ files root may log in with."
   (kernel-arguments
    (append
     (list
-     "console=ttyMSM0,115200n8"
+     ;; No console=ttyMSM0: this phone has no UART device (/dev/ttyMSM0 is
+     ;; absent), and Guix's serial getty (term-console) on that console
+     ;; failed and was respawned every 10 s (2026-10-30).
      "console=tty1"
      "loglevel=4"
      "g_cdc.host_addr=02:50:31:e8:00:01"

@@ -39,7 +39,7 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found (install android-t
 need adb
 
 # ── Check device is reachable ─────────────────────────────────────────────────
-info "Waiting for ADB device …"
+info "Waiting for ADB device…"
 adb wait-for-device
 SERIAL=$(adb get-serialno)
 info "Found device: $SERIAL"
@@ -107,7 +107,7 @@ dump_part() {
 }
 
 # ── Critical partitions (IMEI / EFS / calibration) ────────────────────────────
-info "Backing up critical partitions …"
+info "Backing up critical partitions…"
 dump_part modemst1
 dump_part modemst2
 dump_part fsg
@@ -115,7 +115,7 @@ dump_part fsc
 dump_part persist
 
 # ── Bootloader / AVB (useful for Android restore) ─────────────────────────────
-info "Backing up bootloader and AVB partitions …"
+info "Backing up bootloader and AVB partitions…"
 dump_part boot_a
 dump_part boot_b
 dump_part vbmeta_a

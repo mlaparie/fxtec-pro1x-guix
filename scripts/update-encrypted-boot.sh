@@ -58,7 +58,7 @@ if [ -f "$PARAMS_FILE" ]; then
 fi
 
 if [ -z "$APPEND_LINE" ]; then
-    APPEND_LINE="console=ttyMSM0,115200n8 console=tty1 loglevel=4 \
+    APPEND_LINE="console=tty1 loglevel=4 \
 g_cdc.host_addr=02:50:31:e8:00:01 g_cdc.dev_addr=02:50:31:e8:00:02"
 fi
 
@@ -70,7 +70,7 @@ info "Copying initrd → /boot/initrd.img"
 cp -f "$INITRD" /boot/initrd.img
 
 # ── Write extlinux.conf ───────────────────────────────────────────────────────
-info "Writing /boot/extlinux/extlinux.conf …"
+info "Writing /boot/extlinux/extlinux.conf…"
 mkdir -p /boot/extlinux
 cat > /boot/extlinux/extlinux.conf << EOF
 # Updated by scripts/update-encrypted-boot.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ).

@@ -24,6 +24,13 @@ run) ;;
   ;;
 esac
 
+# One session at most: PipeWire's profile probe at every login enables the
+# Voice Call verb too, which started a new copy each time (they piled up,
+# held the card in the Voice Call profile and their keep-alive streams
+# power-cycled the codec: the pops at login, 2026-10-30).
+if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+  exit 0
+fi
 echo $$ >"$pidfile"
 kp=""
 cur=""
@@ -32,8 +39,8 @@ sig=""
 pick() { pactl list short "$1" | awk -v pat="$2" '$2 ~ pat && $2 !~ /monitor/ { print $2; exit }'; }
 
 start_keepers() {
-  sink=$(pick sinks 'platform-sound.*Voice_Call')
-  src=$(pick sources 'platform-sound.*Voice_Call')
+  sink=$(pick sinks 'platform.sound.*Voice_Call')
+  src=$(pick sources 'platform.sound.*Voice_Call')
   cur="$sink $src"
   [ -n "$sink" ] || return 1
   echo "keep-alive on $sink / $src"
@@ -45,6 +52,43 @@ start_keepers() {
   fi
 }
 
+# Mute: in a call the microphone reaches the modem through the DSP, not
+# through PipeWire, so muting the PipeWire source (Calls' mute button, via
+# callaudiod) changed nothing.  Follow the Voice Call source's mute state
+# with the codec-to-DSP capture route instead.
+muted=""
+follow_mute() {
+  [ -n "$src" ] || return 0
+  m=$(pactl get-source-mute "$src" 2>/dev/null | awk '{print $2}')
+  [ -n "$m" ] && [ "$m" != "$muted" ] || return 0
+  muted=$m
+  if [ "$m" = yes ]; then
+    amixer -c0 -q cset name='VoiceMMode1 Capture Mixer VA_CODEC_DMA_TX_0' 0
+  else
+    amixer -c0 -q cset name='VoiceMMode1 Capture Mixer VA_CODEC_DMA_TX_0' 1
+  fi
+  echo "microphone muted: $m"
+}
+
+# Speaker: PipeWire (1.2+) gives one card profile per output, so
+# callaudiod's port switch does nothing here; upstream has no speaker
+# switching during calls yet (pipewire issue 4868).  callaudiod still
+# records Calls' speaker button ("Speaker enabled"); follow it by switching
+# between the Voice Call profiles of the card.
+speaker=""
+follow_speaker() {
+  s=$(callaudiocli -S 2>/dev/null | awk '/Speaker enabled/ {print $3}')
+  [ -n "$s" ] && [ "$s" != "$speaker" ] || return 0
+  card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
+  [ -n "$card" ] || return 0
+  speaker=$s
+  if [ "$s" = CALL_AUDIO_SPEAKER_ON ]; then
+    pactl set-card-profile "$card" "Voice Call (Mic, Speaker)" && echo "speaker on"
+  else
+    pactl set-card-profile "$card" "Voice Call (Earpiece, Mic)" && echo "speaker off"
+  fi
+}
+
 stop_keepers() {
   [ -z "$kp" ] || kill $kp 2>/dev/null
   kp=""
@@ -53,7 +97,7 @@ stop_keepers() {
 alive() {
   [ -n "$kp" ] || return 1
   for p in $kp; do kill -0 $p 2>/dev/null || return 1; done
-  [ "$cur" = "$(pick sinks 'platform-sound.*Voice_Call') $(pick sources 'platform-sound.*Voice_Call')" ]
+  [ "$cur" = "$(pick sinks 'platform.sound.*Voice_Call') $(pick sources 'platform.sound.*Voice_Call')" ]
 }
 
 # The DSP voice session (pro1x-voicepcm) is tied to the call: it was found to work when
@@ -88,17 +132,43 @@ if [ "${PRO1X_VOICE_ALWAYS:-0}" = 1 ] || ! command -v mmcli >/dev/null 2>&1; the
   always=1
 fi
 
-while :; do
-  if ! alive; then
-    stop_keepers
-    sleep 1
-    start_keepers || true
-  fi
+# After the last call: stop, put the card back on HiFi (otherwise
+# WirePlumber saves the Voice Call profile and restores it at every login),
+# and exit.
+finish() {
+  stop_keepers
+  stop_pcm
+  card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
+  [ -n "$card" ] && pactl set-card-profile "$card" "HiFi (Mic, Speaker)" 2>/dev/null &&
+    echo "card back on HiFi"
+  rm -f "$pidfile"
+  exit 0
+}
 
+started=$(date +%s)
+incall=0
+while :; do
   if [ "$always" = 1 ]; then
     now=always
   else
     now=$(calls)
+  fi
+
+  if [ -n "$now" ]; then
+    incall=1
+    # Keep-alives only during a call.
+    if ! alive; then
+      stop_keepers
+      sleep 1
+      start_keepers || true
+    fi
+  elif [ "$incall" = 1 ]; then
+    finish # the last call ended
+  elif [ $(( $(date +%s) - started )) -ge 20 ]; then
+    # Started without a call (the profile probe at login): leave the card
+    # alone and go.
+    rm -f "$pidfile"
+    exit 0
   fi
 
   added=0
@@ -112,6 +182,11 @@ while :; do
     stop_pcm # the last call ended
   fi
   sig=$now
+
+  if [ -n "$vp" ]; then
+    follow_speaker
+    follow_mute
+  fi
 
   if [ -n "$vp" ] && ! kill -0 "$vp" 2>/dev/null; then
     wait "$vp" 2>/dev/null

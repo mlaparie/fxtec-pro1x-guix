@@ -1,0 +1,52 @@
+#!/bin/sh
+# pro1x-notify ID — what Sway does when mako shows notification ID
+#
+# Run by mako's on-notify (pro1x-mako):
+#   - notes the arrival time for the lock screen (sway-notifications log);
+#   - if the panel is off, lights it dimly for WAKE_FOR seconds (8), then
+#     turns it off again, unless there was input meanwhile: then the saved
+#     brightness comes back (pro1x-dim restore) and swayidle's own timeouts
+#     take over, as after any wake.  The backlight is set to 0 before the
+#     panel powers on and raised to the wake level 0.2 s later: a red flash
+#     showed at power-on otherwise (author, 2026-10-30);
+#   - if the screen is locked, redraws the lock picture (pro1x-lock
+#     --refresh) so it lists the new notification.
+# Phosh does its own waking.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+id=${1:-}
+WAKE_FOR=8
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+
+[ -n "$id" ] && sway-notifications log "$id"
+
+if pgrep -u "$(id -u)" -x swaylock >/dev/null; then
+    pro1x-lock --refresh &
+fi
+
+lit=$(swaymsg -t get_outputs -r 2>/dev/null |
+          jq -r '[.[] | select(.active) | .power] | any')
+if [ "$lit" = false ]; then
+    bl=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n 1)
+    DIM_LEVEL=20
+    [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
+    if [ -n "$bl" ]; then
+        # Keep the level to return to (pro1x-dim restore), then dark.
+        [ -f "$rt/pro1x-dim" ] || cat "$bl/brightness" > "$rt/pro1x-dim"
+        echo 0 > "$bl/brightness"
+    fi
+    swaymsg 'output * power on' >/dev/null
+    if [ -n "$bl" ]; then
+        sleep 0.2
+        echo $(( $(cat "$bl/max_brightness") * DIM_LEVEL / 200 )) > "$bl/brightness"
+    fi
+    # A second swayidle: after 1 s idle, any input ("resume") ends it and
+    # leaves the panel on; otherwise it turns the panel off after WAKE_FOR.
+    pidfile="$rt/pro1x-notify-wake.pid"
+    [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null
+    swayidle timeout 1 true resume "pro1x-dim restore; kill \$(cat '$pidfile')" \
+             timeout "$WAKE_FOR" "swaymsg 'output * power off'; kill \$(cat '$pidfile')" \
+             >/dev/null 2>&1 &
+    echo $! > "$pidfile"
+fi

@@ -77,6 +77,38 @@
         "confidence": "handover",
         "date": "2026-10-27",
         "source": "commit 3c94f45"
+      },
+      {
+        "title": "A voice-centric modem setting can keep a phone off LTE without VoLTE",
+        "general": "3GPP lets a voice-centric UE that cannot do voice on LTE (no IMS/VoLTE, no CSFB from the operator) leave E-UTRAN. On a mainline port without IMS, check the modem's usage preference before blaming bands or carrier profiles.",
+        "instance": "Pro1X: 4G allowed and preferred, every LTE band enabled, carrier profile ROW_Commercial (the only generic one of 25: Asian, Brazilian, Russian operators), yet UMTS only, 28% signal; another phone gets 5G at the same place. qmicli --nas-get-system-selection-preference: usage voice-centric, voice ps-preferred. Not tested: data-centric is stored in modem NV (modemst via rmtfs), author's decision pending. moWerk's notes: LTE registered on this phone with another operator.",
+        "confidence": "inferred",
+        "date": "2026-10-30",
+        "source": "qmicli on the phone 2026-10-30; TODO.md"
+      },
+      {
+        "title": "GNSS: LOC service present, but no NMEA",
+        "general": "A QMI LOC service on QRTR does not prove the GNSS engine works; check that NMEA indications arrive before writing a location stack.",
+        "instance": "Pro1X, 2026-10-30: QMI service 16 (LOC v2) on QRTR; ModemManager lists gps-raw, gps-nmea, agps-msa/msb. SUPL server and agps-msb fail ('Failed to receive indication'); gps-nmea enabled but 'couldn't setup required NMEA traces: Operation timed out'; qmicli --loc-follow-nmea for 75 s: nothing; 30+ min indoors: nothing. No port has GPS on this phone (NixOS README: untested; moWerk: not started).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "ModemManager log and qmicli on the phone"
+      },
+      {
+        "title": "QMI data bearers are multiplexed; a second context may still be refused by the network",
+        "general": "ModemManager on QMI/rmnet multiplexes bearers (qmapmux links), so two data contexts are possible on the modem side. Whether the network accepts a second PDP context on another APN is the operator's decision; 3GPP cause 33 (option unsubscribed) is the network refusing, not a modem fault. A second bearer without its own 3GPP profile can fail with 'call-already-present' (same profile slot). Snapshot the 3GPP profile list before adding one, and compare after deleting it.",
+        "instance": "Pro1X, 2026-10-30: data bearer on qmapmux0.0; a second bearer created qmapmux0.1 (mux id 2); with a dedicated profile (IPv4) the network answered cause 33. The profile was deleted and the list compared with the snapshot: identical. Earlier refusals came from a mistyped APN.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "ModemManager log and mmcli on the phone"
+      },
+      {
+        "title": "Check the operator's published APN before assuming a separate MMS APN",
+        "general": "Many operators carry MMS on the data APN (APN type default,mms). A separate MMS APN entered by mistake makes every MMS download fail; with the combined APN, mmsd-tng fetches over the data connection. Restart mmsd-tng after changing its settings so it processes its queue again.",
+        "instance": "Pro1X with the author's operator: combined APN; after correcting the MMS APN and a proxy port typo (89 for 80) the four waiting MMS downloaded at once.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "author 2026-10-30; mmsd-tng log"
       }
     ],
     "usb_network": [
@@ -133,6 +165,22 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "phone dmesg 2026-10-28; author observed the white panel"
+      },
+      {
+        "title": "The Adreno 610 renders: check devfreq before assuming software rendering",
+        "general": "Mesa's libgallium holds the GPU driver and llvmpipe, and libLLVM is mapped either way, so the loaded libraries prove nothing. The GPU's devfreq trans_stat shows whether it works.",
+        "instance": "Pro1X, phoc 0.56: /sys/class/devfreq/5900000.gpu, 17473 transitions and about 6 min at 950 MHz in one boot: freedreno in use. card0 and renderD128 are msm_dpu.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "sysfs on the phone 2026-10-30"
+      },
+      {
+        "title": "The keyboard slide is SW_KEYPAD_SLIDE on gpio-keys; Phosh ignores it",
+        "general": "Compositors and shells handle lid and tablet switches, rarely the keypad-slide switch; a phone with a sliding keyboard needs its own watcher for rotation and backlight.",
+        "instance": "Pro1X: gpio-keys (also volume-up, camera), udev symlink /dev/input/pro1x-slider. Phosh rotated with the sensor with the keyboard out; a session helper locks rotation and sets transform 270 on slide-out (90, as in Sway's config, was upside down in Phosh).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "author 2026-10-30; commits 6d57e7f, ad7bc0f"
       }
     ],
     "video": [
@@ -161,6 +209,66 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "event logger on /dev/input/pro1x-slider with the author sliding; swaymsg -t get_outputs vs dpms; echo 1 > brightness lit the keys (author)"
+      }
+    ],
+    "audio": [
+      {
+        "title": "A sensor-stack crash on the ADSP takes audio down with it",
+        "general": "On Qualcomm SoCs the sensor core (SSC) and audio (q6afe/q6asm) share the ADSP. If the sensor core crashes during its init, the ADSP restarts and audio calls fail afterwards: AFE set params timeouts, the codec cannot get its clock, every PCM open fails with EBUSY. Check dmesg for 'fatal error received ... sensor_process' before debugging the audio stack.",
+        "instance": "Pro1X, Linux 7.1: 'fatal error received: err_qdi.c ... sensor_process ... SNS_REG_INIT ... sns_registry_sensor.c' at 12 s, then 'qcom-q6afe ... AFE set params failed -110', 'va_macro: unable to prepare mclk', wcd937x 'ASoC error (-16)', PipeWire only Dummy Output. Cause: hexagonrpcd da7a374 refused the sensor core's registry writes; 40e5041 accepts them and the crash is gone. SailfishOS's card re-probe (rmmod/modprobe snd_soc_sm8250) made it worse here: the card failed to instantiate until reboot.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "dmesg on the phone 2026-10-29; hexagonrpc source diff da7a374..40e5041 (apps_std_open_mode); commit 3305bd0"
+      },
+      {
+        "title": "The speaker amplifiers are fed by the codec's headphone stage: its gain sets speaker loudness",
+        "general": "On wcd937x boards with external speaker amplifiers driven from HPH, the HPH volume control decides how loud the speaker gets; a UCM default chosen for headphones leaves the speaker quiet even at 100% software volume.",
+        "instance": "Pro1X: HPHL/HPHR Volume 0..20 (higher is louder here, not inverted), UCM boot value 12. Author's listening test: 16 louder, 20 wanted for the speaker. Set to 20 in the Speaker devices of HiFi and Voice Call, 12 restored on disable so headphones and earpiece keep 12. The amixer dB scale shown for HPH (0.07 dB steps) is not meaningful.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "amixer on the phone; author 2026-10-29/30; commit 34eb12f"
+      },
+      {
+        "title": "S24_LE playback is about 40 dB too quiet on this card",
+        "general": "If a card plays far too quietly through the sound server but normally through aplay, compare the sample formats: the server may pick a format the codec path mishandles.",
+        "instance": "Pro1X: PipeWire opened hw:0,0 as S24_LE (hw_params); the NixOS port forces S16LE with a WirePlumber rule. Confirmed here: barely audible at full volume until the rule applied.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "/proc/asound/card0/pcm0p/sub0/hw_params; NixOS device/audio/wireplumber.conf.d/52-pro1x-s16.conf; commit 816db2d"
+      },
+      {
+        "title": "Speaker amplifier switches found on with no session running; pops at login",
+        "general": "Pops when a sound server starts usually mean an amplifier is live while routes change. Read the amplifier switches while nothing plays before blaming the codec.",
+        "instance": "Pro1X, 2026-10-30: logged out, Spk0/Spk1 OUT Switch and HPHL Switch on although the Speaker DisableSequence ran (HPH gain back to 12). Spk0 went on again seconds after being switched off with no session running (cause unknown). At login PipeWire probes the Voice Call profile (VoiceMMode1 routes on/off for 0.6 s) and then enables HiFi Speaker; the author hears pops at login only. 'amixer events' lists 1279 controls for about a minute before reporting changes. moWerk reports pops at amp power changes, NixOS too.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "amixer cget/events on the phone; author 2026-10-30"
+      },
+      {
+        "title": "Login pops: the PipeWire probe opens the playback PCM repeatedly and each open powers the speaker amplifiers when their switches are left on",
+        "general": "On ASoC cards whose speaker amplifiers are DAPM widgets behind a mixer switch, a PCM open alone powers the whole path, amplifiers included, if the switch is on. WirePlumber/ACP opens and closes each PCM several times while it probes profiles at startup, so a switch left on by the previous session gives one amplifier power cycle per open: audible pops at every login. Turn the switches off before the audio daemon starts and let the UCM EnableSequence turn them on after the probe. Without ftrace, polling the DAPM debugfs widget files (/sys/kernel/debug/asoc/<card>/<component>/dapm/<widget>) every 10 ms together with /proc/asound/card*/pcm*/sub0/status gives a usable power timeline.",
+        "instance": "Pro1x, two aw87339 amplifiers (aw87339.1-0059/005a, widgets Spk0/Spk1 SPK PA) fed by the wcd937x HPH stage; controls Spk0/Spk1 OUT Switch. Restarting the Sway session PipeWire 1.6.8 + WirePlumber 0.5.17 by hand (generation 29): with the switches on, pcm0p opened about 8 times in 1.2 s and both amps plus HPHL/HPHR PGA were on from +0.57 s to +1.75 s, with one full off/on cycle. With both switches set to 0 first: 24 probe opens, amps never on; WirePlumber set the switches back on at +1.9 s (Speaker EnableSequence). Fix in pro1x-audio-session (amixer before pipewire). The kernel has no tracefs.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "DAPM/PCM logs /root/pops/082612 and the AMPS_OFF run on the phone; commit 2624e73, generation 30; the author no longer hears the pops (2026-10-30)"
+      }
+    ],
+    "sensors": [
+      {
+        "title": "SSC sensors need an SSC-enabled iio-sensor-proxy, not just hexagonrpcd",
+        "general": "With the sensor core running (QRTR service 400), iio-sensor-proxy still exits if it was built without libssc; it finds no IIO sensor. Check the build option before the DSP side.",
+        "instance": "Pro1X: iio-sensor-proxy 3.9 -Dssc-support=enabled with libssc 0.4.4; monitor-sensor: 'Has accelerometer (orientation: undefined, tilt: face-up)' lying flat. The firmware mount matrix is all zeros for every SSC sensor ('falling back to identity'); the udev ACCEL_MOUNT_MATRIX from the NixOS port applies to the accelerometer.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "monitor-sensor and iio-sensor-proxy log on the phone; commit e4051eb"
+      },
+      {
+        "title": "ADSP 'Handover signaled, but it already happened' repeats with every SSC sensor batch",
+        "general": "On qcom PAS remoteprocs the handover SMP2P bit is meant to rise once at start; the q6v5 driver logs an error for each later rising edge. A streaming sensor client on an SSC (sensors on the ADSP) makes the ADSP raise its ready and handover bits again with each batch, so a running accelerometer stream floods the kernel log; count the smp2p and q6v5 lines in /proc/interrupts over 10 s with and without the client before suspecting a crash.",
+        "instance": "Pro1x, kernel 7.1.0 (sm6115-mainline 8cd9520d), generation 33: smp2p-adsp, q6v5 ready and q6v5 handover 43-44 per 10 s with monitor-sensor --accel (iio-sensor-proxy 3.9, libssc) running, 0 without; wdog and fatal 0; ADSP stays up and audio keeps working. Started at the first login, when sway-autorotate started monitor-sensor.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "/proc/interrupts on the phone; drivers/remoteproc/qcom_q6v5.c q6v5_handover_interrupt; arch/arm64/boot/dts/qcom/sm6115.dtsi remoteproc@a400000 interrupts"
       }
     ]
   }

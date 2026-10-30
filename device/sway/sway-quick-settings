@@ -1,0 +1,467 @@
+#!/bin/sh
+# sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
+#
+# Opened by Super+q, or the gear in the bar (--bar), in a floating foot
+# (app id quicksettings).  One line
+# per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
+# data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
+# (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
+# shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
+# (full/quiet/silent), brightness, volume, mute, notifications.
+# Enter toggles or opens; Right turns a setting on (or steps it up, or
+# opens SIM and Notifications), Left turns it off (or steps it down); Esc
+# closes.  The header shows the battery level and charging state; the
+# Wi-Fi line the network and signal, the mobile line the access technology,
+# signal and operator; the charge limit line what config.scm set
+# (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
+#
+# The SIM line shows the lock state and asks for the PIN when the SIM is
+# PIN-locked.  The Notifications line opens a dock of mako's notifications
+# (current ones, then history) with the text in a preview: Enter runs the
+# default action, Tab picks another, Del dismisses, Ctrl-X dismisses all,
+# PgUp/PgDn scroll the preview, Esc goes back.
+#
+# Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl, makoctl (system
+# profile); gsettings, gdbus, fzf, sway-autorotate, sway-notifications (in
+# this package's PATH).  The user is in netdev (NetworkManager,
+# ModemManager, /dev/rfkill) and input (flash LEDs).
+#
+# State: works on the phone (author, 2026-10-30): the menu, Left/Right
+# steps, the SIM line and the notification dock.
+
+torch=/sys/class/leds/white:flash-0/brightness
+statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
+caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
+self=$0
+
+osk() {                         # osk true|false: stevia, if it runs
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
+}
+
+osk_state() {                   # shown, hidden, or "not running"
+    case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+                --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
+                2>/dev/null)" in
+        *true*) echo shown ;;
+        *false*) echo hidden ;;
+        *) echo "not running" ;;
+    esac
+}
+
+# --osk toggle|show|hide (Super+i in the Sway config).
+if [ "${1:-}" = --osk ]; then
+    case "${2:-toggle}" in
+        show) osk true ;;
+        hide) osk false ;;
+        *) [ "$(osk_state)" = shown ] && osk false || osk true ;;
+    esac
+    exit
+fi
+
+# The menu stays alive in Sway's scratchpad (started hidden at login with
+# --resident): showing it is instant, it shows its last state at once and
+# reloads through fzf's socket; Esc, Lock, Super+q or the swipe again hide
+# it.  A new foot and fzf each time took too long to show (author,
+# 2026-10-30).
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="$rt/pro1x-quick-settings.sock"
+osk_flag="$rt/pro1x-quick-settings.osk"   # --bar showed the keyboard
+
+qs_state() {                    # shown, hidden or none
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r '[.. | objects | select(.app_id? == "quicksettings") | .visible]
+               | if length == 0 then "none"
+                 elif .[0] then "shown" else "hidden" end'
+}
+
+qs_hide() {
+    swaymsg '[app_id="^quicksettings$"] move scratchpad' >/dev/null
+    if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
+}
+
+qs_start() {                    # qs_start [hidden]
+    QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
+        setsid pro1x-term --app-id=quicksettings -o pad=24x16 "$0" \
+        >/dev/null 2>&1 < /dev/null &
+}
+
+qs_show() {
+    case "$(qs_state)" in
+        hidden)
+            # Same geometry as the Sway config's rule, for the current
+            # orientation.
+            swaymsg '[app_id="^quicksettings$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
+            curl -s --unix-socket "$sock" -X POST http://localhost \
+                 -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
+        none) qs_start ;;
+    esac
+}
+
+case "${1:-}" in
+    --hide) qs_hide; exit ;;
+    --resident)                 # Sway config, at login: start it hidden
+        [ "$(qs_state)" = none ] && qs_start hidden
+        exit ;;
+    --bar)                      # the bar's gear: with the keyboard slid in,
+        evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+        if [ $? != 10 ]; then   # also the on-screen keyboard, for the PIN
+            touch "$osk_flag"; osk true
+        fi
+        qs_show; exit ;;
+esac
+
+# Super+q, the swipe: hide it if shown, else show it.
+if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
+    case "$(qs_state)" in
+        shown) qs_hide ;;
+        *) qs_show ;;
+    esac
+    exit
+fi
+
+modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
+battery=/sys/class/power_supply/battery
+charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable
+kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
+pin_tries() { grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9; }
+
+sim_state() {                   # [modem key-values, else asks mmcli]
+    kv=${1-$(modem_kv)}
+    [ -n "$kv" ] || { echo "no modem"; return; }
+    case "$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)" in
+        sim-pin) echo "PIN needed ($(printf '%s\n' "$kv" | pin_tries) tries)" ;;
+        sim-puk) echo "PUK needed" ;;
+        # PIN2 only guards fixed dialling (FDN): unlocked for normal use.
+        ""|--|none|sim-pin2|sim-puk2) echo unlocked ;;
+        *) printf '%s\n' "$kv" | kv_get modem.generic.unlock-required ;;
+    esac
+}
+
+# Asks for the PIN in this terminal and sends it once; never retries by
+# itself and leaves PUK unlocking to the owner (a wrong PUK ten times
+# destroys the SIM).
+sim_unlock() {
+    kv=$(modem_kv)
+    req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
+    sim=$(printf '%s\n' "$kv" | kv_get modem.generic.sim)
+    n=$(printf '%s\n' "$kv" | pin_tries)
+    case "$req" in
+        sim-pin) ;;
+        sim-puk)
+            printf 'The SIM needs its PUK.  Unlock it by hand:\n'
+            printf '  mmcli -i any --puk=<PUK> --pin=<new PIN>\n'
+            printf 'Enter to go back. '; read -r _; return ;;
+        *) return ;;
+    esac
+    printf 'SIM PIN (%s tries left, Enter alone to cancel): ' "${n:-?}"
+    stty -echo; read -r pin; stty echo; echo
+    [ -n "$pin" ] || return
+    case "$pin" in
+        *[!0-9]*) pin= ;;
+    esac
+    if [ ${#pin} -lt 4 ] || [ ${#pin} -gt 8 ]; then
+        printf 'A PIN is 4 to 8 digits; nothing sent.\n'
+        printf 'Enter to go back. '; read -r _; return
+    fi
+    if [ "${n:-0}" = 1 ]; then
+        printf 'Last try: a wrong PIN locks the SIM (PUK).  Type yes to send: '
+        read -r ok; [ "$ok" = yes ] || return
+    fi
+    if mmcli -i "$sim" --pin="$pin" >/dev/null 2>&1; then
+        printf 'SIM unlocked.\n'
+        sleep 1
+    else
+        printf 'Refused: %s\nEnter to go back. ' "$(sim_state)"
+        read -r _
+    fi
+    pin=
+}
+
+onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
+
+blocked() {                     # rfkill type -> on/off (on = not blocked)
+    if rfkill list "$1" 2>/dev/null | grep -q "Soft blocked: yes"; then
+        echo off
+    else
+        echo on
+    fi
+}
+
+battery_state() {               # "76% discharging", "85% held at limit"
+    cap=$(cat "$battery/capacity" 2>/dev/null) || { echo "no battery"; return; }
+    st=$(cat "$battery/status" 2>/dev/null | tr 'A-Z' 'a-z')
+    [ "$(cat "$charge_param" 2>/dev/null)" = N ] && st="held at limit"
+    echo "$cap% $st"
+}
+
+charge_limit() {                # from config.scm, via /etc/pro1x/charge.conf
+    CHARGE_LIMIT= CHARGE_RESUME=
+    [ -r /etc/pro1x/charge.conf ] && . /etc/pro1x/charge.conf
+    if [ ! -e "$charge_param" ]; then
+        echo "not in this kernel"
+    elif [ -z "$CHARGE_LIMIT" ]; then
+        echo "off  (charge to full; set in config.scm)"
+    else
+        echo "$CHARGE_LIMIT%, resume at $CHARGE_RESUME%  (set in config.scm)"
+    fi
+}
+
+wifi_info() {                   # " · 75% SSID" for the connected network
+    nmcli -g ACTIVE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null |
+        awk '/^yes:/ { sig = $0; sub(/^yes:/, "", sig); sub(/:.*/, "", sig)
+                       ssid = $0; sub(/^yes:[^:]*:/, "", ssid)
+                       gsub(/\\:/, ":", ssid)
+                       printf " · %s%% %s", sig, ssid; exit }'
+}
+
+mobile_info() {                 # " · 59% Operator LTE", from modem key-values
+    [ -n "$1" ] || return
+    tech=$(printf '%s\n' "$1" | kv_get 'modem.generic.access-technologies.value\[1\]')
+    sig=$(printf '%s\n' "$1" | kv_get modem.generic.signal-quality.value)
+    op=$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-name)
+    [ "$op" = -- ] && op=
+    [ -n "$tech$sig" ] || return
+    printf ' · %s%% %s %s' "$sig" "$op" "$(echo "$tech" | tr 'a-z' 'A-Z')"
+}
+
+volume() {                      # "60%" or "60% muted"
+    wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
+        awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }'
+}
+
+# The slow queries (nmcli, mmcli, wpctl) run in parallel, each into its
+# own file, so a reload costs the slowest one rather than their sum.
+lines() {
+    d=$(mktemp -d)
+    nmcli -t -f WIFI,WWAN radio > "$d/radio" 2>/dev/null &
+    modem_kv > "$d/kv" &
+    wifi_info > "$d/wifiinfo" &
+    blocked bluetooth > "$d/bt" &
+    gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'" > "$d/fb" &
+    brightnessctl -m 2>/dev/null | cut -d, -f4 > "$d/br" &
+    volume > "$d/vol" &
+    makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
+    osk_state > "$d/osk" &
+    wait
+    radio=$(cat "$d/radio")           # enabled:enabled
+    wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
+    kv=$(cat "$d/kv")
+    if [ "$wifi" = off ] && [ "$wwan" = off ] && [ "$bt" = off ]; then
+        plane=on
+    else
+        plane=off
+    fi
+    rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
+    caf=$(cat "$caffeine" 2>/dev/null || echo off)
+    [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
+    vol=$(cat "$d/vol")
+    case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
+    # First line: the header (fzf --header-lines=1), battery state.
+    printf '%s\n' \
+        "battery     Battery $(battery_state)" \
+        "notif       Notifications        $(cat "$d/notif")" \
+        "lock        Lock screen" \
+        "wifi        Wi-Fi                $wifi$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wwan        Mobile data          $wwan$(mobile_info "$kv")" \
+        "sim         SIM                  $(sim_state "$kv")" \
+        "bluetooth   Bluetooth            $bt" \
+        "airplane    Airplane mode        $plane" \
+        "rotation    Auto-rotation        $rot" \
+        "caffeine    Keep screen on       $caf" \
+        "osk         Keyboard             $(cat "$d/osk")" \
+        "torch       Torch                $t" \
+        "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
+        "bright      Brightness           $(cat "$d/br")" \
+        "volume      Volume               ${vol%% *}" \
+        "mute        Mute                 $mute" \
+        "charge      Charge limit         $(charge_limit)"
+    rm -rf "$d"
+}
+
+# set <setting> <on|off>: what Right (on) and Left (off) do; Enter toggles.
+set_to() {
+    case "$1" in
+        wifi|wwan) nmcli radio "$1" "$2" ;;
+        bluetooth)
+            if [ "$2" = on ]; then rfkill unblock bluetooth
+            else rfkill block bluetooth; fi ;;
+        airplane)                 # on: every radio off
+            if [ "$2" = on ]; then nmcli radio all off; rfkill block bluetooth
+            else nmcli radio all on; rfkill unblock bluetooth; fi ;;
+        rotation) sway-autorotate "$2" ;;
+        caffeine)
+            [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
+            echo "$2" > "$caffeine"
+            if [ "$2" = on ]; then
+                # This session's swayidle (pro1x-idle --sway); Phosh has
+                # its own caffeine.
+                for p in $(pgrep -u "$(id -u)" -x swayidle); do kill "$p"; done
+                pro1x-dim restore 2>/dev/null
+            else
+                swaymsg exec "pro1x-idle --sway" >/dev/null
+            fi ;;
+        torch)
+            if [ "$2" = on ]; then
+                # The torch guard service turns it off after its timeout.
+                cat "${torch%/brightness}/max_brightness" > "$torch"
+            else
+                echo 0 > "$torch"
+            fi ;;
+        osk)
+            if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        mute)
+            if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
+            else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
+    esac
+}
+
+state_of() {                    # state_of <setting>: on or off
+    case "$1" in
+        wifi) onoff "$(nmcli radio wifi)" ;;
+        wwan) onoff "$(nmcli radio wwan)" ;;
+        bluetooth) blocked bluetooth ;;
+        airplane)
+            if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
+               [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
+               [ "$(blocked bluetooth)" = off ]; then echo on; else echo off; fi ;;
+        rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
+        caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
+        torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
+        mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
+        osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
+    esac
+}
+
+feedback_step() {               # + towards full, - towards silent
+    cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
+    case "$1$cur" in
+        +silent) next=quiet ;; +quiet|+full) next=full ;;
+        -full) next=quiet ;; -quiet|-silent) next=silent ;;
+        *) next=full ;;
+    esac
+    gsettings set org.sigxcpu.feedbackd profile "$next"
+}
+
+act() {                         # Enter
+    case "$1" in
+        lock)                     # lock, and hide this menu
+            qs_hide
+            swaymsg exec pro1x-lock >/dev/null ;;
+        feedback)                 # full -> quiet -> silent -> full
+            case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
+                full) feedback_step - ;;
+                quiet) feedback_step - ;;
+                *) gsettings set org.sigxcpu.feedbackd profile full ;;
+            esac ;;
+        *)
+            if [ "$(state_of "$1")" = on ]; then set_to "$1" off
+            else set_to "$1" on; fi ;;
+    esac
+    sleep 0.3                   # let NetworkManager and rfkill settle
+}
+
+step() {                        # Right (+) and Left (-)
+    case "$1$2" in
+        bright+) brightnessctl -q set +10% ;;
+        bright-) brightnessctl -q set 10%- ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+        feedback?) feedback_step "$2" ;;
+        *+) set_to "$1" on; sleep 0.3 ;;
+        *-) set_to "$1" off; sleep 0.3 ;;
+    esac
+}
+
+# Notification dock.  Lines from sway-notifications list:
+# kind id urgency app summary (tab-separated); kind new = still shown by
+# mako (actions possible), old = history (read-only).
+notif_lines() {
+    sway-notifications list 2>/dev/null |
+        awk -F'\t' '{ printf "%s\t%s\t%s  %-8s %s: %s\n", $1, $2,
+                      ($1 == "new" ? "•" : " "),
+                      ($3 == "critical" ? "urgent" : ""), $4, $5 }'
+}
+
+notif_preview() {               # notif_preview <kind> <id>
+    cat "${XDG_RUNTIME_DIR:-/tmp}/sway-notifications/$1-$2" 2>/dev/null
+    [ "$1" = old ] && printf '\n(history: no actions)\n'
+}
+
+notif_default() {               # Enter: the default action, else dismiss
+    [ "$1" = new ] || return
+    if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
+        makoctl invoke -n "$2" default
+    fi
+    # mako keeps it after an invoke: clear it as Phosh does.
+    makoctl dismiss -n "$2"
+}
+
+notif_pick() {                  # Tab: choose one of the actions
+    [ "$1" = new ] || return
+    a=$(sway-notifications actions "$2" |
+            fzf --prompt="action > " --layout=reverse --delimiter='\t' \
+                --with-nth=2) || return
+    makoctl invoke -n "$2" "${a%%	*}"
+    makoctl dismiss -n "$2"
+}
+
+notif_dock() {
+    notif_lines |
+        fzf --prompt="notifications > " --layout=reverse --no-sort --cycle \
+            --delimiter='\t' --with-nth=3 \
+            --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
+            --preview="$self --notif-preview {1} {2}" \
+            --preview-window=down,60%,wrap \
+            --bind="enter:execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)" \
+            --bind="tab:execute($self --notif-pick {1} {2})+reload($self --notif-lines)" \
+            --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
+            --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
+            --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+}
+
+case "${1:-}" in
+    --lines) lines; exit ;;
+    --act) act "$2" >/dev/null 2>&1; exit ;;
+    --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
+    --sim) sim_unlock; exit ;;
+    --notif) notif_dock; exit ;;
+    --notif-lines) notif_lines; exit ;;
+    --notif-preview) notif_preview "$2" "$3"; exit ;;
+    --notif-default) notif_default "$2" "$3" >/dev/null 2>&1; exit ;;
+    --notif-pick) notif_pick "$2" "$3"; exit ;;
+    --notif-dismiss) [ "$2" = new ] && makoctl dismiss -n "$3"; exit ;;
+esac
+
+# Enter runs the line's action and reloads; the SIM and notification lines
+# take over the terminal (execute), the others run silently.
+# Resident: Esc hides instead of quitting, fzf listens for reloads, and
+# when started hidden at login it goes to the scratchpad first.
+if [ -n "${QS_START_HIDDEN:-}" ]; then
+    # The window may map a moment after this starts.
+    for i in 1 2 3 4 5; do
+        [ "$(qs_state)" = none ] || break; sleep 0.2
+    done
+    qs_hide
+fi
+set --
+[ -n "${QS_RESIDENT:-}" ] &&
+    set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
+lines |
+    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
+        --with-nth=2.. --info=hidden --header-lines=1 --cycle \
+        --bind="enter:transform:case {1} in
+                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
+                  *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="right:transform:case {1} in
+                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
+                  charge|lock) ;;
+                  *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                esac" \
+        --bind="left:transform:case {1} in
+                  sim|notif|charge|lock) ;;
+                  *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                esac" >/dev/null

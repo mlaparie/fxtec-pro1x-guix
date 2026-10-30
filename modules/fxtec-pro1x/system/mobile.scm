@@ -33,11 +33,15 @@
              (gnu packages glib)
              (gnu packages base)
              (gnu packages gnome)
+             (gnu packages libcanberra)    ; sound-theme-freedesktop
+             (gnu packages librewolf)
              (gnu packages linux)
              (gnu packages networking)
              (gnu packages ntp)
              (gnu packages ssh)
              (gnu packages freedesktop)    ; libqmi, libqrtr-glib
+             (gnu packages gstreamer)      ; gst-plugins-bad
+             (gnu packages telephony)      ; libcallaudio (callaudiod)
              (gnu packages version-control)
              (gnu packages vim)
              (gnu packages messaging)
@@ -56,6 +60,7 @@
              (gnu services base)
              (gnu services dbus)
              (gnu services desktop)
+             (gnu services xorg)            ; screen-locker-service-type
              (gnu services networking)
              (gnu services shepherd)
              (gnu services ssh)
@@ -81,8 +86,10 @@
 ;; (author, 2026-10-30).  On slide-out: remember the user's orientation
 ;; lock, lock, and turn the panel to landscape (transform 270: with 90,
 ;; as in Sway's config, Phosh came out upside down, author 2026-10-30);
-;; Phosh leaves the transform alone while locked.  On slide-in: restore the
-;; remembered lock, so auto-rotation resumes if it was on.
+;; Phosh leaves the transform alone while locked.  The on-screen keyboard
+;; is turned off too while the keyboard is out (author).  On slide-in:
+;; restore both remembered settings, so auto-rotation and the on-screen
+;; keyboard come back if they were on.
 (define phosh-pro1x-slider
   (program-file "phosh-pro1x-slider"
     #~(begin
@@ -95,6 +102,7 @@
         (define slider "/dev/input/pro1x-slider")
         (define gsettings (string-append #$glib:bin "/bin/gsettings"))
         (define schema "org.gnome.settings-daemon.peripherals.touchscreen")
+        (define osk-schema "org.gnome.desktop.a11y.applications")
 
         (define (slider-open?)
           ;; `evtest --query' exits with 10 when the switch is set.
@@ -102,33 +110,47 @@
                  (system* #$(file-append evtest "/bin/evtest") "--query"
                           slider "EV_SW" "SW_KEYPAD_SLIDE"))))
 
-        (define (orientation-lock)
-          (let* ((port (open-pipe* OPEN_READ gsettings "get" schema
-                                   "orientation-lock"))
+        (define (setting schema key)
+          (let* ((port (open-pipe* OPEN_READ gsettings "get" schema key))
                  (value (read-line port)))
             (close-pipe port)
             (if (eof-object? value) "false" value)))
 
-        (define (set-orientation-lock! value)
-          (system* gsettings "set" schema "orientation-lock" value))
+        (define (set-setting! schema key value)
+          (system* gsettings "set" schema key value))
 
+        ;; SAVED: (orientation-lock . screen-keyboard-enabled) before
+        ;; slide-out.
         (define (slid-out! saved)
-          (let ((lock (or saved (orientation-lock))))
-            (set-orientation-lock! "true")
+          (let ((saved (or saved
+                           (cons (setting schema "orientation-lock")
+                                 (setting osk-schema
+                                          "screen-keyboard-enabled")))))
+            (set-setting! schema "orientation-lock" "true")
+            (set-setting! osk-schema "screen-keyboard-enabled" "false")
             (system* #$(file-append wlr-randr "/bin/wlr-randr")
                      "--output" "DSI-1" "--transform" "270")
-            lock))
+            saved))
 
+        ;; With the rotation lock on (the default, phosh-pro1x's schema
+        ;; override), closing the keyboard goes back to portrait: the lock
+        ;; would otherwise keep the keyboard landscape (author, 2026-10-30).
         (define (slid-in! saved)
-          (when saved
-            (set-orientation-lock! saved))
+          (match saved
+            ((lock . osk)
+             (set-setting! schema "orientation-lock" lock)
+             (set-setting! osk-schema "screen-keyboard-enabled" osk))
+            (#f #t))
+          (when (string=? (setting schema "orientation-lock") "true")
+            (system* #$(file-append wlr-randr "/bin/wlr-randr")
+                     "--output" "DSI-1" "--transform" "normal"))
           #f)
 
         ;; Let the shell start before the first change.
         (sleep 3)
         (let ((port (open-input-file slider #:binary #t)))
           (setvbuf port 'none)
-          ;; SAVED: the user's lock before slide-out, #f while slid in.
+          ;; SAVED: the user's settings before slide-out, #f while slid in.
           (let loop ((saved (if (slider-open?) (slid-out! #f) #f)))
             ;; struct input_event on aarch64: 16-byte timeval, u16 type,
             ;; u16 code, s32 value.  EV_SW 5, SW_KEYPAD_SLIDE 10.
@@ -141,7 +163,9 @@
                             (slid-in! saved)))
                   (loop saved))))))))
 
-;; What phoc starts: gsd-media-keys, then the shell.  Phosh does not
+;; What phoc starts: gsd-media-keys, gsd-rfkill, mmsd-tng, the on-screen
+;; keyboard, the MMS reminder, the slider helper, the idle dimmer, then the
+;; shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
 ;; Phosh.  Without it the volume keys did nothing (tested on the phone,
@@ -155,9 +179,40 @@
           (execl #$(file-append gnome-settings-daemon
                                 "/libexec/gsd-media-keys")
                  "gsd-media-keys"))
+        ;; gsd-rfkill: Phosh's Bluetooth tile and GNOME Settings' Bluetooth
+        ;; panel get the radios' state from it (org.gnome.SettingsDaemon.
+        ;; Rfkill); without it Bluetooth looked off and could not be used
+        ;; from the UI although BlueZ worked (scan found devices).
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append gnome-settings-daemon "/libexec/gsd-rfkill")
+                 "gsd-rfkill"))
+        ;; mmsd-tng: MMS for Chatty (no D-Bus activation file of its own).
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append mmsd-tng "/bin/mmsdtng") "mmsdtng"))
+        ;; On-screen keyboard (sm.puri.OSK0); gnome-session would start it
+        ;; from sm.puri.OSK0.desktop.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append stevia "/bin/phosh-osk-stevia")
+                 "phosh-osk-stevia" "--allow-replacement"))
+        ;; Reminds about waiting MMS; the "Fetch MMS" launcher fetches them.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append pro1x-mms-fetch "/bin/pro1x-mms-fetch")
+                 "pro1x-mms-fetch"))
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))
+        ;; Dim the panel when idle (/etc/pro1x/dim.conf, from config.scm);
+        ;; Phosh only blanks (dimming is gnome-settings-daemon's power
+        ;; plugin, which needs logind).  Phosh still blanks after its own
+        ;; delay.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append pro1x-sway-config "/bin/pro1x-idle")
+                 "pro1x-idle"))
         ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
         ;; wants gnome-session.
         (execl #$(file-append phosh-pro1x "/libexec/phosh") "phosh"))))
@@ -181,6 +236,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         ;; Keep the session's output (greetd discards it): /tmp/phosh-UID.log.
         (let ((log (open-file (string-append "/tmp/phosh-"
                                              (number->string (getuid))
@@ -218,6 +277,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         (let ((log (open-file (string-append "/tmp/sxmo-"
                                              (number->string (getuid))
                                              ".log")
@@ -242,6 +305,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         ;; Keep the session's output (greetd discards it): /tmp/sway-UID.log.
         (let ((log (open-file (string-append "/tmp/sway-"
                                              (number->string (getuid))
@@ -270,7 +337,9 @@ files root may log in with."
   (kernel-arguments
    (append
     (list
-     "console=ttyMSM0,115200n8"
+     ;; No console=ttyMSM0: this phone has no UART device (/dev/ttyMSM0 is
+     ;; absent), and Guix's serial getty (term-console) on that console
+     ;; failed and was respawned every 10 s (2026-10-30).
      "console=tty1"
      ;; Text console (tuigreet) in landscape, like sway (keyboard out).
      "fbcon=rotate:1"
@@ -313,7 +382,23 @@ files root may log in with."
     `((".config/sway/config"
        ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
       (".config/i3status-rust/config.toml"
-       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml")))
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml"))
+      (".config/foot/foot.ini"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/foot.ini"))
+      ;; XDG user directories, set when the account is created (first boot
+      ;; after flashing), as xdg-user-dirs-update would write them: Snapshot
+      ;; saves into XDG_PICTURES_DIR and failed without it (2026-10-30).
+      (".config/user-dirs.dirs"
+       ,(plain-file "user-dirs.dirs"
+                    (string-append
+                     "XDG_DESKTOP_DIR=\"$HOME/Desktop\"\n"
+                     "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n"
+                     "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n"
+                     "XDG_MUSIC_DIR=\"$HOME/Music\"\n"
+                     "XDG_PICTURES_DIR=\"$HOME/Pictures\"\n"
+                     "XDG_PUBLICSHARE_DIR=\"$HOME/Public\"\n"
+                     "XDG_TEMPLATES_DIR=\"$HOME/Templates\"\n"
+                     "XDG_VIDEOS_DIR=\"$HOME/Videos\"\n"))))
     (pro1x-root-key-skeletons root-ssh-keys)
     (default-skeletons)))
 
@@ -501,6 +586,15 @@ Dracula palette, no kernel messages over the greeter.")
                                 " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
+     ;; swaylock's PAM service: without it swaylock cannot unlock, so Sway
+     ;; had no idle lock (pro1x-idle --sway locks after lock-after).
+     (service screen-locker-service-type
+              (screen-locker-configuration
+               (name "swaylock")
+               (program (file-append swaylock "/bin/swaylock"))
+               (using-pam? #t)
+               (using-setuid? #f)))
+
      ;; tuigreet's --remember and --remember-user-session write the last
      ;; user and each user's last session in /var/cache/tuigreet, which did
      ;; not exist (no /var/cache at all), so nothing was remembered.
@@ -514,8 +608,16 @@ Dracula palette, no kernel messages over the greeter.")
                (when greeter
                  (chown dir (passwd:uid greeter) (passwd:gid greeter)))))))
 
-     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
+     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy etc.)
      (service dbus-root-service-type)
+     ;; GTK 3 finds its input-method modules (the Wayland one talks to the
+     ;; on-screen keyboard) only through this variable: GTK has no cache of
+     ;; its own here and gtk+ is not in the profile itself, so its search
+     ;; path is never set.  Without it no GTK 3 text field asked for stevia
+     ;; in Phosh (2026-10-30).
+     (simple-service 'gtk3-im-modules session-environment-service-type
+                     '(("GUIX_GTK3_IM_MODULE_FILE"
+                        . "/run/current-system/profile/lib/gtk-3.0/3.0.0/immodules-gtk3.cache")))
      ;; BlueZ.  The WCN3950 works when powered from boot; on Linux 7.1 it
      ;; does not answer again after a power-down (reported on SailfishOS,
      ;; gone on 7.3), so it is powered at start and toggling it off in the
@@ -581,17 +683,38 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot sway wdisplays swayidle mako
+     foot sway wdisplays swayidle swaylock mako
      sway-launcher-desktop pro1x-sway-config fzf jq
+     ;; On-screen keyboard in Sway (Phosh starts it by store path).
+     stevia
+     ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
+     ;; sounds were installed, no theme with the freedesktop names.
+     sound-theme-freedesktop
+     ;; Sway and Phosh background (Guix's disc emblem).
+     pro1x-background
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
-     icecat gnome-console
+     ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
+     icecat epiphany gnome-console
+     ;; LibreWolf: Firefox 158 with privacy defaults; aarch64 substitutes on
+     ;; bordeaux (nonguix's firefox is x86_64 only).
+     librewolf
      emacs mpv nnn
      calls chatty
+     ;; callaudiod: Calls switches speaker and earpiece and mutes the
+     ;; microphone through it (org.mobian_project.CallAudio).  It was only a
+     ;; library dependency of Calls, so its D-Bus service was not found and
+     ;; the speaker and mute buttons did nothing (author, 2026-10-30).
+     libcallaudio
+     ;; Fetch MMS launcher (the session starts the reminder).
+     pro1x-mms-fetch
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
      ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
-     snapshot
+     ;; It saves photos with jifmux (gst-plugins-bad) into XDG_PICTURES_DIR
+     ;; (~/.config/user-dirs.dirs, skeleton below): without either, "Could
+     ;; not take picture" (2026-10-30).
+     snapshot gst-plugins-bad xdg-user-dirs
      ;; Portals: libadwaita apps read dark/light from the Settings portal
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).
@@ -599,7 +722,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; feedbackd: vibration and event feedback for Phosh, Calls, Chatty.
      ;; It was only a dependency, not in the profile, so its D-Bus session
      ;; service was not found and nothing vibrated.  fbcli to test.
-     feedbackd
+     ;; feedbackd-0.8: the version Phosh and Calls are built with here.
+     feedbackd-0.8
      ;; bluetoothctl, btmgmt: the BlueZ tools were missing, so Bluetooth
      ;; could not be tested from a shell (the daemon came from the service).
      bluez

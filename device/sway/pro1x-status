@@ -1,0 +1,63 @@
+#!/bin/sh
+# pro1x-status — small status texts and actions for the i3status-rust bar
+#
+#   pro1x-status temp            hottest CPU thermal zone, "44°C"
+#   pro1x-status mobile          "LTE 52%" (ModemManager), empty without modem
+#   pro1x-status bt              "BT on" / "BT off" (rfkill)
+#   pro1x-status bt-toggle
+#   pro1x-status bright          backlight in percent, "60%"
+#   pro1x-status bright-up|bright-down   by 10%
+#
+# Brightness reads the backlight's `brightness' file only: reading
+# actual_brightness wedges this panel's DSI link (AGENTS.md), and
+# i3status-rust's backlight block goes through a library whose reads were
+# not checked.  Temperatures come from the thermal zones directly (the
+# temperature block wants lm_sensors chips).
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+case "${1:-}" in
+    temp)
+        max=0
+        for z in /sys/class/thermal/thermal_zone*; do
+            case "$(cat "$z/type" 2>/dev/null)" in
+                cpu*) t=$(cat "$z/temp" 2>/dev/null || echo 0)
+                      [ "$t" -gt "$max" ] && max=$t ;;
+            esac
+        done
+        echo "$((max / 1000))°C" ;;
+    mobile)
+        kv=$(mmcli -m any --output-keyvalue 2>/dev/null) || exit 0
+        tech=$(printf '%s\n' "$kv" |
+                   sed -n 's/^modem.generic.access-technologies.value\[1\] *: //p')
+        sig=$(printf '%s\n' "$kv" |
+                  sed -n 's/^modem.generic.signal-quality.value *: //p')
+        [ -n "$tech" ] && [ "$tech" != -- ] &&
+            echo "$(echo "$tech" | tr 'a-z' 'A-Z') ${sig}%" ;;
+    bt)
+        if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
+            echo "BT off"
+        else
+            echo "BT on"
+        fi ;;
+    bt-toggle)
+        if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
+            rfkill unblock bluetooth
+        else
+            rfkill block bluetooth
+        fi ;;
+    bright|bright-up|bright-down)
+        bl=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n 1)
+        [ -n "$bl" ] || exit 0
+        max=$(cat "$bl/max_brightness"); cur=$(cat "$bl/brightness")
+        case "$1" in
+            bright-up)   cur=$((cur + max / 10)); [ "$cur" -gt "$max" ] && cur=$max
+                         echo "$cur" > "$bl/brightness" ;;
+            bright-down) cur=$((cur - max / 10)); [ "$cur" -lt 1 ] && cur=1
+                         echo "$cur" > "$bl/brightness" ;;
+        esac
+        echo "$((cur * 100 / max))%" ;;
+    *)
+        echo "usage: pro1x-status temp|mobile|bt|bt-toggle|bright|bright-up|bright-down" >&2
+        exit 2 ;;
+esac

@@ -1,0 +1,76 @@
+#!/bin/sh
+# pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
+#
+#   swipe down from the top edge      quick settings (sway-quick-settings)
+#   swipe up from the bottom edge     on-screen keyboard, shown or hidden
+#   swipe in from the right edge      app launcher (sway-launcher-desktop)
+#   swipe in from the left edge       window switcher (sway-window-switcher)
+#
+# The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
+# COMMAND...; quick settings closes itself).  Every command runs in the
+# background: lisgd waits for a command to end before taking the next
+# gesture, so a second swipe used to wait for the first window to close
+# and then open another (author, 2026-10-30).
+#
+# Sway has gestures for touchpads only; lisgd reads the touchscreen through
+# libinput and runs a command per gesture, as Sxmo does.  lisgd knows
+# nothing of Sway's rotation, so this runs it with -o set from the panel's
+# transform and restarts it whenever the transform changes (Sway output
+# events).  Started by the Sway config; ends with Sway, whose event
+# subscription it follows.
+#
+# State: the three swipes work in Sway, landscape (-o 1; author,
+# 2026-10-30); the other orientations and the toggles are untested.
+
+# toggle APP-ID COMMAND...: close that window if it is open, else run.
+if [ "${1:-}" = toggle ]; then
+    app=$2; shift 2
+    if swaymsg -t get_tree 2>/dev/null | grep -q "\"app_id\": \"$app\""; then
+        swaymsg "[app_id=\"^$app\$\"] kill" >/dev/null
+    else
+        exec "$@"
+    fi
+    exit
+fi
+
+dev=/dev/input/by-path/platform-i2c-touchscreen-event
+output=DSI-1
+events="${XDG_RUNTIME_DIR:-/tmp}/pro1x-gestures.events"
+launcher='pro1x-term --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop'
+
+transform() {
+    swaymsg -t get_outputs -r 2>/dev/null |
+        jq -r --arg o "$output" '.[] | select(.name == $o) | .transform'
+}
+
+lisgd_pid=
+start() {                       # start <transform>
+    case "$1" in
+        90) o=1 ;; 180) o=2 ;; 270) o=3 ;; *) o=0 ;;
+    esac
+    # The panel is 1080x2160 (portrait); edges are measured in it.
+    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
+        -g "1,UD,T,*,R,sway-quick-settings &" \
+        -g "1,DU,B,*,R,sway-quick-settings --osk toggle &" \
+        -g "1,RL,R,*,R,pro1x-gestures toggle launcher $launcher &" \
+        -g "1,LR,L,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher &" \
+        >/dev/null 2>&1 &
+    lisgd_pid=$!
+}
+
+stop() { [ -n "$lisgd_pid" ] && kill "$lisgd_pid" 2>/dev/null; lisgd_pid=; }
+
+trap 'stop; rm -f "$events"' EXIT
+trap 'exit 0' INT TERM HUP
+
+current=$(transform)
+start "$current"
+
+rm -f "$events"; mkfifo "$events"
+swaymsg -m -r -t subscribe '["output"]' > "$events" 2>/dev/null &
+while IFS= read -r _; do
+    t=$(transform)
+    if [ "$t" != "$current" ]; then
+        stop; current=$t; start "$current"
+    fi
+done < "$events"

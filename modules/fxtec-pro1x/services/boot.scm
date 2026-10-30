@@ -120,7 +120,7 @@ at start and whenever extlinux.conf changes.")
      (service-extension shepherd-root-service-type
                         pro1x-boot-menu-shepherd-services)))
    (default-value (pro1x-boot-menu-configuration))
-   (description "Write /boot/extlinux/prev1.conf … prevN.conf so the U-Boot
+   (description "Write /boot/extlinux/prev1.conf to prevN.conf so the U-Boot
 menu's 'Boot previous generation' entries work.  N must match what was compiled
 into U-Boot via make-u-boot-pro1x.")))
 

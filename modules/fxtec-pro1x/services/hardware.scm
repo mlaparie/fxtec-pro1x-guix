@@ -9,12 +9,46 @@
 ;;;   • feedbackd group
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
+;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
+;;;   • torch safety: a flash LED left on is switched off after torch-timeout
+;;;     seconds (default 60), whoever turned it on;
+;;;   • charge limit: stop charging at charge-limit percent, resume at or
+;;;     below charge-resume (hysteresis, as Android's charge-limit tools
+;;;     do), through pro1x_charger_icl's charge_enable (kernel patch
+;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
+;;;     The percentage is estimated from voltage, which drops when charging
+;;;     stops: keep the gap wider than that drop (not measured yet);
+;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
+;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
+;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
+;;;   • notification LED colours (notification-leds): a feedbackd device
+;;;     theme, share/feedbackd/themes/fxtec,pro1x.json in the system profile,
+;;;     which feedbackd loads for its default theme on this phone.  In
+;;;     config.scm, (notification-leds '(("message-missed-sms" "green")
+;;;     ("phone-missed-call" "#FF8000" 1000))).  Events: battery-caution,
+;;;     message-missed-email, -instant, -notification, -sms,
+;;;     notification-missed-generic, phone-missed-call;
+;;;   • battery on the notification LED (charging-led, charged-led,
+;;;     low-battery-led, low-battery-level): dim yellow breathing while
+;;;     charging, steady green once full or held at the charge limit, a
+;;;     short red blip every 4 s on low battery; feedbackd's notification
+;;;     patterns take precedence;
+;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
+;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
+;;;     In config.scm:
+;;;       (modify-services (operating-system-user-services base)
+;;;         (pro1x-hardware-service-type
+;;;          config => (pro1x-hardware-configuration
+;;;                     (inherit config) (dim-after 120) (dim-level 10))))
 ;;;
 ;;; The operating-system record in systems/ provides the kernel, firmware and
 ;;; bootloader directly — see systems/minimal.scm.
 
 (define-module (fxtec-pro1x services hardware)
   #:use-module (fxtec-pro1x files)
+  #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
+  #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
+  #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
@@ -22,9 +56,17 @@
   #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
+  #:use-module (guix build-system trivial)
   #:use-module (guix gexp)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
   #:use-module (guix records)
+  #:use-module (guix diagnostics)            ; formatted-message
+  #:use-module (guix i18n)                   ; G_
+  #:use-module (ice-9 match)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-13)                ; string-every
+  #:use-module (srfi srfi-34)                ; raise
   #:export (pro1x-hardware-configuration
             pro1x-hardware-configuration?
             make-pro1x-hardware-configuration
@@ -41,7 +83,195 @@
   ;; Extra kernel verbosity (earlycon, ignore_loglevel)
   (verbose?           pro1x-hardware-verbose?           (default #f))
   ;; fbcon rotation: 0 portrait, 1 clockwise, 2 upside-down, 3 CCW
-  (console-rotation   pro1x-hardware-console-rotation   (default #f)))
+  (console-rotation   pro1x-hardware-console-rotation   (default #f))
+  ;; Dim the panel after this many seconds without input (#f: never), to
+  ;; this percentage of its maximum brightness.
+  (dim-after          pro1x-hardware-dim-after          (default 150))
+  (dim-level          pro1x-hardware-dim-level          (default 20))
+  ;; Blank the panel after this many seconds without input, and lock this
+  ;; many seconds after blanking (0: when it blanks; #f: never lock).
+  ;; 60 s was too short in Phosh and Sway (author, 2026-10-30); dimming
+  ;; comes 30 s before the blank.
+  (blank-after        pro1x-hardware-blank-after        (default 180))
+  (lock-after         pro1x-hardware-lock-after         (default 120))
+  ;; Wake the panel with a double tap while it is off.
+  (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
+  ;; Stop charging at this battery percentage (#f: charge to full), and
+  ;; charge again at or below charge-resume.
+  (charge-limit       pro1x-hardware-charge-limit       (default 85))
+  (charge-resume      pro1x-hardware-charge-resume      (default 80))
+  ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
+  (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
+  ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
+  ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
+  ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.
+  (notification-leds  pro1x-hardware-notification-leds (default '()))
+  ;; The notification LED while charging (breathing), once full or held
+  ;; at the charge limit (steady), and on battery at or below
+  ;; low-battery-level percent (a short blip every 4 s): "#RRGGBB" or a
+  ;; colour name as in notification-leds, #f for off.  Dim, and
+  ;; notifications take the LED over.
+  (charging-led       pro1x-hardware-charging-led       (default "#FFA000"))
+  (charged-led        pro1x-hardware-charged-led        (default "#00FF00"))
+  (low-battery-led    pro1x-hardware-low-battery-led    (default "#FF4000"))
+  (low-battery-level  pro1x-hardware-low-battery-level  (default 15)))
+
+;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
+(define (led-intensity colour)
+  (match colour
+    (#f #f)
+    ("red" "255 0 0") ("green" "0 255 0") ("blue" "0 0 255")
+    ("white" "255 255 255")
+    ((? led-colour?)
+     (string-join (map (lambda (i)
+                         (number->string
+                          (string->number (substring colour i (+ i 2)) 16)))
+                       '(1 3 5))
+                  " "))
+    (_ (raise (formatted-message
+               (G_ "charging-led/charged-led: ~s is not red, green, blue, \
+white, #RRGGBB or #f")
+               colour)))))
+
+(define (pro1x-charge-led-program charging charged low low-level)
+  ;; Polls the battery every 10 s.  It writes the LED only while it is dark
+  ;; or showing its own colour, so feedbackd's notification patterns win and
+  ;; ours comes back once they end.  It keeps the pattern trigger feedbackd
+  ;; needs: off is a zero pattern, not brightness 0.  ledtrig-pattern ramps
+  ;; linearly between entries; a 0 ms entry jumps.
+  (program-file
+   "pro1x-charge-led"
+   #~(begin
+       (use-modules (ice-9 rdelim))
+       (define led "/sys/class/leds/rgb:status/")
+       (define breathe "0 1500 32 1500")              ;charging
+       (define steady "32 1000 32 1000")              ;full, held
+       (define blip "40 150 40 0 0 4000 0 0")         ;low battery
+       (define (read-file file)
+         (or (false-if-exception (call-with-input-file file read-line)) ""))
+       (define (write-file file value)
+         (false-if-exception
+          (call-with-output-file file (lambda (port) (display value port)))))
+       (define (wanted)                   ;(intensity . pattern) or #f
+         (let ((status (read-file "/sys/class/power_supply/battery/status"))
+               (pct (string->number
+                     (read-file "/sys/class/power_supply/battery/capacity")))
+               (held (equal? "N" (read-file "/sys/module/pro1x_charger_icl/parameters/charge_enable"))))
+           (define (on colour pattern) (and colour (cons colour pattern)))
+           (cond ((and (equal? status "Discharging") pct (<= pct #$low-level))
+                  (on #$low blip))
+                 ((equal? status "Discharging") #f)
+                 (held (on #$charged steady))
+                 ((equal? status "Charging") (on #$charging breathe))
+                 ((member status '("Full" "Not charging")) (on #$charged steady))
+                 (else #f))))
+       (let loop ((mine #f))              ;what we set, or #f
+         (let* ((want (wanted))
+                (colour (read-file (string-append led "multi_intensity")))
+                (dark? (equal? (read-file (string-append led "brightness")) "0"))
+                ;; Still ours: our colour (a breathing LED can read 0).
+                (ours? (and mine (equal? colour (car mine)))))
+           (cond ((and want (equal? want mine) ours?)
+                  (sleep 10) (loop mine))
+                 ((and want (or ours? dark?))
+                  (write-file (string-append led "multi_intensity") (car want))
+                  (write-file (string-append led "pattern") (cdr want))
+                  (sleep 10) (loop want))
+                 ((and (not want) ours?)
+                  (write-file (string-append led "pattern") "0 1000 0 1000")
+                  (sleep 10) (loop #f))
+                 (else
+                  (sleep 10) (loop (and ours? mine)))))))))
+
+(define (pro1x-charge-led-shepherd-service config)
+  (let ((charging (led-intensity (pro1x-hardware-charging-led config)))
+        (charged (led-intensity (pro1x-hardware-charged-led config)))
+        (low (led-intensity (pro1x-hardware-low-battery-led config))))
+    (if (or charging charged low)
+        (list
+         (shepherd-service
+          (provision '(pro1x-charge-led))
+          (requirement '(udev))
+          (documentation "Show charging on the notification LED.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-charge-led-program
+                             charging charged low
+                             (pro1x-hardware-low-battery-level config)))
+                    #:log-file "/var/log/pro1x-charge-led.log"))
+          (stop #~(make-kill-destructor))
+          (respawn? #t)))
+        '())))
+
+;;; feedbackd's own LED events and blink periods (data/default.json, 0.8.1),
+;;; used when an entry of notification-leds gives no period.
+(define %feedbackd-led-periods
+  '(("battery-caution" . 5000)
+    ("message-missed-email" . 2000)
+    ("message-missed-instant" . 1000)
+    ("message-missed-notification" . 500)
+    ("message-missed-sms" . 2000)
+    ("notification-missed-generic" . 500)
+    ("phone-missed-call" . 3000)))
+
+(define (led-colour? colour)
+  (or (member colour '("red" "green" "blue" "white"))
+      (and (= (string-length colour) 7)
+           (char=? (string-ref colour 0) #\#)
+           (string-every (char-set-union (char-set #\a #\b #\c #\d #\e #\f
+                                                   #\A #\B #\C #\D #\E #\F)
+                                         char-set:digit)
+                         colour 1))))
+
+(define (pro1x-feedbackd-theme-json leds)
+  ;; A feedbackd device theme (named after the device tree compatible) that
+  ;; inherits feedbackd's default theme and replaces its LED entries.
+  (define (entry spec)
+    (match spec
+      ((event colour . rest)
+       (unless (led-colour? colour)
+         (raise (formatted-message
+                 (G_ "notification-leds: ~s: colour ~s is not red, green, \
+blue, white or #RRGGBB")
+                 event colour)))
+       (let ((period (match rest
+                       ((p) p)
+                       (() (or (assoc-ref %feedbackd-led-periods event) 1000)))))
+         (format #f "        { \"event-name\": ~s, \"type\": \"Led\",
+          \"color\": ~s, \"frequency\": ~a }"
+                 event colour period)))))
+  (string-append
+   "{\n  \"name\": \"fxtec,pro1x\",\n  \"parent-name\": \"default\",\n"
+   "  \"profiles\": [\n    { \"name\": \"silent\",\n      \"feedbacks\": [\n"
+   (string-join (map entry leds) ",\n")
+   "\n      ]\n    }\n  ]\n}\n"))
+
+(define (pro1x-feedbackd-theme config)
+  ;; Empty notification-leds: no theme, feedbackd's defaults.
+  (match (pro1x-hardware-notification-leds config)
+    (() '())
+    (leds
+     (let ((json (plain-file "pro1x-feedbackd-theme.json"   ;no "," in store names
+                             (pro1x-feedbackd-theme-json leds))))
+       (list
+        (package
+          (name "pro1x-feedbackd-theme")
+          (version "0.1")
+          (source #f)
+          (build-system trivial-build-system)
+          (arguments
+           (list
+            #:modules '((guix build utils))
+            #:builder
+            #~(begin
+                (use-modules (guix build utils))
+                (let ((dir (string-append #$output "/share/feedbackd/themes")))
+                  (mkdir-p dir)
+                  (copy-file #$json (string-append dir "/fxtec,pro1x.json"))))))
+          (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+          (synopsis "Pro1X notification LED colours for feedbackd")
+          (description "feedbackd device theme with the notification LED
+colours from the system configuration.")
+          (license license:gpl3+)))))))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -101,6 +331,180 @@ case \"$1\" in
 esac
 "))
 
+(define (pro1x-doubletap-shepherd-service config)
+  (if (pro1x-hardware-double-tap-wake? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-doubletap))
+        (requirement '(udev))
+        (documentation "Wake the panel with a double tap on the touchscreen.")
+        (start
+         #~(lambda args
+             ;; uinput is a module; the power-key device needs /dev/uinput.
+             (system* #$(file-append kmod "/bin/modprobe") "uinput")
+             ((make-forkexec-constructor
+               (list #$(file-append pro1x-doubletap "/bin/pro1x-doubletap"))
+               #:log-file "/var/log/pro1x-doubletap.log")
+              args)))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
+(define pro1x-pocket-program
+  ;; /run/pro1x-pocket exists while the proximity sensor sees something
+  ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
+  ;; not wake the panel then, so a phone in a pocket stays dark.
+  (program-file
+   "pro1x-pocket"
+   #~(begin
+       (use-modules (ice-9 popen) (ice-9 rdelim))
+       (define flag "/run/pro1x-pocket")
+       (define (set-near! near?)
+         (if near?
+             (close-port (open-output-file flag))
+             (false-if-exception (delete-file flag))))
+       (set-near! #f)
+       (let ((port (open-pipe* OPEN_READ
+                               #$(file-append iio-sensor-proxy-ssc
+                                              "/bin/monitor-sensor")
+                               "--proximity")))
+         ;; "=== Has proximity sensor (near: 1)" first, then
+         ;; "    Proximity value changed: 0".
+         (let loop ()
+           (let ((line (read-line port)))
+             (unless (eof-object? line)
+               (cond ((or (string-contains line "near: 1")
+                          (string-contains line "value changed: 1"))
+                      (set-near! #t))
+                     ((or (string-contains line "near: 0")
+                          (string-contains line "value changed: 0"))
+                      (set-near! #f)))
+               (loop))))
+         (set-near! #f)
+         (close-pipe port)))))
+
+(define (pro1x-pocket-shepherd-service config)
+  (if (pro1x-hardware-double-tap-wake? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-pocket))
+        (requirement '(iio-sensor-proxy))
+        (documentation "Note when the proximity sensor sees something near.")
+        (start #~(make-forkexec-constructor
+                  (list #$pro1x-pocket-program)
+                  #:log-file "/var/log/pro1x-pocket.log"))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
+(define (pro1x-torch-guard-program timeout)
+  (program-file
+   "pro1x-torch-guard"
+   #~(begin
+       (use-modules (ice-9 ftw) (ice-9 rdelim) (srfi srfi-1))
+       ;; The phone's flash LEDs: white:flash-0, amber:flash-1.
+       (define (flash-leds)
+         (map (lambda (f) (string-append "/sys/class/leds/" f))
+              (or (scandir "/sys/class/leds"
+                           (lambda (f) (string-contains f ":flash")))
+                  '())))
+       (define (on? led)
+         (let ((v (false-if-exception
+                   (call-with-input-file (string-append led "/brightness")
+                     read-line))))
+           (and v (not (equal? v "0")))))
+       (define (off! led)
+         (call-with-output-file (string-append led "/brightness")
+           (lambda (port) (display "0" port)))
+         (format #t "~a on for ~as: switched off~%" led #$timeout)
+         (force-output))
+       ;; SINCE: alist of LED -> time it was first seen on.
+       (let loop ((since '()))
+         (sleep 2)
+         (let* ((now (current-time))
+                (since (filter-map
+                        (lambda (led)
+                          (and (on? led)
+                               (cons led (or (assoc-ref since led) now))))
+                        (flash-leds))))
+           (for-each (lambda (entry)
+                       (when (>= (- now (cdr entry)) #$timeout)
+                         (off! (car entry))))
+                     since)
+           (loop (remove (lambda (entry)
+                           (>= (- now (cdr entry)) #$timeout))
+                         since)))))))
+
+(define (pro1x-torch-guard-shepherd-service config)
+  (let ((timeout (pro1x-hardware-torch-timeout config)))
+    (if timeout
+        (list
+         (shepherd-service
+          (provision '(pro1x-torch-guard))
+          (requirement '(file-systems))
+          (documentation "Switch the torch off after it has been on a while.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-torch-guard-program timeout))
+                    #:log-file "/var/log/pro1x-torch-guard.log"))
+          (stop #~(make-kill-destructor))
+          (respawn? #t)))
+        '())))
+
+(define (pro1x-charge-limit-program limit resume)
+  (program-file
+   "pro1x-charge-limit"
+   #~(begin
+       (use-modules (ice-9 rdelim))
+       (define param
+         "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+       (define capacity "/sys/class/power_supply/battery/capacity")
+       (define (read-file file)
+         (false-if-exception (call-with-input-file file read-line)))
+       (define (set-charging! on?)
+         (call-with-output-file param
+           (lambda (port) (display (if on? "1" "0") port)))
+         (format #t "~a%: charging ~a~%" (read-file capacity)
+                 (if on? "allowed" "held off"))
+         (force-output))
+       (if (not (file-exists? param))
+           (begin
+             (format #t "~a missing: this kernel has no charge control~%"
+                     param)
+             (force-output)
+             ;; Stay up (no respawn loop) and do nothing.
+             (let idle () (sleep 3600) (idle)))
+           (let loop ()
+             (let ((pct (string->number (or (read-file capacity) "")))
+                   (on? (equal? "Y" (read-file param))))
+               (cond ((not pct) #t)
+                     ((and on? (>= pct #$limit)) (set-charging! #f))
+                     ((and (not on?) (<= pct #$resume)) (set-charging! #t))))
+             (sleep 60)
+             (loop))))))
+
+(define (pro1x-charge-limit-shepherd-service config)
+  (let ((limit (pro1x-hardware-charge-limit config)))
+    (if limit
+        (list
+         (shepherd-service
+          (provision '(pro1x-charge-limit))
+          (requirement '(file-systems))
+          (documentation "Stop charging at the charge limit, resume below it.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-charge-limit-program
+                             limit (pro1x-hardware-charge-resume config)))
+                    #:log-file "/var/log/pro1x-charge-limit.log"))
+          ;; Stopping the service lets the battery charge to full again.
+          (stop #~(lambda (running . args)
+                    (apply (make-kill-destructor) running args)
+                    (false-if-exception
+                     (call-with-output-file
+                         "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                       (lambda (port) (display "1" port))))
+                    #f))
+          (respawn? #t)))
+        '())))
+
 (define (pro1x-clock-shepherd-service config)
   (list
    (shepherd-service
@@ -117,10 +521,86 @@ esac
 (define (pro1x-hardware-account-groups config)
   (list (user-group (name "feedbackd") (system? #t))))
 
+;; feedbackd's own rule for status LEDs (its data/90-feedbackd.rules),
+;; which Guix's package does not install, with store paths: the RGB
+;; notification LED (rgb:status) is tagged for feedbackd, gets the pattern
+;; trigger (ledtrig-pattern, CONFIG_LEDS_TRIGGER_PATTERN) and its
+;; attributes are given to group feedbackd by fbd-ledctrl.
+(define pro1x-feedbackd-led-rules
+  (mixed-text-file
+   "90-pro1x-feedbackd-led.rules"
+   "SUBSYSTEM==\"leds\", DEVPATH==\"*/*:status\", ENV{FEEDBACKD_TYPE}=\"led\", "
+   "RUN{builtin}+=\"kmod load ledtrig-pattern\", RUN+=\""
+   feedbackd-0.8 "/libexec/fbd-ledctrl -p %S%p -t pattern -G feedbackd\"\n"))
+
 (define (pro1x-hardware-etc config)
-  ;; Nothing in /etc for the base hardware layer; udev rules go via the udev
-  ;; extension.  Left as a hook for callers that want to extend.
-  '())
+  ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim, and
+  ;; /etc/pro1x/charge.conf.
+  (let ((after (pro1x-hardware-dim-after config)))
+    `(("pro1x/dim.conf"
+       ,(plain-file "dim.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "DIM_AFTER=" (if after (number->string after) "") "\n"
+                     "DIM_LEVEL="
+                     (number->string (pro1x-hardware-dim-level config))
+                     "\n"
+                     "BLANK_AFTER="
+                     (number->string (pro1x-hardware-blank-after config))
+                     "\n"
+                     "LOCK_AFTER="
+                     (let ((lock (pro1x-hardware-lock-after config)))
+                       (if lock (number->string lock) ""))
+                     "\n")))
+      ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-settings
+      ;; to show (the service itself gets the values directly).
+      ("pro1x/charge.conf"
+       ,(plain-file "charge.conf"
+                    (let ((limit (pro1x-hardware-charge-limit config)))
+                      (string-append
+                       "# Written by pro1x-hardware-service-type (config.scm).\n"
+                       "CHARGE_LIMIT=" (if limit (number->string limit) "") "\n"
+                       "CHARGE_RESUME="
+                       (if limit
+                           (number->string (pro1x-hardware-charge-resume config))
+                           "")
+                       "\n")))))))
+
+(define (pro1x-idle-gsettings config)
+  ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
+  ;; override in the system profile, compiled by Guix's glib-schemas hook.
+  (let ((blank (pro1x-hardware-blank-after config))
+        (lock (pro1x-hardware-lock-after config)))
+    (package
+      (name "pro1x-idle-gsettings")
+      (version "0.1")
+      (source #f)
+      (build-system trivial-build-system)
+      (arguments
+       (list
+        #:modules '((guix build utils))
+        #:builder
+        #~(begin
+            (use-modules (guix build utils))
+            (let ((dir (string-append #$output "/share/glib-2.0/schemas")))
+              (mkdir-p dir)
+              (call-with-output-file
+                  (string-append dir "/92_pro1x-idle.gschema.override")
+                (lambda (port)
+                  ;; Twice: Phosh's own override sets idle-delay=60 for
+                  ;; the Phosh desktop ([...:Phosh], when XDG_CURRENT_DESKTOP
+                  ;; has Phosh), which beat the plain section there: the
+                  ;; Phosh session kept blanking after 60 s (2026-10-30).
+                  (for-each
+                   (lambda (suffix)
+                     (format port "[org.gnome.desktop.session~a]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver~a]~%lock-enabled=~a~%lock-delay=uint32 ~a~%~%"
+                             suffix #$blank suffix
+                             #$(if lock "true" "false") #$(or lock 0)))
+                   '("" ":Phosh"))))))))
+      (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+      (synopsis "Pro1X blank and lock delays for Phosh")
+      (description "GSettings defaults for the blank and lock delays.")
+      (license license:gpl3+))))
 
 (define pro1x-hardware-service-type
   (service-type
@@ -133,13 +613,32 @@ esac
      (service-extension udev-service-type
                         (lambda (config)
                           (list (file->udev-rule "60-pro1x.rules"
-                                                 (pro1x-udev-rules config)))))
+                                                 (pro1x-udev-rules config))
+                                (file->udev-rule
+                                 "90-pro1x-feedbackd-led.rules"
+                                 pro1x-feedbackd-led-rules))))
+     ;; /etc/pro1x/dim.conf, /etc/pro1x/charge.conf
+     (service-extension etc-service-type pro1x-hardware-etc)
+     ;; Phosh's blank and lock delays; notification LED colours
+     (service-extension profile-service-type
+                        (lambda (config)
+                          (cons (pro1x-idle-gsettings config)
+                                (pro1x-feedbackd-theme config))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)
      ;; clock from the RTC (pro1x-clock)
      (service-extension shepherd-root-service-type
-                        pro1x-clock-shepherd-service)))
+                        (lambda (config)
+                          (append (pro1x-clock-shepherd-service config)
+                                  (pro1x-doubletap-shepherd-service config)
+                                  (pro1x-pocket-shepherd-service config)
+                                  (pro1x-charge-limit-shepherd-service
+                                   config)
+                                  (pro1x-torch-guard-shepherd-service
+                                   config)
+                                  (pro1x-charge-led-shepherd-service
+                                   config))))))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
 cameras, haptics, GPIO slider, and optional touch calibration for display gaps.")))

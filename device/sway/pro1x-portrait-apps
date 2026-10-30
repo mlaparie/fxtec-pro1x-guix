@@ -1,0 +1,63 @@
+#!/bin/sh
+# pro1x-portrait-apps — portrait while Snapshot or Calls has the focus
+#
+# Sway rotates whole outputs, not windows.  While a portrait app (the
+# camera, Calls) is the focused window, the panel is put in portrait and
+# $XDG_RUNTIME_DIR/pro1x-portrait-app tells sway-autorotate and
+# pro1x-osk-slider to leave the rotation alone.  When the focus goes to
+# another window or workspace, or the app closes, the rotation the context
+# calls for comes back: landscape with the keyboard slid out, the sensor's
+# orientation with auto-rotation on, portrait otherwise (author,
+# 2026-10-30).  Follows Sway's window and workspace events; started by the
+# Sway config, ends with Sway.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+apps='org.gnome.Snapshot org.gnome.Calls'
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+flag="$rt/pro1x-portrait-app"
+events="$rt/pro1x-portrait-apps.events"
+rotation="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/sway-autorotate"
+
+focused_app() {
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r '[.. | objects | select(.focused? == true) | .app_id // ""] | .[0] // ""'
+}
+
+slider_out() {
+    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+    [ $? = 10 ]
+}
+
+restore() {
+    rm -f "$flag"
+    if slider_out; then
+        swaymsg output DSI-1 transform 90 >/dev/null
+    elif [ "$(cat "$rotation" 2>/dev/null || echo off)" = on ]; then
+        sway-autorotate off; sway-autorotate on   # re-read the sensor
+    else
+        swaymsg output DSI-1 transform normal >/dev/null
+    fi
+}
+
+check() {
+    app=$(focused_app)
+    case " $apps " in
+        *" $app "*)
+            if [ ! -f "$flag" ]; then
+                touch "$flag"
+                swaymsg output DSI-1 transform normal >/dev/null
+            fi ;;
+        *)
+            [ -f "$flag" ] && restore ;;
+    esac
+}
+
+rm -f "$flag"
+trap 'rm -f "$events"' EXIT
+trap 'exit 0' INT TERM HUP
+rm -f "$events"; mkfifo "$events"
+swaymsg -m -r -t subscribe '["window", "workspace"]' > "$events" 2>/dev/null &
+while IFS= read -r _; do
+    check
+done < "$events"

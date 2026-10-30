@@ -4,7 +4,7 @@
 # systems/mobile.scm); edit it there.  Keys: the yellow slant arrows are Super ($mod), the
 # F(x) key is Fn (F1-F12, media, brightness, PgUp/PgDn/Home/End; see
 # device/input/keyd.conf).  Super+m opens the launcher, Super+Tab the window
-# switcher, Super+Return a terminal, Super+BackSpace or Super+Shift+q
+# switcher, Super+Return a terminal (Super+Shift+Return without the foot server), Super+BackSpace or Super+Shift+q
 # closes a window, Super+Ctrl+h shows the key bindings, Super+Shift+e exits.  Launcher, switcher and bar follow mlaparie's
 # guix-config.
 #
@@ -15,8 +15,8 @@ set $left h
 set $down j
 set $up k
 set $right l
-set $term foot
-set $launcher foot --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop
+set $term pro1x-term
+set $launcher pro1x-term --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder sway-launcher-desktop
 
 xwayland disable
 font pango:monospace 9
@@ -36,23 +36,63 @@ client.background       #404552
 ### /etc/sway/config.d/pro1x.conf (device/sway/pro1x.conf), shared with Sxmo.
 include /etc/sway/config.d/*
 
-output DSI-1 bg #1d2021 solid_color
+output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/guix-disc.png fill #000000
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
-### Idle: panel off after 5 minutes; a touch or key press turns it back on.  No automatic lock: swaylock can only
-### unlock when the system provides its PAM service (screen-locker-service-type).
-exec swayidle -w \
-    timeout 300 'swaymsg "output * power off"' \
-    resume 'swaymsg "output * power on"'
+### Idle: dim, blank, then lock with swaylock (pro1x-idle --sway; times and
+### level set in config.scm, see /etc/pro1x/dim.conf); a touch or key press
+### brings the panel back.
+exec pro1x-idle --sway
 
-### Notifications
-exec mako
+### Rotation: follows the accelerometer while the keyboard is in; landscape
+### while it is out.  Super+o toggles auto-rotation.
+exec sway-autorotate
+
+### Edge swipes (pro1x-gestures): down from the top, quick settings; up from
+### the bottom, the on-screen keyboard; in from the right, the launcher; in
+### from the left, the window switcher.
+exec pro1x-gestures
+
+### Snapshot (camera) fullscreen.  Snapshot and Calls get the panel in
+### portrait while they have the focus, and the rotation from before comes
+### back afterwards (pro1x-portrait-apps; Sway rotates whole outputs).
+for_window [app_id="^org.gnome.Snapshot$"] fullscreen enable
+exec pro1x-portrait-apps
+
+### foot server: quick settings, the launcher and the window switcher open
+### as footclient windows (pro1x-term), faster than a new foot, and so does
+### Super+Return ($term); Super+Shift+Return is a plain foot, in case the
+### server is gone.
+exec foot --server
+
+### Notifications (pro1x-mako: mako, noting arrival times for the lock screen)
+exec pro1x-mako
+
+### Chatty and Calls in the background, for messages and incoming calls
+exec chatty --gapplication-service
+exec gnome-calls --gapplication-service
+### Calls' window (an incoming call, or opened to dial): fullscreen, focused;
+### portrait while focused (pro1x-portrait-apps).
+for_window [app_id="^org.gnome.Calls$"] fullscreen enable, focus
+### An incoming call unlocks the screen until it ends (pro1x-call-watch):
+### nothing can show above the lock screen.
+exec pro1x-call-watch
+
+### On-screen keyboard: Phosh's (stevia), shown for text fields while the
+### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
+### and on demand: Super+i, the Keyboard line in quick settings, the gear.
+exec phosh-osk-stevia
+exec pro1x-osk-slider
+bindsym $mod+i exec sway-quick-settings --osk toggle
 
 ### Launcher window
-for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2
-for_window [app_id="^launcher$"] move position center
-for_window [app_id="^windowswitcher$"] floating enable, sticky enable, resize set 45 ppt 35 ppt, border pixel 2, move position center
+### The three menus open against the edge their swipe comes from, sized in
+### percent of the screen (portrait or landscape): quick settings at the top,
+### the launcher on the right, the window switcher on the left.
+for_window [app_id="^quicksettings$"] floating enable, sticky enable, border pixel 2, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt
+for_window [app_id="^launcher$"] floating enable, sticky enable, border pixel 2, resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt
+for_window [app_id="^windowswitcher$"] floating enable, sticky enable, border pixel 2, resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt
 for_window [app_id="^swayhelp$"] floating enable, sticky enable, resize set 90 ppt 80 ppt, border pixel 2, move position center
 
 ########## KEYBINDINGS ##########
@@ -61,11 +101,15 @@ bindsym $mod+Ctrl+h exec foot --app-id=swayhelp -e sh -c 'swaymsg -t get_config 
 
 ### Basics
 bindsym $mod+Return exec $term
+bindsym $mod+Shift+Return exec foot
 bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
+bindsym $mod+o exec sway-autorotate toggle
+bindsym $mod+q exec sway-quick-settings
+exec sway-quick-settings --resident
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
-bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r reload
 bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -B 'Exit' 'swaymsg exit'
 floating_modifier $mod normal
 
@@ -146,8 +190,13 @@ bindsym --locked XF86MonBrightnessUp exec brightnessctl set 5%+
 bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 
 ### Screenshots and clipboard
-bindsym $mod+Shift+s exec grim -g "$(slurp)" - | wl-copy
-bindsym $mod+Shift+p exec grim ~/screenshot-$(date +%Y%m%d-%H%M%S).png
+# Screenshots (pro1x-screenshot): to ~/Pictures/Screenshots and the
+# clipboard.  Print is Fn+Alt+p on the Pro1X keyboard, Ctrl+Print
+# Ctrl+Fn+Alt+p (keyd).
+bindsym Print exec pro1x-screenshot full
+bindsym Ctrl+Print exec pro1x-screenshot region
+bindsym $mod+Shift+p exec pro1x-screenshot full
+bindsym $mod+Shift+s exec pro1x-screenshot region
 
 ########## BAR ##########
 ### Bar: i3status-rust with ~/.config/i3status-rust/config.toml

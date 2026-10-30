@@ -43,7 +43,12 @@
          ;; From moWerk's SailfishOS port (written for 7.3, applies to 7.1):
          ;; send display off while video still runs, so a blank no longer
          ;; ends in one corrupted full-brightness frame.
-         "panel-display-off")))
+         "panel-display-off"
+         ;; Ours, on top of "power": charge_enable for a charge limit.
+         "charge-control"
+         ;; Ours: the ADSP repeats its handover with every sensor batch;
+         ;; log the repeats at debug level, not as errors.
+         "q6v5-handover")))
 
 (define-public linux-pro1x
   (package

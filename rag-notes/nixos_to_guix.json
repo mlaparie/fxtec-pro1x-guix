@@ -52,43 +52,43 @@
         "guix": "fxtec-pro1x/services/modem.scm, packages modem-manager 1.24 and libqmi 1.36 in the channel",
         "status": "partial",
         "general": "networking.modemmanager.enable in NixOS installs D-Bus policy, udev rules and polkit rules implicitly. On Guix each must be wired: dbus-root-service-type, udev-service-type, polkit-service-type extensions.",
-        "instance": "rmtfs and tqftpserv run. tqftpserv is patched (in both ports) to read firmware from /run/current-system/firmware, which Guix does not create: modem.scm creates the symlink from the firmware_class.path sysfs parameter at start. ModemManager exited at boot until the D-Bus extension was added; registration, SMS, calls and data untested.",
-        "confidence": "handover",
-        "date": "2026-10-27",
-        "source": "commits 972413f, 625bfec, 2f30ae4; TODO.md sections 4 and 6"
+        "instance": "SIM detected after UIM provisioning every boot (pro1x-uim-provision), unlocked with PUK from GNOME Settings once polkit had ModemManager's actions; data connected on 3G (UMTS) 2026-10-30. No LTE yet (see hardware.json modem). SMS and calls untested. Previously: \"registration, SMS, calls and data untested\" (corrected 2026-10-30).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 5e13217, 84d1ca4, b3d83fb; mmcli on the phone; author"
       },
       {
         "title": "audio.nix -> audio.scm",
         "nixos": "modules/audio.nix",
         "guix": "fxtec-pro1x/services/audio.scm, device/audio/",
-        "status": "partial",
+        "status": "working",
         "general": "services.pipewire.enable in NixOS starts pipewire, pipewire-pulse and wireplumber as systemd user services and enables rtkit. Guix has no system-level PipeWire service equivalent of that: start them per user (home services or the session script), and add rtkit with the audio group realtime rule.",
-        "instance": "ALSA card Pro1X (sm4250) present, UCM2 paths and the WirePlumber Pro¹x config installed, pro1x-audio-init runs. Missing: the PipeWire, pipewire-pulse and WirePlumber daemons, and rtkit. Audio silent.",
-        "confidence": "handover",
-        "date": "2026-10-27",
-        "source": "TODO.md section 2"
+        "instance": "Sound plays on the speaker since 2026-10-29: PipeWire, WirePlumber and pipewire-pulse per session (pro1x-audio-session), ALSA_CONFIG_UCM2 set, the S16LE rule matched by card name (Guix node names differ), speaker HPH gain 20 in UCM. It was silent first because the ADSP crashed at 12 s (hexagonrpcd, see hardware.json audio), not because of the audio stack. Open: pops at login, voice calls untested, phosh slider above 100% patched. Previously: \"Missing: the PipeWire, pipewire-pulse and WirePlumber daemons, and rtkit. Audio silent.\" (corrected 2026-10-30)",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 3305bd0, 816db2d, 34eb12f; author listening tests 2026-10-29/30"
       },
       {
         "title": "sensors.nix -> sensors.scm",
         "nixos": "modules/sensors.nix",
         "guix": "fxtec-pro1x/services/sensors.scm",
-        "status": "partial",
+        "status": "working",
         "general": "NixOS ExecStartPre waits (for /dev/fastrpc-adsp, for QRTR service 400) must become explicit wait loops in the Shepherd start code; Shepherd has no ExecStartPre.",
-        "instance": "pro1x-hexagonrpcd runs. The ACCEL_MOUNT_MATRIX udev rule exists in sensors.scm (line 125), so TODO.md section 5 is partly stale on that point. No wait for QRTR service 400 found before iio-sensor-proxy starts (grep for qrtr-lookup: no match). Auto-rotate not working.",
+        "instance": "Accelerometer read by iio-sensor-proxy 3.9 built with libssc (both packaged here, as nixpkgs does); auto-rotation works in Phosh. Needed: hexagonrpcd 40e5041 (registry writes), the polkit actions plus a rule for users, the QRTR 400 wait (now in sensors.scm). Proximity and light not tested. Previously: \"No wait for QRTR service 400 ... Auto-rotate not working.\" (corrected 2026-10-30)",
         "confidence": "confirmed",
-        "date": "2026-10-28",
-        "source": "fxtec-pro1x/services/sensors.scm at 018fa97, read in source; TODO.md section 5"
+        "date": "2026-10-30",
+        "source": "commits 3305bd0, e4051eb, bd2c999, dbf9f11; monitor-sensor on the phone; author"
       },
       {
         "title": "camera.nix -> camera.scm",
         "nixos": "modules/camera.nix",
         "guix": "fxtec-pro1x/services/camera.scm",
-        "status": "untested",
+        "status": "working",
         "general": "NixOS sets environment on a specific systemd user service (systemd.user.services.<name>.environment). Guix has no user-service environment of that kind on a system without systemd; set the variable where the process is actually started, and verify it in /proc/<pid>/environ.",
-        "instance": "NixOS gives wireplumber LD_LIBRARY_PATH=pro1x-libcamera/lib. Guix writes it to /etc/environment.d, which is probably not read (see guix.json, environment.d entry). Camera kernel modules load.",
-        "confidence": "inferred",
-        "date": "2026-10-28",
-        "source": "fxtec-pro1x-nixos modules/camera.nix line 12; fxtec-pro1x/services/camera.scm lines 37-45"
+        "instance": "Both cameras show a picture in GNOME Snapshot (author, 2026-10-30), through WirePlumber's libcamera monitor with the patched libcamera. cameractrl only sets controls. mpv /dev/video0 does not work: the sensors give raw Bayer that only libcamera's ISP turns into a picture. Previously: \"Guix writes it to /etc/environment.d, which is probably not read\"; the session now sets it (corrected 2026-10-30).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 992575b (Snapshot); author"
       },
       {
         "title": "encryption.nix -> fde.scm and mobile-encrypted.scm",
