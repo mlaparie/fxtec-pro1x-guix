@@ -248,6 +248,13 @@ and Phosh itself.  Not set up yet.
    auto off) and landscape while the keyboard is out.
 5. **On-screen keyboard**: none in Guix at the pin; package stevia (C,
    GTK 4) rather than squeekboard (Rust).
+7. **Notification LED**: rgb:status (multicolour) exists in sysfs.
+   feedbackd 0.8.1 drives LEDs for events (fbd-ledctrl) when a udev rule
+   tags them; check it handles multicolour LEDs.  moWerk drives the same
+   LED with mce (53d590a).  Author, 2026-10-30.
+8. **Fingerprint reader**: research first: which sensor, whether it is
+   reachable on SPI or only through TrustZone (likely, on Qualcomm),
+   any mainline port or libfprint driver.  Author, 2026-10-30.
 6. **Camera**: port moWerk's libcamera 0.7.2 patches (AfWindows, manual
    gain/exposure/EV, AfState, focus held), check what Snapshot exposes;
    kernel flash-LED link (moWerk 0027) in a later kernel batch.
