@@ -52,6 +52,15 @@ case "${1:-}" in
 esac
 
 [ -f "$state" ] || echo on > "$state"
+# Sway's exec double-forks, so nothing stops this loop when Sway exits:
+# a logout left it and monitor-sensor running (2026-10-30).  Sway removes
+# its IPC socket on exit; stop monitor-sensor then, which ends the loop.
+if [ -n "${SWAYSOCK:-}" ]; then
+    (
+        while [ -S "$SWAYSOCK" ]; do sleep 10; done
+        pkill -P $$ -x monitor-sensor
+    ) &
+fi
 monitor-sensor --accel 2>/dev/null |
     while IFS= read -r line; do
         # "=== Has accelerometer (orientation: right-up, tilt: ...)" first,

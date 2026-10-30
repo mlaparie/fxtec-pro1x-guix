@@ -1162,8 +1162,8 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils evtest foot fzf gawk grep jq sed swayidle
-                  (list glib "bin")))
+    (inputs (list bash coreutils evtest foot fzf gawk grep jq procps sed
+                  swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1208,7 +1208,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "evtest" "sed")))))
+                            '("coreutils" "evtest" "procps" "sed")))))
                 (let ((qs (string-append #$output "/bin/sway-quick-settings")))
                   (chmod qs #o755)
                   (wrap-program qs
