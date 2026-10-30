@@ -295,6 +295,11 @@ files root may log in with."
      ;; services that require elogind also wait for seatd.
      (service seatd-service-type)
 
+     ;; UPower: Phosh's battery indicator and GNOME Settings read the battery
+     ;; through it; without it Phosh showed a wrong battery state (sway's
+     ;; i3status-rust reads sysfs and was right).
+     (service upower-service-type)
+
      ;; ── Session desktop files ─────────────────────────────────────────────
      ;; Session entries in /etc/wayland-sessions for tuigreet, with absolute
      ;; store paths in Exec= so they work regardless of login-shell PATH.
