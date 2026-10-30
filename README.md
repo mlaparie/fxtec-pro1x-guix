@@ -1,7 +1,7 @@
-> **Work in progress — partially functional.**
-> Boot, display, hardware keyboard, USB SSH, and bare sway work.
-> Audio, modem, and several other features are unverified or broken.
-> Do not flash this on a device you depend on.
+> **Work in progress.**  Display, touch, GPU, keyboard, Wi-Fi, speaker,
+> cameras, auto-rotation and 3G data work; LTE, GPS, calls, SMS and
+> microphones do not yet (status below).  Do not flash this on a device
+> you depend on.
 
 # Guix System on the F(x)tec Pro¹x (QX1050)
 
@@ -13,6 +13,18 @@ kernel patches, firmware, and flash approach originate there.
 > Flashing **erases userdata** and replaces the bootloader on slot A.
 > Back up first (`scripts/backup-stock.sh`). Unlock the bootloader before
 > doing anything.
+
+## Documentation
+
+| page | |
+|---|---|
+| [docs/features.md](docs/features.md) | what it is and what works |
+| [docs/install.md](docs/install.md) | flashing the first time |
+| [docs/configure.md](docs/configure.md) | your config.scm and channels, the port's options |
+| [docs/update.md](docs/update.md) | updating, generations, rollback |
+| [docs/troubleshoot.md](docs/troubleshoot.md) | logs, known problems, recovery |
+
+The rest of this README is the reference for working on the port.
 
 ## Port status
 
@@ -174,10 +186,10 @@ sudo guix system reconfigure ~/.config/guix/config.scm
   `guix pull` keeps bringing the port's fixes while your changes stay in
   your file.  It shows where your changes go.  It holds no key and no
   password, so you can keep it with your other dotfiles.
-- Root SSH login, used by `scripts/deploy.sh` (next section), is **off**
-  in it: to allow deploys from your PC, uncomment the `#:root-ssh-keys`
-  line.  It refers to `~/.ssh/pro1x-guix.pub` on the phone, the public
-  key of your PC that `scripts/flash.sh` put there.
+- Root SSH login is off in it (`#:root-ssh-keys` commented out).
+  `scripts/deploy.sh` keeps your PC's key in root's authorized keys
+  whatever the file says, so deploys keep working; the line matters only
+  for root SSH after a reconfigure on the phone.
 
 Do not start from `/run/current-system/configuration.scm`: that is the
 port's own system file, not meant to be edited.  `guix system
