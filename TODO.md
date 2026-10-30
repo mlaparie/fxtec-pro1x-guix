@@ -237,11 +237,25 @@ and Phosh itself.  Not set up yet.
   for run 41025825198's kernel.  Then the author's ear.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
-- CI kernel (charge limit, LED pattern trigger): runs 40997348185 and
-  41007214587 both failed in Prefetch on the glib graft (see §5); the
-  warm-up step (da730ed) is in run 41025825198.  Then `sudo guix archive --authorize
-  < ci-signing-key.pub` on the PC (author), import, deploy, reboot.  Merge next into main after
-  that kernel boots.
+- CI kernel (charge limit, LED pattern trigger): run 41025825198 green
+  (warm-up step da730ed passed); kernel q1i51w54 imported on the PC,
+  generation 30 (2624e73 + 4de272d), booted 2026-10-30 ~10:07.  Comes
+  back to tuigreet; modem probes (Modem/0, SIM present, PIN-locked as
+  after every boot: the author enters the PIN).  Charge limit and LED
+  trigger not tested yet.  Merge next into main: author's call.
+- After the reboot into 30 the phone "forgot the Wi-Fi passwords"
+  (author): NetworkManager logged "secrets are required" for the AP at
+  10:28 and the author re-entered them; the keyfiles in
+  /var/lib/NetworkManager/system-connections have psk in the file
+  (psk-flags 0) and older files are still there.  Why the stored one
+  was not used is not known yet.
+- ADSP log spam: "qcom_q6v5_pas a400000.remoteproc: Handover signaled,
+  but it already happened" ~4.3 times a second, from 18 min after boot
+  (about the Sway login) on; ADSP state running, no crash lines.
+  Suspect: the sensor stream monitor-sensor opens (sway-autorotate);
+  not checked.
+- Sway landscapes upside down (author): 8430c1f swaps left-up/right-up;
+  deploying.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.
 
