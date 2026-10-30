@@ -170,6 +170,11 @@
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$(file-append mmsd-tng "/bin/mmsdtng") "mmsdtng"))
+        ;; Asks before switching to the MMS APN to fetch waiting MMS.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append pro1x-mms-fetch "/bin/pro1x-mms-fetch")
+                 "pro1x-mms-fetch"))
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))

@@ -1,0 +1,96 @@
+#!/bin/sh
+# pro1x-mms-fetch — download MMS when the operator has a separate MMS APN
+#
+# mmsd-tng downloads an MMS only over the active mobile-data connection, and
+# only when its APN is mmsd-tng's MMS_APN; it cannot open a second one, and
+# some operators refuse a second connection anyway.  So with a separate MMS
+# APN, MMS notifications arrive but the messages are never fetched.
+#
+# This helper, run in the session, watches mmsd-tng's queue
+# (~/.mms/modemmanager/*.status with state=notification).  For each new
+# waiting MMS it asks the user, since mobile internet stops meanwhile; on
+# "Download" it brings up a mobile connection on the MMS APN (NetworkManager
+# profile "pro1x-mms", made once from mmsd-tng's settings), lets mmsd-tng
+# process its queue (AutoProcessOnConnection), waits until nothing is left
+# waiting (90 s at most), then brings back the data connection that was up,
+# or none.
+#
+# Needs: nmcli, notify-send (libnotify >= 0.8 for actions); NetworkManager
+# allows the user through the netdev polkit rule.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+dir="$HOME/.mms/modemmanager"
+settings="$dir/mms"
+asked="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mms-asked"
+profile="pro1x-mms"
+touch "$asked"
+
+waiting() { grep -l '^state=notification' "$dir"/*.status 2>/dev/null; }
+
+mms_apn() { sed -n 's/^MMS_APN=//p' "$settings" 2>/dev/null; }
+
+active_gsm() {
+    nmcli -t -f NAME,TYPE connection show --active 2>/dev/null |
+        awk -F: '$2 == "gsm" { print $1; exit }'
+}
+
+active_apn() {
+    c=$(active_gsm)
+    [ -n "$c" ] && nmcli -g gsm.apn connection show "$c" 2>/dev/null
+}
+
+ensure_profile() {
+    apn=$(mms_apn)
+    [ -n "$apn" ] || return 1
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$profile"; then
+        nmcli connection modify "$profile" gsm.apn "$apn"
+    else
+        nmcli connection add type gsm ifname '*' con-name "$profile" \
+            apn "$apn" connection.autoconnect no >/dev/null
+    fi
+}
+
+fetch() {
+    prev=$(active_gsm)
+    [ "$prev" = "$profile" ] && prev=
+    if ! ensure_profile; then
+        notify-send -a Chatty "MMS" "No MMS APN set in Chatty's MMS settings."
+        return
+    fi
+    if ! nmcli connection up "$profile" >/dev/null 2>&1; then
+        notify-send -a Chatty "MMS" "Could not connect to the MMS APN."
+    else
+        i=0
+        while [ "$i" -lt 90 ] && [ -n "$(waiting)" ]; do
+            sleep 3
+            i=$((i + 3))
+        done
+    fi
+    if [ -n "$prev" ]; then
+        nmcli connection up "$prev" >/dev/null 2>&1
+    else
+        nmcli connection down "$profile" >/dev/null 2>&1
+    fi
+    if [ -n "$(waiting)" ]; then
+        notify-send -a Chatty "MMS" "Download did not finish; mobile data is back."
+    else
+        notify-send -a Chatty "MMS" "Downloaded; mobile data is back."
+    fi
+}
+
+while :; do
+    new=$(waiting | grep -vxF -f "$asked")
+    if [ -n "$new" ]; then
+        echo "$new" >> "$asked"
+        # With a combined data/MMS APN mmsd-tng fetches by itself.
+        if [ -z "$(mms_apn)" ] || [ "$(active_apn)" != "$(mms_apn)" ]; then
+            answer=$(notify-send -a Chatty --wait \
+                -A download=Download -A later="Not now" \
+                "MMS waiting" \
+                "Download it now?  Mobile internet stops for about half a minute.")
+            [ "$answer" = download ] && fetch
+        fi
+    fi
+    sleep 15
+done

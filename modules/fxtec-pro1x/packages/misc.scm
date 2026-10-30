@@ -788,6 +788,45 @@ ModemManager, for clients such as Chatty.")
     (license license:gpl2)))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-mms-fetch — MMS with a separate MMS APN (see the script's header)
+;;; mmsd-tng downloads only over the active connection with its MMS APN, and
+;;; the author's operator refuses a second connection on the MMS APN
+;;; (ServiceOptionNotSubscribed, 2026-10-30).  Asks the user, switches the
+;;; mobile connection to the MMS APN while mmsd-tng downloads, switches back.
+;;; Started by phosh-pro1x-shell.  Source: device/mms/pro1x-mms-fetch.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-mms-fetch
+  (package
+    (name "pro1x-mms-fetch")
+    (version "0.1")
+    (source (local-file (repository-file "device/mms") "pro1x-mms"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (inputs (list bash-minimal coreutils gawk grep libnotify network-manager
+                  sed))
+    (arguments
+     (list
+      #:install-plan #~'(("pro1x-mms-fetch" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/pro1x-mms-fetch")))
+                (chmod bin #o755)
+                (wrap-program bin
+                  `("PATH" ":" prefix
+                    ,(map (lambda (p)
+                            (string-append (assoc-ref inputs p) "/bin"))
+                          '("coreutils" "gawk" "grep" "libnotify"
+                            "network-manager" "sed"))))))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Fetch MMS over a separate MMS APN, after asking")
+    (description
+     "pro1x-mms-fetch switches the mobile connection to the MMS APN while
+mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
 ;;; pro1x-doubletap — wake the panel with a double tap
 ;;; The touchscreen keeps reporting touches with the panel off; two quick
 ;;; taps then send a power-key press from a uinput device (as SailfishOS's
