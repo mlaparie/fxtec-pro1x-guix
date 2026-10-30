@@ -187,6 +187,22 @@
         "confidence": "confirmed",
         "date": "2026-10-29",
         "source": "author pull log on the phone; GitLab API commit lookup (404 vs 200); /var/log/guix/drvs/gm/5smv8pyx…-fxtec-pro1x.drv.gz; guix/channels.scm %guix-channel-introduction"
+      },
+      {
+        "title": "Guix's iio-sensor-proxy polkit substitution eats a newline in 3.9",
+        "general": "A substitute* pattern ending in '.*' consumes the line's newline; it was harmless while the next line was empty. When inheriting a recipe for a newer version, check what its substitutions do to the new source.",
+        "instance": "iio-sensor-proxy 3.9 meson.build: 'polkit_gobject_dep\\\\..*' glued libssc's dependency line onto the policy directory ('meson.build:48:115: ERROR: Expecting eof'). Replaced with an exact pattern.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "reproduced with substitute* on the 3.9 source; commit e4051eb"
+      },
+      {
+        "title": "Tests that need a mock QMI server do not run in the build sandbox",
+        "general": "Stop after the second environment gap (missing /usr/bin/env, then PyGObject) and disable the tests with the reason, rather than rebuilding a test environment.",
+        "instance": "libssc 0.4.4: mock SSC server in Python; nixpkgs does not run the tests either. iio-sensor-proxy 3.9: SSC accel and proximity tests pass, compass and light time out under QEMU (skipped).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "build logs; commit e4051eb"
       }
     ],
     "ci": [
@@ -271,6 +287,22 @@
         "confidence": "confirmed",
         "date": "2026-10-29",
         "source": "author report of the boot screen; extlinux.conf and prev*.conf read over UMS; gnu/build/file-systems.scm (Guix fa73e81)"
+      },
+      {
+        "title": "Deploy the phone's own configuration, built on the PC",
+        "general": "Deploying a system file from the development tree replaces the owner's configuration. Copy the owner's config.scm and channels.scm from the device, build under guix time-machine with those channels, and put the tree's modules first with -L for unpushed work. Keep the deploy key in root's authorized keys whatever the config says.",
+        "instance": "scripts/deploy.sh since 2026-10-30; --repo keeps the old mode. First run built go-std and tailscaled for aarch64 under QEMU.",
+        "confidence": "handover",
+        "date": "2026-10-30",
+        "source": "commit cd12ad8"
+      },
+      {
+        "title": "Do not rewrite a bash script while it runs",
+        "general": "bash reads a script from disk as it executes; replacing it during a long command makes bash continue at the old byte offset in the new text. Keep edits aside until the run ends.",
+        "instance": "Pro1X: scripts/deploy.sh rewritten while guix deploy ran from it; restored byte for byte before the deploy returned.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "session 2026-10-30"
       }
     ],
     "licensing": [
@@ -281,6 +313,88 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "clone of nyymi609/fxtec-pro1x-nixos at 579356e, root listing; GitHub API license field empty"
+      }
+    ],
+    "desktop": [
+      {
+        "title": "Without logind, every allow_active polkit action is refused: add the package's actions and a group rule",
+        "general": "polkit grants allow_active actions only to the active local session, which it learns from logind. With seatd it never knows, so ModemManager, NetworkManager, iio-sensor-proxy and friends refuse requests from the logged-in user. Two separate faults look the same: the package's actions not given to polkit-service-type ('Action ... is not registered', even as root), and no rule for the user ('Not Authorized'). Give the package to polkit-service-type and add a rule for a group.",
+        "instance": "Pro1X: GNOME Settings' SIM unlock closed without error (ModemManager: PolicyKit authorization failed); 'Action org.freedesktop.ModemManager1.Device.Control is not registered' even for root; 'net.hadess.SensorProxy.claim-sensor is not registered', then 'Sensor claim not allowed'. Fixed: modem-manager and iio-sensor-proxy in polkit-service-type, rules for netdev and users.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 84d1ca4, b3d83fb, bd2c999, dbf9f11; logs on the phone"
+      },
+      {
+        "title": "A deploy does not reload the system bus or polkitd",
+        "general": "After guix deploy or reconfigure, the running dbus-daemon keeps its old policy and polkitd its old actions and rules (it watched the previous /etc/polkit-1 store link): new D-Bus services and polkit actions work only after a reboot. Reload the bus (org.freedesktop.DBus.ReloadConfig) and stop polkitd at activation.",
+        "instance": "Pro1X: UPower exited with 'name lost, exiting' until ReloadConfig; polkit kept 'not registered' until polkitd was restarted. pro1x-reload-bus-service in system/common.scm does both when the bus runs.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 7d1b585; upowerd -v and polkit errors on the phone"
+      },
+      {
+        "title": "A package that is only a dependency exposes no D-Bus session service",
+        "general": "D-Bus-activated daemons (feedbackd, xdg-desktop-portal) start only if their service file is under a directory the session bus reads (XDG_DATA_DIRS: the system or user profile). Being in the store as a dependency of Phosh or Calls is not enough.",
+        "instance": "Pro1X: feedbackd 0.8.1 in the store, never started, no vibration; no xdg-desktop-portal, so libadwaita apps ignored dark mode; no UPower, so no battery in Phosh. All added to the system profile or as services.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits c3e5962, c5ee95c, ffeaad1"
+      },
+      {
+        "title": "Phosh without gnome-session: what gnome-session would have started",
+        "general": "Phosh leaves some jobs to helpers gnome-session starts: the volume keys to gnome-settings-daemon's gsd-media-keys (it grabs them through Phosh), dimming to gsd-power (which needs logind). Start what works without logind from the session wrapper, replace the rest.",
+        "instance": "Pro1X: volume keys did nothing until gsd-media-keys ran (author confirmed); its logind and session-manager warnings are harmless. Dimming done with swayidle + pro1x-dim instead of gsd-power.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 6420e80, ff32a09"
+      },
+      {
+        "title": "Phosh 0.56 never sets allow_volume_above_100_percent",
+        "general": "When a setting has no effect, check that the code reads it: a field can be declared and tested but never assigned.",
+        "instance": "phosh 0.56.0 src/settings/audio-settings.c: the field is only declared and read, so the slider stops at 100% whatever org.gnome.desktop.sound says. Patched here (device/phosh/volume-above-100-percent.patch).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 source; commit 4250db0"
+      },
+      {
+        "title": "phoc raises a black shield on every output transform change",
+        "general": "A black flash on each rotation in phoc is deliberate: the modeset shield hides layer-surface rearrangement and fades out in 150 ms. Every output configuration commit sets mode, scale and transform, so 'only the transform changed' must be found by comparing with the previous commit.",
+        "instance": "phoc 0.56.0 src/output.c (modeset_shield). Patch skipping it for rotation alone: device/phoc/rotation-without-shield.patch, untested on the phone.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phoc 0.56.0 source; commit 0491931"
+      },
+      {
+        "title": "Phosh restores a portrait pre-lock transform on unlock",
+        "general": "On phones Phosh forces the lock screen to portrait and restores the transform saved at lock time. A session that starts locked saves portrait, so anything that rotates the panel during the lock screen is undone at unlock.",
+        "instance": "Pro1X: keyboard out at login, lock screen landscape, shell portrait after unlocking. Patch: leave the transform alone when orientation is locked (device/phosh/lockscreen-keep-locked-orientation.patch), untested.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 src/rotation-manager.c; author 2026-10-30; commit 9a93e64"
+      },
+      {
+        "title": "Phosh saves no display configuration",
+        "general": "Phosh applies a scale chosen in Settings but writes it nowhere; each login starts from phoc's ini. Persist display settings in phoc.ini.",
+        "instance": "Pro1X: scale back to 2 at every login. Default now 1.75 in /etc/phoc.ini; the session uses ~/.config/phoc/phoc.ini when present.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "phosh 0.56.0 src/monitor-manager.c; commit c5ee95c"
+      },
+      {
+        "title": "GSettings overrides for other packages' schemas belong in the system profile",
+        "general": "An override compiled into one package's schema directory only reaches that package's schemas. For keys of gsettings-desktop-schemas, put the override in a package in the system profile: Guix's glib-schemas profile hook compiles all of them together.",
+        "instance": "Pro1X: org.gnome.desktop.sound allow-volume-above-100-percent via pro1x-gsettings-defaults; checked with GSETTINGS_BACKEND=memory gsettings against the phone's compiled schemas: true.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit cc16582"
+      },
+      {
+        "title": "tuigreet remembers nothing without /var/cache/tuigreet",
+        "general": "tuigreet's --remember flags write to /var/cache/tuigreet; a Guix system has no /var/cache by default. Create it at activation, owned by the greeter user.",
+        "instance": "Pro1X: no /var/cache at all; greeter uid 986.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "ls on the phone; commit d6257e1"
       }
     ]
   }
