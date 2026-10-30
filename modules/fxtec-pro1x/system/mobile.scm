@@ -677,6 +677,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Browser, terminal, editors
      ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
      icecat epiphany gnome-console
+     ;; LibreWolf: Firefox 158 with privacy defaults; aarch64 substitutes on
+     ;; bordeaux (nonguix's firefox is x86_64 only).
+     librewolf
      emacs mpv nnn
      calls chatty
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
