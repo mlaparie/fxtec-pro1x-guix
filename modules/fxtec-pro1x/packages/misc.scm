@@ -29,7 +29,9 @@
   #:use-module (gnu packages serialization)  ; libyaml
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages fribidi)
+  #:use-module (gnu packages dns)           ; c-ares
   #:use-module (gnu packages glib)
+  #:use-module (gnu packages messaging)     ; libphonenumber
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
@@ -37,6 +39,7 @@
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages protobuf)
   #:use-module (gnu packages polkit)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages tls)
@@ -51,6 +54,7 @@
   #:use-module (guix build-system meson)
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix utils)
@@ -749,6 +753,39 @@ It runs on top of the Phoc compositor.")
                       (display "[sm.puri.phosh]\napp-filter-mode=@as []\n" port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
+
+;;; ---------------------------------------------------------------------------
+;;; mmsd-tng — MMS daemon for ModemManager, which Chatty uses for MMS
+;;; Not in Guix.  Without it, MMS did not arrive (author, 2026-10-30): the
+;;; notification comes as an SMS, mmsd-tng downloads the message from the
+;;; operator's MMSC over the MMS APN (set in Chatty's MMS settings).
+;;; Built against this channel's ModemManager 1.24, the running daemon.
+;;; Run per session (no D-Bus activation file): phosh-pro1x-shell starts it.
+;;; ---------------------------------------------------------------------------
+(define-public mmsd-tng
+  (package
+    (name "mmsd-tng")
+    (version "2.6.4")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.com/kop316/mmsd")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "13yq32m1v8qrfjs5b08vzv6bpqrp80ch9krl1bdnxnf2rqpfqwgy"))))
+    (build-system meson-build-system)
+    (native-inputs (list pkg-config (list glib "bin")))
+    ;; protobuf: libphonenumber's headers include protobuf's.
+    (inputs (list c-ares glib libphonenumber libsoup
+                  mobile-broadband-provider-info modem-manager-1.24 protobuf))
+    (home-page "https://gitlab.com/kop316/mmsd")
+    (synopsis "MMS daemon for ModemManager")
+    (description
+     "mmsd-tng receives and sends MMS messages with a modem driven by
+ModemManager, for clients such as Chatty.")
+    (license license:gpl2)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-doubletap — wake the panel with a double tap

@@ -143,8 +143,8 @@
                             (slid-in! saved)))
                   (loop saved))))))))
 
-;; What phoc starts: gsd-media-keys, gsd-rfkill, the slider helper, the
-;; idle dimmer, then the shell.  Phosh does not
+;; What phoc starts: gsd-media-keys, gsd-rfkill, mmsd-tng, the slider
+;; helper, the idle dimmer, then the shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
 ;; Phosh.  Without it the volume keys did nothing (tested on the phone,
@@ -166,6 +166,10 @@
           (setsid)
           (execl #$(file-append gnome-settings-daemon "/libexec/gsd-rfkill")
                  "gsd-rfkill"))
+        ;; mmsd-tng: MMS for Chatty (no D-Bus activation file of its own).
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append mmsd-tng "/bin/mmsdtng") "mmsdtng"))
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))
