@@ -79,7 +79,8 @@
 ;; does not know SW_KEYPAD_SLIDE (gpio-keys, /dev/input/pro1x-slider, group
 ;; input), so with auto-rotation it also rotated with the keyboard out
 ;; (author, 2026-10-30).  On slide-out: remember the user's orientation
-;; lock, lock, and turn the panel to landscape (transform 90, as in Sway);
+;; lock, lock, and turn the panel to landscape (transform 270: with 90,
+;; as in Sway's config, Phosh came out upside down, author 2026-10-30);
 ;; Phosh leaves the transform alone while locked.  On slide-in: restore the
 ;; remembered lock, so auto-rotation resumes if it was on.
 (define phosh-pro1x-slider
@@ -115,7 +116,7 @@
           (let ((lock (or saved (orientation-lock))))
             (set-orientation-lock! "true")
             (system* #$(file-append wlr-randr "/bin/wlr-randr")
-                     "--output" "DSI-1" "--transform" "90")
+                     "--output" "DSI-1" "--transform" "270")
             lock))
 
         (define (slid-in! saved)
@@ -534,6 +535,7 @@ Dracula palette, no kernel messages over the greeter.")
                (authorized-keys (pro1x-root-authorized-keys root-ssh-keys))))
 
      ;; /etc/guix/config.scm: the owner's starting configuration.
+     pro1x-reload-bus-service
      (pro1x-user-config-service '(fxtec-pro1x system mobile)
                                 'pro1x-mobile-operating-system))
 
