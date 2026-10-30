@@ -4,24 +4,22 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-10-29, evening):** generations 1 (flashed image), 25,
-26 (booted) and 27 (keymap), deployed from the PC before the channel
-layout change; off the network until the author pulls the channel and
-reconfigures from `/etc/guix/config.scm`.  Not yet on the phone: the
-U-Boot slot watcher, `modules/` layout, `/etc/guix/config.scm`, the
-opt-in root key.  No release yet: tags v0.1.0-v0.1.3 were deleted
-(author); the first release follows this round of fixes.
+**On the phone (2026-10-30, 01:20):** flashed 2026-10-29 from the CI
+image of `next` (2d71b95, generation 1), then generations 2-13 deployed
+from the PC (USB).  Generation 13 is the first built from the phone's own
+`~/.config/guix/config.scm` and `channels.scm` (Tailscale added), with
+this tree's modules in front.  `main` = `next` (d6257e1 pushed to sr.ht
+and GitHub, 2026-10-30).  Root SSH by the PC's key, added by hand after
+the flash and kept by deploy/pro1x.scm.  No release yet: the first
+release follows this round of fixes.
 
-**Configuration workflow (2026-10-29):** the systems live in the channel
-(`(fxtec-pro1x system mobile|minimal|mobile-encrypted)`); `systems/*.scm`
-add root's key, read from `~/.ssh/pro1x-guix.pub` on the build host (made
-by `scripts/flash.sh`) or `/home/user/.ssh/pro1x-guix.pub` on the phone.
-The flashed system puts that public key in the user's home (skeleton) and
-ships `/etc/guix/config.scm`, which inherits the system and has the
-`#:root-ssh-keys` line commented out (opt-in, no key in the file).
-Evaluated on the PC for the three systems: template as shipped has no
-root key; uncommented gives the stock system's derivation exactly.  Not
-tried on the phone.
+**Configuration workflow (2026-10-30):** the systems live in the channel
+(`(fxtec-pro1x system mobile|minimal|mobile-encrypted)`).  The phone
+ships `/etc/guix/config.scm` (inherits the port's system; root SSH line
+commented out) and `/etc/guix/channels.scm` (pinned guix and nonguix);
+the owner copies them to `~/.config/guix/`.  `scripts/deploy.sh` builds
+that copy on the PC (time-machine with the phone's channels, `-L
+modules`); `--repo` deploys `systems/*.scm` instead.
 
 **Reference repos** (clone to /tmp when needed):
 - NixOS port (working hardware reference):
@@ -60,9 +58,9 @@ tried on the phone.
 
 ---
 
-## Branch `next` (2026-10-29 evening, build-tested only, not deployed)
+## Branch `next`, 2026-10-29 evening (now on `main` and the phone)
 
-To deploy and test once the phone takes deploys again (Tailscale):
+What the evening round contained (results below):
 - modem: UIM provisioning before ModemManager (SIM not detected);
 - Bluetooth: BlueZ powered at start; kernel BT_LE, BT_RFCOMM;
 - audio and camera: PipeWire, WirePlumber (patched libcamera),
@@ -75,7 +73,6 @@ To deploy and test once the phone takes deploys again (Tailscale):
 - screen off: moWerk's panel display-off patch (kernel);
 - clock from the RTC with a saved offset; 16x32 console font from boot;
 - kernel.scm: package lookup by name failed (current-source-directory).
-The kernel changed: reboot needed, with the U-Boot fallback in mind.
 
 Tested on the phone 2026-10-29/30 (flashed CI image of next, 2d71b95,
 then deploys of next up to cc16582; generation 2 and later):
@@ -264,35 +261,22 @@ and Phosh itself.  Not set up yet.
 
 ---
 
-## 1. PipeWire, WirePlumber, audio, camera
+## 1. Audio and camera
 
-NixOS (`modules/audio.nix`, `modules/camera.nix`):
-- `services.pipewire` with ALSA and Pulse, WirePlumber with the Pro¹x
-  config package, `pro1x-audio-init` as WirePlumber's ExecStartPre;
-- `ALSA_CONFIG_UCM2` pointing at alsa-ucm-conf merged with
-  `device/audio/ucm2`;
-- rtkit;
-- WirePlumber's user unit gets `LD_LIBRARY_PATH=<pro1x-libcamera>/lib`, so
-  PipeWire's libcamera SPA plugin uses the patched libcamera;
-- a `pro1x-voicepcm` user service for calls.
-
-Guix plan: user services through Guix Home (`home-pipewire-service-type`,
-`home-dbus-service-type`) applied to `user` by `guix-home-service-type`,
-or Shepherd user services started from the session scripts; rtkit;
-`pro1x-audio-init` before WirePlumber; merged UCM2 tree; WirePlumber's
-environment carrying the libcamera path.  Playback on speaker and headset
-first, then camera in cameractrl and Snapshot.  Packages: `pipewire`,
-`wireplumber` (gnu packages pulseaudio / linux), `rtkit`.
+Done 2026-10-29/30 (see "Tested on the phone" above): PipeWire,
+WirePlumber, pipewire-pulse per session from the session scripts (not
+Guix Home), patched libcamera in WirePlumber, speaker plays, both
+cameras in Snapshot.  Open: pops at login, earpiece, headphones,
+microphones, call audio (pro1x-voicepcm), rtkit (PipeWire warns it is
+missing; no audible effect noticed).
 
 ## 2. Modem
 
-ModemManager 1.24 sees the modem (2026-10-29).  With a SIM inserted there
-is no LTE network (author, 2026-10-29): not looked into yet; check SIM
-state (`mmcli -m 0`, UIM provisioning session, AGENTS.md §7), registration
-and the modem's crash log.  Next, with the author:
-SIM provisioning (UIM session, AGENTS.md §7), then SMS, calls, data.
-Shepherd `requirement` orders but does not pull in rmtfs; check MM does
-not start before rmtfs on a cold boot.
+SIM detected (UIM provisioning every boot), unlocked, data on 3G
+(2026-10-30).  Open: LTE (see "mobile data" above: ask the author again
+if no 4G while moving around), SMS, calls (ask before each, AGENTS.md
+§0).  Shepherd `requirement` orders but does not pull in rmtfs; check MM
+does not start before rmtfs on a cold boot.
 
 ## 3. Boot menu, rollback, bootloader
 
@@ -325,15 +309,17 @@ not start before rmtfs on a cold boot.
   encrypted system still needs `update-encrypted-boot.sh` after a deploy.
 - After a deploy that changes sessions, tuigreet shows the old session
   list until it restarts (log in and out once).
+- Since 2026-10-30 deploys build the phone's own config.scm; check
+  that a deploy after the owner edits config.scm keeps the edit.
 
 ## 4. Sensors
 
-`pro1x-sensors-service-type` extends D-Bus and udev (rules confirmed in
-place).  Open: the ADSP's `sensor_process` crashed at boot on 2026-10-29
-(`SNS_REG_INIT ... sns_registry_sensor.c:94`, "fatal error received");
-`qrtr-lookup` is not installed (needed to wait for QRTR service 400 before
-iio-sensor-proxy, as NixOS does).  Compare with sailfish-rag `Mainline/`
-sensors notes.
+Accelerometer and auto-rotation work (2026-10-30): hexagonrpcd 40e5041
+stopped the ADSP's SNS_REG_INIT crash, iio-sensor-proxy 3.9 with libssc
+reads the sensors, polkit lets users claim them.  qrtr-lookup is
+installed and iio-sensor-proxy waits for QRTR 400.  Open: proximity
+(screen off in calls), light, gyroscope; check the accelerometer axes in
+all four orientations (mount matrix from the NixOS port).
 
 ## 5. CI
 
