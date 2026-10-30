@@ -73,6 +73,13 @@ if [ "${1:-}" = --bar ]; then
     exit
 fi
 
+# Super+q again closes the menu.
+if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ] &&
+   swaymsg -t get_tree 2>/dev/null | grep -q '"app_id": "quicksettings"'; then
+    swaymsg '[app_id="^quicksettings$"] kill' >/dev/null
+    exit
+fi
+
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
     QS_IN_FOOT=1 exec foot --app-id=quicksettings -o pad=24x16 "$0"
 fi
@@ -164,22 +171,22 @@ charge_limit() {                # from config.scm, via /etc/pro1x/charge.conf
     fi
 }
 
-wifi_info() {                   # " · SSID 75%" for the connected network
+wifi_info() {                   # " · 75% SSID" for the connected network
     nmcli -g ACTIVE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null |
         awk '/^yes:/ { sig = $0; sub(/^yes:/, "", sig); sub(/:.*/, "", sig)
                        ssid = $0; sub(/^yes:[^:]*:/, "", ssid)
                        gsub(/\\:/, ":", ssid)
-                       printf " · %s %s%%", ssid, sig; exit }'
+                       printf " · %s%% %s", sig, ssid; exit }'
 }
 
-mobile_info() {                 # " · LTE 59% Operator", from modem key-values
+mobile_info() {                 # " · 59% Operator LTE", from modem key-values
     [ -n "$1" ] || return
     tech=$(printf '%s\n' "$1" | kv_get 'modem.generic.access-technologies.value\[1\]')
     sig=$(printf '%s\n' "$1" | kv_get modem.generic.signal-quality.value)
     op=$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-name)
     [ "$op" = -- ] && op=
     [ -n "$tech$sig" ] || return
-    printf ' · %s %s%% %s' "$(echo "$tech" | tr 'a-z' 'A-Z')" "$sig" "$op"
+    printf ' · %s%% %s %s' "$sig" "$op" "$(echo "$tech" | tr 'a-z' 'A-Z')"
 }
 
 volume() {                      # "60%" or "60% muted"
@@ -209,7 +216,7 @@ lines() {
     else
         plane=off
     fi
-    rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo on)
+    rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
@@ -217,6 +224,8 @@ lines() {
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
+        "notif       Notifications        $(cat "$d/notif")" \
+        "lock        Lock screen" \
         "wifi        Wi-Fi                $wifi$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "wwan        Mobile data          $wwan$(mobile_info "$kv")" \
         "sim         SIM                  $(sim_state "$kv")" \
@@ -230,7 +239,6 @@ lines() {
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               ${vol%% *}" \
         "mute        Mute                 $mute" \
-        "notif       Notifications        $(cat "$d/notif")" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
@@ -281,7 +289,7 @@ state_of() {                    # state_of <setting>: on or off
             if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
                [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
                [ "$(blocked bluetooth)" = off ]; then echo on; else echo off; fi ;;
-        rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo on ;;
+        rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
@@ -301,6 +309,9 @@ feedback_step() {               # + towards full, - towards silent
 
 act() {                         # Enter
     case "$1" in
+        lock)                     # lock, and close this menu
+            swaymsg exec pro1x-lock >/dev/null
+            swaymsg '[app_id="^quicksettings$"] kill' >/dev/null ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -345,9 +356,9 @@ notif_default() {               # Enter: the default action, else dismiss
     [ "$1" = new ] || return
     if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
         makoctl invoke -n "$2" default
-    else
-        makoctl dismiss -n "$2"
     fi
+    # mako keeps it after an invoke: clear it as Phosh does.
+    makoctl dismiss -n "$2"
 }
 
 notif_pick() {                  # Tab: choose one of the actions
@@ -356,11 +367,12 @@ notif_pick() {                  # Tab: choose one of the actions
             fzf --prompt="action > " --layout=reverse --delimiter='\t' \
                 --with-nth=2) || return
     makoctl invoke -n "$2" "${a%%	*}"
+    makoctl dismiss -n "$2"
 }
 
 notif_dock() {
     notif_lines |
-        fzf --prompt="notifications > " --layout=reverse --no-sort \
+        fzf --prompt="notifications > " --layout=reverse --no-sort --cycle \
             --delimiter='\t' --with-nth=3 \
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
@@ -389,7 +401,7 @@ esac
 # take over the terminal (execute), the others run silently.
 lines |
     fzf --prompt="quick settings > " --no-sort --layout=reverse \
-        --with-nth=2.. --info=hidden --header-lines=1 \
+        --with-nth=2.. --info=hidden --header-lines=1 --cycle \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
@@ -398,10 +410,10 @@ lines |
         --bind="right:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  charge) ;;
+                  charge|lock) ;;
                   *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  sim|notif|charge) ;;
+                  sim|notif|charge|lock) ;;
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null
