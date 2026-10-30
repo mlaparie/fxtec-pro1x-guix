@@ -45,6 +45,43 @@ start_keepers() {
   fi
 }
 
+# Mute: in a call the microphone reaches the modem through the DSP, not
+# through PipeWire, so muting the PipeWire source (Calls' mute button, via
+# callaudiod) changed nothing.  Follow the Voice Call source's mute state
+# with the codec-to-DSP capture route instead.
+muted=""
+follow_mute() {
+  [ -n "$src" ] || return 0
+  m=$(pactl get-source-mute "$src" 2>/dev/null | awk '{print $2}')
+  [ -n "$m" ] && [ "$m" != "$muted" ] || return 0
+  muted=$m
+  if [ "$m" = yes ]; then
+    amixer -c0 -q cset name='VoiceMMode1 Capture Mixer VA_CODEC_DMA_TX_0' 0
+  else
+    amixer -c0 -q cset name='VoiceMMode1 Capture Mixer VA_CODEC_DMA_TX_0' 1
+  fi
+  echo "microphone muted: $m"
+}
+
+# Speaker: PipeWire (1.2+) gives one card profile per output, so
+# callaudiod's port switch does nothing here; upstream has no speaker
+# switching during calls yet (pipewire issue 4868).  callaudiod still
+# records Calls' speaker button ("Speaker enabled"); follow it by switching
+# between the Voice Call profiles of the card.
+speaker=""
+follow_speaker() {
+  s=$(callaudiocli -S 2>/dev/null | awk '/Speaker enabled/ {print $3}')
+  [ -n "$s" ] && [ "$s" != "$speaker" ] || return 0
+  card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
+  [ -n "$card" ] || return 0
+  speaker=$s
+  if [ "$s" = CALL_AUDIO_SPEAKER_ON ]; then
+    pactl set-card-profile "$card" "Voice Call (Mic, Speaker)" && echo "speaker on"
+  else
+    pactl set-card-profile "$card" "Voice Call (Earpiece, Mic)" && echo "speaker off"
+  fi
+}
+
 stop_keepers() {
   [ -z "$kp" ] || kill $kp 2>/dev/null
   kp=""
@@ -112,6 +149,11 @@ while :; do
     stop_pcm # the last call ended
   fi
   sig=$now
+
+  if [ -n "$vp" ]; then
+    follow_speaker
+    follow_mute
+  fi
 
   if [ -n "$vp" ] && ! kill -0 "$vp" 2>/dev/null; then
     wait "$vp" 2>/dev/null
