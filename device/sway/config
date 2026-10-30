@@ -54,10 +54,10 @@ exec pro1x-mako
 
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
-### and on demand: Super+k, the Keyboard line in quick settings, the gear.
+### and on demand: Super+i, the Keyboard line in quick settings, the gear.
 exec phosh-osk-stevia
 exec pro1x-osk-slider
-bindsym $mod+k exec sway-quick-settings --osk toggle
+bindsym $mod+i exec sway-quick-settings --osk toggle
 
 ### Launcher window
 for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2

@@ -6,7 +6,7 @@
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
-# shown or hidden; also --osk toggle|show|hide, Super+k), torch, feedback profile
+# shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles or opens; Right turns a setting on (or steps it up, or
 # opens SIM and Notifications), Left turns it off (or steps it down); Esc
@@ -49,7 +49,7 @@ osk_state() {                   # shown, hidden, or "not running"
     esac
 }
 
-# --osk toggle|show|hide (Super+k in the Sway config).
+# --osk toggle|show|hide (Super+i in the Sway config).
 if [ "${1:-}" = --osk ]; then
     case "${2:-toggle}" in
         show) osk true ;;
