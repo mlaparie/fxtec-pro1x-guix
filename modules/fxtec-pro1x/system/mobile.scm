@@ -33,6 +33,7 @@
              (gnu packages glib)
              (gnu packages base)
              (gnu packages gnome)
+             (gnu packages libcanberra)    ; sound-theme-freedesktop
              (gnu packages linux)
              (gnu packages networking)
              (gnu packages ntp)
@@ -668,6 +669,9 @@ Dracula palette, no kernel messages over the greeter.")
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia
+     ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
+     ;; sounds were installed, no theme with the freedesktop names.
+     sound-theme-freedesktop
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
