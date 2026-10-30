@@ -583,6 +583,10 @@ Dracula palette, no kernel messages over the greeter.")
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).
      xdg-desktop-portal xdg-desktop-portal-gtk
+     ;; feedbackd: vibration and event feedback for Phosh, Calls, Chatty.
+     ;; It was only a dependency, not in the profile, so its D-Bus session
+     ;; service was not found and nothing vibrated.  fbcli to test.
+     feedbackd
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
      gsettings-desktop-schemas pro1x-gsettings-defaults
