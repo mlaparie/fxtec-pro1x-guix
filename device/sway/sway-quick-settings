@@ -5,19 +5,80 @@
 # per setting with its current state; Enter toggles or steps it, and the
 # menu stays open (redrawn) until Esc.  Like Phosh's tiles: Wi-Fi, mobile
 # data, Bluetooth, airplane mode, auto-rotation, torch, feedback profile
-# (quiet/vibrate/sound), and brightness and volume steps.
+# (quiet/vibrate/sound), and brightness and volume steps.  The SIM line
+# shows the lock state and asks for the PIN when the SIM is PIN-locked.
 #
-# Needs: nmcli, rfkill, brightnessctl, wpctl (system profile); gsettings,
+# Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl (system profile); gsettings,
 # fzf, sway-autorotate (in this package's PATH).  The user is in netdev
 # (NetworkManager, /dev/rfkill) and input (flash LEDs).
 #
-# State: written 2026-10-30, not yet run on the phone.
+# State: written 2026-10-30; the SIM line is read-tested on the phone (lock
+# state and tries shown), the PIN entry is not tested yet.
 
 torch=/sys/class/leds/white:flash-0/brightness
 
 if [ -z "${QS_IN_FOOT:-}" ]; then
     QS_IN_FOOT=1 exec foot --app-id=quicksettings "$0"
 fi
+
+modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
+kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
+
+sim_state() {
+    kv=$(modem_kv)
+    [ -n "$kv" ] || { echo "no modem"; return; }
+    req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
+    case "$req" in
+        sim-pin)
+            n=$(printf '%s\n' "$kv" | grep -o 'sim-pin (\([0-9]*\))' | head -1 |
+                    tr -dc 0-9)
+            echo "PIN needed (${n:-?} tries)" ;;
+        sim-puk) echo "PUK needed" ;;
+        ""|--|none) echo unlocked ;;
+        *) echo "$req" ;;
+    esac
+}
+
+# Asks for the PIN in this terminal and sends it once; never retries by
+# itself and leaves PUK unlocking to the owner (a wrong PUK ten times
+# destroys the SIM).
+sim_unlock() {
+    kv=$(modem_kv)
+    req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
+    sim=$(printf '%s\n' "$kv" | kv_get modem.generic.sim)
+    n=$(printf '%s\n' "$kv" | grep -o 'sim-pin (\([0-9]*\))' | head -1 | tr -dc 0-9)
+    case "$req" in
+        sim-pin) ;;
+        sim-puk)
+            printf 'The SIM needs its PUK.  Unlock it by hand:\n'
+            printf '  mmcli -i any --puk=<PUK> --pin=<new PIN>\n'
+            printf 'Enter to go back. '; read -r _; return ;;
+        *) return ;;
+    esac
+    printf 'SIM PIN (%s tries left, Enter alone to cancel): ' "${n:-?}"
+    stty -echo; read -r pin; stty echo; echo
+    [ -n "$pin" ] || return
+    case "$pin" in
+        *[!0-9]*) printf 'A PIN is 4 to 8 digits; nothing sent.\n'
+                  printf 'Enter to go back. '; read -r _; return ;;
+    esac
+    if [ ${#pin} -lt 4 ] || [ ${#pin} -gt 8 ]; then
+        printf 'A PIN is 4 to 8 digits; nothing sent.\n'
+        printf 'Enter to go back. '; read -r _; return
+    fi
+    if [ "${n:-0}" = 1 ]; then
+        printf 'Last try: a wrong PIN locks the SIM (PUK).  Type yes to send: '
+        read -r ok; [ "$ok" = yes ] || return
+    fi
+    if mmcli -i "$sim" --pin="$pin" >/dev/null 2>&1; then
+        printf 'SIM unlocked.\n'
+        sleep 1
+    else
+        printf 'Refused: %s\nEnter to go back. ' "$(sim_state)"
+        read -r _
+    fi
+    pin=
+}
 
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
@@ -47,6 +108,7 @@ state() {
     printf '%s\n' \
         "wifi        Wi-Fi                $wifi" \
         "wwan        Mobile data          $wwan" \
+        "sim         SIM                  $(sim_state)" \
         "bluetooth   Bluetooth            $bt" \
         "airplane    Airplane mode        $plane" \
         "rotation    Auto-rotation        $rot" \
@@ -114,6 +176,10 @@ while :; do
                      --with-nth=2.. --sync --bind "load:pos($pos)") || exit 0
     key=${choice%% *}
     pos=$(printf '%s\n' "$lines" | grep -n "^$key " | cut -d: -f1)
-    act "$key" >/dev/null 2>&1
+    if [ "$key" = sim ]; then
+        sim_unlock              # talks to the user in this terminal
+    else
+        act "$key" >/dev/null 2>&1
+    fi
     sleep 0.3                   # let NetworkManager and rfkill settle
 done
