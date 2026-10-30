@@ -43,7 +43,7 @@ Keyboard backlight               Working    on while slid out; off after 60 s wi
 Keyboard slider switch           Working    backlight, Phosh landscape, wakes sway
 Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
-Bluetooth                        Working    on/off and scanning from Phosh (gsd-rfkill); pairing untested
+Bluetooth                        Working    on/off, scan, pairing (speaker); audio to it untested
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
 Speaker                          Working    pops at login (open)
 Earpiece / headphones            Untested

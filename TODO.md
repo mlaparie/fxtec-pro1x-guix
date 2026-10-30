@@ -237,8 +237,9 @@ and Phosh itself.  Not set up yet.
    are what this replaces.
 2. **GPS**: see the GPS entry above (LOC present, no NMEA yet).
 3. **Bluetooth**: works from Phosh once gsd-rfkill runs and /dev/rfkill
-   is writable by netdev (acc408c; author, 2026-10-30).  Pairing and
-   audio devices untested.
+   is writable by netdev (acc408c; author, 2026-10-30).  Pairing with
+   a speaker works (author); sound to it untested (PipeWire's bluez5
+   plugin, A2DP).
 4. **Sway quick settings** (low priority, author 2026-10-30): an fzf menu
    like sway-window-switcher for Wi-Fi (the author's nmcli-fzf), mobile
    data, Bluetooth, torch, auto-rotate, brightness, volume, later
