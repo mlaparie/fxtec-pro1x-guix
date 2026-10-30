@@ -384,7 +384,8 @@ esac
    feedbackd-0.8 "/libexec/fbd-ledctrl -p %S%p -t pattern -G feedbackd\"\n"))
 
 (define (pro1x-hardware-etc config)
-  ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim.
+  ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim, and
+  ;; /etc/pro1x/charge.conf.
   (let ((after (pro1x-hardware-dim-after config)))
     `(("pro1x/dim.conf"
        ,(plain-file "dim.conf"
@@ -400,7 +401,20 @@ esac
                      "LOCK_AFTER="
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
-                     "\n"))))))
+                     "\n")))
+      ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-settings
+      ;; to show (the service itself gets the values directly).
+      ("pro1x/charge.conf"
+       ,(plain-file "charge.conf"
+                    (let ((limit (pro1x-hardware-charge-limit config)))
+                      (string-append
+                       "# Written by pro1x-hardware-service-type (config.scm).\n"
+                       "CHARGE_LIMIT=" (if limit (number->string limit) "") "\n"
+                       "CHARGE_RESUME="
+                       (if limit
+                           (number->string (pro1x-hardware-charge-resume config))
+                           "")
+                       "\n")))))))
 
 (define (pro1x-idle-gsettings config)
   ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
@@ -445,7 +459,7 @@ esac
                                 (file->udev-rule
                                  "90-pro1x-feedbackd-led.rules"
                                  pro1x-feedbackd-led-rules))))
-     ;; /etc/pro1x/dim.conf
+     ;; /etc/pro1x/dim.conf, /etc/pro1x/charge.conf
      (service-extension etc-service-type pro1x-hardware-etc)
      ;; Phosh's blank and lock delays; notification LED colours
      (service-extension profile-service-type

@@ -1,13 +1,17 @@
 #!/bin/sh
 # sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
 #
-# Opened by Super+q in a floating foot (app id quicksettings).  One line
+# Opened by Super+q, or the gear in the bar (--bar), in a floating foot
+# (app id quicksettings).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles or opens; Left/Right step brightness and volume; Esc
-# closes.  One fzf stays open and reloads its lines after each action.
+# closes.  The header shows the battery level and charging state; the
+# Wi-Fi line the network and signal, the mobile line the access technology,
+# signal and operator; the charge limit line what config.scm set
+# (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications
@@ -28,21 +32,43 @@ statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
 self=$0
 
+osk() {                         # osk true|false: stevia, if it runs
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
+}
+
+# --bar: from the bar's gear (i3status-rust).  With the keyboard slid in,
+# show the on-screen keyboard too, for the PIN and searching, and hide it
+# again when the menu closes.
+if [ "${1:-}" = --bar ]; then
+    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+    if [ $? = 10 ]; then
+        exec "$0"
+    fi
+    osk true
+    QS_IN_FOOT=1 foot --app-id=quicksettings -o pad=24x16 "$0"
+    osk false
+    exit
+fi
+
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
-    QS_IN_FOOT=1 exec foot --app-id=quicksettings "$0"
+    QS_IN_FOOT=1 exec foot --app-id=quicksettings -o pad=24x16 "$0"
 fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
+battery=/sys/class/power_supply/battery
+charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable
 kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
 pin_tries() { grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9; }
 
-sim_state() {
-    kv=$(modem_kv)
+sim_state() {                   # [modem key-values, else asks mmcli]
+    kv=${1-$(modem_kv)}
     [ -n "$kv" ] || { echo "no modem"; return; }
     case "$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)" in
         sim-pin) echo "PIN needed ($(printf '%s\n' "$kv" | pin_tries) tries)" ;;
         sim-puk) echo "PUK needed" ;;
-        ""|--|none) echo unlocked ;;
+        # PIN2 only guards fixed dialling (FDN): unlocked for normal use.
+        ""|--|none|sim-pin2|sim-puk2) echo unlocked ;;
         *) printf '%s\n' "$kv" | kv_get modem.generic.unlock-required ;;
     esac
 }
@@ -97,6 +123,43 @@ blocked() {                     # rfkill type -> on/off (on = not blocked)
     fi
 }
 
+battery_state() {               # "76% discharging", "85% held at limit"
+    cap=$(cat "$battery/capacity" 2>/dev/null) || { echo "no battery"; return; }
+    st=$(cat "$battery/status" 2>/dev/null | tr 'A-Z' 'a-z')
+    [ "$(cat "$charge_param" 2>/dev/null)" = N ] && st="held at limit"
+    echo "$cap% $st"
+}
+
+charge_limit() {                # from config.scm, via /etc/pro1x/charge.conf
+    CHARGE_LIMIT= CHARGE_RESUME=
+    [ -r /etc/pro1x/charge.conf ] && . /etc/pro1x/charge.conf
+    if [ ! -e "$charge_param" ]; then
+        echo "not in this kernel"
+    elif [ -z "$CHARGE_LIMIT" ]; then
+        echo "off  (charge to full; set in config.scm)"
+    else
+        echo "$CHARGE_LIMIT%, resume at $CHARGE_RESUME%  (set in config.scm)"
+    fi
+}
+
+wifi_info() {                   # " · SSID 75%" for the connected network
+    nmcli -g ACTIVE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null |
+        awk '/^yes:/ { sig = $0; sub(/^yes:/, "", sig); sub(/:.*/, "", sig)
+                       ssid = $0; sub(/^yes:[^:]*:/, "", ssid)
+                       gsub(/\\:/, ":", ssid)
+                       printf " · %s %s%%", ssid, sig; exit }'
+}
+
+mobile_info() {                 # " · LTE 59% Operator", from modem key-values
+    [ -n "$1" ] || return
+    tech=$(printf '%s\n' "$1" | kv_get 'modem.generic.access-technologies.value\[1\]')
+    sig=$(printf '%s\n' "$1" | kv_get modem.generic.signal-quality.value)
+    op=$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-name)
+    [ "$op" = -- ] && op=
+    [ -n "$tech$sig" ] || return
+    printf ' · %s %s%% %s' "$(echo "$tech" | tr 'a-z' 'A-Z')" "$sig" "$op"
+}
+
 volume() {                      # "60%" or "60% muted"
     wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
         awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }'
@@ -106,16 +169,18 @@ volume() {                      # "60%" or "60% muted"
 # own file, so a reload costs the slowest one rather than their sum.
 lines() {
     d=$(mktemp -d)
-    onoff "$(nmcli radio wifi 2>/dev/null)" > "$d/wifi" &
-    onoff "$(nmcli radio wwan 2>/dev/null)" > "$d/wwan" &
-    sim_state > "$d/sim" &
+    nmcli -t -f WIFI,WWAN radio > "$d/radio" 2>/dev/null &
+    modem_kv > "$d/kv" &
+    wifi_info > "$d/wifiinfo" &
     blocked bluetooth > "$d/bt" &
     gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'" > "$d/fb" &
     brightnessctl -m 2>/dev/null | cut -d, -f4 > "$d/br" &
     volume > "$d/vol" &
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
     wait
-    wifi=$(cat "$d/wifi"); wwan=$(cat "$d/wwan"); bt=$(cat "$d/bt")
+    radio=$(cat "$d/radio")           # enabled:enabled
+    wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
+    kv=$(cat "$d/kv")
     if [ "$wifi" = off ] && [ "$wwan" = off ] && [ "$bt" = off ]; then
         plane=on
     else
@@ -126,10 +191,12 @@ lines() {
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
     case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
+    # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
-        "wifi        Wi-Fi                $wifi" \
-        "wwan        Mobile data          $wwan" \
-        "sim         SIM                  $(cat "$d/sim")" \
+        "battery     Battery $(battery_state)" \
+        "wifi        Wi-Fi                $wifi$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wwan        Mobile data          $wwan$(mobile_info "$kv")" \
+        "sim         SIM                  $(sim_state "$kv")" \
         "bluetooth   Bluetooth            $bt" \
         "airplane    Airplane mode        $plane" \
         "rotation    Auto-rotation        $rot" \
@@ -139,7 +206,8 @@ lines() {
         "bright      Brightness           $(cat "$d/br")  (← →)" \
         "volume      Volume               ${vol%% *}  (← →)" \
         "mute        Mute                 $mute" \
-        "notif       Notifications        $(cat "$d/notif")"
+        "notif       Notifications        $(cat "$d/notif")" \
+        "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
 
@@ -271,7 +339,7 @@ esac
 # take over the terminal (execute), the others run silently.
 lines |
     fzf --prompt="quick settings > " --no-sort --layout=reverse \
-        --with-nth=2.. --info=hidden \
+        --with-nth=2.. --info=hidden --header-lines=1 \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;

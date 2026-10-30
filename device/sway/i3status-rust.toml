@@ -55,6 +55,16 @@ info = 60
 warning = 30
 critical = 15
 
+# Quick settings (sway-quick-settings): tap the gear; with the keyboard
+# slid in it also brings up the on-screen keyboard.
+[[block]]
+block = "custom"
+command = "echo ' \uf013 '"
+interval = "once"
+[[block.click]]
+button = "left"
+cmd = "sway-quick-settings --bar"
+
 [[block]]
 block = "time"
 interval = 10

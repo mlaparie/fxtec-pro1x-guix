@@ -1219,8 +1219,8 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "foot" "fzf" "gawk" "glib"
-                                "grep" "procps" "sed"))))))
+                              '("coreutils" "evtest" "foot" "fzf" "gawk"
+                                "glib" "grep" "procps" "sed"))))))
                 (let ((n (string-append #$output "/bin/sway-notifications")))
                   (chmod n #o755)
                   (wrap-program n
