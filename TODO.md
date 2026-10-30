@@ -96,9 +96,17 @@ then deploys of next up to cc16582; generation 2 and later):
 - SIM unlocked by the author (2026-10-30), after PUK refusals here: the
   earlier "10 left" only meant polkit stopped the requests first.
 - mobile data: connected on 3G (UMTS, 28% signal); 4G allowed and
-  preferred, every LTE band enabled, yet no LTE.  Next: compare with
-  another phone's 4G at the same place; read the modem's carrier
-  profiles (qmicli --pdc-list-configs, read-only).
+  preferred, every LTE band enabled, yet no LTE.  Another phone gets 5G
+  at the same place.  Carrier profile: ROW_Commercial active, the only
+  generic one among 25 (all Asian, Brazilian, Russian operators), so
+  probably not the cause.  Modem usage preference is voice-centric with
+  voice ps-preferred: without IMS/VoLTE a voice-centric UE leaves LTE
+  if the operator lacks CSFB (inferred, not measured).  moWerk's notes:
+  LTE registered on this phone (NixOS, SailfishOS) with another operator.
+  Author's decision, 2026-10-30: wait; poor coverage is possible.  ASK
+  THE AUTHOR AGAIN if they never see 4G while moving around: the test is
+  data-centric usage, which the modem keeps in its NV (modemst via
+  rmtfs); prefer a setting valid only until the modem power-cycles.
 - polkit, without logind: every D-Bus service whose actions are
   allow_active only needs its package in polkit-service-type and a rule
   (ModemManager, NetworkManager: netdev; sensors: users).  polkitd does
