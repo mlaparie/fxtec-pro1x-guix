@@ -228,9 +228,13 @@ and Phosh itself.  Not set up yet.
   found (rag-notes hardware/audio): WirePlumber's probe opens the
   playback PCM ~8 times in 1.2 s and each open powered both aw87339 amps,
   because the last session left Spk0/Spk1 OUT Switch on.  2624e73 turns
-  them off before PipeWire starts; with that, the probe left the amps off
-  (hand restart).  Next: a real logout/login by the agent (author's
-  permission each time), and the author's ear.
+  them off before PipeWire starts.  Real logout + greetd login by the
+  agent (scripts/debug/greetd-login.scm), switches set off by hand as
+  2624e73 would: ~25 probe opens, amps never on, WirePlumber turned the
+  switches on 9 s after login.  The HPH stage still cycles (headphones
+  untested).  2624e73 and 4de272d (autorotate left running after logout)
+  are not deployed: the deploy would build the CI kernel here; waiting
+  for run 41025825198's kernel.  Then the author's ear.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
 - CI kernel (charge limit, LED pattern trigger): runs 40997348185 and
