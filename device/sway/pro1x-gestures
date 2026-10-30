@@ -6,7 +6,10 @@
 #   swipe in from the left or right   window switcher (sway-window-switcher)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
-# COMMAND...; quick settings closes itself).
+# COMMAND...; quick settings closes itself).  Every command runs in the
+# background: lisgd waits for a command to end before taking the next
+# gesture, so a second swipe used to wait for the first window to close
+# and then open another (author, 2026-10-30).
 #
 # Sway has gestures for touchpads only; lisgd reads the touchscreen through
 # libinput and runs a command per gesture, as Sxmo does.  lisgd knows
@@ -46,10 +49,10 @@ start() {                       # start <transform>
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
-        -g "1,UD,T,*,R,sway-quick-settings" \
-        -g "1,DU,B,*,R,pro1x-gestures toggle launcher $launcher" \
-        -g "1,LR,L,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher" \
-        -g "1,RL,R,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher" \
+        -g "1,UD,T,*,R,sway-quick-settings &" \
+        -g "1,DU,B,*,R,pro1x-gestures toggle launcher $launcher &" \
+        -g "1,LR,L,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher &" \
+        -g "1,RL,R,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }
