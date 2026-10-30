@@ -306,8 +306,17 @@ and Phosh itself.  Not set up yet.
   22e3cff starts it from the Sway config, Super+k and a Keyboard line in
   quick settings show/hide it (the Sway config is a skeleton: existing
   accounts need the lines).  Drawn and typing in Sway: not yet seen.
-  Phosh: logged in by the agent 2026-10-30 ~13:12, stevia running; the
-  author tests a text field.
+  Phosh: works since generation 37 (author saw it on a text field,
+  2026-10-30).  Two causes: GTK 3 had no input-method modules
+  (GUIX_GTK3_IM_MODULE_FILE unset; d6641f0 sets it) and stevia stayed
+  disabled because phoc reports the always-attached Pro1X keyboard
+  (debug log: handle_activate, active 1, enabled 0; 4a17fa5 sets
+  mobi.phosh.osk ignore-hw-keyboards true by default; showing it is then
+  left to screen-keyboard-enabled, set by phosh-pro1x-slider).  Open:
+  check it hides with the keyboard slid out.  In Sway nothing sets
+  screen-keyboard-enabled from the slider, so stevia may now come up on
+  text fields with the keyboard out too: check, and run the slider
+  helper in Sway if so.
 - Quick settings (33a09c7, 7f8d774): battery header, Wi-Fi network and
   signal, mobile technology/signal/operator, charge limit line (from
   /etc/pro1x/charge.conf), Right on / Left off for every toggle, bar gear
