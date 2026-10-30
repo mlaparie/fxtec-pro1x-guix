@@ -250,7 +250,7 @@
         "instance": "Pro1x, two aw87339 amplifiers (aw87339.1-0059/005a, widgets Spk0/Spk1 SPK PA) fed by the wcd937x HPH stage; controls Spk0/Spk1 OUT Switch. Restarting the Sway session PipeWire 1.6.8 + WirePlumber 0.5.17 by hand (generation 29): with the switches on, pcm0p opened about 8 times in 1.2 s and both amps plus HPHL/HPHR PGA were on from +0.57 s to +1.75 s, with one full off/on cycle. With both switches set to 0 first: 24 probe opens, amps never on; WirePlumber set the switches back on at +1.9 s (Speaker EnableSequence). Fix in pro1x-audio-session (amixer before pipewire). The kernel has no tracefs.",
         "confidence": "confirmed",
         "date": "2026-10-30",
-        "source": "DAPM/PCM logs /root/pops/082612 and the AMPS_OFF run on the phone; commit 2624e73; whether the pops are gone by ear not yet checked"
+        "source": "DAPM/PCM logs /root/pops/082612 and the AMPS_OFF run on the phone; commit 2624e73, generation 30; the author no longer hears the pops (2026-10-30)"
       }
     ],
     "sensors": [

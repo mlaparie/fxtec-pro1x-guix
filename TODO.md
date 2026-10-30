@@ -224,17 +224,10 @@ and Phosh itself.  Not set up yet.
 
 ## Waiting for the author (2026-10-30, 04:30)
 
-- Login pops (still there after 7aff1ef, author 2026-10-30): mechanism
-  found (rag-notes hardware/audio): WirePlumber's probe opens the
-  playback PCM ~8 times in 1.2 s and each open powered both aw87339 amps,
-  because the last session left Spk0/Spk1 OUT Switch on.  2624e73 turns
-  them off before PipeWire starts.  Real logout + greetd login by the
-  agent (scripts/debug/greetd-login.scm), switches set off by hand as
-  2624e73 would: ~25 probe opens, amps never on, WirePlumber turned the
-  switches on 9 s after login.  The HPH stage still cycles (headphones
-  untested).  2624e73 and 4de272d (autorotate left running after logout)
-  are not deployed: the deploy would build the CI kernel here; waiting
-  for run 41025825198's kernel.  Then the author's ear.
+- Login pops: fixed (2624e73, generation 30): the author no longer hears
+  them (2026-10-30).  The agent's login on generation 31 logged the
+  session script setting the amp switches off and WirePlumber setting
+  them on 3 s later, with 0 amp power-ons during the probe.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
 - CI kernel (charge limit, LED pattern trigger): run 41025825198 green
@@ -255,8 +248,9 @@ and Phosh itself.  Not set up yet.
   the previous boot (generation 29 kernel) logged 60618 of them in
   /var/log/messages.  Not monitor-sensor (same rate with it stopped).
   Costs about 390000 log lines a day; cause not looked into yet.
-- Sway landscapes upside down (author): 8430c1f swaps left-up/right-up;
-  deploying.
+- Sway landscapes upside down (author): 8430c1f swaps left-up/right-up
+  (generation 31, not re-tested).  4de272d's watcher did not stop
+  monitor-sensor (.monitor-sensor, wrapped); fixed in the next commit.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.
 
