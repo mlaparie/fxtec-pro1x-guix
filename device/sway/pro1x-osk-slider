@@ -23,8 +23,10 @@ events="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-slider.events"
 
 rotation="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/sway-autorotate"
 
+portrait_app() { [ -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-portrait-app" ]; }
+
 slid_out() {
-    swaymsg output DSI-1 transform 90 >/dev/null 2>&1
+    portrait_app || swaymsg output DSI-1 transform 90 >/dev/null 2>&1
     [ -f "$saved" ] || gsettings get "$schema" "$key" > "$saved"
     gsettings set "$schema" "$key" false
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
@@ -32,7 +34,9 @@ slid_out() {
 }
 
 slid_in() {
-    if [ "$(cat "$rotation" 2>/dev/null || echo off)" = on ]; then
+    if portrait_app; then
+        :                         # pro1x-portrait-apps restores it later
+    elif [ "$(cat "$rotation" 2>/dev/null || echo off)" = on ]; then
         # Off and on: monitor-sensor reports changes only, and a fresh one
         # starts with the current orientation.
         sway-autorotate off; sway-autorotate on

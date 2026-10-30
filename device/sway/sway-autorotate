@@ -51,7 +51,11 @@ slider_out() {                  # SW_KEYPAD_SLIDE set: evtest exits 10
     [ $? = 10 ]
 }
 
-set_transform() { swaymsg output "$output" transform "$1" >/dev/null; }
+# While a portrait app has the focus (pro1x-portrait-apps), leave it.
+set_transform() {
+    [ -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-portrait-app" ] && return
+    swaymsg output "$output" transform "$1" >/dev/null
+}
 
 poke() {                        # tell the running daemon to re-check
     # A line in its event fifo, like a Sway output event.  Only when the

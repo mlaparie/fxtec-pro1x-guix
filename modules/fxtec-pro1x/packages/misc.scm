@@ -1216,6 +1216,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
 ;;;   bin/pro1x-screenshot               screenshots (grim, slurp)
+;;;   bin/pro1x-portrait-apps            portrait while Snapshot or Calls is focused
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1247,7 +1248,8 @@ window opened by a sway key binding.")
           ("pro1x-term" "bin/")
           ("pro1x-call-watch" "bin/")
           ("pro1x-status" "bin/")
-          ("pro1x-screenshot" "bin/"))
+          ("pro1x-screenshot" "bin/")
+          ("pro1x-portrait-apps" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1304,6 +1306,14 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
+                  (chmod pa #o755)
+                  (wrap-program pa
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "evtest" "jq"))))))
                 (let ((sc (string-append #$output "/bin/pro1x-screenshot")))
                   (chmod sc #o755)
                   (wrap-program sc

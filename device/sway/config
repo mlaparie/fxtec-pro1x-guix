@@ -54,9 +54,11 @@ exec sway-autorotate
 ### from the left, the window switcher.
 exec pro1x-gestures
 
-### Snapshot (camera) fullscreen and portrait: Sway rotates the whole panel,
-### not one window; slide the keyboard or rotate to leave portrait.
-for_window [app_id="^org.gnome.Snapshot$"] fullscreen enable, output DSI-1 transform normal
+### Snapshot (camera) fullscreen.  Snapshot and Calls get the panel in
+### portrait while they have the focus, and the rotation from before comes
+### back afterwards (pro1x-portrait-apps; Sway rotates whole outputs).
+for_window [app_id="^org.gnome.Snapshot$"] fullscreen enable
+exec pro1x-portrait-apps
 
 ### foot server: quick settings, the launcher and the window switcher open
 ### as footclient windows (pro1x-term), faster than a new foot, and so does
@@ -70,9 +72,9 @@ exec pro1x-mako
 ### Chatty and Calls in the background, for messages and incoming calls
 exec chatty --gapplication-service
 exec gnome-calls --gapplication-service
-### Calls' window (an incoming call, or opened to dial): fullscreen, focused,
-### portrait.  Slide the keyboard or rotate to leave portrait afterwards.
-for_window [app_id="^org.gnome.Calls$"] fullscreen enable, focus, output DSI-1 transform normal
+### Calls' window (an incoming call, or opened to dial): fullscreen, focused;
+### portrait while focused (pro1x-portrait-apps).
+for_window [app_id="^org.gnome.Calls$"] fullscreen enable, focus
 ### An incoming call unlocks the screen until it ends (pro1x-call-watch):
 ### nothing can show above the lock screen.
 exec pro1x-call-watch
