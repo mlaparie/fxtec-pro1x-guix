@@ -238,6 +238,16 @@ and Phosh itself.  Not set up yet.
 2. **GPS**: see the GPS entry above (LOC present, no NMEA yet).
 3. **Bluetooth**: adapter powered in BlueZ; find what fails in the UI
    (bluetoothctl now installed for testing).
+4. **Sway quick settings** (low priority, author 2026-10-30): an fzf menu
+   like sway-window-switcher for Wi-Fi (the author's nmcli-fzf), mobile
+   data, Bluetooth, torch, auto-rotate, brightness, volume, later
+   location.  Auto-rotate needs a Sway rotation helper (monitor-sensor
+   to swaymsg output transform, landscape while the keyboard is out).
+5. **On-screen keyboard**: none in Guix at the pin; package stevia (C,
+   GTK 4) rather than squeekboard (Rust).
+6. **Camera**: port moWerk's libcamera 0.7.2 patches (AfWindows, manual
+   gain/exposure/EV, AfState, focus held), check what Snapshot exposes;
+   kernel flash-LED link (moWerk 0027) in a later kernel batch.
 
 ## Next steps (author's order, 2026-10-29)
 
