@@ -940,6 +940,12 @@ sends a power-key press when it sees two quick taps close together.")
 ;;; override in phosh-pro1x's own directory only reaches Phosh's schemas).
 ;;;   - sound above 100%: the speaker is quiet even at full gain (author,
 ;;;     2026-10-29); GNOME's slider then goes to 150%, Sway's keys stop at 120%.
+;;;   - stevia ignores hardware keyboards: the Pro1X keyboard is always
+;;;     attached, slid in or not, and stevia stayed disabled for every text
+;;;     field.  Whether to offer the on-screen keyboard is left to
+;;;     screen-keyboard-enabled, which phosh-pro1x-slider sets from the
+;;;     slider (on while slid in, off while out).  Tested by hand on the
+;;;     phone, 2026-10-30: stevia came up on a text field in Phosh.
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-gsettings-defaults
   (package
@@ -960,11 +966,15 @@ sends a power-key press when it sees two quick taps close together.")
               (lambda (port)
                 (display "[org.gnome.desktop.sound]
 allow-volume-above-100-percent=true
+
+[mobi.phosh.osk]
+ignore-hw-keyboards=true
 " port)))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "GSettings defaults for the F(x)tec Pro1X")
     (description
-     "System-wide GSettings overrides for the Pro1X: volume above 100%.")
+     "System-wide GSettings overrides for the Pro1X: volume above 100%, an
+on-screen keyboard despite the always-attached hardware keyboard.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
