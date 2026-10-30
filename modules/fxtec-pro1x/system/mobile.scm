@@ -585,6 +585,14 @@ Dracula palette, no kernel messages over the greeter.")
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
      (service dbus-root-service-type)
+     ;; GTK 3 finds its input-method modules (the Wayland one talks to the
+     ;; on-screen keyboard) only through this variable: GTK has no cache of
+     ;; its own here and gtk+ is not in the profile itself, so its search
+     ;; path is never set.  Without it no GTK 3 text field asked for stevia
+     ;; in Phosh (2026-10-30).
+     (simple-service 'gtk3-im-modules session-environment-service-type
+                     '(("GUIX_GTK3_IM_MODULE_FILE"
+                        . "/run/current-system/profile/lib/gtk-3.0/3.0.0/immodules-gtk3.cache")))
      ;; BlueZ.  The WCN3950 works when powered from boot; on Linux 7.1 it
      ;; does not answer again after a power-down (reported on SailfishOS,
      ;; gone on 7.3), so it is powered at start and toggling it off in the
