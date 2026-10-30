@@ -7,7 +7,8 @@
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
-# Enter toggles or opens; Left/Right step brightness and volume; Esc
+# Enter toggles or opens; Right turns a setting on (or steps it up, or
+# opens SIM and Notifications), Left turns it off (or steps it down); Esc
 # closes.  The header shows the battery level and charging state; the
 # Wi-Fi line the network and signal, the mobile line the access technology,
 # signal and operator; the charge limit line what config.scm set
@@ -202,77 +203,100 @@ lines() {
         "rotation    Auto-rotation        $rot" \
         "caffeine    Keep screen on       $caf" \
         "torch       Torch                $t" \
-        "feedback    Feedback             $(cat "$d/fb")  (full / quiet / silent)" \
-        "bright      Brightness           $(cat "$d/br")  (← →)" \
-        "volume      Volume               ${vol%% *}  (← →)" \
+        "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
+        "bright      Brightness           $(cat "$d/br")" \
+        "volume      Volume               ${vol%% *}" \
         "mute        Mute                 $mute" \
         "notif       Notifications        $(cat "$d/notif")" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
 
-toggle_radio() {                # nmcli radio <wifi|wwan>
-    if [ "$(onoff "$(nmcli radio "$1")")" = on ]; then
-        nmcli radio "$1" off
-    else
-        nmcli radio "$1" on
-    fi
-}
-
-act() {
+# set <setting> <on|off>: what Right (on) and Left (off) do; Enter toggles.
+set_to() {
     case "$1" in
-        wifi|wwan) toggle_radio "$1" ;;
+        wifi|wwan) nmcli radio "$1" "$2" ;;
         bluetooth)
-            if [ "$(blocked bluetooth)" = on ]; then
-                rfkill block bluetooth
-            else
-                rfkill unblock bluetooth
-            fi ;;
-        airplane)
-            if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
-               [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
-               [ "$(blocked bluetooth)" = off ]; then
-                nmcli radio all on; rfkill unblock bluetooth
-            else
-                nmcli radio all off; rfkill block bluetooth
-            fi ;;
-        rotation) sway-autorotate toggle ;;
+            if [ "$2" = on ]; then rfkill unblock bluetooth
+            else rfkill block bluetooth; fi ;;
+        airplane)                 # on: every radio off
+            if [ "$2" = on ]; then nmcli radio all off; rfkill block bluetooth
+            else nmcli radio all on; rfkill unblock bluetooth; fi ;;
+        rotation) sway-autorotate "$2" ;;
         caffeine)
-            if [ "$(cat "$caffeine" 2>/dev/null)" = on ]; then
-                echo off > "$caffeine"
-                swaymsg exec "pro1x-idle --sway" >/dev/null
-            else
-                echo on > "$caffeine"
+            [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
+            echo "$2" > "$caffeine"
+            if [ "$2" = on ]; then
                 # This session's swayidle (pro1x-idle --sway); Phosh has
                 # its own caffeine.
                 for p in $(pgrep -u "$(id -u)" -x swayidle); do kill "$p"; done
                 pro1x-dim restore 2>/dev/null
+            else
+                swaymsg exec "pro1x-idle --sway" >/dev/null
             fi ;;
         torch)
-            if [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
-                echo 0 > "$torch"
-            else
+            if [ "$2" = on ]; then
                 # The torch guard service turns it off after its timeout.
                 cat "${torch%/brightness}/max_brightness" > "$torch"
+            else
+                echo 0 > "$torch"
             fi ;;
-        feedback)
+        mute)
+            if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
+            else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
+    esac
+}
+
+state_of() {                    # state_of <setting>: on or off
+    case "$1" in
+        wifi) onoff "$(nmcli radio wifi)" ;;
+        wwan) onoff "$(nmcli radio wwan)" ;;
+        bluetooth) blocked bluetooth ;;
+        airplane)
+            if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
+               [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
+               [ "$(blocked bluetooth)" = off ]; then echo on; else echo off; fi ;;
+        rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo on ;;
+        caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
+        torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
+        mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
+    esac
+}
+
+feedback_step() {               # + towards full, - towards silent
+    cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
+    case "$1$cur" in
+        +silent) next=quiet ;; +quiet|+full) next=full ;;
+        -full) next=quiet ;; -quiet|-silent) next=silent ;;
+        *) next=full ;;
+    esac
+    gsettings set org.sigxcpu.feedbackd profile "$next"
+}
+
+act() {                         # Enter
+    case "$1" in
+        feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
-                full) next=quiet ;;
-                quiet) next=silent ;;
-                *) next=full ;;
-            esac
-            gsettings set org.sigxcpu.feedbackd profile "$next" ;;
-        mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+                full) feedback_step - ;;
+                quiet) feedback_step - ;;
+                *) gsettings set org.sigxcpu.feedbackd profile full ;;
+            esac ;;
+        *)
+            if [ "$(state_of "$1")" = on ]; then set_to "$1" off
+            else set_to "$1" on; fi ;;
     esac
     sleep 0.3                   # let NetworkManager and rfkill settle
 }
 
-step() {                        # step <bright|volume> <+|->
+step() {                        # Right (+) and Left (-)
     case "$1$2" in
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+        feedback?) feedback_step "$2" ;;
+        *+) set_to "$1" on; sleep 0.3 ;;
+        *-) set_to "$1" off; sleep 0.3 ;;
     esac
 }
 
@@ -346,8 +370,12 @@ lines |
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
+                  charge) ;;
+                  *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  sim|notif|charge) ;;
+                  *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null
