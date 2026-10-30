@@ -313,10 +313,12 @@ and Phosh itself.  Not set up yet.
   (debug log: handle_activate, active 1, enabled 0; 4a17fa5 sets
   mobi.phosh.osk ignore-hw-keyboards true by default; showing it is then
   left to screen-keyboard-enabled, set by phosh-pro1x-slider).  Open:
-  check it hides with the keyboard slid out.  In Sway nothing sets
-  screen-keyboard-enabled from the slider, so stevia may now come up on
-  text fields with the keyboard out too: check, and run the slider
-  helper in Sway if so.
+  check it hides with the keyboard slid out.  Sway: 9d04238
+  pro1x-osk-slider (generation 38; added to the author's
+  ~/.config/sway/config with stevia and Super+k, backups beside it) sets
+  screen-keyboard-enabled from the slider as the Phosh helper does.  At
+  the next Sway login, check: stevia on a text field slid in, none slid
+  out, Super+k, the Keyboard line, the bar gear.
 - Quick settings (33a09c7, 7f8d774): battery header, Wi-Fi network and
   signal, mobile technology/signal/operator, charge limit line (from
   /etc/pro1x/charge.conf), Right on / Left off for every toggle, bar gear
