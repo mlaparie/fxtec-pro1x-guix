@@ -34,6 +34,6 @@ the port's system ([configure.md](configure.md)).  Your PC builds it and
 installs it over USB or Tailscale; each update is a boot-menu entry you
 can go back to ([update.md](update.md)).
 
-[install.md](install.md) · [configure.md](configure.md) ·
+[install.md](install.md) · [usage.md](usage.md) · [configure.md](configure.md) ·
 [update.md](update.md) · [channels.md](channels.md) ·
 [troubleshoot.md](troubleshoot.md)
