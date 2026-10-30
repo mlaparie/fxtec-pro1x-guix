@@ -129,8 +129,12 @@ then deploys of next up to cc16582; generation 2 and later):
   switches auto/manual).  Each rotation flashes the screen black: phoc
   0.56 raises a black "modeset shield" on every transform change until
   the layer surfaces are rearranged, then fades it out in 150 ms
-  (src/output.c).  By design; no rotation animation exists.  Smoother
-  would need a phoc patch (low priority, author 2026-10-30).
+  (src/output.c).  By design; no rotation animation exists.  Patched to
+  skip the shield for rotation alone (0491931): "much better" (author,
+  2026-10-30), but still not instantaneous, with visible artifacts while
+  apps redraw.  Next: measure where the time goes (sensor-proxy event to
+  transform commit, client re-layout).  Snapshot must stay portrait
+  whatever the rotation mode (author: "should really never rotate").
   Snapshot should stay in portrait to use the whole panel; Phosh has no
   per-app rotation lock (author's wish, 2026-10-30).
 - crackle at Phosh login (not at logout, author 2026-10-30).  amixer
