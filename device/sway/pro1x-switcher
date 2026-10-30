@@ -27,8 +27,8 @@ fi
 
 hide='execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
 "$self" --list |
-    fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --layout=reverse \
-        --prompt="windows > " --info=hidden --cycle --no-sort \
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \
+        --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --bind="enter:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
         --bind="ctrl-k:execute-silent(swaymsg \"[con_id={1}] kill\")+reload($self --list)" \
         --bind="esc:$hide" >/dev/null

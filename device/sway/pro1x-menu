@@ -30,15 +30,19 @@ start() {
         launcher)
             # Esc or a launch ends sway-launcher-desktop; the loop hides the
             # window and starts it again, hidden, its list ready.
-            setsid pro1x-term --app-id=launcher -e sh -c '
+            # Its own fzf options (margin, colours, no info, cycling) are the
+            # ones the other two menus copy; the layout and prompt come from
+            # here.
+            setsid pro1x-term --app-id=launcher -o pad=12x8 -e sh -c '
                 while :; do
                     env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder \
-                        sway-launcher-desktop
+                        FZF_DEFAULT_OPTS="--layout=reverse-list" \
+                        GLYPH_PROMPT="apps > " sway-launcher-desktop
                     swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
                 done' >/dev/null 2>&1 < /dev/null &
             [ -n "$hidden" ] && hide_when_mapped ;;
         windowswitcher)
-            setsid pro1x-term --app-id=windowswitcher -e pro1x-switcher \
+            setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -e pro1x-switcher \
                 >/dev/null 2>&1 < /dev/null &
             [ -n "$hidden" ] && hide_when_mapped ;;
     esac

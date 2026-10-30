@@ -82,7 +82,7 @@ qs_hide() {
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quicksettings -o pad=24x16 "$0" \
+        setsid pro1x-term --app-id=quicksettings -o pad=12x8 "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
@@ -533,9 +533,11 @@ set --
 [ -n "${QS_RESIDENT:-}" ] &&
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
-    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
-        --with-nth=2.. --info=hidden --header-lines=1 --cycle \
-        --ansi --preview="$self --notif-summary" --preview-window=hidden,down,50%,wrap \
+    # Same layout and colours as the launcher and window switcher: list
+    # from the top, prompt at the bottom (the battery header just above it).
+    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+        --with-nth=2.. --header-lines=1 \
+        --ansi --preview="$self --notif-summary" --preview-window=hidden,up,50%,wrap \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
