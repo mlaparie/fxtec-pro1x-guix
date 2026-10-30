@@ -248,6 +248,12 @@ and Phosh itself.  Not set up yet.
   the previous boot (generation 29 kernel) logged 60618 of them in
   /var/log/messages.  Not monitor-sensor (same rate with it stopped).
   Costs about 390000 log lines a day; cause not looked into yet.
+- Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
+  PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
+  phone), Left/Right on Brightness/Volume, Mute shows muted or the
+  volume, notification dock (mako over D-Bus: preview, Enter default
+  action, Tab pick, Del dismiss, ^X all).  Tested on the PC with stubs
+  and the helpers as the user on the phone; not yet used on the phone.
 - Sway landscapes upside down (author): 8430c1f swaps left-up/right-up
   (generation 31, not re-tested).  4de272d's watcher did not stop
   monitor-sensor (.monitor-sensor, wrapped); fixed in the next commit.
