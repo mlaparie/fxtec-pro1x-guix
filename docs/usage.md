@@ -33,10 +33,15 @@ Times and levels are options in `config.scm` ([configure.md](configure.md)).
 
 ## Calls and messages
 
-Calls (GNOME Calls) and SMS (Chatty) work.  Two limits for now: in a
-call, the speaker button and the mute button do nothing (the call stays
-on the earpiece, and the other side still hears you); and MMS are not
-received yet.
+Calls (GNOME Calls), SMS and MMS (Chatty) work.  In a call, the speaker
+button and the mute button do nothing yet (the call stays on the earpiece,
+and the other side still hears you).
+
+MMS need your operator's MMS settings in Chatty (MMSC, MMS APN, proxy with
+its port).  Most operators use the data APN for MMS too; check before
+entering a separate one.  If yours really has a separate MMS APN, a
+reminder notification appears for waiting MMS and the "Fetch MMS" app
+downloads them (mobile internet pauses briefly).
 
 ## Network
 

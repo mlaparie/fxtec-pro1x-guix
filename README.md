@@ -52,7 +52,7 @@ Microphones                      Working    in calls
 Vibration motor                  Working    feedbackd (calls, notifications); Sway untested
 Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
 SMS                              Working    Chatty
-MMS                              Not yet    needs mmsd-tng (not packaged yet)
+MMS                              Working    receiving (mmsd-tng + Chatty, MMS settings in Chatty); sending untested
 Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
 Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9

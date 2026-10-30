@@ -270,7 +270,13 @@ and Phosh itself.  Not set up yet.
    no speaker, caller still heard while muted).  Next: measurement, not a
    fix: amixer snapshots during a call before/after each button, to find
    which routes the DSP voice session really uses.
-9. **MMS**: mmsd-tng 2.6.4 packaged and started with Phosh (ff2261c).
+9. **MMS** (receiving works, 2026-10-30, author): the operator uses one
+   combined APN for data and MMS; the separate MMS APN entered at first
+   (and later a mistyped proxy port) was the whole problem.  After
+   correcting the settings in Chatty, mmsd-tng (restarted to reprocess
+   its queue) fetched the four waiting MMS at once.  Sending untested.
+   History below.
+   mmsd-tng 2.6.4 packaged and started with Phosh (ff2261c).
    It receives the MMS notifications (WAP push: transaction id, location)
    but does not download: the active mobile-data connection's APN differs
    from the MMS APN, and mmsd-tng only downloads over the active bearer
