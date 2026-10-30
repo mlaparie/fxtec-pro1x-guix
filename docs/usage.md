@@ -30,7 +30,6 @@ session; F12 for shutdown and reboot):
 | rotation tile (quick settings) | tap: lock or unlock auto-rotation; long press: auto or manual |
 
 Times and levels are options in `config.scm` ([configure.md](configure.md)).
-GNOME Snapshot always stays in portrait (untested).
 
 ## Calls and messages
 
