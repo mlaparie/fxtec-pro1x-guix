@@ -34,6 +34,7 @@
              (gnu packages base)
              (gnu packages gnome)
              (gnu packages libcanberra)    ; sound-theme-freedesktop
+             (gnu packages librewolf)
              (gnu packages linux)
              (gnu packages networking)
              (gnu packages ntp)
