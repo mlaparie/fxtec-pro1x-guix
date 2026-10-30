@@ -116,6 +116,17 @@ then deploys of next up to cc16582; generation 2 and later):
   pro1x-gsettings-defaults, not yet tested.
 - Sxmo: same device settings (/etc/sway/config.d/pro1x.conf), bus and
   audio as Sway; still needs superd.
+- GPS (2026-10-30, author allowed A-GPS and data): the modem announces
+  LOC (QMI 16, v2) and ModemManager lists gps-raw, gps-nmea, agps-msa/b.
+  Setting the SUPL server and enabling agps-msb failed ("Failed to
+  receive indication"); gps-nmea/raw enabled but "couldn't setup required
+  NMEA traces: Operation timed out", and no NMEA in 30 min (indoors).
+  qmicli --loc-follow-nmea for 75 s: nothing.  Two attempts, stopped;
+  GPS switched off again.  No port has GPS on this phone (NixOS README:
+  untested; moWerk: not started).  Next: does the LOC service need its
+  engine started differently (qmicli --loc-start alone, then follow),
+  or modem firmware pieces (GNSS) the stock partitions hold?  Phosh's
+  location toggle needs GeoClue (not installed).  Never log coordinates.
 - Phosh lock keypad flickers once on wake (low priority).
 - Phosh rotation: auto-rotation works (tile: tap locks, long press
   switches auto/manual).  Each rotation flashes the screen black: phoc
