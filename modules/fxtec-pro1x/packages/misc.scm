@@ -698,7 +698,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/unblank-without-gnome-session.patch"))
                       ;; Brightness without logind: write sysfs directly.
                       (local-file
-                       (repository-file "device/phosh/backlight-sysfs-without-logind.patch")))))))
+                       (repository-file "device/phosh/backlight-sysfs-without-logind.patch"))
+                      ;; Volume slider above 100% when the setting allows.
+                      (local-file
+                       (repository-file "device/phosh/volume-above-100-percent.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)

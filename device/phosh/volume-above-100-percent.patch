@@ -1,0 +1,26 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] audio-settings: honour allow-volume-above-100-percent
+
+PhoshAudioSettings has an allow_volume_above_100_percent field that is
+checked but never set, so the volume slider stopped at 100% even with
+org.gnome.desktop.sound allow-volume-above-100-percent true (phosh
+0.56.0).  Read the key when the widget is built.
+---
+--- a/src/settings/audio-settings.c
++++ b/src/settings/audio-settings.c
+@@ -361,6 +361,15 @@
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
++  /* allow_volume_above_100_percent was never set, so the slider stopped at
++   * 100% whatever org.gnome.desktop.sound said.  Read it once. */
++  {
++    g_autoptr (GSettings) sound = g_settings_new ("org.gnome.desktop.sound");
++
++    self->allow_volume_above_100_percent =
++      g_settings_get_boolean (sound, "allow-volume-above-100-percent");
++  }
++
+   mixer_control = phosh_audio_manager_get_mixer_control (self->audio_manager);
+   if (mixer_control)
+     g_return_if_fail (mixer_control);
