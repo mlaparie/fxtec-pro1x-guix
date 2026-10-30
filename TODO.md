@@ -282,12 +282,19 @@ and Phosh itself.  Not set up yet.
    routes data there; (2) a helper switching the NM connection to the MMS
    APN while mmsd downloads, then back; (3) a second bearer in mmsd-tng
    (upstream-sized).  Operator, APN and MMSC values stay out of git.
-   Option 3 tested, two attempts (2026-10-30): the data bearer is
-   multiplexed (qmapmux0.0), but a second multiplexed bearer on the MMS
-   APN is refused by the network, ipv4 and ipv4v6 alike:
-   "ServiceOptionNotSubscribed"; the data bearer stayed up.  The
-   operator allows no parallel MMS context: option 3 closed.  Doing
-   option 2 with a confirmation notification (author).
+   Option 3 (2026-10-30): the first two tests used a mistyped MMS APN
+   (author), so their "ServiceOptionNotSubscribed" proved nothing
+   (corrected).  With the right APN: the second link is created
+   (qmapmux0.1, mux id 2); without its own profile IPv4 failed with
+   "call-already-present" (same profile slot as data) and IPv6 with
+   option-unsubscribed; with its own 3GPP profile (MMS APN, IPv4, type
+   mms, author's OK) the network refuses: 3GPP cause 33, option
+   unsubscribed.  So this subscription allows no MMS context beside data,
+   on 3G at least: option 3 closed.  The profile was deleted and the
+   profile list compared with a snapshot: identical; data stayed up.
+   Option 2 (helper, with confirmation) it is; its notify-send returns at
+   once without an answer when the helper runs it (by hand it waits):
+   not solved yet.
 8. **Fingerprint reader**: research first: which sensor, whether it is
    reachable on SPI or only through TrustZone (likely, on Qualcomm),
    any mainline port or libfprint driver.  Author, 2026-10-30.
