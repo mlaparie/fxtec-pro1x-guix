@@ -50,7 +50,7 @@ Earpiece                         Working    in calls
 Headphones                       Untested
 Microphones                      Working    in calls
 Vibration motor                  Working    feedbackd (calls, notifications); Sway untested
-Calls                            Working    receiving a call works; speaker and mute buttons need callaudiod (fix pending test)
+Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
 SMS                              Working    Chatty
 MMS                              Not yet    needs mmsd-tng (not packaged yet)
 Mobile data                      Partial    3G works; no LTE yet (see TODO.md)

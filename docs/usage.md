@@ -32,6 +32,13 @@ session; F12 for shutdown and reboot):
 Times and levels are options in `config.scm` ([configure.md](configure.md)).
 GNOME Snapshot always stays in portrait (untested).
 
+## Calls and messages
+
+Calls (GNOME Calls) and SMS (Chatty) work.  Two limits for now: in a
+call, the speaker button and the mute button do nothing (the call stays
+on the earpiece, and the other side still hears you); and MMS are not
+received yet.
+
 ## Network
 
 - Wi-Fi and mobile data: Phosh quick settings or GNOME Settings; `nmcli`
