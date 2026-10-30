@@ -710,7 +710,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch"))
                       ;; Snapshot stays in portrait whatever the rotation.
                       (local-file
-                       (repository-file "device/phosh/portrait-apps.patch")))))))
+                       (repository-file "device/phosh/portrait-apps.patch"))
+                      ;; Round volume knob: no marks on the amplified bar.
+                      (local-file
+                       (repository-file "device/phosh/volume-no-marks.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
