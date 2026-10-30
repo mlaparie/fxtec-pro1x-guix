@@ -690,8 +690,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
      ;; sounds were installed, no theme with the freedesktop names.
      sound-theme-freedesktop
-     ;; Sway and Phosh background (Guix's disc emblem).
-     pro1x-background
+     ;; Sway and Phosh backgrounds (light and dark).
+     pro1x-wallpapers
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors

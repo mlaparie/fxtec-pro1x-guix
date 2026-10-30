@@ -36,7 +36,7 @@ client.background       #404552
 ### /etc/sway/config.d/pro1x.conf (device/sway/pro1x.conf), shared with Sxmo.
 include /etc/sway/config.d/*
 
-output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/guix-disc.png fill #000000
+output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/dark.png fill #2f3446
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
