@@ -50,7 +50,8 @@ exec pro1x-idle --sway
 exec sway-autorotate
 
 ### Edge swipes (pro1x-gestures): down from the top, quick settings; up from
-### the bottom, the launcher; in from a side, the window switcher.
+### the bottom, the on-screen keyboard; in from the right, the launcher; in
+### from the left, the window switcher.
 exec pro1x-gestures
 
 ### foot server: quick settings, the launcher and the window switcher open
@@ -97,6 +98,7 @@ bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
 bindsym $mod+o exec sway-autorotate toggle
 bindsym $mod+q exec sway-quick-settings
+exec sway-quick-settings --resident
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+c reload

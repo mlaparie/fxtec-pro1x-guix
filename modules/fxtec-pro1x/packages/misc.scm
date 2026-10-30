@@ -35,6 +35,7 @@
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages curl)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages imagemagick)
   #:use-module (gnu packages fonts)
@@ -854,6 +855,8 @@ ModemManager, for clients such as Chatty.")
                              "/lib/systemd/user"))
       #:phases
       #~(modify-phases %standard-phases
+          ;; Super in the terminal layout's key bar, before stevia's own
+          ;; defaults (Sway needs it; author, 2026-10-30).
           ;; Ignore hardware keyboards: the Pro1X keyboard is always
           ;; attached, slid in or not, and stevia stayed disabled for every
           ;; text field (handle_activate, active 1, enabled 0).  Whether to
@@ -870,7 +873,10 @@ ModemManager, for clients such as Chatty.")
                 (call-with-output-file
                     (string-append dir "/90_fxtec-pro1x.gschema.override")
                   (lambda (port)
-                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n"
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n
+[mobi.phosh.osk.Terminal]
+shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
+"
                              port)))
                 (invoke "glib-compile-schemas" dir)))))))
     ;; python: tools/write-layout-info.py generates layouts.json.
@@ -1207,6 +1213,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
+;;;   bin/pro1x-status                   status texts for the i3status-rust bar
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1215,8 +1222,9 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils evtest font-dejavu foot fzf gawk grep guile-3.0
-                  imagemagick jq lisgd procps sed swayidle (list glib "bin")))
+    (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
+                  guile-3.0 imagemagick jq lisgd procps sed swayidle
+                  (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1235,7 +1243,8 @@ window opened by a sway key binding.")
           ("pro1x-notify" "bin/")
           ("pro1x-gestures" "bin/")
           ("pro1x-term" "bin/")
-          ("pro1x-call-watch" "bin/"))
+          ("pro1x-call-watch" "bin/")
+          ("pro1x-status" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1278,8 +1287,8 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "evtest" "foot" "fzf" "gawk"
-                                "glib" "grep" "procps" "sed"))))))
+                              '("coreutils" "curl" "evtest" "foot" "fzf"
+                                "gawk" "glib" "grep" "jq" "procps" "sed"))))))
                 (let ((lock (string-append #$output "/bin/pro1x-lock")))
                   (chmod lock #o755)
                   (wrap-program lock
@@ -1292,6 +1301,14 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((st (string-append #$output "/bin/pro1x-status")))
+                  (chmod st #o755)
+                  ;; mmcli and rfkill come from the system profile.
+                  (wrap-program st
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "grep" "sed")))))
                 (let ((cw (string-append #$output "/bin/pro1x-call-watch")))
                   (chmod cw #o755)
                   ;; swaymsg from the system profile.

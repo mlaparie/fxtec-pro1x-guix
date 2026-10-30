@@ -59,29 +59,63 @@ if [ "${1:-}" = --osk ]; then
     exit
 fi
 
-# --bar: from the bar's gear (i3status-rust).  With the keyboard slid in,
-# show the on-screen keyboard too, for the PIN and searching, and hide it
-# again when the menu closes.
-if [ "${1:-}" = --bar ]; then
-    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
-    if [ $? = 10 ]; then
-        exec "$0"
-    fi
-    osk true
-    QS_IN_FOOT=1 pro1x-term --app-id=quicksettings -o pad=24x16 "$0"
-    osk false
-    exit
-fi
+# The menu stays alive in Sway's scratchpad (started hidden at login with
+# --resident): showing it is instant, it shows its last state at once and
+# reloads through fzf's socket; Esc, Lock, Super+q or the swipe again hide
+# it.  A new foot and fzf each time took too long to show (author,
+# 2026-10-30).
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="$rt/pro1x-quick-settings.sock"
+osk_flag="$rt/pro1x-quick-settings.osk"   # --bar showed the keyboard
 
-# Super+q again closes the menu.
-if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ] &&
-   swaymsg -t get_tree 2>/dev/null | grep -q '"app_id": "quicksettings"'; then
-    swaymsg '[app_id="^quicksettings$"] kill' >/dev/null
-    exit
-fi
+qs_state() {                    # shown, hidden or none
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r '[.. | objects | select(.app_id? == "quicksettings") | .visible]
+               | if length == 0 then "none"
+                 elif .[0] then "shown" else "hidden" end'
+}
 
+qs_hide() {
+    swaymsg '[app_id="^quicksettings$"] move scratchpad' >/dev/null
+    if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
+}
+
+qs_start() {                    # qs_start [hidden]
+    QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
+        setsid pro1x-term --app-id=quicksettings -o pad=24x16 "$0" \
+        >/dev/null 2>&1 < /dev/null &
+}
+
+qs_show() {
+    case "$(qs_state)" in
+        hidden)
+            swaymsg '[app_id="^quicksettings$"] scratchpad show' >/dev/null
+            curl -s --unix-socket "$sock" -X POST http://localhost \
+                 -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
+        none) qs_start ;;
+    esac
+}
+
+case "${1:-}" in
+    --hide) qs_hide; exit ;;
+    --resident)                 # Sway config, at login: start it hidden
+        [ "$(qs_state)" = none ] && qs_start hidden
+        exit ;;
+    --bar)                      # the bar's gear: with the keyboard slid in,
+        evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+        if [ $? != 10 ]; then   # also the on-screen keyboard, for the PIN
+            touch "$osk_flag"; osk true
+        fi
+        qs_show; exit ;;
+esac
+
+# Super+q, the swipe: hide it if shown, else show it.
 if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
-    QS_IN_FOOT=1 exec pro1x-term --app-id=quicksettings -o pad=24x16 "$0"
+    case "$(qs_state)" in
+        shown) qs_hide ;;
+        *) qs_show ;;
+    esac
+    exit
 fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
@@ -309,9 +343,9 @@ feedback_step() {               # + towards full, - towards silent
 
 act() {                         # Enter
     case "$1" in
-        lock)                     # lock, and close this menu
-            swaymsg exec pro1x-lock >/dev/null
-            swaymsg '[app_id="^quicksettings$"] kill' >/dev/null ;;
+        lock)                     # lock, and hide this menu
+            qs_hide
+            swaymsg exec pro1x-lock >/dev/null ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -399,8 +433,20 @@ esac
 
 # Enter runs the line's action and reloads; the SIM and notification lines
 # take over the terminal (execute), the others run silently.
+# Resident: Esc hides instead of quitting, fzf listens for reloads, and
+# when started hidden at login it goes to the scratchpad first.
+if [ -n "${QS_START_HIDDEN:-}" ]; then
+    # The window may map a moment after this starts.
+    for i in 1 2 3 4 5; do
+        [ "$(qs_state)" = none ] || break; sleep 0.2
+    done
+    qs_hide
+fi
+set --
+[ -n "${QS_RESIDENT:-}" ] &&
+    set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
-    fzf --prompt="quick settings > " --no-sort --layout=reverse \
+    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
         --with-nth=2.. --info=hidden --header-lines=1 --cycle \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
