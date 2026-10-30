@@ -649,7 +649,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; feedbackd: vibration and event feedback for Phosh, Calls, Chatty.
      ;; It was only a dependency, not in the profile, so its D-Bus session
      ;; service was not found and nothing vibrated.  fbcli to test.
-     feedbackd
+     ;; feedbackd-0.8: the version Phosh and Calls are built with here.
+     feedbackd-0.8
      ;; bluetoothctl, btmgmt: the BlueZ tools were missing, so Bluetooth
      ;; could not be tested from a shell (the daemon came from the service).
      bluez

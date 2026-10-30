@@ -284,6 +284,18 @@ esac
 (define (pro1x-hardware-account-groups config)
   (list (user-group (name "feedbackd") (system? #t))))
 
+;; feedbackd's own rule for status LEDs (its data/90-feedbackd.rules),
+;; which Guix's package does not install, with store paths: the RGB
+;; notification LED (rgb:status) is tagged for feedbackd, gets the pattern
+;; trigger (ledtrig-pattern, CONFIG_LEDS_TRIGGER_PATTERN) and its
+;; attributes are given to group feedbackd by fbd-ledctrl.
+(define pro1x-feedbackd-led-rules
+  (mixed-text-file
+   "90-pro1x-feedbackd-led.rules"
+   "SUBSYSTEM==\"leds\", DEVPATH==\"*/*:status\", ENV{FEEDBACKD_TYPE}=\"led\", "
+   "RUN{builtin}+=\"kmod load ledtrig-pattern\", RUN+=\""
+   feedbackd-0.8 "/libexec/fbd-ledctrl -p %S%p -t pattern -G feedbackd\"\n"))
+
 (define (pro1x-hardware-etc config)
   ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim.
   (let ((after (pro1x-hardware-dim-after config)))
@@ -342,7 +354,10 @@ esac
      (service-extension udev-service-type
                         (lambda (config)
                           (list (file->udev-rule "60-pro1x.rules"
-                                                 (pro1x-udev-rules config)))))
+                                                 (pro1x-udev-rules config))
+                                (file->udev-rule
+                                 "90-pro1x-feedbackd-led.rules"
+                                 pro1x-feedbackd-led-rules))))
      ;; /etc/pro1x/dim.conf
      (service-extension etc-service-type pro1x-hardware-etc)
      ;; Phosh's blank and lock delays
