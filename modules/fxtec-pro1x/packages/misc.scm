@@ -43,6 +43,7 @@
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
+  #:use-module ((gnu packages kde-plasma) #:select (plasma-mobile-sounds))
   #:use-module (nonguix build-system binary)  ; bluetuith
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
@@ -992,6 +993,96 @@ sends a power-key press when it sees two quick taps close together.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
+;;; gtklock-virtkb-module — an on-screen keyboard inside gtklock
+;;; Sway's lock screen hides every other surface, stevia included, so the
+;;; phone could not be unlocked with the keyboard closed (author).  This
+;;; gtklock module (ProgAndy, GPL-3; wvkbd's layout) draws its own keyboard
+;;; in the lock window.  Its version follows gtklock's: 4.0 for gtklock
+;;; 4.0.0 in Guix.
+;;; ---------------------------------------------------------------------------
+(define-public gtklock-virtkb-module
+  (let ((commit "fafbef742c582be361306ccf2d0b45cc1a09136d")
+        (revision "0"))
+    (package
+      (name "gtklock-virtkb-module")
+      (version (git-version "4.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/progandy/gtklock-virtkb-module")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))))
+      (build-system gnu-build-system)
+      (arguments
+       (list
+        #:tests? #f                     ; none
+        #:make-flags
+        #~(list (string-append "CC=" #$(cc-for-target))
+                (string-append "PREFIX=" #$output))
+        #:phases
+        #~(modify-phases %standard-phases
+            (delete 'configure))))
+      (native-inputs (list pkg-config))
+      (inputs (list gtk+))
+      (home-page "https://github.com/progandy/gtklock-virtkb-module")
+      (synopsis "On-screen keyboard for gtklock")
+      (description "This gtklock module adds a touch keyboard to the lock
+screen, for entering the password without a hardware keyboard.")
+      (license license:gpl3))))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
+;;; freedesktop's phone sounds were too old-fashioned and harsh (author).
+;;; These come from Plasma Mobile's sounds (plasma-mobile-sounds, CC0 and
+;;; CC-BY 4.0), linked under the XDG sound names feedbackd plays; every
+;;; other event falls back to freedesktop (Inherits).  The default theme
+;;; through pro1x-gsettings-defaults (org.gnome.desktop.sound theme-name);
+;;; another theme or sound: GNOME Settings, or gsettings.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-sounds
+  (package
+    (name "pro1x-sounds")
+    (version "0.1")
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((dir (string-append #$output "/share/sounds/pro1x"))
+                (from (string-append #$plasma-mobile-sounds
+                                     "/share/sounds/plasma-mobile/stereo/")))
+            (mkdir-p (string-append dir "/stereo"))
+            (call-with-output-file (string-append dir "/index.theme")
+              (lambda (port)
+                (display "[Sound Theme]
+Name=Pro1x
+Comment=Calm phone sounds (from Plasma Mobile), freedesktop for the rest
+Inherits=freedesktop
+Directories=stereo
+
+[stereo]
+OutputProfile=stereo
+" port)))
+            (for-each
+             (lambda (pair)
+               (symlink (string-append from (cdr pair))
+                        (string-append dir "/stereo/" (car pair) ".oga")))
+             '(("phone-incoming-call" . "ringtones/Gentle.oga")
+               ("message-new-instant" . "notifications/Blip.oga")
+               ("message-new-email" . "notifications/Pointed.oga")
+               ("alarm-clock-elapsed" . "ringtones/Slowly.oga")))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Calm sound theme for the F(x)tec Pro1X")
+    (description "A sound theme with Plasma Mobile's ringtone and message
+sounds under their XDG names, falling back to the freedesktop theme.")
+    (license (list license:cc0 license:cc-by4.0))))
+
+;;; ---------------------------------------------------------------------------
 ;;; bluetuith — Bluetooth manager in the terminal, for Sway's quick actions
 ;;; From the author's guix-private-channel (mlaparie/packages/bluetuith.scm):
 ;;; upstream's release binary (Go, MIT).  Fixed to the arm64 build here: the
@@ -1109,6 +1200,7 @@ PNGs for the light and dark Sway and Phosh backgrounds.")
               (lambda (port)
                 (display "[org.gnome.desktop.sound]
 allow-volume-above-100-percent=true
+theme-name='pro1x'
 
 [mobi.phosh.osk]
 ignore-hw-keyboards=true

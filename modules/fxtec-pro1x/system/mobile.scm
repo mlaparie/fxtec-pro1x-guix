@@ -691,6 +691,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
      ;; sounds were installed, no theme with the freedesktop names.
      sound-theme-freedesktop
+     ;; The default "pro1x" theme: calmer ringtone and message sounds.
+     pro1x-sounds
      ;; Sway and Phosh backgrounds (light and dark).
      pro1x-wallpapers
      ;; Bluetooth manager for Sway's quick actions (Right on Bluetooth).
