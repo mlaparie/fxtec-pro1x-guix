@@ -159,6 +159,19 @@ jobs:
               && echo "git clone: OK" || echo "git clone FAILED (exit $?)"
           fi
 
+      # ── Guix for channels-ci.scm ─────────────────────────────────────────
+      # The first time-machine call of a run builds the pinned Guix, and its
+      # glib-2.86.5 graft fails ("permission denied" on glib's
+      # etc/ld.so.cache) under the unprivileged daemon; the second call
+      # builds the same profile.drv fine (run 40946059940: U-Boot step
+      # failed, Prefetch then succeeded).  Since U-Boot moved after the
+      # image, Prefetch was the first call and failed the job (runs
+      # 40997348185, 41007214587).  Build it here, once more on failure.
+      - name: Build the pinned Guix
+        run: |
+          TM="guix time-machine --disable-authentication -C channels-ci.scm --"
+          $TM describe || { echo "==> first attempt failed; retrying"; $TM describe; }
+
       # ── Prefetch GitHub tarballs ──────────────────────────────────────────
       # The daemon's anonymous downloads from codeload.github.com got HTTP 429
       # (run 40731915977, kernel tarball) and no Guix mirror has them.  Fetch

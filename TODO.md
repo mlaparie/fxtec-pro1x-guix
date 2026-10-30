@@ -230,9 +230,10 @@ and Phosh itself.  Not set up yet.
   hear whether the pops are gone.
 - On-screen keyboard (stevia), Esc wakes the panel, MMS reminders and the
   Fetch MMS launcher: deploying (deploy30); need a relog and a try.
-- CI kernel (charge limit, LED pattern trigger): building in run
-  41007214587 (next 56b2bca; 40997348185 failed early on the glib graft); then `sudo guix archive --authorize < ci-signing-key.pub`
-  on the PC (author), import, deploy, reboot.  Merge next into main after
+- CI kernel (charge limit, LED pattern trigger): runs 40997348185 and
+  41007214587 both failed in Prefetch on the glib graft (see §5); the
+  next run carries the warm-up step.  Then `sudo guix archive --authorize
+  < ci-signing-key.pub` on the PC (author), import, deploy, reboot.  Merge next into main after
   that kernel boots.
 - MMS sending: untested.
 - guix pull as user on the phone: running (window 3).
@@ -455,6 +456,15 @@ all four orientations (mount matrix from the NixOS port).
   `guix time-machine` (grafting glib-2.86.5) and the step hides failures;
   9d195b1 makes it print the failed builder's log.  The run for c372e3e
   was cancelled on purpose (author).
+- glib graft (2026-10-30, confirmed in the logs): it fails on the first
+  `guix time-machine` call of a run and the next call builds the same
+  profile.drv (hxsm7g0s…) without it failing (run 40946059940: U-Boot
+  failed, Prefetch then passed).  95c1257 moved U-Boot after the image,
+  so Prefetch became the first call and failed the job (40997348185,
+  41007214587).  The cause of the first failure is not known (a race
+  with the substituted glib under the unprivileged daemon is a guess).
+  Workaround: a "Build the pinned Guix" step that retries once.  If the
+  retry also fails, that is the second failed fix (AGENTS.md §4.5): stop.
 - Artifact: `rootfs-mobile`, 2.9 GB; `resize2fs -M` runs before upload.
   Releases only on tags (2 GiB per asset: split or zstd).
 
