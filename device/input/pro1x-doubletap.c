@@ -10,7 +10,9 @@
  * device; Phosh, Sway (XF86PowerOff) and Sxmo all wake on it.  Esc on the
  * hardware keyboard does the same while the panel is off (read from keyd's
  * virtual keyboard, since keyd grabs the real one).  Nothing happens while
- * the panel is on.
+ * the panel is on, nor in a pocket: while /run/pro1x-pocket exists (the
+ * proximity sensor sees something near, kept by pro1x-pocket; author,
+ * 2026-10-30).
  *
  * Usage: pro1x-doubletap [interval-ms [distance]]   (defaults 400, 150)
  *
@@ -43,6 +45,13 @@ static long now_ms(void)
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* In a pocket (the proximity sensor sees something near): no waking.
+ * /run/pro1x-pocket is kept by pro1x-pocket (pro1x-hardware-service-type). */
+static int pocketed(void)
+{
+	return access("/run/pro1x-pocket", F_OK) == 0;
 }
 
 /* "On" or "Off" in /sys/class/drm/<connector>/dpms for the DSI panel.
@@ -177,7 +186,8 @@ int main(int argc, char **argv)
 				long t = now_ms();
 
 				if (ev.type == EV_KEY && ev.code == KEY_ESC &&
-				    ev.value == 1 && t >= quiet_until && panel_off()) {
+				    ev.value == 1 && t >= quiet_until && panel_off() &&
+				    !pocketed()) {
 					press_power(out);
 					fprintf(stderr, "pro1x-doubletap: Esc, power key sent\n");
 					quiet_until = t + 1500;
@@ -199,7 +209,7 @@ int main(int argc, char **argv)
 			/* A touch-down.  Position events of this touch may follow in
 			 * the same frame; the previous ones are close enough. */
 			t = now_ms();
-			if (t < quiet_until || !panel_off()) {
+			if (t < quiet_until || !panel_off() || pocketed()) {
 				last_down = 0;
 				continue;
 			}

@@ -47,6 +47,7 @@
 (define-module (fxtec-pro1x services hardware)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
+  #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
   #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
@@ -349,6 +350,53 @@ esac
         (respawn? #t)))
       '()))
 
+(define pro1x-pocket-program
+  ;; /run/pro1x-pocket exists while the proximity sensor sees something
+  ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
+  ;; not wake the panel then, so a phone in a pocket stays dark.
+  (program-file
+   "pro1x-pocket"
+   #~(begin
+       (use-modules (ice-9 popen) (ice-9 rdelim))
+       (define flag "/run/pro1x-pocket")
+       (define (set-near! near?)
+         (if near?
+             (close-port (open-output-file flag))
+             (false-if-exception (delete-file flag))))
+       (set-near! #f)
+       (let ((port (open-pipe* OPEN_READ
+                               #$(file-append iio-sensor-proxy-ssc
+                                              "/bin/monitor-sensor")
+                               "--proximity")))
+         ;; "=== Has proximity sensor (near: 1)" first, then
+         ;; "    Proximity value changed: 0".
+         (let loop ()
+           (let ((line (read-line port)))
+             (unless (eof-object? line)
+               (cond ((or (string-contains line "near: 1")
+                          (string-contains line "value changed: 1"))
+                      (set-near! #t))
+                     ((or (string-contains line "near: 0")
+                          (string-contains line "value changed: 0"))
+                      (set-near! #f)))
+               (loop))))
+         (set-near! #f)
+         (close-pipe port)))))
+
+(define (pro1x-pocket-shepherd-service config)
+  (if (pro1x-hardware-double-tap-wake? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-pocket))
+        (requirement '(iio-sensor-proxy))
+        (documentation "Note when the proximity sensor sees something near.")
+        (start #~(make-forkexec-constructor
+                  (list #$pro1x-pocket-program)
+                  #:log-file "/var/log/pro1x-pocket.log"))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
 (define (pro1x-torch-guard-program timeout)
   (program-file
    "pro1x-torch-guard"
@@ -584,6 +632,7 @@ esac
                         (lambda (config)
                           (append (pro1x-clock-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
+                                  (pro1x-pocket-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service

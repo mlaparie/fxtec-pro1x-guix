@@ -12,10 +12,51 @@
 # of answering from the lock screen here.  Started by the Sway config; ends
 # with Sway (socket gone).
 #
+# During any call (incoming or outgoing, from CallAdded until the last
+# CallDeleted) it also follows the proximity sensor (monitor-sensor
+# --proximity, iio-sensor-proxy): near the face the panel goes off and touch
+# input is disabled, so the cheek cannot press anything; away from it both
+# come back.  Phosh does its own.
+#
 # State: written 2026-10-30, not yet run on the phone (needs a call).
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 flag="$rt/pro1x-call-unlocked"        # path of the call we unlocked for
+calls="$rt/pro1x-calls"               # paths of the calls in progress
+proxpid="$rt/pro1x-call-proximity.pid"
+
+near() {                              # near 1|0
+    if [ "$1" = 1 ]; then
+        swaymsg 'input type:touch events disabled' >/dev/null
+        swaymsg 'output * power off' >/dev/null
+    else
+        swaymsg 'output * power on' >/dev/null
+        swaymsg 'input type:touch events enabled' >/dev/null
+    fi
+}
+
+proximity_start() {
+    [ -f "$proxpid" ] && kill -0 "$(cat "$proxpid")" 2>/dev/null && return
+    ( monitor-sensor --proximity 2>/dev/null |
+          while IFS= read -r l; do
+              case "$l" in
+                  *"value changed: 1"*) near 1 ;;
+                  *"value changed: 0"*) near 0 ;;
+              esac
+          done ) &
+    echo $! > "$proxpid"
+}
+
+proximity_stop() {
+    if [ -f "$proxpid" ]; then
+        pkill -P "$(cat "$proxpid")" 2>/dev/null
+        kill "$(cat "$proxpid")" 2>/dev/null
+        rm -f "$proxpid"
+    fi
+    near 0
+}
+
+rm -f "$calls"; touch "$calls"
 
 incoming() {                          # incoming <call object path>
     gdbus call --system --dest org.freedesktop.ModemManager1 \
@@ -37,6 +78,7 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
         call=$(printf '%s\n' "$line" | sed -n "s/.*objectpath '\([^']*\)'.*/\1/p")
         case "$line" in
             *Modem.Voice.CallAdded*)
+                [ -n "$call" ] && echo "$call" >> "$calls" && proximity_start
                 if [ -n "$call" ] && incoming "$call" &&
                    pgrep -u "$(id -u)" -x swaylock >/dev/null; then
                     echo "$call" > "$flag"
@@ -45,6 +87,8 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
                     pro1x-dim restore 2>/dev/null
                 fi ;;
             *Modem.Voice.CallDeleted*)
+                grep -v -x -F "$call" "$calls" > "$calls.new"; mv "$calls.new" "$calls"
+                [ -s "$calls" ] || proximity_stop
                 if [ -f "$flag" ] && [ "$(cat "$flag")" = "$call" ]; then
                     rm -f "$flag"
                     swaymsg exec pro1x-lock >/dev/null
