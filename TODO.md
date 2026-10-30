@@ -268,6 +268,31 @@ and Phosh itself.  Not set up yet.
   the screen blanks, rotation is locked or auto-rotation is off
   (rotation-manager.c claim_or_release_accelerometer);
   sway-autorotate keeps it while toggled off.
+- Not deployed yet (wait for CI run 41048883373's kernel, which
+  ceb256b needs): 63db506/e1da441 no console=ttyMSM0; 0c05b2d
+  sway-autorotate holds the accelerometer only while on and lit, like
+  Phosh (tested by hand in the session); 26bd986 notification-leds in
+  pro1x-hardware-configuration (feedbackd device theme; colours tested
+  through a user theme); 0b75620 Sway caffeine quick setting and
+  rotation/caffeine state in ~/.local/state (tested by hand in the
+  session).  After deploying and rebooting: check that rotation and
+  caffeine states survive the reboot, the device theme loads (set a
+  colour in config.scm), term-console stops respawning, no handover
+  lines.
+- RGB LED colours (2026-10-30): sysfs red, green, blue, white, #800080,
+  #00FFFF written in turn (multi_intensity, brightness 255); what the
+  author saw: asked.  feedbackd's defaults light it (SMS blue, missed
+  call cyan).
+- Toggle persistence: Wi-Fi and mobile radios (NetworkManager.state),
+  feedback profile (GSettings), volume and mute (WirePlumber) persist
+  already (from their storage; reboot not checked).  Bluetooth rfkill
+  does not; persisting "off" at boot may leave the WCN3950 unable to
+  power up again on 7.1 (mobile.scm note, reported from SailfishOS):
+  test block/unblock first.  Torch: not persisted on purpose.
+- OSK: stevia (phosh-osk-stevia) runs in Sway, started by hand; SetVisible
+  true makes it report Visible = true.  On screen and typing: asked the
+  author.  Not started by the Sway config yet; no show/hide key.  Phosh
+  OSK test needs a Phosh login (author's permission).
 - Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
   PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
   phone), Left/Right on Brightness/Volume, Mute shows muted or the
