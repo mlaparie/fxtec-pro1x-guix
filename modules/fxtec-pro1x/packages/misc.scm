@@ -35,6 +35,7 @@
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages guile)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
@@ -1154,6 +1155,7 @@ window opened by a sway key binding.")
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
 ;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
+;;;   bin/sway-notifications             mako's notifications for its dock
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1162,8 +1164,8 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils evtest foot fzf gawk grep jq procps sed
-                  swayidle (list glib "bin")))
+    (inputs (list bash coreutils evtest foot fzf gawk grep guile-3.0 jq procps
+                  sed swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1174,7 +1176,8 @@ window opened by a sway key binding.")
           ("pro1x-dim" "bin/")
           ("pro1x-idle" "bin/")
           ("sway-autorotate" "bin/")
-          ("sway-quick-settings" "bin/"))
+          ("sway-quick-settings" "bin/")
+          ("sway-notifications" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1217,7 +1220,12 @@ window opened by a sway key binding.")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "foot" "fzf" "gawk" "glib"
-                                "grep"))))))))))))
+                                "grep" "sed"))))))
+                (let ((n (string-append #$output "/bin/sway-notifications")))
+                  (chmod n #o755)
+                  (wrap-program n
+                    `("PATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "glib") "/bin")))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description

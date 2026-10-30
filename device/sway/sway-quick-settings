@@ -2,40 +2,46 @@
 # sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
 #
 # Opened by Super+q in a floating foot (app id quicksettings).  One line
-# per setting with its current state; Enter toggles or steps it, and the
-# menu stays open (redrawn) until Esc.  Like Phosh's tiles: Wi-Fi, mobile
-# data, Bluetooth, airplane mode, auto-rotation, torch, feedback profile
-# (quiet/vibrate/sound), and brightness and volume steps.  The SIM line
-# shows the lock state and asks for the PIN when the SIM is PIN-locked.
+# per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
+# data, SIM, Bluetooth, airplane mode, auto-rotation, torch, feedback
+# profile (full/quiet/silent), brightness, volume, mute, notifications.
+# Enter toggles or opens; Left/Right step brightness and volume; Esc
+# closes.  One fzf stays open and reloads its lines after each action.
 #
-# Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl (system profile); gsettings,
-# fzf, sway-autorotate (in this package's PATH).  The user is in netdev
-# (NetworkManager, /dev/rfkill) and input (flash LEDs).
+# The SIM line shows the lock state and asks for the PIN when the SIM is
+# PIN-locked.  The Notifications line opens a dock of mako's notifications
+# (current ones, then history) with the text in a preview: Enter runs the
+# default action, Tab picks another, Del dismisses, Ctrl-X dismisses all,
+# PgUp/PgDn scroll the preview, Esc goes back.
 #
-# State: written 2026-10-30; the SIM line is read-tested on the phone (lock
-# state and tries shown), the PIN entry is not tested yet.
+# Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl, makoctl (system
+# profile); gsettings, gdbus, fzf, sway-autorotate, sway-notifications (in
+# this package's PATH).  The user is in netdev (NetworkManager,
+# ModemManager, /dev/rfkill) and input (flash LEDs).
+#
+# State: 2026-10-30; the SIM line was read-tested on the phone (lock state
+# and tries shown).  The single-fzf menu, the Left/Right steps and the
+# notification dock are build-tested only; the PIN entry is not tested.
 
 torch=/sys/class/leds/white:flash-0/brightness
+self=$0
 
-if [ -z "${QS_IN_FOOT:-}" ]; then
+if [ $# = 0 ] && [ -z "${QS_IN_FOOT:-}" ]; then
     QS_IN_FOOT=1 exec foot --app-id=quicksettings "$0"
 fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
 kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
+pin_tries() { grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9; }
 
 sim_state() {
     kv=$(modem_kv)
     [ -n "$kv" ] || { echo "no modem"; return; }
-    req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
-    case "$req" in
-        sim-pin)
-            n=$(printf '%s\n' "$kv" | grep -o 'sim-pin (\([0-9]*\))' | head -1 |
-                    tr -dc 0-9)
-            echo "PIN needed (${n:-?} tries)" ;;
+    case "$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)" in
+        sim-pin) echo "PIN needed ($(printf '%s\n' "$kv" | pin_tries) tries)" ;;
         sim-puk) echo "PUK needed" ;;
         ""|--|none) echo unlocked ;;
-        *) echo "$req" ;;
+        *) printf '%s\n' "$kv" | kv_get modem.generic.unlock-required ;;
     esac
 }
 
@@ -46,7 +52,7 @@ sim_unlock() {
     kv=$(modem_kv)
     req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
     sim=$(printf '%s\n' "$kv" | kv_get modem.generic.sim)
-    n=$(printf '%s\n' "$kv" | grep -o 'sim-pin (\([0-9]*\))' | head -1 | tr -dc 0-9)
+    n=$(printf '%s\n' "$kv" | pin_tries)
     case "$req" in
         sim-pin) ;;
         sim-puk)
@@ -59,8 +65,7 @@ sim_unlock() {
     stty -echo; read -r pin; stty echo; echo
     [ -n "$pin" ] || return
     case "$pin" in
-        *[!0-9]*) printf 'A PIN is 4 to 8 digits; nothing sent.\n'
-                  printf 'Enter to go back. '; read -r _; return ;;
+        *[!0-9]*) pin= ;;
     esac
     if [ ${#pin} -lt 4 ] || [ ${#pin} -gt 8 ]; then
         printf 'A PIN is 4 to 8 digits; nothing sent.\n'
@@ -90,10 +95,25 @@ blocked() {                     # rfkill type -> on/off (on = not blocked)
     fi
 }
 
-state() {
-    wifi=$(onoff "$(nmcli radio wifi 2>/dev/null)")
-    wwan=$(onoff "$(nmcli radio wwan 2>/dev/null)")
-    bt=$(blocked bluetooth)
+volume() {                      # "60%" or "60% muted"
+    wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
+        awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }'
+}
+
+# The slow queries (nmcli, mmcli, wpctl) run in parallel, each into its
+# own file, so a reload costs the slowest one rather than their sum.
+lines() {
+    d=$(mktemp -d)
+    onoff "$(nmcli radio wifi 2>/dev/null)" > "$d/wifi" &
+    onoff "$(nmcli radio wwan 2>/dev/null)" > "$d/wwan" &
+    sim_state > "$d/sim" &
+    blocked bluetooth > "$d/bt" &
+    gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'" > "$d/fb" &
+    brightnessctl -m 2>/dev/null | cut -d, -f4 > "$d/br" &
+    volume > "$d/vol" &
+    makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
+    wait
+    wifi=$(cat "$d/wifi"); wwan=$(cat "$d/wwan"); bt=$(cat "$d/bt")
     if [ "$wifi" = off ] && [ "$wwan" = off ] && [ "$bt" = off ]; then
         plane=on
     else
@@ -101,24 +121,22 @@ state() {
     fi
     rot=$(cat "${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate" 2>/dev/null || echo on)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
-    fb=$(gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'")
-    br=$(brightnessctl -m 2>/dev/null | cut -d, -f4)
-    vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
-              awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }')
+    vol=$(cat "$d/vol")
+    case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
     printf '%s\n' \
         "wifi        Wi-Fi                $wifi" \
         "wwan        Mobile data          $wwan" \
-        "sim         SIM                  $(sim_state)" \
+        "sim         SIM                  $(cat "$d/sim")" \
         "bluetooth   Bluetooth            $bt" \
         "airplane    Airplane mode        $plane" \
         "rotation    Auto-rotation        $rot" \
         "torch       Torch                $t" \
-        "feedback    Feedback             ${fb:-?}  (full / quiet / silent)" \
-        "bright+     Brightness +10%      $br" \
-        "bright-     Brightness -10%      $br" \
-        "vol+        Volume +5%           $vol" \
-        "vol-        Volume -5%           $vol" \
-        "mute        Mute                 $vol"
+        "feedback    Feedback             $(cat "$d/fb")  (full / quiet / silent)" \
+        "bright      Brightness           $(cat "$d/br")  (← →)" \
+        "volume      Volume               ${vol%% *}  (← →)" \
+        "mute        Mute                 $mute" \
+        "notif       Notifications        $(cat "$d/notif")"
+    rm -rf "$d"
 }
 
 toggle_radio() {                # nmcli radio <wifi|wwan>
@@ -130,7 +148,6 @@ toggle_radio() {                # nmcli radio <wifi|wwan>
 }
 
 act() {
-    state >/dev/null            # sets $plane, $t, $fb in this shell
     case "$1" in
         wifi|wwan) toggle_radio "$1" ;;
         bluetooth)
@@ -140,46 +157,114 @@ act() {
                 rfkill unblock bluetooth
             fi ;;
         airplane)
-            if [ "$plane" = on ]; then
+            if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
+               [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
+               [ "$(blocked bluetooth)" = off ]; then
                 nmcli radio all on; rfkill unblock bluetooth
             else
                 nmcli radio all off; rfkill block bluetooth
             fi ;;
         rotation) sway-autorotate toggle ;;
         torch)
-            if [ "$t" = on ]; then
+            if [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
                 echo 0 > "$torch"
             else
                 # The torch guard service turns it off after its timeout.
                 cat "${torch%/brightness}/max_brightness" > "$torch"
             fi ;;
         feedback)
-            case "$fb" in
+            case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) next=quiet ;;
                 quiet) next=silent ;;
                 *) next=full ;;
             esac
             gsettings set org.sigxcpu.feedbackd profile "$next" ;;
+        mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    esac
+    sleep 0.3                   # let NetworkManager and rfkill settle
+}
+
+step() {                        # step <bright|volume> <+|->
+    case "$1$2" in
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
-        vol+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
-        vol-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
-        mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
     esac
 }
 
-pos=1
-while :; do
-    lines=$(state)
-    choice=$(printf '%s\n' "$lines" |
-                 fzf --prompt="quick settings > " --no-sort --layout=reverse \
-                     --with-nth=2.. --sync --bind "load:pos($pos)") || exit 0
-    key=${choice%% *}
-    pos=$(printf '%s\n' "$lines" | grep -n "^$key " | cut -d: -f1)
-    if [ "$key" = sim ]; then
-        sim_unlock              # talks to the user in this terminal
+# Notification dock.  Lines from sway-notifications list:
+# kind id urgency app summary (tab-separated); kind new = still shown by
+# mako (actions possible), old = history (read-only).
+notif_lines() {
+    sway-notifications list 2>/dev/null |
+        awk -F'\t' '{ printf "%s\t%s\t%s  %-8s %s: %s\n", $1, $2,
+                      ($1 == "new" ? "•" : " "),
+                      ($3 == "critical" ? "urgent" : ""), $4, $5 }'
+}
+
+notif_preview() {               # notif_preview <kind> <id>
+    cat "${XDG_RUNTIME_DIR:-/tmp}/sway-notifications/$1-$2" 2>/dev/null
+    [ "$1" = old ] && printf '\n(history: no actions)\n'
+}
+
+notif_default() {               # Enter: the default action, else dismiss
+    [ "$1" = new ] || return
+    if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
+        makoctl invoke -n "$2" default
     else
-        act "$key" >/dev/null 2>&1
+        makoctl dismiss -n "$2"
     fi
-    sleep 0.3                   # let NetworkManager and rfkill settle
-done
+}
+
+notif_pick() {                  # Tab: choose one of the actions
+    [ "$1" = new ] || return
+    a=$(sway-notifications actions "$2" |
+            fzf --prompt="action > " --layout=reverse --delimiter='\t' \
+                --with-nth=2) || return
+    makoctl invoke -n "$2" "${a%%	*}"
+}
+
+notif_dock() {
+    notif_lines |
+        fzf --prompt="notifications > " --layout=reverse --no-sort \
+            --delimiter='\t' --with-nth=3 \
+            --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
+            --preview="$self --notif-preview {1} {2}" \
+            --preview-window=down,60%,wrap \
+            --bind="enter:execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)" \
+            --bind="tab:execute($self --notif-pick {1} {2})+reload($self --notif-lines)" \
+            --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
+            --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
+            --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+}
+
+case "${1:-}" in
+    --lines) lines; exit ;;
+    --act) act "$2" >/dev/null 2>&1; exit ;;
+    --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
+    --sim) sim_unlock; exit ;;
+    --notif) notif_dock; exit ;;
+    --notif-lines) notif_lines; exit ;;
+    --notif-preview) notif_preview "$2" "$3"; exit ;;
+    --notif-default) notif_default "$2" "$3" >/dev/null 2>&1; exit ;;
+    --notif-pick) notif_pick "$2" "$3"; exit ;;
+    --notif-dismiss) [ "$2" = new ] && makoctl dismiss -n "$3"; exit ;;
+esac
+
+# Enter runs the line's action and reloads; the SIM and notification lines
+# take over the terminal (execute), the others run silently.
+lines |
+    fzf --prompt="quick settings > " --no-sort --layout=reverse \
+        --with-nth=2.. --info=hidden \
+        --bind="enter:transform:case {1} in
+                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
+                  *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="right:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                esac" \
+        --bind="left:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                esac" >/dev/null

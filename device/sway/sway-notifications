@@ -1,0 +1,177 @@
+#!/usr/bin/guile \
+--no-auto-compile -s
+!#
+;;; sway-notifications — mako's notifications as lines for fzf
+;;;
+;;;   sway-notifications list          one line per notification, tab-separated:
+;;;                                    kind (new|old) id urgency app summary,
+;;;                                    current ones first, newest first; writes
+;;;                                    the full text of each to
+;;;                                    $XDG_RUNTIME_DIR/sway-notifications/KIND-ID
+;;;   sway-notifications actions ID    "key<TAB>label" per action of a current one
+;;;
+;;; makoctl list prints no bodies, so this asks mako over D-Bus
+;;; (fr.emersion.Mako ListNotifications/ListHistory, aa{sv}) with gdbus and
+;;; reads gdbus's GVariant text.  Used by sway-quick-settings.
+;;;
+;;; State: written 2026-10-30; the parser was checked against mako 1.10's
+;;; replies on the phone (summary, body with newlines, actions, empty
+;;; actions as @a{ss} {}).
+
+(use-modules (ice-9 match) (ice-9 popen) (ice-9 rdelim) (ice-9 textual-ports)
+             (srfi srfi-1))
+
+;;; GVariant text, the subset gdbus prints for aa{sv}.
+
+(define (parse-gvariant str)
+  (define len (string-length str))
+  (define pos 0)
+  (define (peek) (if (< pos len) (string-ref str pos) #\nul))
+  (define (next!) (let ((c (peek))) (set! pos (+ pos 1)) c))
+  (define (skip-ws!) (when (char-whitespace? (peek)) (next!) (skip-ws!)))
+  (define (expect! c)
+    (skip-ws!)
+    (unless (char=? (next!) c)
+      (error "gvariant: expected" c 'at pos)))
+  (define (word!)                       ;type names, numbers, true/false
+    (let loop ((acc '()))
+      (let ((c (peek)))
+        (if (or (char-alphabetic? c) (char-numeric? c) (memv c '(#\- #\. #\_)))
+            (begin (next!) (loop (cons c acc)))
+            (list->string (reverse acc))))))
+  (define (string!)
+    (let ((q (next!)))
+      (let loop ((acc '()))
+        (let ((c (next!)))
+          (cond
+           ((char=? c q) (list->string (reverse acc)))
+           ((char=? c #\\)
+            (let ((e (next!)))
+              (loop (cons (case e
+                            ((#\n) #\newline) ((#\t) #\tab) ((#\r) #\return)
+                            (else e))
+                          acc))))
+           (else (loop (cons c acc))))))))
+  (define (items! close)                ;comma-separated values up to CLOSE
+    (skip-ws!)
+    (if (char=? (peek) close)
+        (begin (next!) '())
+        (let loop ((acc (list (value!))))
+          (skip-ws!)
+          (match (next!)
+            (#\, (loop (cons (value!) acc)))
+            ((? (lambda (c) (char=? c close))) (reverse acc))))))
+  (define (dict-items!)
+    (skip-ws!)
+    (if (char=? (peek) #\})
+        (begin (next!) '())
+        (let loop ((acc '()))
+          (let ((k (value!)))
+            (expect! #\:)
+            (let* ((v (value!))
+                   (acc (cons (cons k v) acc)))
+              (skip-ws!)
+              (match (next!)
+                (#\, (loop acc))
+                (#\} (reverse acc))))))))
+  (define (value!)
+    (skip-ws!)
+    (match (peek)
+      ((or #\' #\") (string!))
+      (#\( (next!) (list->vector (items! #\))))
+      (#\[ (next!) (items! #\]))
+      (#\{ (next!) (dict-items!))
+      (#\< (next!) (let ((v (value!))) (expect! #\>) v))
+      (#\@                             ;type annotation such as @a{ss}
+       (let skip () (unless (char-whitespace? (peek)) (next!) (skip)))
+       (value!))
+      (_
+       (let ((w (word!)))
+         (skip-ws!)
+         ;; "uint32 1", "byte 0xff": a type name, then the value.
+         (if (and (member w '("byte" "int16" "uint16" "int32" "uint32"
+                              "int64" "uint64" "double" "handle"))
+                  (not (memv (peek) '(#\, #\} #\] #\) #\>))))
+             (word!)
+             w)))))
+  (value!))
+
+;;; mako over D-Bus.
+
+(define gdbus "gdbus")                  ;on the wrapper's PATH
+
+(define (mako-call method)
+  (let* ((port (open-pipe* OPEN_READ gdbus "call" "--session"
+                           "--dest" "org.freedesktop.Notifications"
+                           "--object-path" "/fr/emersion/Mako"
+                           "--method" (string-append "fr.emersion.Mako." method)))
+         (text (get-string-all port)))
+    (close-pipe port)
+    (if (string-null? (string-trim-both text))
+        '()
+        (vector-ref (parse-gvariant text) 0))))
+
+(define (field n key) (or (assoc-ref n key) ""))
+
+(define (one-line s)
+  (string-map (lambda (c) (if (memv c '(#\newline #\tab #\return)) #\space c)) s))
+
+(define (urgency n)
+  (match (field n "urgency")
+    ("0x00" "low") ("0x02" "critical") (_ "normal")))
+
+(define (cache-dir)
+  (string-append (or (getenv "XDG_RUNTIME_DIR") "/tmp") "/sway-notifications"))
+
+(define (write-full! kind n)
+  (call-with-output-file (string-append (cache-dir) "/" kind "-" (field n "id"))
+    (lambda (port)
+      (format port "~a~%~a · ~a~%~%~a~%" (field n "summary") (field n "app-name")
+              (urgency n) (field n "body"))
+      (let ((actions (field n "actions")))
+        (when (pair? actions)
+          (format port "~%Actions: ~a~%"
+                  (string-join (map cdr actions) ", ")))))))
+
+(define (list-notifications)
+  (let ((dir (cache-dir)))
+    (unless (file-exists? dir) (mkdir dir #o700))
+    (for-each (lambda (f) (unless (member f '("." "..")) (delete-file (string-append dir "/" f))))
+              (scandir* dir)))
+  (for-each
+   (match-lambda
+     ((kind . ns)
+      (for-each (lambda (n)
+                  (write-full! kind n)
+                  (format #t "~a\t~a\t~a\t~a\t~a~%" kind (field n "id") (urgency n)
+                          (one-line (field n "app-name"))
+                          (one-line (field n "summary"))))
+                ns)))
+   ;; Newest first: mako lists the current ones newest first and the
+   ;; history oldest first.
+   (list (cons "new" (mako-call "ListNotifications"))
+         (cons "old" (reverse (mako-call "ListHistory"))))))
+
+(define (scandir* dir)
+  (let ((d (opendir dir)))
+    (let loop ((acc '()))
+      (let ((e (readdir d)))
+        (if (eof-object? e)
+            (begin (closedir d) acc)
+            (loop (cons e acc)))))))
+
+(define (list-actions id)
+  (for-each (lambda (n)
+              (when (string=? (field n "id") id)
+                (let ((actions (field n "actions")))
+                  (when (pair? actions)
+                    (for-each (match-lambda
+                                ((key . label) (format #t "~a\t~a~%" key label)))
+                              actions)))))
+            (mako-call "ListNotifications")))
+
+(match (command-line)
+  ((_ "list") (list-notifications))
+  ((_ "actions" id) (list-actions id))
+  (_ (format (current-error-port) "usage: sway-notifications list | actions ID~%")
+     (exit 2)))
