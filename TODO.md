@@ -198,6 +198,11 @@ Waiting for the next deploy and a test on the phone:
   (deploy12), not yet tested.
 - GPS logger running (3 h from 00:59, standalone, no coordinates).
 
+Tailscale deploys work (2026-10-30): bash scripts/deploy.sh <tailnet
+address> deployed generation 22 over the tailnet; the host key was checked
+against the USB one first (same SHA256).  The address itself stays out of
+git (tailscale ip -4 on the phone).
+
 Tailscale on the phone (author, 2026-10-30: soon), so the agent can
 deploy while the phone is away from the PC (GPS tests outdoors, for
 one).  The PC's tailscale package comes from umanwizard's channel
