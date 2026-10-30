@@ -250,10 +250,11 @@ and Phosh itself.  Not set up yet.
   (psk-flags 0) and older files are still there.  Why the stored one
   was not used is not known yet.
 - ADSP log spam: "qcom_q6v5_pas a400000.remoteproc: Handover signaled,
-  but it already happened" ~4.3 times a second, from 18 min after boot
-  (about the Sway login) on; ADSP state running, no crash lines.
-  Suspect: the sensor stream monitor-sensor opens (sway-autorotate);
-  not checked.
+  but it already happened" ~4.5 times a second (93 in 20 s), from 9 s
+  after boot; ADSP running, no crash lines.  Not new with generation 30:
+  the previous boot (generation 29 kernel) logged 60618 of them in
+  /var/log/messages.  Not monitor-sensor (same rate with it stopped).
+  Costs about 390000 log lines a day; cause not looked into yet.
 - Sway landscapes upside down (author): 8430c1f swaps left-up/right-up;
   deploying.
 - guix pull as user on the phone: running (window 3).
