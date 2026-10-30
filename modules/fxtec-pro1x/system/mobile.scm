@@ -626,7 +626,8 @@ Dracula palette, no kernel messages over the greeter.")
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
-     icecat gnome-console
+     ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
+     icecat epiphany gnome-console
      emacs mpv nnn
      calls chatty
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
