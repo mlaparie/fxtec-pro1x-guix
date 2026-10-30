@@ -24,6 +24,13 @@ run) ;;
   ;;
 esac
 
+# One session at most: PipeWire's profile probe at every login enables the
+# Voice Call verb too, which started a new copy each time (they piled up,
+# held the card in the Voice Call profile and their keep-alive streams
+# power-cycled the codec: the pops at login, 2026-10-30).
+if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+  exit 0
+fi
 echo $$ >"$pidfile"
 kp=""
 cur=""
@@ -125,17 +132,43 @@ if [ "${PRO1X_VOICE_ALWAYS:-0}" = 1 ] || ! command -v mmcli >/dev/null 2>&1; the
   always=1
 fi
 
-while :; do
-  if ! alive; then
-    stop_keepers
-    sleep 1
-    start_keepers || true
-  fi
+# After the last call: stop, put the card back on HiFi (otherwise
+# WirePlumber saves the Voice Call profile and restores it at every login),
+# and exit.
+finish() {
+  stop_keepers
+  stop_pcm
+  card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
+  [ -n "$card" ] && pactl set-card-profile "$card" "HiFi (Mic, Speaker)" 2>/dev/null &&
+    echo "card back on HiFi"
+  rm -f "$pidfile"
+  exit 0
+}
 
+started=$(date +%s)
+incall=0
+while :; do
   if [ "$always" = 1 ]; then
     now=always
   else
     now=$(calls)
+  fi
+
+  if [ -n "$now" ]; then
+    incall=1
+    # Keep-alives only during a call.
+    if ! alive; then
+      stop_keepers
+      sleep 1
+      start_keepers || true
+    fi
+  elif [ "$incall" = 1 ]; then
+    finish # the last call ended
+  elif [ $(( $(date +%s) - started )) -ge 20 ]; then
+    # Started without a call (the profile probe at login): leave the card
+    # alone and go.
+    rm -f "$pidfile"
+    exit 0
   fi
 
   added=0
