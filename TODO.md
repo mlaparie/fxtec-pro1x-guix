@@ -142,8 +142,15 @@ then deploys of next up to cc16582; generation 2 and later):
   12->20 at 20.9).  Spk0 OUT Switch is on and never showed a change, not
   even at logout: always on, or the driver does not notify it (unknown).
   Inferred: route switches during the probe reach a live amplifier.
-  Next: read Spk0 OUT Switch while logged out; keep the amplifier off
-  during the probe.  moWerk's notes: pops at amp power changes, NixOS too.
+  Logged out (00:43): Spk0, Spk1 OUT and HPHL Switch all on, although
+  the Speaker DisableSequence ran (HPH gain back to 12) and sets them
+  off.  Writes take, but Spk0 was on again seconds after being switched
+  off, with no session running (cause unknown).  Login at 00:44 with
+  Spk1 off (Spk0 probably on): pops still heard.  amixer events needs
+  about a minute to list 1279 controls before it reports changes: start
+  it early.  Next: both off before login, log what turns them on and
+  when, and whether pops come while both are off.  moWerk's notes: pops
+  at amp power changes, NixOS too.
 - a click just after login: probably the camera lens (DW9800 VCM) when
   WirePlumber's libcamera monitor opens the cameras; moWerk's
   sfos-dw9800-soft.patch (slower ramps, 2 s autosuspend, no park) makes
