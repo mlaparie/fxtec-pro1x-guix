@@ -37,7 +37,7 @@ GPU (Adreno 610)                 Working    freedreno; phoc renders on the GPU
 Touchscreen                      Working
 Auto-rotation                    Working    Phosh; landscape locked while the keyboard is out
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
-Keyboard backlight               Working    on while slid out; off after 60 s idle (configurable, untested)
+Keyboard backlight               Working    on while slid out; off after 60 s without a key (configurable)
 Keyboard slider switch           Working    backlight, Phosh landscape, wakes sway
 Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
@@ -46,14 +46,14 @@ USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/
 Speaker                          Working    pops at login (open)
 Earpiece / headphones            Untested
 Microphones                      Untested
-Vibration motor                  Untested   feedbackd installed 2026-10-30
+Vibration motor                  Working    feedbackd (incoming-call event: vibration and ringtone)
 Calls / SMS                      Untested
 Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
 Rear and front cameras           Working    picture in GNOME Snapshot (libcamera via PipeWire)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity, light, gyroscope      Untested
 Battery                          Working    UPower: level and charging state in Phosh
-Screen dimming                   Untested   30% after 60 s idle (configurable)
+Screen dimming                   Working    30% after 60 s idle (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested

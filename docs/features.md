@@ -19,12 +19,12 @@ Chosen at the text login (tuigreet; remembers user and session):
 Display, touch, GPU; keyboard with Fn layer and backlight; slider
 (keyboard out: landscape locked); Wi-Fi; USB SSH; speaker, volume keys;
 both cameras (Snapshot); auto-rotation; battery state; SIM and data on
-3G; idle dimming.
+3G; vibration and ringtone; idle dimming; Tailscale.
 
 ## Not yet
 
-LTE, GPS, calls, SMS, earpiece, headphones, microphones, vibration,
-proximity and light sensors, suspend.  Speaker pops at login.  Details:
+LTE, GPS, calls, SMS, earpiece, headphones, microphones, proximity and
+light sensors, suspend.  Speaker pops at login.  Details:
 [README](../README.md#port-status), [TODO.md](../TODO.md).
 
 ## How it is run
