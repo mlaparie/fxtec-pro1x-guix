@@ -10,6 +10,8 @@
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
 ;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
+;;;   • torch safety: a flash LED left on is switched off after torch-timeout
+;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
 ;;;     below charge-resume (hysteresis, as Android's charge-limit tools
 ;;;     do), through pro1x_charger_icl's charge_enable (kernel patch
@@ -77,7 +79,9 @@
   ;; Stop charging at this battery percentage (#f: charge to full), and
   ;; charge again at or below charge-resume.
   (charge-limit       pro1x-hardware-charge-limit       (default 85))
-  (charge-resume      pro1x-hardware-charge-resume      (default 80)))
+  (charge-resume      pro1x-hardware-charge-resume      (default 80))
+  ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
+  (torch-timeout      pro1x-hardware-torch-timeout      (default 60)))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -155,6 +159,59 @@ esac
         (stop #~(make-kill-destructor))
         (respawn? #t)))
       '()))
+
+(define (pro1x-torch-guard-program timeout)
+  (program-file
+   "pro1x-torch-guard"
+   #~(begin
+       (use-modules (ice-9 ftw) (ice-9 rdelim) (srfi srfi-1))
+       ;; The phone's flash LEDs: white:flash-0, amber:flash-1.
+       (define (flash-leds)
+         (map (lambda (f) (string-append "/sys/class/leds/" f))
+              (or (scandir "/sys/class/leds"
+                           (lambda (f) (string-contains f ":flash")))
+                  '())))
+       (define (on? led)
+         (let ((v (false-if-exception
+                   (call-with-input-file (string-append led "/brightness")
+                     read-line))))
+           (and v (not (equal? v "0")))))
+       (define (off! led)
+         (call-with-output-file (string-append led "/brightness")
+           (lambda (port) (display "0" port)))
+         (format #t "~a on for ~as: switched off~%" led #$timeout)
+         (force-output))
+       ;; SINCE: alist of LED -> time it was first seen on.
+       (let loop ((since '()))
+         (sleep 2)
+         (let* ((now (current-time))
+                (since (filter-map
+                        (lambda (led)
+                          (and (on? led)
+                               (cons led (or (assoc-ref since led) now))))
+                        (flash-leds))))
+           (for-each (lambda (entry)
+                       (when (>= (- now (cdr entry)) #$timeout)
+                         (off! (car entry))))
+                     since)
+           (loop (remove (lambda (entry)
+                           (>= (- now (cdr entry)) #$timeout))
+                         since)))))))
+
+(define (pro1x-torch-guard-shepherd-service config)
+  (let ((timeout (pro1x-hardware-torch-timeout config)))
+    (if timeout
+        (list
+         (shepherd-service
+          (provision '(pro1x-torch-guard))
+          (requirement '(file-systems))
+          (documentation "Switch the torch off after it has been on a while.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-torch-guard-program timeout))
+                    #:log-file "/var/log/pro1x-torch-guard.log"))
+          (stop #~(make-kill-destructor))
+          (respawn? #t)))
+        '())))
 
 (define (pro1x-charge-limit-program limit resume)
   (program-file
@@ -300,6 +357,8 @@ esac
                           (append (pro1x-clock-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
+                                   config)
+                                  (pro1x-torch-guard-shepherd-service
                                    config))))))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
