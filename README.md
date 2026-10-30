@@ -324,7 +324,7 @@ Userdata layout:
 
 ```
 [0, 256 MiB)  plain ext4 "guixboot"  — kernel, initrd, extlinux.conf
-[256 MiB, …)  LUKS2 header + encrypted ext4 root
+[256 MiB, end)  LUKS2 header + encrypted ext4 root
 ```
 
 Encryption is applied on the host during flash using `device/fde/xts-encrypt.c`
@@ -366,7 +366,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   sup   yellow slant arrows: Super, the sway modifier ($mod)
   fx    F(x) key: hold for the Fn layer
   \|    key labelled Sym: \ (Shift: |); with fx it is AltGr (agr),
-        so fx+Sym+letter types é, ñ, … on us-intl
+        so fx+Sym+letter types é, ñ etc. on us-intl
   ; \ |  on fx+l, fx+p, fx+/ as on the yellow keycaps
   `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth

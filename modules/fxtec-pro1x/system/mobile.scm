@@ -583,7 +583,7 @@ Dracula palette, no kernel messages over the greeter.")
                (when greeter
                  (chown dir (passwd:uid greeter) (passwd:gid greeter)))))))
 
-     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy, …)
+     ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy etc.)
      (service dbus-root-service-type)
      ;; GTK 3 finds its input-method modules (the Wayland one talks to the
      ;; on-screen keyboard) only through this variable: GTK has no cache of

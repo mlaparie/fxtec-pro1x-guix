@@ -2,7 +2,7 @@
 ;;;
 ;;; Partition layout of /dev/disk/by-partlabel/userdata:
 ;;;   [0,  256 MiB) : plain ext4 "guixboot" — U-Boot reads kernel + extlinux.conf from here
-;;;   [256 MiB, …)  : LUKS2 container — passphrase entered in initrd, root mounted from here
+;;;   [256 MiB, end)  : LUKS2 container — passphrase entered in initrd, root mounted from here
 ;;;
 ;;; First flash:
 ;;;   bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
