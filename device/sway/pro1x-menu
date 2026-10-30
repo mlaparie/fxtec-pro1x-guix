@@ -1,5 +1,5 @@
 #!/bin/sh
-# pro1x-menu toggle|start quicksettings|launcher|windowswitcher [hidden]
+# pro1x-menu toggle|start quickactions|launcher|windowswitcher [hidden]
 #
 # The three Sway menus stay alive in the scratchpad: toggle is a single
 # `scratchpad show' (shows a hidden one, hides a shown one, places it
@@ -14,11 +14,11 @@
 # State: written 2026-10-30, not yet run on the phone.
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-cmd=${1:-toggle} id=${2:-quicksettings} hidden=${3:-}
+cmd=${1:-toggle} id=${2:-quickactions} hidden=${3:-}
 
 geometry() {
     case "$1" in
-        quicksettings) echo "resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt" ;;
+        quickactions) echo "resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt" ;;
         launcher) echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt" ;;
         windowswitcher) echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt" ;;
     esac
@@ -26,7 +26,7 @@ geometry() {
 
 start() {
     case "$id" in
-        quicksettings) sway-quick-settings --resident ;;   # always hidden
+        quickactions) sway-quick-actions --resident ;;   # always hidden
         launcher)
             # Esc or a launch ends sway-launcher-desktop; the loop hides the
             # window and starts it again, hidden, its list ready.
@@ -62,8 +62,8 @@ case "$cmd" in
                >/dev/null 2>&1; then
             # Shown or hidden: refresh the list either way (cheap).
             case "$id" in
-                quicksettings) sock="$rt/pro1x-quick-settings.sock"
-                               action="reload(sway-quick-settings --lines)+first" ;;
+                quickactions) sock="$rt/pro1x-quick-actions.sock"
+                               action="reload(sway-quick-actions --lines)+first" ;;
                 windowswitcher) sock="$rt/pro1x-switcher.sock"
                                 action="reload(pro1x-switcher --list)+first" ;;
                 *) sock= ;;

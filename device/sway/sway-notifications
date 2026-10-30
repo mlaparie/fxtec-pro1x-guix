@@ -19,7 +19,7 @@
 ;;;
 ;;; makoctl list prints no bodies, so this asks mako over D-Bus
 ;;; (fr.emersion.Mako ListNotifications/ListHistory, aa{sv}) with gdbus and
-;;; reads gdbus's GVariant text.  Used by sway-quick-settings.
+;;; reads gdbus's GVariant text.  Used by sway-quick-actions.
 ;;;
 ;;; State: written 2026-10-30; the parser was checked against mako 1.10's
 ;;; replies on the phone (summary, body with newlines, actions, empty

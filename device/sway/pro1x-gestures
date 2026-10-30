@@ -1,7 +1,7 @@
 #!/bin/sh
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
-#   swipe down from the top edge      quick actions (sway-quick-settings)
+#   swipe down from the top edge      quick actions (sway-quick-actions)
 #   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
@@ -50,8 +50,8 @@ start() {                       # start <transform>
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
-        -g "1,UD,T,*,R,pro1x-menu toggle quicksettings &" \
-        -g "1,DU,B,*,R,sway-quick-settings --osk toggle &" \
+        -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
+        -g "1,DU,B,*,R,sway-quick-actions --osk toggle &" \
         -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
         -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &

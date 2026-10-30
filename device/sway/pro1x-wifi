@@ -2,7 +2,7 @@
 # pro1x-wifi — pick a Wi-Fi network with fzf and connect, asking for the
 # password of a new one (nmcli -a).  The author's nmcli-fzf script
 # (mlaparie's guix-config, .config/sway/scripts/nmcli-fzf), opened by
-# Right on the Wi-Fi line of sway-quick-settings.
+# Right on the Wi-Fi line of sway-quick-actions.
 
 err=0
 ssid=$(nmcli -f 'bssid,in-use,signal,bars,freq,rate,security,ssid' \

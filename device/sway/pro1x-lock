@@ -12,7 +12,7 @@
 # standard font), the date and time of locking, and one line per app with
 # notifications still shown by mako: how many, and when the latest arrived
 # (sway-notifications summary; times logged by pro1x-mako).  Used by
-# pro1x-idle --sway and the Lock line of sway-quick-settings.
+# pro1x-idle --sway and the Lock line of sway-quick-actions.
 #
 # State: written 2026-10-30, not yet run on the phone.
 

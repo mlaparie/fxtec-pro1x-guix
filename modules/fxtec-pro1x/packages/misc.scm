@@ -1302,7 +1302,7 @@ window opened by a sway key binding.")
 ;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
-;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
+;;;   bin/sway-quick-actions            Phosh-like toggles in fzf (Super+q)
 ;;;   bin/sway-notifications             mako's notifications for its dock
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
@@ -1340,7 +1340,7 @@ window opened by a sway key binding.")
           ("pro1x-dim" "bin/")
           ("pro1x-idle" "bin/")
           ("sway-autorotate" "bin/")
-          ("sway-quick-settings" "bin/")
+          ("sway-quick-actions" "bin/")
           ("sway-notifications" "bin/")
           ("pro1x-osk-slider" "bin/")
           ("pro1x-lock" "bin/")
@@ -1391,7 +1391,7 @@ window opened by a sway key binding.")
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
                             '("coreutils" "evtest" "jq" "sed")))))
-                (let ((qs (string-append #$output "/bin/sway-quick-settings")))
+                (let ((qs (string-append #$output "/bin/sway-quick-actions")))
                   (chmod qs #o755)
                   (wrap-program qs
                     `("PATH" ":" prefix

@@ -1,8 +1,8 @@
 #!/bin/sh
-# sway-quick-settings — Phosh's quick actions for Sway, as an fzf menu
+# sway-quick-actions — Phosh's quick actions for Sway, as an fzf menu
 #
 # Opened by Super+q, or the gear in the bar (--bar), in a floating foot
-# (app id quicksettings).  One line
+# (app id quickactions).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
@@ -65,24 +65,24 @@ fi
 # it.  A new foot and fzf each time took too long to show (author,
 # 2026-10-30).
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-sock="$rt/pro1x-quick-settings.sock"
-osk_flag="$rt/pro1x-quick-settings.osk"   # --bar showed the keyboard
+sock="$rt/pro1x-quick-actions.sock"
+osk_flag="$rt/pro1x-quick-actions.osk"   # --bar showed the keyboard
 
 qs_state() {                    # shown, hidden or none
     swaymsg -t get_tree -r 2>/dev/null |
-        jq -r '[.. | objects | select(.app_id? == "quicksettings") | .visible]
+        jq -r '[.. | objects | select(.app_id? == "quickactions") | .visible]
                | if length == 0 then "none"
                  elif .[0] then "shown" else "hidden" end'
 }
 
 qs_hide() {
-    swaymsg '[app_id="^quicksettings$"] move scratchpad' >/dev/null
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quicksettings -o pad=12x8 "$0" \
+        setsid pro1x-term --app-id=quickactions -o pad=12x8 "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
@@ -91,7 +91,7 @@ qs_show() {
         hidden)
             # Same geometry as the Sway config's rule, for the current
             # orientation.
-            swaymsg '[app_id="^quicksettings$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
+            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;

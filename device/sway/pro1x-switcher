@@ -20,7 +20,7 @@ if [ "${1:-}" = --list ]; then
                | select((.type == "con" or .type == "floating_con")
                         and (.pid? // 0) > 0)
                | select((.app_id // .window_properties.class // "")
-                        | test("^(quicksettings|launcher|windowswitcher)$") | not)
+                        | test("^(quickactions|launcher|windowswitcher)$") | not)
                | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "")"'
     exit
 fi

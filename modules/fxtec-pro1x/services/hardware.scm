@@ -552,7 +552,7 @@ esac
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
                      "\n")))
-      ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-settings
+      ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"
        ,(plain-file "charge.conf"
