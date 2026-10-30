@@ -159,10 +159,11 @@ one).  The PC's tailscale package comes from umanwizard's channel
 github.com/umanwizard/guix-tailscale (module (btv tailscale), 1.96.4;
 built from source with go-build-system and vendored modules, BSD-3), which
 the phone does not follow: either add that channel to the phone's
-channels (it has no .guix-channel, so as a plain channel in channels.scm)
-or package Tailscale here; author's choice.
-Then a Shepherd service for tailscaled, and deploy/pro1x.scm's host
-switched to the phone's tailnet name.
+channels (signed: introduction 52e82318f282c555757ef077d93a685fda97565d,
+key 9E53 FC33 B832 8C74 5E7B  31F7 0226 C10D 7877 B741; it also has a
+tailscaled service) or package Tailscale here; author's choice.
+Then tailscaled on the phone, and deploy/pro1x.scm's host switched to
+the phone's tailnet name.
 
 Updating the phone without the PC replacing its configuration: let the
 phone reconfigure from its own config.scm but download what the PC built,
