@@ -253,9 +253,10 @@ and Phosh itself.  Not set up yet.
   phone), Left/Right on Brightness/Volume, Mute shows muted or the
   volume, notification dock (mako over D-Bus: preview, Enter default
   action, Tab pick, Del dismiss, ^X all).  Tested on the PC with stubs
-  and the helpers as the user on the phone; not yet used on the phone.
+  and the helpers as the user on the phone; works on the phone (author,
+  2026-10-30).
 - Sway landscapes upside down (author): 8430c1f swaps left-up/right-up
-  (generation 31, not re-tested).  4de272d's watcher did not stop
+  (generation 31); works (author, 2026-10-30).  4de272d's watcher did not stop
   monitor-sensor (.monitor-sensor, wrapped); fixed in the next commit.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.

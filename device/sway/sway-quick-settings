@@ -19,9 +19,8 @@
 # this package's PATH).  The user is in netdev (NetworkManager,
 # ModemManager, /dev/rfkill) and input (flash LEDs).
 #
-# State: 2026-10-30; the SIM line was read-tested on the phone (lock state
-# and tries shown).  The single-fzf menu, the Left/Right steps and the
-# notification dock are build-tested only; the PIN entry is not tested.
+# State: works on the phone (author, 2026-10-30): the menu, Left/Right
+# steps, the SIM line and the notification dock.
 
 torch=/sys/class/leds/white:flash-0/brightness
 self=$0
