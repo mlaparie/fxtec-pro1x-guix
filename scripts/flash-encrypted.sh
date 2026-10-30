@@ -86,7 +86,7 @@ EXTLINUX_CONF=$(debugfs -R "cat /boot/extlinux/extlinux.conf" \
 
 if [[ -z "$EXTLINUX_CONF" ]]; then
     echo "    (no extlinux.conf in image — using default kernel arguments)"
-    APPEND_LINE="console=ttyMSM0,115200n8 console=tty1 loglevel=4 \
+    APPEND_LINE="console=tty1 loglevel=4 \
 g_cdc.host_addr=02:50:31:e8:00:01 g_cdc.dev_addr=02:50:31:e8:00:02"
 else
     APPEND_LINE=$(echo "$EXTLINUX_CONF" | grep -i '^\s*APPEND' | head -1 | \
