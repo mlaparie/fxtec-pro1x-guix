@@ -19,11 +19,14 @@
 
 (define-module (fxtec-pro1x system common)
   #:use-module (fxtec-pro1x services channels)
+  #:use-module (gnu packages linux)        ; procps
+  #:use-module (gnu packages glib)         ; dbus
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:export (pro1x-root-authorized-keys
             pro1x-root-key-skeletons
-            pro1x-user-config-service))
+            pro1x-user-config-service
+            pro1x-reload-bus-service))
 
 (define (pro1x-root-authorized-keys keys)
   "Return openssh authorized-keys entries letting root in with KEYS, a list
@@ -109,3 +112,20 @@ file in place at activation."
               (symlink file target)))
           '#$(map car files)
           (list #$@(map cadr files)))))))
+
+(define pro1x-reload-bus-service
+  ;; After a deploy or reconfigure, the running system bus keeps its old
+  ;; policy and polkitd its old actions and rules (it watched the previous
+  ;; /etc/polkit-1), so new D-Bus services and polkit actions only worked
+  ;; after a reboot: UPower exited with "name lost", polkit said "Action
+  ;; ... is not registered" (2026-10-30).  At activation, when the bus is
+  ;; running, reload its configuration and stop polkitd, which the bus
+  ;; starts again on the next request.  At boot the bus is not up yet and
+  ;; this does nothing.
+  (simple-service
+   'pro1x-reload-bus activation-service-type
+   #~(when (file-exists? "/run/dbus/system_bus_socket")
+       (system* #$(file-append dbus "/bin/dbus-send") "--system"
+                "--type=method_call" "--dest=org.freedesktop.DBus"
+                "/" "org.freedesktop.DBus.ReloadConfig")
+       (system* #$(file-append procps "/bin/pkill") "-x" "polkitd"))))
