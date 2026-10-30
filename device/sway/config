@@ -59,7 +59,7 @@ exec pro1x-idle --sway
 ### while it is out.  Super+o toggles auto-rotation.
 exec sway-autorotate
 
-### Edge swipes (pro1x-gestures): down from the top, quick settings; up from
+### Edge swipes (pro1x-gestures): down from the top, quick actions; up from
 ### the bottom, the on-screen keyboard; in from the right, the launcher; in
 ### from the left, the window switcher.
 exec pro1x-gestures
@@ -73,7 +73,7 @@ exec pro1x-portrait-apps
 ### A very dim white LED while the screen is blank but not locked.
 exec pro1x-blank-led
 
-### foot server: quick settings, the launcher and the window switcher open
+### foot server: quick actions, the launcher and the window switcher open
 ### as footclient windows (pro1x-term), faster than a new foot, and so does
 ### Super+Return ($term); Super+Shift+Return is a plain foot, in case the
 ### server is gone.
@@ -94,14 +94,14 @@ exec pro1x-call-watch
 
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
-### and on demand: Super+i, the Keyboard line in quick settings, the gear.
+### and on demand: Super+i, the Keyboard line in quick actions, the gear.
 exec phosh-osk-stevia
 exec pro1x-osk-slider
 bindsym $mod+i exec sway-quick-settings --osk toggle
 
 ### Launcher window
 ### The three menus open against the edge their swipe comes from, sized in
-### percent of the screen (portrait or landscape): quick settings at the top,
+### percent of the screen (portrait or landscape): quick actions at the top,
 ### the launcher on the right, the window switcher on the left.
 for_window [app_id="^quicksettings$"] floating enable, sticky enable, border pixel 2, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt
 for_window [app_id="^launcher$"] floating enable, sticky enable, border pixel 2, resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt
@@ -119,7 +119,7 @@ bindsym $mod+m exec pro1x-menu toggle launcher
 bindsym $mod+Tab exec pro1x-menu toggle windowswitcher
 bindsym $mod+o exec sway-autorotate toggle
 bindsym $mod+q exec pro1x-menu toggle quicksettings
-### Quick settings, launcher and window switcher stay hidden in the
+### Quick actions, launcher and window switcher stay hidden in the
 ### scratchpad from login, so they show at once (pro1x-menu).
 exec pro1x-menu start quicksettings hidden
 exec pro1x-menu start launcher hidden

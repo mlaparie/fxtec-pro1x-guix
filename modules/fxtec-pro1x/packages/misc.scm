@@ -987,7 +987,7 @@ sends a power-key press when it sees two quick taps close together.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
-;;; bluetuith — Bluetooth manager in the terminal, for Sway's quick settings
+;;; bluetuith — Bluetooth manager in the terminal, for Sway's quick actions
 ;;; From the author's guix-private-channel (mlaparie/packages/bluetuith.scm):
 ;;; upstream's release binary (Go, MIT).  Fixed to the arm64 build here: the
 ;;; original picks the build from %current-system when the package is

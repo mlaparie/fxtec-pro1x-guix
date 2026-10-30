@@ -1,5 +1,5 @@
 #!/bin/sh
-# sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
+# sway-quick-settings — Phosh's quick actions for Sway, as an fzf menu
 #
 # Opened by Super+q, or the gear in the bar (--bar), in a floating foot
 # (app id quicksettings).  One line
@@ -548,7 +548,7 @@ set --
 lines |
     # Same layout and colours as the launcher and window switcher: list
     # from the top, prompt at the bottom (the battery header just above it).
-    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+    fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window=hidden,up,50%,wrap \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \

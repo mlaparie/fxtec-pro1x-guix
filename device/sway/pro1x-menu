@@ -6,7 +6,7 @@
 # against its edge for the current orientation), and only when there is no
 # such window yet does it start one.  Starting a new foot and script each
 # time was too slow (author, 2026-10-30; the launcher alone spent 240 ms
-# reading desktop files).  Quick settings and the window switcher reload
+# reading desktop files).  Quick actions and the window switcher reload
 # their lists through their fzf sockets when shown; the launcher restarts
 # hidden after each use, its list ready.  Started hidden at login by the
 # Sway config; used by the swipes (pro1x-gestures) and Super+q/m/Tab.

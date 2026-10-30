@@ -15,7 +15,7 @@ session; F12 for shutdown and reboot):
 ## Keyboard and slider
 
 - Keyboard out: landscape, rotation locked, keyboard light on until 60 s
-  without a key.  Keyboard in: auto-rotation (if on in quick settings).
+  without a key.  Keyboard in: auto-rotation (if on in quick actions).
 - Fn layer (F(x) key): F1-F12, media, brightness, page keys; layout in the
   [README](../README.md#keyboard).
 
@@ -28,8 +28,8 @@ session; F12 for shutdown and reboot):
 | idle 150 s | dims to 20% |
 | idle 180 s | screen off; locked 2 min later |
 | keyboard slid in / out | portrait / landscape |
-| rotation (Phosh tile, Sway quick settings) | sensor rotation on or off |
-| Sway: edge swipes | top: quick settings, bottom: on-screen keyboard, right: launcher, left: window switcher |
+| rotation (Phosh tile, Sway quick actions) | sensor rotation on or off |
+| Sway: edge swipes | top: quick actions, bottom: on-screen keyboard, right: launcher, left: window switcher |
 
 Times and levels are options in `config.scm` ([configure.md](configure.md)).
 

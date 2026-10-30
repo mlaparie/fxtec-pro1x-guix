@@ -693,7 +693,7 @@ Dracula palette, no kernel messages over the greeter.")
      sound-theme-freedesktop
      ;; Sway and Phosh backgrounds (light and dark).
      pro1x-wallpapers
-     ;; Bluetooth manager for Sway's quick settings (Right on Bluetooth).
+     ;; Bluetooth manager for Sway's quick actions (Right on Bluetooth).
      bluetuith
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
