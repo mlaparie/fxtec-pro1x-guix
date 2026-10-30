@@ -28,6 +28,9 @@
 ;;;     ("phone-missed-call" "#FF8000" 1000))).  Events: battery-caution,
 ;;;     message-missed-email, -instant, -notification, -sms,
 ;;;     notification-missed-generic, phone-missed-call;
+;;;   • charging on the notification LED (charging-led, charged-led): a dim
+;;;     steady colour while charging and once full or held at the charge
+;;;     limit; feedbackd's notification patterns take precedence;
 ;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
 ;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
 ;;;     In config.scm:
@@ -99,7 +102,91 @@
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.
-  (notification-leds  pro1x-hardware-notification-leds (default '())))
+  (notification-leds  pro1x-hardware-notification-leds (default '()))
+  ;; Steady, dim colour of the notification LED while charging, and once
+  ;; full or held at the charge limit ("#RRGGBB" or a colour name as in
+  ;; notification-leds; #f: off).  Notifications take the LED over.
+  (charging-led       pro1x-hardware-charging-led       (default "#FF4000"))
+  (charged-led        pro1x-hardware-charged-led        (default "#00FF00")))
+
+;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
+(define (led-intensity colour)
+  (match colour
+    (#f #f)
+    ("red" "255 0 0") ("green" "0 255 0") ("blue" "0 0 255")
+    ("white" "255 255 255")
+    ((? led-colour?)
+     (string-join (map (lambda (i)
+                         (number->string
+                          (string->number (substring colour i (+ i 2)) 16)))
+                       '(1 3 5))
+                  " "))
+    (_ (raise (formatted-message
+               (G_ "charging-led/charged-led: ~s is not red, green, blue, \
+white, #RRGGBB or #f")
+               colour)))))
+
+(define (pro1x-charge-led-program charging charged)
+  ;; Polls the battery every 10 s.  It writes the LED only while it is dark
+  ;; or showing its own colour, so feedbackd's notification patterns win and
+  ;; the charging colour comes back once they end.  It keeps the pattern
+  ;; trigger feedbackd needs: off is a zero pattern, not brightness 0.
+  (program-file
+   "pro1x-charge-led"
+   #~(begin
+       (use-modules (ice-9 rdelim))
+       (define led "/sys/class/leds/rgb:status/")
+       (define level "32")                ;of 255: dim
+       (define (read-file file)
+         (or (false-if-exception (call-with-input-file file read-line)) ""))
+       (define (write-file file value)
+         (false-if-exception
+          (call-with-output-file file (lambda (port) (display value port)))))
+       (define (wanted)
+         (let ((status (read-file "/sys/class/power_supply/battery/status"))
+               (held (equal? "N" (read-file "/sys/module/pro1x_charger_icl/parameters/charge_enable"))))
+           (cond ((and held (equal? status "Discharging")) #f)
+                 (held #$charged)
+                 ((equal? status "Charging") #$charging)
+                 ((member status '("Full" "Not charging")) #$charged)
+                 (else #f))))
+       (define (ours? colour)
+         (and colour
+              (equal? (read-file (string-append led "brightness")) level)
+              (equal? (read-file (string-append led "multi_intensity")) colour)))
+       (let loop ((mine #f))              ;the colour we set, or #f
+         (let* ((want (wanted))
+                (dark? (equal? (read-file (string-append led "brightness")) "0"))
+                (still-mine (and mine (ours? mine) mine)))
+           (cond ((and want (or dark? (and still-mine (not (equal? want mine)))))
+                  (write-file (string-append led "multi_intensity") want)
+                  (write-file (string-append led "pattern")
+                              (string-append level " 1000 " level " 1000"))
+                  (sleep 10)
+                  (loop want))
+                 ((and (not want) still-mine)
+                  (write-file (string-append led "pattern") "0 1000 0 1000")
+                  (sleep 10)
+                  (loop #f))
+                 (else
+                  (sleep 10)
+                  (loop (and want still-mine)))))))))
+
+(define (pro1x-charge-led-shepherd-service config)
+  (let ((charging (led-intensity (pro1x-hardware-charging-led config)))
+        (charged (led-intensity (pro1x-hardware-charged-led config))))
+    (if (or charging charged)
+        (list
+         (shepherd-service
+          (provision '(pro1x-charge-led))
+          (requirement '(udev))
+          (documentation "Show charging on the notification LED.")
+          (start #~(make-forkexec-constructor
+                    (list #$(pro1x-charge-led-program charging charged))
+                    #:log-file "/var/log/pro1x-charge-led.log"))
+          (stop #~(make-kill-destructor))
+          (respawn? #t)))
+        '())))
 
 ;;; feedbackd's own LED events and blink periods (data/default.json, 0.8.1),
 ;;; used when an entry of notification-leds gives no period.
@@ -487,6 +574,8 @@ esac
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service
+                                   config)
+                                  (pro1x-charge-led-shepherd-service
                                    config))))))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
