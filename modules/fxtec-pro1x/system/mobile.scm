@@ -652,6 +652,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Sway session (config: device/sway, Super = yellow arrows)
      foot sway wdisplays swayidle swaylock mako
      sway-launcher-desktop pro1x-sway-config fzf jq
+     ;; On-screen keyboard in Sway (Phosh starts it by store path).
+     stevia
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors

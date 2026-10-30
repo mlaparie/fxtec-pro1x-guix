@@ -52,6 +52,12 @@ exec sway-autorotate
 ### Notifications
 exec mako
 
+### On-screen keyboard: Phosh's (stevia), hidden until asked for: Super+k,
+### the Keyboard line in quick settings, or the bar's gear while the
+### keyboard is slid in.
+exec phosh-osk-stevia
+bindsym $mod+k exec sway-quick-settings --osk toggle
+
 ### Launcher window
 for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2
 for_window [app_id="^launcher$"] move position center

@@ -5,7 +5,8 @@
 # (app id quicksettings).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
-# (caffeine: no dimming, blanking or locking), torch, feedback profile
+# (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
+# shown or hidden; also --osk toggle|show|hide, Super+k), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles or opens; Right turns a setting on (or steps it up, or
 # opens SIM and Notifications), Left turns it off (or steps it down); Esc
@@ -37,6 +38,26 @@ osk() {                         # osk true|false: stevia, if it runs
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
         --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
 }
+
+osk_state() {                   # shown, hidden, or "not running"
+    case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+                --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
+                2>/dev/null)" in
+        *true*) echo shown ;;
+        *false*) echo hidden ;;
+        *) echo "not running" ;;
+    esac
+}
+
+# --osk toggle|show|hide (Super+k in the Sway config).
+if [ "${1:-}" = --osk ]; then
+    case "${2:-toggle}" in
+        show) osk true ;;
+        hide) osk false ;;
+        *) [ "$(osk_state)" = shown ] && osk false || osk true ;;
+    esac
+    exit
+fi
 
 # --bar: from the bar's gear (i3status-rust).  With the keyboard slid in,
 # show the on-screen keyboard too, for the PIN and searching, and hide it
@@ -178,6 +199,7 @@ lines() {
     brightnessctl -m 2>/dev/null | cut -d, -f4 > "$d/br" &
     volume > "$d/vol" &
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
+    osk_state > "$d/osk" &
     wait
     radio=$(cat "$d/radio")           # enabled:enabled
     wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
@@ -202,6 +224,7 @@ lines() {
         "airplane    Airplane mode        $plane" \
         "rotation    Auto-rotation        $rot" \
         "caffeine    Keep screen on       $caf" \
+        "osk         Keyboard             $(cat "$d/osk")" \
         "torch       Torch                $t" \
         "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
         "bright      Brightness           $(cat "$d/br")" \
@@ -241,6 +264,8 @@ set_to() {
             else
                 echo 0 > "$torch"
             fi ;;
+        osk)
+            if [ "$2" = on ]; then osk true; else osk false; fi ;;
         mute)
             if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
             else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
@@ -260,6 +285,7 @@ state_of() {                    # state_of <setting>: on or off
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
+        osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
     esac
 }
 
