@@ -3,7 +3,7 @@
 #
 #   pro1x-dim dim       fade to DIM_LEVEL% of the maximum (default 30), if
 #                       brighter, and save the level
-#   pro1x-dim restore   fade back to the saved level
+#   pro1x-dim restore   back to the saved level at once
 #
 # Run through pro1x-idle in the Sway and Phosh sessions.  DIM_LEVEL comes
 # from /etc/pro1x/dim.conf (config.scm: pro1x-hardware-configuration).  It
@@ -22,11 +22,11 @@ max=$(cat "$bl/max_brightness")
 DIM_LEVEL=30
 [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
 
-fade() {            # fade FROM TO, in 10 steps over about half a second
+fade() {            # fade FROM TO, in 20 steps over about 1.5 s
     from=$1 to=$2 i=1
-    while [ "$i" -le 10 ]; do
-        echo $(( from + (to - from) * i / 10 )) > "$bl/brightness"
-        sleep 0.05
+    while [ "$i" -le 20 ]; do
+        echo $(( from + (to - from) * i / 20 )) > "$bl/brightness"
+        sleep 0.075
         i=$(( i + 1 ))
     done
 }
@@ -41,8 +41,9 @@ case "${1:-}" in
         fi
         ;;
     restore)
+        # At once: waking should not wait for a fade (author).
         if [ -f "$saved" ]; then
-            fade "$(cat "$bl/brightness")" "$(cat "$saved")"
+            cat "$saved" > "$bl/brightness"
             rm -f "$saved"
         fi
         ;;
