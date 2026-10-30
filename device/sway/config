@@ -54,6 +54,10 @@ exec sway-autorotate
 ### from the left, the window switcher.
 exec pro1x-gestures
 
+### Snapshot (camera) fullscreen and portrait: Sway rotates the whole panel,
+### not one window; slide the keyboard or rotate to leave portrait.
+for_window [app_id="^org.gnome.Snapshot$"] fullscreen enable, output DSI-1 transform normal
+
 ### foot server: quick settings, the launcher and the window switcher open
 ### as footclient windows (pro1x-term), faster than a new foot, and so does
 ### Super+Return ($term); Super+Shift+Return is a plain foot, in case the

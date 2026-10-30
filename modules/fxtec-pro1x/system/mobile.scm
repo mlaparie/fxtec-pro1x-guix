@@ -40,6 +40,7 @@
              (gnu packages ntp)
              (gnu packages ssh)
              (gnu packages freedesktop)    ; libqmi, libqrtr-glib
+             (gnu packages gstreamer)      ; gst-plugins-bad
              (gnu packages telephony)      ; libcallaudio (callaudiod)
              (gnu packages version-control)
              (gnu packages vim)
@@ -381,7 +382,21 @@ files root may log in with."
     `((".config/sway/config"
        ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
       (".config/i3status-rust/config.toml"
-       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml")))
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml"))
+      ;; XDG user directories, set when the account is created (first boot
+      ;; after flashing), as xdg-user-dirs-update would write them: Snapshot
+      ;; saves into XDG_PICTURES_DIR and failed without it (2026-10-30).
+      (".config/user-dirs.dirs"
+       ,(plain-file "user-dirs.dirs"
+                    (string-append
+                     "XDG_DESKTOP_DIR=\"$HOME/Desktop\"\n"
+                     "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n"
+                     "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n"
+                     "XDG_MUSIC_DIR=\"$HOME/Music\"\n"
+                     "XDG_PICTURES_DIR=\"$HOME/Pictures\"\n"
+                     "XDG_PUBLICSHARE_DIR=\"$HOME/Public\"\n"
+                     "XDG_TEMPLATES_DIR=\"$HOME/Templates\"\n"
+                     "XDG_VIDEOS_DIR=\"$HOME/Videos\"\n"))))
     (pro1x-root-key-skeletons root-ssh-keys)
     (default-skeletons)))
 
@@ -692,7 +707,10 @@ Dracula palette, no kernel messages over the greeter.")
      pro1x-mms-fetch
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
      ;; (WirePlumber's libcamera monitor); cameractrl only sets controls.
-     snapshot
+     ;; It saves photos with jifmux (gst-plugins-bad) into XDG_PICTURES_DIR
+     ;; (~/.config/user-dirs.dirs, skeleton below): without either, "Could
+     ;; not take picture" (2026-10-30).
+     snapshot gst-plugins-bad xdg-user-dirs
      ;; Portals: libadwaita apps read dark/light from the Settings portal
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).
