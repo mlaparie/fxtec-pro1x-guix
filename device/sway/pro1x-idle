@@ -8,8 +8,11 @@
 # swayidle -w with `timeout DIM_AFTER pro1x-dim dim resume pro1x-dim restore'
 # followed by the session's own arguments.  --sway also blanks the panel after
 # BLANK_AFTER seconds and locks with swaylock LOCK_AFTER seconds later (empty:
-# no lock); Phosh blanks and locks by itself (GSettings defaults from the same
-# configuration).  Started by the Phosh session and by the Sway config.
+# no lock).  For those two it reads the same GSettings keys as Phosh, GNOME
+# Settings and Phosh Mobile Settings (org.gnome.desktop.session idle-delay,
+# org.gnome.desktop.screensaver lock-enabled and lock-delay), whose defaults
+# come from config.scm: a delay changed there applies to Sway too.  Phosh
+# blanks and locks by itself.  Started by the Phosh session and the Sway config.
 #
 # State: written 2026-10-30, not yet run on the phone.
 
@@ -20,6 +23,17 @@ sway=
 if [ "${1:-}" = --sway ]; then
     sway=1
     shift
+    # The user's values if set, else config.scm's defaults (GSettings).
+    if command -v gsettings >/dev/null 2>&1; then
+        v=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null) &&
+            BLANK_AFTER=${v#uint32 }
+        if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = false ]; then
+            LOCK_AFTER=
+        else
+            v=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null) &&
+                LOCK_AFTER=${v#uint32 }
+        fi
+    fi
 fi
 
 # Prepend the timeouts to the session's own arguments.

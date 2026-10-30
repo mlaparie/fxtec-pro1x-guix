@@ -1021,7 +1021,7 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils foot fzf jq swayidle))
+    (inputs (list bash coreutils foot fzf jq swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1054,6 +1054,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       (,(string-append #$output "/bin")
                        ,(string-append (assoc-ref inputs "swayidle") "/bin")
+                       ,(string-append (assoc-ref inputs "glib") "/bin")
                        ,(string-append (assoc-ref inputs "coreutils")
                                        "/bin")))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")

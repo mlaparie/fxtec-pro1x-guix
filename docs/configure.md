@@ -49,7 +49,11 @@ once, so combine changes in one expression:
 | hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
 | hardware `blank-after` | `300` | idle seconds before the panel turns off |
-| hardware `lock-after` | `0` | seconds after blanking before locking; `#f` never.  In Phosh, a value set in GNOME Settings wins |
+| hardware `lock-after` | `0` | seconds after blanking before locking; `#f` never |
+
+`blank-after` and `lock-after` are the defaults of the GSettings keys that
+GNOME Settings (blank) and Phosh Mobile Settings ("Automatic screen lock
+delay") show and change; a value set there wins, in Phosh and in Sway.
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
