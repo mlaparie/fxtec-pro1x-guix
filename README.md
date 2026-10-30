@@ -49,7 +49,8 @@ Speaker                          Working    pops at login (open)
 Earpiece / headphones            Untested
 Microphones                      Untested
 Vibration motor                  Working    feedbackd (incoming-call event: vibration and ringtone)
-Calls / SMS                      Untested
+Calls                            Working    receiving a call works; speaker and mute buttons need callaudiod (fix pending test)
+SMS                              Untested
 Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
 Rear and front cameras           Working    picture in GNOME Snapshot (libcamera via PipeWire)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9

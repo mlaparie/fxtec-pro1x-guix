@@ -20,11 +20,13 @@ Display, touch, GPU; keyboard with Fn layer and backlight; slider
 (keyboard out: landscape locked); Wi-Fi; Bluetooth (with audio);
 USB SSH; speaker, volume keys;
 both cameras (Snapshot); auto-rotation; battery state; SIM and data on
-3G; vibration and ringtone; idle dimming; double tap to wake; Tailscale.
+3G; calls; vibration and ringtone; idle dimming; double tap to wake;
+Tailscale.
 
 ## Not yet
 
-LTE, GPS, calls, SMS, earpiece, headphones, microphones, proximity and
+LTE, GPS, SMS, the speaker and mute buttons in calls, headphones,
+proximity and
 light sensors, suspend.  Speaker pops at login.  Details:
 [README](../README.md#port-status), [TODO.md](../TODO.md).
 
