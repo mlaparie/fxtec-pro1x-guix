@@ -10,8 +10,9 @@
 # panel stays in landscape (transform 90, as in the Sway device settings).
 # The on/off state is $XDG_RUNTIME_DIR/sway-autorotate (default on).
 #
-# State: written 2026-10-30, not yet run on the phone; the mapping of the
-# sensor's names to transforms follows Phosh's and needs checking.
+# State: runs in Sway on the phone (2026-10-30); portrait and the keyboard
+# landscape are right; the sensor landscapes were swapped (fixed, not yet
+# re-tested).
 
 state="${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate"
 output=DSI-1
@@ -19,8 +20,10 @@ output=DSI-1
 transform_for() {               # iio-sensor-proxy orientation -> transform
     case "$1" in
         normal) echo normal ;;
-        left-up) echo 90 ;;
-        right-up) echo 270 ;;
+        # Swapped from Phosh's naming: with left-up 90 / right-up 270
+        # both landscapes were upside down (author, 2026-10-30).
+        left-up) echo 270 ;;
+        right-up) echo 90 ;;
         bottom-up) echo 180 ;;
         *) echo "" ;;
     esac
