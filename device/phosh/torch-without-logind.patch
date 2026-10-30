@@ -1,0 +1,54 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] torch: numbered flash LEDs, sysfs write without logind
+
+The Pro1X flash LEDs are white:flash-0 and amber:flash-1, which the
+"*:flash" match missed, so Phosh found no torch.  And the torch is set
+through logind (Session.SetBrightness), absent here (seatd).  Match
+"*:flash-*" too, and write the LED's brightness file directly when
+there is no logind session (as backlight-sysfs-without-logind.patch
+does for the panel).  phosh 0.56.0.
+---
+--- a/src/udev-manager.c
++++ b/src/udev-manager.c
+@@ -241,6 +241,8 @@
+   g_udev_enumerator_add_match_subsystem (udev_enumerator, LEDS_SUBSYSTEM);
+   g_udev_enumerator_add_match_name (udev_enumerator, "*:torch");
+   g_udev_enumerator_add_match_name (udev_enumerator, "*:flash");
++  /* Numbered flash LEDs, e.g. white:flash-0 on the F(x)tec Pro1X */
++  g_udev_enumerator_add_match_name (udev_enumerator, "*:flash-*");
+ 
+   device_list = g_udev_enumerator_execute (udev_enumerator);
+   if (!device_list) {
+--- a/src/torch-manager.c
++++ b/src/torch-manager.c
+@@ -118,6 +118,21 @@
+ 
+   g_debug ("Setting brightness to %d", brightness);
+ 
++  /* Without logind (seatd), write the LED's sysfs file directly; the
++   * user needs write access to it (udev rule, input group here). */
++  if (!self->session_proxy ||
++      !g_dbus_proxy_get_name_owner (G_DBUS_PROXY (self->session_proxy))) {
++    g_autofree char *path = g_build_filename (g_udev_device_get_sysfs_path (self->udev_device),
++                                              "brightness", NULL);
++    g_autofree char *value = g_strdup_printf ("%d", brightness);
++    g_autoptr (GError) err = NULL;
++
++    if (!g_file_set_contents (path, value, -1, &err))
++      g_warning ("Failed to set torch brightness: %s", err->message);
++    apply_brightness (self);
++    return;
++  }
++
+   phosh_dbus_login_session_call_set_brightness (self->session_proxy,
+                                                 TORCH_SUBSYSTEM,
+                                                 g_udev_device_get_name (self->udev_device),
+@@ -428,7 +443,7 @@
+ phosh_torch_manager_toggle (PhoshTorchManager *self)
+ {
+   g_return_if_fail (PHOSH_IS_TORCH_MANAGER (self));
+-  g_return_if_fail (PHOSH_DBUS_IS_LOGIN_SESSION (self->session_proxy));
++  /* No logind proxy needed: set_brightness writes sysfs without it. */
+ 
+   if (self->brightness) {
+     g_debug ("Disabling torch");

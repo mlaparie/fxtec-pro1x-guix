@@ -713,7 +713,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/portrait-apps.patch"))
                       ;; Round volume knob: no marks on the amplified bar.
                       (local-file
-                       (repository-file "device/phosh/volume-no-marks.patch")))))))
+                       (repository-file "device/phosh/volume-no-marks.patch"))
+                      ;; Torch: numbered flash LEDs, sysfs without logind.
+                      (local-file
+                       (repository-file "device/phosh/torch-without-logind.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)
