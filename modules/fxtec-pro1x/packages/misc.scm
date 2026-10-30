@@ -1215,7 +1215,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
-;;;   bin/pro1x-screenshot               screenshots and colour picker (grim)
+;;;   bin/pro1x-screenshot               screenshots (grim, slurp)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1310,8 +1310,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "glib" "grim" "imagemagick" "slurp"
-                              "wl-clipboard")))))
+                            '("coreutils" "glib" "grim" "slurp" "wl-clipboard")))))
                 (let ((st (string-append #$output "/bin/pro1x-status")))
                   (chmod st #o755)
                   ;; mmcli and rfkill come from the system profile.

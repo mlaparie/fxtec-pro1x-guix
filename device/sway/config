@@ -183,12 +183,12 @@ bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 
 ### Screenshots and clipboard
 # Screenshots (pro1x-screenshot): to ~/Pictures/Screenshots and the
-# clipboard.  Print is Fn+s on the Pro1X keyboard (keyd).
+# clipboard.  Print is Fn+Alt+p on the Pro1X keyboard, Ctrl+Print
+# Ctrl+Fn+Alt+p (keyd).
 bindsym Print exec pro1x-screenshot full
 bindsym Ctrl+Print exec pro1x-screenshot region
 bindsym $mod+Shift+p exec pro1x-screenshot full
 bindsym $mod+Shift+s exec pro1x-screenshot region
-bindsym $mod+Shift+c exec pro1x-screenshot colour
 
 ########## BAR ##########
 ### Bar: i3status-rust with ~/.config/i3status-rust/config.toml

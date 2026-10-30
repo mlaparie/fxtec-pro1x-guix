@@ -1,14 +1,13 @@
 #!/bin/sh
-# pro1x-screenshot full|region|colour — screenshots in Sway, as on the
+# pro1x-screenshot full|region — screenshots in Sway, as on the
 # author's PC
 #
-#   full     the whole screen        (Print, i.e. Fn+s; Super+Shift+p)
-#   region   a region drawn with slurp (Ctrl+Print; Super+Shift+s)
-#   colour   the colour under a point, as #rrggbb (Super+Shift+c)
+#   full     the whole screen        (Print, i.e. Fn+Alt+p; Super+Shift+p)
+#   region   a region drawn with slurp (Ctrl+Print, Ctrl+Fn+Alt+p;
+#            Super+Shift+s)
 #
 # Screenshots go to ~/Pictures/Screenshots/ssYYYYMMDD-HHMMSS.png and to the
-# clipboard; a low-urgency notification says where.  The colour goes to the
-# clipboard.  The PC's Shift+Print upload to 0x0.st is left out (needs the
+# clipboard; a low-urgency notification says where.  The PC's Shift+Print upload to 0x0.st is left out (needs the
 # author's 0x0 script).
 #
 # State: written 2026-10-30, not yet run on the phone.
@@ -36,12 +35,7 @@ case "${1:-}" in
         fi
         wl-copy < "$f"
         notify "$what saved to ~/Pictures/Screenshots/$(basename "$f") and copied" ;;
-    colour)
-        p=$(slurp -p) || exit 0
-        c=$(grim -g "$p" -t ppm - | convert - -format '#%[hex:u.p{0,0}]' info:-)
-        printf '%s' "$c" | wl-copy
-        notify "Colour $c copied" ;;
     *)
-        echo "usage: pro1x-screenshot full|region|colour" >&2
+        echo "usage: pro1x-screenshot full|region" >&2
         exit 2 ;;
 esac
