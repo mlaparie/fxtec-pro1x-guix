@@ -87,7 +87,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config) (backlight-timeout 60)))
   ;;    (pro1x-hardware-service-type
   ;;     config => (pro1x-hardware-configuration
-  ;;                (inherit config) (dim-after 60) (dim-level 20)))))
+  ;;                (inherit config) (dim-after 30) (dim-level 20)))))
   )
 "))
 

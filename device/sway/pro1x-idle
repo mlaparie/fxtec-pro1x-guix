@@ -1,7 +1,7 @@
 #!/bin/sh
 # pro1x-idle — swayidle with the panel dimming set in the system configuration
 #
-#   pro1x-idle [--sway] [swayidle arguments...]
+#   pro1x-idle [--sway] [swayidle arguments...]   (Phosh without --sway)
 #
 # Reads DIM_AFTER (seconds, empty for never) from /etc/pro1x/dim.conf, written
 # from config.scm (pro1x-hardware-configuration dim-after, dim-level), and runs
@@ -11,36 +11,47 @@
 # no lock).  For those two it reads the same GSettings keys as Phosh, GNOME
 # Settings and Phosh Mobile Settings (org.gnome.desktop.session idle-delay,
 # org.gnome.desktop.screensaver lock-enabled and lock-delay), whose defaults
-# come from config.scm: a delay changed there applies to Sway too.  Phosh
-# blanks and locks by itself.  Started by the Phosh session and the Sway config.
+# come from config.scm: a delay changed there applies to Sway too.  Without
+# --sway (Phosh) it activates Phosh's screen saver after BLANK_AFTER seconds
+# (org.gnome.ScreenSaver.SetActive), which blanks and locks after lock-delay:
+# Phosh leaves idle detection to gnome-session, absent here, so it never
+# blanked by itself.  Started by the Phosh session and the Sway config.
 #
-# State: written 2026-10-30, not yet run on the phone.
+# State: dimming tested 2026-10-30; Phosh blank and lock tested by hand with
+# the same SetActive call (author); Sway lock untested.
 
-DIM_AFTER=60 BLANK_AFTER=300 LOCK_AFTER=0
+DIM_AFTER=30 BLANK_AFTER=60 LOCK_AFTER=120
 [ -r /etc/pro1x/dim.conf ] && . /etc/pro1x/dim.conf
 
 sway=
 if [ "${1:-}" = --sway ]; then
     sway=1
     shift
-    # The user's values if set, else config.scm's defaults (GSettings).
-    if command -v gsettings >/dev/null 2>&1; then
-        v=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null) &&
-            BLANK_AFTER=${v#uint32 }
-        if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = false ]; then
-            LOCK_AFTER=
-        else
-            v=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null) &&
-                LOCK_AFTER=${v#uint32 }
-        fi
+fi
+# The user's values if set, else config.scm's defaults (GSettings).
+if command -v gsettings >/dev/null 2>&1; then
+    v=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null) &&
+        BLANK_AFTER=${v#uint32 }
+    if [ "$(gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" = false ]; then
+        LOCK_AFTER=
+    else
+        v=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null) &&
+            LOCK_AFTER=${v#uint32 }
     fi
 fi
+# idle-delay 0 is GNOME Settings' "Never".
+[ "$BLANK_AFTER" = 0 ] && BLANK_AFTER=
 
 # Prepend the timeouts to the session's own arguments.
-if [ -n "$sway" ] && [ -n "$LOCK_AFTER" ]; then
+if [ -z "$sway" ] && [ -n "$BLANK_AFTER" ]; then
+    set -- timeout "$BLANK_AFTER" \
+        'gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.SetActive true' \
+        "$@"
+fi
+if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
     set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'swaylock -f -c 1d2021' "$@"
 fi
-if [ -n "$sway" ]; then
+if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
     set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \
         resume 'swaymsg "output * power on"' "$@"
 fi

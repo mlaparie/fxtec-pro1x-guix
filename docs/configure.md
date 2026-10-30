@@ -46,10 +46,10 @@ once, so combine changes in one expression:
 |---|---|---|
 | keyboard `backlight-timeout` | `60` | seconds without a key before the keyboard light goes off; `#f` never |
 | keyboard `xkb-layout`, `xkb-variant` | `"us"`, `"intl"` | session keyboard layout |
-| hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
+| hardware `dim-after` | `30` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
-| hardware `blank-after` | `300` | idle seconds before the panel turns off |
-| hardware `lock-after` | `0` | seconds after blanking before locking; `#f` never |
+| hardware `blank-after` | `60` | idle seconds before the panel turns off |
+| hardware `lock-after` | `120` | seconds after blanking before locking; `#f` never |
 
 `blank-after` and `lock-after` are the defaults of the GSettings keys that
 GNOME Settings (blank) and Phosh Mobile Settings ("Automatic screen lock

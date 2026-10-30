@@ -25,8 +25,8 @@ session; F12 for shutdown and reboot):
 |---|---|
 | power key | screen off / on |
 | double tap | screen on, while it is off |
-| idle 60 s | dims to 20% |
-| idle 5 min | screen off, then locked (lock untested) |
+| idle 30 s | dims to 20% |
+| idle 60 s | screen off; locked 2 min later |
 | rotation tile (quick settings) | tap: lock or unlock auto-rotation; long press: auto or manual |
 
 Times and levels are options in `config.scm` ([configure.md](configure.md)).

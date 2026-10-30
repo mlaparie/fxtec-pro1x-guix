@@ -68,12 +68,12 @@
   (console-rotation   pro1x-hardware-console-rotation   (default #f))
   ;; Dim the panel after this many seconds without input (#f: never), to
   ;; this percentage of its maximum brightness.
-  (dim-after          pro1x-hardware-dim-after          (default 60))
+  (dim-after          pro1x-hardware-dim-after          (default 30))
   (dim-level          pro1x-hardware-dim-level          (default 20))
   ;; Blank the panel after this many seconds without input, and lock this
   ;; many seconds after blanking (0: when it blanks; #f: never lock).
-  (blank-after        pro1x-hardware-blank-after        (default 300))
-  (lock-after         pro1x-hardware-lock-after         (default 0))
+  (blank-after        pro1x-hardware-blank-after        (default 60))
+  (lock-after         pro1x-hardware-lock-after         (default 120))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Stop charging at this battery percentage (#f: charge to full), and
