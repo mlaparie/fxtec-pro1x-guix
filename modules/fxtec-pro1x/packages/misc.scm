@@ -311,7 +311,27 @@ to build an FDE userdata image on the host before flashing.")
           (local-file (repository-file "device/libcamera/s5k4h7-sensor.patch")
                       "s5k4h7-sensor.patch")
           (local-file (repository-file "device/libcamera/imx582-sensor.patch")
-                      "imx582-sensor.patch"))))))
+                      "imx582-sensor.patch"))
+         ;; Autofocus, manual exposure and fixes from moWerk's SailfishOS
+         ;; port (device/libcamera/af/README).
+         (map (lambda (name)
+                (local-file (repository-file
+                             (string-append "device/libcamera/af/" name))
+                            name))
+              '("0004-libcamera-software_isp-Let-a-single-point-decide-abo.patch"
+                "0005-ipa-ipu3-Move-non-specific-parts-of-Af-to-libipa.patch"
+                "0006-libcamera-software_isp-Add-variance-to-stats.patch"
+                "0007-ipa-softisp-Add-Af-algorithm.patch"
+                "0008-libcamera-software_isp-Add-autofocus-controls.patch"
+                "0009-ipa-libipa-Use-autofocus-limits-if-available.patch"
+                "0010-software_isp-Compute-an-autofocus-sharpness-value.patch"
+                "0011-ipa-libipa-af-Make-the-scan-parameters-configurable.patch"
+                "0012-ipa-simple-agc-Manual-analogue-gain-exposure-time-an.patch"
+                "0013-software_isp-ipa-simple-af-Focus-on-AfWindows.patch"
+                "0014-gstreamer-Serialise-control-access-and-expose-AfStat.patch"
+                "0015-ipa-Focus-is-lost-only-when-sharpness-drops-AfModeAu.patch"
+                "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
+                "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
