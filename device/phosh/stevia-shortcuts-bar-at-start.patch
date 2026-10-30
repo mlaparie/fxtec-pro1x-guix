@@ -1,0 +1,23 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] Show the shortcuts bar when starting on the terminal layout
+
+The shortcuts bar reads its shortcuts while the input surface's template
+is built, before notify::num-shortcuts is connected, so that change is
+never seen.  The deck's first child is the terminal layout: when the
+first focused text field is a terminal (purpose 13), the visible child
+never changes either, and the bar stays hidden for the whole session.
+Seen in Sway on the Pro¹x, where all text input came from foot.
+---
+--- a/src/pos-input-surface.c
++++ b/src/pos-input-surface.c
+@@ -2270,6 +2270,10 @@
+   GAction *action;
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
++  /* The shortcuts bar loads its shortcuts while the template is built,
++   * before notify::num-shortcuts is connected, and the deck starts on the
++   * terminal layout without a visible-child change: show the bar now. */
++  pos_input_surface_toggle_shortcuts_bar (self);
+ 
+   self->bs_mode = POS_BACKSPACE_MODE_CHAR;
+   self->style_manager = pos_style_manager_new ();

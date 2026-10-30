@@ -852,11 +852,16 @@ ModemManager, for clients such as Chatty.")
        (sha256
         (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))
        ;; Ours: phoc's device-state protocol optional, so stevia also
-       ;; runs in Sway (it never drew its keyboard there).
+       ;; runs in Sway (it never drew its keyboard there); the terminal
+       ;; shortcuts bar shown when the keyboard starts on that layout (in
+       ;; Sway, with only terminals, it never appeared).
        (patches
         (list (local-file
                (repository-file "device/phosh/stevia-optional-device-state.patch")
-               "stevia-optional-device-state.patch")))))
+               "stevia-optional-device-state.patch")
+              (local-file
+               (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
+               "stevia-shortcuts-bar-at-start.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
