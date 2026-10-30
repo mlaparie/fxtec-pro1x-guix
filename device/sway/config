@@ -49,6 +49,10 @@ exec pro1x-idle --sway
 ### while it is out.  Super+o toggles auto-rotation.
 exec sway-autorotate
 
+### Edge swipes (pro1x-gestures): down from the top, quick settings; up from
+### the bottom, the launcher; in from a side, the window switcher.
+exec pro1x-gestures
+
 ### Notifications (pro1x-mako: mako, noting arrival times for the lock screen)
 exec pro1x-mako
 

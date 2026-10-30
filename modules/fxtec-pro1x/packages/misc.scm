@@ -1204,6 +1204,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
+;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1213,7 +1214,7 @@ window opened by a sway key binding.")
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils evtest font-dejavu foot fzf gawk grep guile-3.0
-                  imagemagick jq procps sed swayidle (list glib "bin")))
+                  imagemagick jq lisgd procps sed swayidle (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1229,7 +1230,8 @@ window opened by a sway key binding.")
           ("pro1x-osk-slider" "bin/")
           ("pro1x-lock" "bin/")
           ("pro1x-mako" "bin/")
-          ("pro1x-notify" "bin/"))
+          ("pro1x-notify" "bin/")
+          ("pro1x-gestures" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1285,6 +1287,15 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (let ((g (string-append #$output "/bin/pro1x-gestures")))
+                  (chmod g #o755)
+                  ;; swaymsg, foot and the menus: system profile and $output.
+                  (wrap-program g
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "grep" "jq" "lisgd"))))))
                 (let ((notify (string-append #$output "/bin/pro1x-notify")))
                   (chmod notify #o755)
                   ;; swaymsg comes from the system profile.
