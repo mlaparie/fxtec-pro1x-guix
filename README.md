@@ -46,13 +46,14 @@ Wi-Fi                            Working    firmware via tqftpserv over QRTR
 Bluetooth                        Working    on/off, scan, pairing, audio to a speaker
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
 Speaker                          Working    pops at login (open)
-Earpiece / headphones            Untested
-Microphones                      Untested
-Vibration motor                  Working    feedbackd (incoming-call event: vibration and ringtone)
+Earpiece                         Working    in calls
+Headphones                       Untested
+Microphones                      Working    in calls
+Vibration motor                  Working    feedbackd (calls, notifications); Sway untested
 Calls                            Working    receiving a call works; speaker and mute buttons need callaudiod (fix pending test)
 SMS                              Untested
 Mobile data                      Partial    3G works; no LTE yet (see TODO.md)
-Rear and front cameras           Working    picture in GNOME Snapshot (libcamera via PipeWire)
+Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity, light, gyroscope      Untested
 Battery                          Working    UPower: level and charging state in Phosh
