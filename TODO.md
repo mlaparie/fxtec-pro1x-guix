@@ -270,10 +270,14 @@ and Phosh itself.  Not set up yet.
    no speaker, caller still heard while muted).  Next: measurement, not a
    fix: amixer snapshots during a call before/after each button, to find
    which routes the DSP voice session really uses.
-9. **MMS**: an MMS from an Android phone did not arrive (author,
-   2026-10-30).  Chatty needs mmsd-tng, not in Guix at the pin: package
-   it (meson; glib, libsoup, c-ares, ModemManager), start it per session,
-   document the MMSC and MMS APN settings in Chatty.  SMS work.
+9. **MMS**: mmsd-tng 2.6.4 packaged and started with Phosh (ff2261c).
+   It receives the MMS notifications (WAP push: transaction id, location)
+   but does not download: the active mobile-data connection's APN differs
+   from the MMS APN, and mmsd-tng only downloads over the active bearer
+   when its APN equals MMS_APN (it opens no second bearer).  Test asked
+   of the author: MMS APN = data APN in Chatty.  Else: one NM connection
+   on the MMS APN, or patch mmsd-tng.  Operator, APN and MMSC values stay
+   out of git.
 8. **Fingerprint reader**: research first: which sensor, whether it is
    reachable on SPI or only through TrustZone (likely, on Qualcomm),
    any mainline port or libfprint driver.  Author, 2026-10-30.
