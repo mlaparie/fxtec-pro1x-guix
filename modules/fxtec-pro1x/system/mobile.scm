@@ -191,6 +191,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         ;; Keep the session's output (greetd discards it): /tmp/phosh-UID.log.
         (let ((log (open-file (string-append "/tmp/phosh-"
                                              (number->string (getuid))
@@ -228,6 +232,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         (let ((log (open-file (string-append "/tmp/sxmo-"
                                              (number->string (getuid))
                                              ".log")
@@ -252,6 +260,10 @@
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
+        ;; ~/Pictures, ~/Music, ... and ~/.config/user-dirs.dirs, where
+        ;; missing: Snapshot could not save ("Could not find
+        ;; XDG_PICTURES_DIR").  Desktop sessions run this at login.
+        (system* #$(file-append xdg-user-dirs "/bin/xdg-user-dirs-update"))
         ;; Keep the session's output (greetd discards it): /tmp/sway-UID.log.
         (let ((log (open-file (string-append "/tmp/sway-"
                                              (number->string (getuid))
