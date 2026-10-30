@@ -9,6 +9,7 @@
 ;;;   • feedbackd group
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
+;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
 ;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
 ;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
 ;;;     In config.scm:
@@ -22,6 +23,8 @@
 
 (define-module (fxtec-pro1x services hardware)
   #:use-module (fxtec-pro1x files)
+  #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
+  #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
@@ -52,7 +55,9 @@
   ;; Dim the panel after this many seconds without input (#f: never), to
   ;; this percentage of its maximum brightness.
   (dim-after          pro1x-hardware-dim-after          (default 60))
-  (dim-level          pro1x-hardware-dim-level          (default 20)))
+  (dim-level          pro1x-hardware-dim-level          (default 20))
+  ;; Wake the panel with a double tap while it is off.
+  (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t)))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -112,6 +117,25 @@ case \"$1\" in
 esac
 "))
 
+(define (pro1x-doubletap-shepherd-service config)
+  (if (pro1x-hardware-double-tap-wake? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-doubletap))
+        (requirement '(udev))
+        (documentation "Wake the panel with a double tap on the touchscreen.")
+        (start
+         #~(lambda args
+             ;; uinput is a module; the power-key device needs /dev/uinput.
+             (system* #$(file-append kmod "/bin/modprobe") "uinput")
+             ((make-forkexec-constructor
+               (list #$(file-append pro1x-doubletap "/bin/pro1x-doubletap"))
+               #:log-file "/var/log/pro1x-doubletap.log")
+              args)))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
 (define (pro1x-clock-shepherd-service config)
   (list
    (shepherd-service
@@ -159,7 +183,9 @@ esac
                         pro1x-hardware-account-groups)
      ;; clock from the RTC (pro1x-clock)
      (service-extension shepherd-root-service-type
-                        pro1x-clock-shepherd-service)))
+                        (lambda (config)
+                          (append (pro1x-clock-shepherd-service config)
+                                  (pro1x-doubletap-shepherd-service config))))))
    (default-value (pro1x-hardware-configuration))
    (description "Core hardware support for the F(x)tec Pro1X: udev rules for
 cameras, haptics, GPIO slider, and optional touch calibration for display gaps.")))

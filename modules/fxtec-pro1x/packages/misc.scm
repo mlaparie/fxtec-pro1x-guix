@@ -745,6 +745,46 @@ It runs on top of the Phoc compositor.")
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-doubletap — wake the panel with a double tap
+;;; The touchscreen keeps reporting touches with the panel off; two quick
+;;; taps then send a power-key press from a uinput device (as SailfishOS's
+;;; mce emulates it).  Run by pro1x-hardware-service-type
+;;; (double-tap-wake?).  Source: device/input/pro1x-doubletap.c.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-doubletap
+  (package
+    (name "pro1x-doubletap")
+    (version "0.1")
+    (source (local-file (repository-file "device/input/pro1x-doubletap.c")
+                        "pro1x-doubletap.c"))
+    (build-system trivial-build-system)
+    (native-inputs
+     (list (@ (gnu packages commencement) gcc-toolchain)
+           linux-libre-headers))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((bin (string-append #$output "/bin")))
+            (mkdir-p bin)
+            (setenv "PATH"
+                    (string-append #$(this-package-native-input "gcc-toolchain")
+                                   "/bin"))
+            (invoke "gcc" "-O2" "-Wall" "-o"
+                    (string-append bin "/pro1x-doubletap") #$source
+                    (string-append
+                     "-I" #$(this-package-native-input "linux-libre-headers")
+                     "/include"))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Wake the F(x)tec Pro1X panel with a double tap")
+    (description
+     "pro1x-doubletap watches the touchscreen while the panel is off and
+sends a power-key press when it sees two quick taps close together.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
 ;;; pro1x-gsettings-defaults — system-wide GSettings defaults
 ;;; An override in the system profile's share/glib-2.0/schemas, which Guix's
 ;;; glib-schemas profile hook compiles together with every schema there (an

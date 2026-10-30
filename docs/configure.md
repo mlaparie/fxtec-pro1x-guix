@@ -48,6 +48,7 @@ once, so combine changes in one expression:
 | keyboard `xkb-layout`, `xkb-variant` | `"us"`, `"intl"` | session keyboard layout |
 | hardware `dim-after` | `60` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
+| hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
 
