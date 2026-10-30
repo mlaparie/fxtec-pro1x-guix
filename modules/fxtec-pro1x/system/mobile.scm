@@ -143,8 +143,9 @@
                             (slid-in! saved)))
                   (loop saved))))))))
 
-;; What phoc starts: gsd-media-keys, gsd-rfkill, mmsd-tng, the slider
-;; helper, the idle dimmer, then the shell.  Phosh does not
+;; What phoc starts: gsd-media-keys, gsd-rfkill, mmsd-tng, the on-screen
+;; keyboard, the MMS reminder, the slider helper, the idle dimmer, then the
+;; shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
 ;; Phosh.  Without it the volume keys did nothing (tested on the phone,
@@ -170,6 +171,12 @@
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$(file-append mmsd-tng "/bin/mmsdtng") "mmsdtng"))
+        ;; On-screen keyboard (sm.puri.OSK0); gnome-session would start it
+        ;; from sm.puri.OSK0.desktop.
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append stevia "/bin/phosh-osk-stevia")
+                 "phosh-osk-stevia" "--allow-replacement"))
         ;; Reminds about waiting MMS; the "Fetch MMS" launcher fetches them.
         (when (zero? (primitive-fork))
           (setsid)

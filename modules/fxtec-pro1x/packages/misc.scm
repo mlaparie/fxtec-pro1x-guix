@@ -35,6 +35,7 @@
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
+  #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
@@ -786,6 +787,50 @@ It runs on top of the Phoc compositor.")
      "mmsd-tng receives and sends MMS messages with a modem driven by
 ModemManager, for clients such as Chatty.")
     (license license:gpl2)))
+
+;;; ---------------------------------------------------------------------------
+;;; stevia — Phosh's on-screen keyboard (formerly phosh-osk-stub)
+;;; Not in Guix.  Without it Phosh had no virtual keyboard ("The name
+;;; sm.puri.OSK0 was not provided").  0.56, matching Phosh 0.56.  It uses
+;;; logind (through libelogind) only to follow the session's lock state;
+;;; without logind it finds no session and carries on.  Started by
+;;; phosh-pro1x-shell.
+;;; ---------------------------------------------------------------------------
+(define-public stevia
+  (package
+    (name "stevia")
+    (version "0.56.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gitlab.gnome.org/World/Phosh/stevia")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))))
+    (build-system meson-build-system)
+    (arguments
+     (list
+      #:glib-or-gtk? #t
+      #:tests? #f                       ;need a Wayland compositor
+      #:configure-flags
+      #~(list "-Dman=false" "-Dgtk_doc=false" "-Dtests=false"
+              (string-append "-Dsystemd_user_unit_dir=" #$output
+                             "/lib/systemd/user"))))
+    ;; python: tools/write-layout-info.py generates layouts.json.
+    (native-inputs (list pkg-config (list glib "bin") gettext-minimal python
+                         wayland-protocols))
+    ;; hunspell: word completion (meson wants at least one completer).
+    (inputs (list dconf elogind feedbackd-0.8 glib gmobile gnome-desktop
+                  gsettings-desktop-schemas gtk+ hunspell json-glib libhandy
+                  libxkbcommon wayland))
+    (home-page "https://gitlab.gnome.org/World/Phosh/stevia")
+    (synopsis "On-screen keyboard for Phosh")
+    (description
+     "Stevia is the on-screen keyboard for the Phosh mobile shell, with word
+completion and several layouts.")
+    (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-mms-fetch — MMS with a separate MMS APN (see the script's header)
