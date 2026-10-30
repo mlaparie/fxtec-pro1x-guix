@@ -118,8 +118,11 @@ then deploys of next up to cc16582; generation 2 and later):
   audio as Sway; still needs superd.
 - Phosh lock keypad flickers once on wake (low priority).
 - Phosh rotation: auto-rotation works (tile: tap locks, long press
-  switches auto/manual).  Each rotation flashes the screen black briefly
-  (probably phoc's modeset on transform change; not investigated).
+  switches auto/manual).  Each rotation flashes the screen black: phoc
+  0.56 raises a black "modeset shield" on every transform change until
+  the layer surfaces are rearranged, then fades it out in 150 ms
+  (src/output.c).  By design; no rotation animation exists.  Smoother
+  would need a phoc patch (low priority, author 2026-10-30).
   Snapshot should stay in portrait to use the whole panel; Phosh has no
   per-app rotation lock (author's wish, 2026-10-30).
 - crackle at Phosh login (not at logout, author 2026-10-30).  amixer
