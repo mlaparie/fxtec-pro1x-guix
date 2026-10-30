@@ -10,10 +10,24 @@
 # panel stays in landscape (transform 90, as in the Sway device settings).
 # The on/off state is $XDG_RUNTIME_DIR/sway-autorotate (default on).
 #
-# State: works in Sway on the phone (author, 2026-10-30): portrait, both
-# sensor landscapes and the keyboard landscape.
+# Like Phosh (rotation-manager.c), the accelerometer is only held while
+# auto-rotation is on and the panel is powered: every batch of the sensor
+# stream wakes the ADSP (4.4 a second, rag-notes hardware/sensors).  The
+# daemon re-checks on each Sway output event (power on/off, from the power
+# key or swayidle) and when on/off/toggle poke it.  It ends
+# when Sway exits, since its event subscription ends with Sway.
+#
+# State: the sensor landscapes and the keyboard landscape work in Sway on
+# the phone (author, 2026-10-30).  Holding the sensor only while on and lit,
+# run by hand in the Sway session (2026-10-30): on/off and panel off/on
+# release and take it again (ADSP interrupts 0 vs 34 per 8 s).  Exit with
+# Sway not checked yet.
 
-state="${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate"
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+state="$rt/sway-autorotate"
+pidfile="$rt/sway-autorotate.pid"
+fifo="$rt/sway-autorotate.fifo"          # monitor-sensor -> follow
+events="$rt/sway-autorotate.events"      # swaymsg subscribe -> main loop
 output=DSI-1
 
 transform_for() {               # iio-sensor-proxy orientation -> transform
@@ -35,46 +49,88 @@ slider_out() {                  # SW_KEYPAD_SLIDE set: evtest exits 10
 
 set_transform() { swaymsg output "$output" transform "$1" >/dev/null; }
 
+poke() {                        # tell the running daemon to re-check
+    # A line in its event fifo, like a Sway output event.  Only when the
+    # daemon is alive: opening a fifo nobody reads would block.
+    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        timeout 2 sh -c 'echo poke > "$1"' sh "$events"
+    fi
+    return 0
+}
+
 case "${1:-}" in
-    on|off) echo "$1" > "$state"; exit 0 ;;
+    on|off) echo "$1" > "$state"; poke; exit 0 ;;
     toggle)
         if [ "$(cat "$state" 2>/dev/null)" = off ]; then
             echo on > "$state"
         else
             echo off > "$state"
         fi
-        exit 0 ;;
-    normal) echo off > "$state"; set_transform normal; exit 0 ;;
-    left) echo off > "$state"; set_transform 90; exit 0 ;;
-    right) echo off > "$state"; set_transform 270; exit 0 ;;
-    inverted) echo off > "$state"; set_transform 180; exit 0 ;;
+        poke; exit 0 ;;
+    normal) echo off > "$state"; poke; set_transform normal; exit 0 ;;
+    left) echo off > "$state"; poke; set_transform 90; exit 0 ;;
+    right) echo off > "$state"; poke; set_transform 270; exit 0 ;;
+    inverted) echo off > "$state"; poke; set_transform 180; exit 0 ;;
     "") ;;
     *) echo "usage: sway-autorotate [on|off|toggle|normal|left|right|inverted]" >&2
        exit 2 ;;
 esac
 
+# ── Daemon ───────────────────────────────────────────────────────────────────
+
 [ -f "$state" ] || echo on > "$state"
-# Sway's exec double-forks, so nothing stops this loop when Sway exits:
-# a logout left it and monitor-sensor running (2026-10-30).  Sway removes
-# its IPC socket on exit; stop monitor-sensor then, which ends the loop.
-if [ -n "${SWAYSOCK:-}" ]; then
-    (
-        while [ -S "$SWAYSOCK" ]; do sleep 10; done
-        # Not -x monitor-sensor: the wrapped binary runs as .monitor-sensor.
-        pkill -P $$
-    ) &
-fi
-monitor-sensor --accel 2>/dev/null |
+echo $$ > "$pidfile"
+rm -f "$fifo" "$events"; mkfifo "$fifo" "$events"
+sensor=                         # monitor-sensor's PID while held
+
+follow() {                      # read monitor-sensor's lines from the fifo
     while IFS= read -r line; do
         # "=== Has accelerometer (orientation: right-up, tilt: ...)" first,
         # then "Accelerometer orientation changed: left-up".
         o=$(echo "$line" | sed -n 's/.*orientation[a-z ]*: \([a-z-]*\).*/\1/p')
         [ -n "$o" ] || continue
-        [ "$(cat "$state" 2>/dev/null)" = off ] && continue
         if slider_out; then
             set_transform 90
         else
             t=$(transform_for "$o")
             [ -n "$t" ] && set_transform "$t"
         fi
-    done
+    done < "$fifo"
+}
+
+lit() {                         # is the panel powered?
+    [ "$(swaymsg -t get_outputs -r 2>/dev/null |
+             jq -r --arg o "$output" '.[] | select(.name == $o) | .power')" = true ]
+}
+
+release() {
+    [ -n "$sensor" ] && kill "$sensor" 2>/dev/null
+    sensor=
+}
+
+reconcile() {
+    if [ "$(cat "$state" 2>/dev/null)" != off ] && lit; then
+        if [ -z "$sensor" ] || ! kill -0 "$sensor" 2>/dev/null; then
+            follow &
+            monitor-sensor --accel > "$fifo" 2>/dev/null &
+            sensor=$!
+        fi
+    else
+        release
+    fi
+}
+
+cleanup() { release; rm -f "$fifo" "$events" "$pidfile"; }
+trap cleanup EXIT
+trap 'cleanup; exit 0' INT TERM HUP
+
+reconcile
+# One line per output event (-r: compact JSON), or "poke" from on/off/
+# toggle; swaymsg exits with Sway, which ends the loop.
+swaymsg -m -r -t subscribe '["output"]' > "$events" 2>/dev/null &
+watcher=$!
+exec 3< "$events"
+while IFS= read -r line <&3; do
+    reconcile
+    kill -0 "$watcher" 2>/dev/null || break
+done
