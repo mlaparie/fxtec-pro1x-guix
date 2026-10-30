@@ -45,6 +45,10 @@ bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 ### brings the panel back.
 exec pro1x-idle --sway
 
+### Rotation: follows the accelerometer while the keyboard is in; landscape
+### while it is out.  Super+r toggles auto-rotation.
+exec sway-autorotate
+
 ### Notifications
 exec mako
 
@@ -62,6 +66,7 @@ bindsym $mod+Ctrl+h exec foot --app-id=swayhelp -e sh -c 'swaymsg -t get_config 
 bindsym $mod+Return exec $term
 bindsym $mod+m exec $launcher
 bindsym $mod+Tab exec sway-window-switcher
+bindsym $mod+r exec sway-autorotate toggle
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+c reload

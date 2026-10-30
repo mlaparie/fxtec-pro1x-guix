@@ -1132,6 +1132,7 @@ window opened by a sway key binding.")
 ;;;   share/pro1x-sway/i3status-rust.toml  ~/.config/i3status-rust/config.toml
 ;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
+;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1140,7 +1141,8 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils foot fzf jq swayidle (list glib "bin")))
+    (inputs (list bash coreutils evtest foot fzf jq sed swayidle
+                  (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1149,7 +1151,8 @@ window opened by a sway key binding.")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
-          ("pro1x-idle" "bin/"))
+          ("pro1x-idle" "bin/")
+          ("sway-autorotate" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1175,7 +1178,15 @@ window opened by a sway key binding.")
                        ,(string-append (assoc-ref inputs "swayidle") "/bin")
                        ,(string-append (assoc-ref inputs "glib") "/bin")
                        ,(string-append (assoc-ref inputs "coreutils")
-                                       "/bin")))))))))))
+                                       "/bin")))))
+                ;; monitor-sensor and swaymsg come from the system profile.
+                (let ((rot (string-append #$output "/bin/sway-autorotate")))
+                  (chmod rot #o755)
+                  (wrap-program rot
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "evtest" "sed")))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Sway defaults for the F(x)tec Pro1X")
     (description

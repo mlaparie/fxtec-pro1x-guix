@@ -1,0 +1,68 @@
+#!/bin/sh
+# sway-autorotate — rotate the Pro¹x panel in Sway from the accelerometer
+#
+#   sway-autorotate              follow the sensor (started by the Sway config)
+#   sway-autorotate on|off|toggle
+#   sway-autorotate normal|left|right|inverted   force an orientation (auto off)
+#
+# rot8 reads raw IIO sysfs, which the SSC accelerometer is not; this follows
+# iio-sensor-proxy (monitor-sensor).  While the keyboard is slid out the
+# panel stays in landscape (transform 90, as in the Sway device settings).
+# The on/off state is $XDG_RUNTIME_DIR/sway-autorotate (default on).
+#
+# State: written 2026-10-30, not yet run on the phone; the mapping of the
+# sensor's names to transforms follows Phosh's and needs checking.
+
+state="${XDG_RUNTIME_DIR:-/tmp}/sway-autorotate"
+output=DSI-1
+
+transform_for() {               # iio-sensor-proxy orientation -> transform
+    case "$1" in
+        normal) echo normal ;;
+        left-up) echo 90 ;;
+        right-up) echo 270 ;;
+        bottom-up) echo 180 ;;
+        *) echo "" ;;
+    esac
+}
+
+slider_out() {                  # SW_KEYPAD_SLIDE set: evtest exits 10
+    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+    [ $? = 10 ]
+}
+
+set_transform() { swaymsg output "$output" transform "$1" >/dev/null; }
+
+case "${1:-}" in
+    on|off) echo "$1" > "$state"; exit 0 ;;
+    toggle)
+        if [ "$(cat "$state" 2>/dev/null)" = off ]; then
+            echo on > "$state"
+        else
+            echo off > "$state"
+        fi
+        exit 0 ;;
+    normal) echo off > "$state"; set_transform normal; exit 0 ;;
+    left) echo off > "$state"; set_transform 90; exit 0 ;;
+    right) echo off > "$state"; set_transform 270; exit 0 ;;
+    inverted) echo off > "$state"; set_transform 180; exit 0 ;;
+    "") ;;
+    *) echo "usage: sway-autorotate [on|off|toggle|normal|left|right|inverted]" >&2
+       exit 2 ;;
+esac
+
+[ -f "$state" ] || echo on > "$state"
+monitor-sensor --accel 2>/dev/null |
+    while IFS= read -r line; do
+        # "=== Has accelerometer (orientation: right-up, tilt: ...)" first,
+        # then "Accelerometer orientation changed: left-up".
+        o=$(echo "$line" | sed -n 's/.*orientation[a-z ]*: \([a-z-]*\).*/\1/p')
+        [ -n "$o" ] || continue
+        [ "$(cat "$state" 2>/dev/null)" = off ] && continue
+        if slider_out; then
+            set_transform 90
+        else
+            t=$(transform_for "$o")
+            [ -n "$t" ] && set_transform "$t"
+        fi
+    done
