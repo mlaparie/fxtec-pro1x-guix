@@ -1,0 +1,34 @@
+#!/bin/sh
+# pro1x-switcher — the Sway window switcher, resident in the scratchpad
+#
+#   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
+#   pro1x-switcher --list    one line per window: con_id, app, title
+#
+# Enter focuses the window, Ctrl-k closes it, Esc hides the switcher.  It
+# stays alive hidden (pro1x-menu); each show reloads the list through
+# fzf's socket.  Replaces sway-window-switcher, which started a new foot,
+# bash and jq run each time (slow on the phone; author, 2026-10-30).
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-switcher.sock"
+self=$0
+
+if [ "${1:-}" = --list ]; then
+    swaymsg -t get_tree -r |
+        jq -r '.. | objects
+               | select((.type == "con" or .type == "floating_con")
+                        and (.pid? // 0) > 0)
+               | select((.app_id // .window_properties.class // "")
+                        | test("^(quicksettings|launcher|windowswitcher)$") | not)
+               | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "")"'
+    exit
+fi
+
+hide='execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
+"$self" --list |
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --layout=reverse \
+        --prompt="windows > " --info=hidden --cycle --no-sort \
+        --bind="enter:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
+        --bind="ctrl-k:execute-silent(swaymsg \"[con_id={1}] kill\")+reload($self --list)" \
+        --bind="esc:$hide" >/dev/null

@@ -50,10 +50,10 @@ start() {                       # start <transform>
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
-        -g "1,UD,T,*,R,sway-quick-settings &" \
+        -g "1,UD,T,*,R,pro1x-menu toggle quicksettings &" \
         -g "1,DU,B,*,R,sway-quick-settings --osk toggle &" \
-        -g "1,RL,R,*,R,pro1x-gestures toggle launcher $launcher &" \
-        -g "1,LR,L,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher &" \
+        -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
+        -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }

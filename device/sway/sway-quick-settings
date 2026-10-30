@@ -427,6 +427,10 @@ case "${1:-}" in
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
     --notif-lines) notif_lines; exit ;;
+    --notif-summary)            # preview of the Notifications line
+        sway-notifications list 2>/dev/null |
+            awk -F'\t' '{ printf "%s %s: %s\n", ($1 == "new" ? "•" : " "), $4, $5 }'
+        exit ;;
     --notif-preview) notif_preview "$2" "$3"; exit ;;
     --notif-default) notif_default "$2" "$3" >/dev/null 2>&1; exit ;;
     --notif-pick) notif_pick "$2" "$3"; exit ;;
@@ -450,6 +454,8 @@ set --
 lines |
     fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
         --with-nth=2.. --info=hidden --header-lines=1 --cycle \
+        --preview="$self --notif-summary" --preview-window=hidden,down,50%,wrap \
+        --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;

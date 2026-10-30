@@ -21,6 +21,9 @@ set $launcher pro1x-term --app-id=launcher -e env TERMINAL_COMMAND="foot -e" PRE
 xwayland disable
 font pango:monospace 9
 
+### Gaps between windows (author, 2026-10-30)
+gaps inner 6
+
 ### Windows: no title bars; colours from mlaparie's guix-config
 default_border pixel 2
 default_floating_border pixel 2
@@ -36,7 +39,7 @@ client.background       #404552
 ### /etc/sway/config.d/pro1x.conf (device/sway/pro1x.conf), shared with Sxmo.
 include /etc/sway/config.d/*
 
-output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/dark.png fill #2f3446
+output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/dark.png fill #252a3a
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
@@ -102,11 +105,15 @@ bindsym $mod+Ctrl+h exec foot --app-id=swayhelp -e sh -c 'swaymsg -t get_config 
 ### Basics
 bindsym $mod+Return exec $term
 bindsym $mod+Shift+Return exec foot
-bindsym $mod+m exec $launcher
-bindsym $mod+Tab exec sway-window-switcher
+bindsym $mod+m exec pro1x-menu toggle launcher
+bindsym $mod+Tab exec pro1x-menu toggle windowswitcher
 bindsym $mod+o exec sway-autorotate toggle
-bindsym $mod+q exec sway-quick-settings
-exec sway-quick-settings --resident
+bindsym $mod+q exec pro1x-menu toggle quicksettings
+### Quick settings, launcher and window switcher stay hidden in the
+### scratchpad from login, so they show at once (pro1x-menu).
+exec pro1x-menu start quicksettings hidden
+exec pro1x-menu start launcher hidden
+exec pro1x-menu start windowswitcher hidden
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+r reload
