@@ -142,8 +142,8 @@
                             (slid-in! saved)))
                   (loop saved))))))))
 
-;; What phoc starts: gsd-media-keys, the slider helper, the idle dimmer,
-;; then the shell.  Phosh does not
+;; What phoc starts: gsd-media-keys, gsd-rfkill, the slider helper, the
+;; idle dimmer, then the shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
 ;; Phosh.  Without it the volume keys did nothing (tested on the phone,
@@ -157,6 +157,14 @@
           (execl #$(file-append gnome-settings-daemon
                                 "/libexec/gsd-media-keys")
                  "gsd-media-keys"))
+        ;; gsd-rfkill: Phosh's Bluetooth tile and GNOME Settings' Bluetooth
+        ;; panel get the radios' state from it (org.gnome.SettingsDaemon.
+        ;; Rfkill); without it Bluetooth looked off and could not be used
+        ;; from the UI although BlueZ worked (scan found devices).
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$(file-append gnome-settings-daemon "/libexec/gsd-rfkill")
+                 "gsd-rfkill"))
         (when (zero? (primitive-fork))
           (setsid)
           (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))

@@ -10,3 +10,8 @@ SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="gpio-keys", GROUP="input", M
 # The qcom-soc plugin matches a QRTR control port + a net port with ID_MM_PHYSDEV_UID=qcom-soc.
 # rmnet_ipa0 is created by the IPA driver (5840000.ipa) and carries LTE data.
 KERNEL=="rmnet_ipa*", SUBSYSTEM=="net", ENV{ID_MM_CANDIDATE}="1", ENV{ID_MM_PHYSDEV_UID}="qcom-soc"
+
+# rfkill (Wi-Fi, Bluetooth, modem radios): writable by netdev.  Without
+# logind there are no per-seat ACLs, and gsd-rfkill (Phosh's Bluetooth and
+# airplane-mode state) could not switch radios as the user.
+KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="netdev", MODE="0664"
