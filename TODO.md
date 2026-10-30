@@ -253,6 +253,18 @@ and Phosh itself.  Not set up yet.
    feedbackd 0.8.1 drives LEDs for events (fbd-ledctrl) when a udev rule
    tags them; check it handles multicolour LEDs.  moWerk drives the same
    LED with mce (53d590a).  Author, 2026-10-30.
+10. **Calls: speaker and mute buttons** (2026-10-30, two attempts,
+   stopped).  Calls work (received a call, both directions).  Buttons
+   reach callaudiod; callaudiod 0.1.9 switches sink ports, which PipeWire
+   1.2+ does not have here (one profile per output; ConflictingDevice in
+   UCM changes nothing; callaudiod upstream deprecated, speaker switching
+   in calls open upstream, pipewire issue 4868).  Now pro1x-voice-call
+   follows callaudiod: test call 03:10 logged the profile switching to
+   Voice Call (Mic, Speaker) and back, and the VoiceMMode1 capture route
+   off/on with mute, keep-alives running; but no audible change (author:
+   no speaker, caller still heard while muted).  Next: measurement, not a
+   fix: amixer snapshots during a call before/after each button, to find
+   which routes the DSP voice session really uses.
 9. **MMS**: an MMS from an Android phone did not arrive (author,
    2026-10-30).  Chatty needs mmsd-tng, not in Guix at the pin: package
    it (meson; glib, libsoup, c-ares, ModemManager), start it per session,
