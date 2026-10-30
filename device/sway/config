@@ -52,10 +52,11 @@ exec sway-autorotate
 ### Notifications
 exec mako
 
-### On-screen keyboard: Phosh's (stevia), hidden until asked for: Super+k,
-### the Keyboard line in quick settings, or the bar's gear while the
-### keyboard is slid in.
+### On-screen keyboard: Phosh's (stevia), shown for text fields while the
+### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
+### and on demand: Super+k, the Keyboard line in quick settings, the gear.
 exec phosh-osk-stevia
+exec pro1x-osk-slider
 bindsym $mod+k exec sway-quick-settings --osk toggle
 
 ### Launcher window

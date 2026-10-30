@@ -1166,6 +1166,7 @@ window opened by a sway key binding.")
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
 ;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
 ;;;   bin/sway-notifications             mako's notifications for its dock
+;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1187,7 +1188,8 @@ window opened by a sway key binding.")
           ("pro1x-idle" "bin/")
           ("sway-autorotate" "bin/")
           ("sway-quick-settings" "bin/")
-          ("sway-notifications" "bin/"))
+          ("sway-notifications" "bin/")
+          ("pro1x-osk-slider" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1231,6 +1233,13 @@ window opened by a sway key binding.")
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "evtest" "foot" "fzf" "gawk"
                                 "glib" "grep" "procps" "sed"))))))
+                (let ((o (string-append #$output "/bin/pro1x-osk-slider")))
+                  (chmod o #o755)
+                  (wrap-program o
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "evtest" "glib")))))
                 (let ((n (string-append #$output "/bin/sway-notifications")))
                   (chmod n #o755)
                   (wrap-program n

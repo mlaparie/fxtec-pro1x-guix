@@ -1,0 +1,54 @@
+#!/bin/sh
+# pro1x-osk-slider — no on-screen keyboard in Sway while the keyboard is out
+#
+# stevia ignores hardware keyboards here (the Pro¹x keyboard is always
+# attached; GSettings default mobi.phosh.osk ignore-hw-keyboards), so
+# whether it may come up for a text field is screen-keyboard-enabled
+# (org.gnome.desktop.a11y.applications).  In Phosh, phosh-pro1x-slider sets
+# it from the slider; this does the same in Sway: slid out, it remembers
+# the value, sets it false and hides stevia; slid in, it puts the value
+# back.  Started by the Sway config; ends when Sway's IPC socket is gone.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+slider=/dev/input/pro1x-slider
+schema=org.gnome.desktop.a11y.applications
+key=screen-keyboard-enabled
+saved="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-slider.saved"
+events="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-slider.events"
+
+slid_out() {
+    [ -f "$saved" ] || gsettings get "$schema" "$key" > "$saved"
+    gsettings set "$schema" "$key" false
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method sm.puri.OSK0.SetVisible false >/dev/null 2>&1
+}
+
+slid_in() {
+    if [ -f "$saved" ]; then
+        gsettings set "$schema" "$key" "$(cat "$saved")"
+        rm -f "$saved"
+    fi
+}
+
+# evtest --query exits with 10 while the switch is set (keyboard out).
+evtest --query "$slider" EV_SW SW_KEYPAD_SLIDE
+if [ $? = 10 ]; then slid_out; else slid_in; fi
+
+rm -f "$events"; mkfifo "$events"
+evtest "$slider" > "$events" 2>/dev/null &
+reader=$!
+trap 'kill "$reader" 2>/dev/null; rm -f "$events"' EXIT
+trap 'exit 0' INT TERM HUP
+if [ -n "${SWAYSOCK:-}" ]; then
+    # Sway's exec double-forks: stop when its IPC socket goes away.
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill "$reader" ) &
+fi
+
+# "Event: time ..., type 5 (EV_SW), code 10 (SW_KEYPAD_SLIDE), value 1"
+while IFS= read -r line; do
+    case "$line" in
+        *"(SW_KEYPAD_SLIDE), value 1"*) slid_out ;;
+        *"(SW_KEYPAD_SLIDE), value 0"*) slid_in ;;
+    esac
+done < "$events"
