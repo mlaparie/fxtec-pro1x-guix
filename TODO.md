@@ -261,8 +261,13 @@ and Phosh itself.  Not set up yet.
   (An earlier note here said "not monitor-sensor": that test killed
   nothing, the process is named .monitor-sensor.)  About 390000 log lines
   a day, and the ADSP woken 4 times a second while rotation is on.
-  Options: a kernel patch logging repeats once or at debug level;
-  stopping the sensor stream while the screen is off.
+  Kernel patch ceb256b logs the repeats at debug level: CI run
+  41048883373, then import, deploy, reboot.  Stopping the stream with
+  the screen off: not wanted for now (author: the accelerometer may be
+  useful with the screen off).  Phosh releases the accelerometer when
+  the screen blanks, rotation is locked or auto-rotation is off
+  (rotation-manager.c claim_or_release_accelerometer);
+  sway-autorotate keeps it while toggled off.
 - Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
   PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
   phone), Left/Right on Brightness/Volume, Mute shows muted or the
@@ -279,8 +284,9 @@ and Phosh itself.  Not set up yet.
 - term-console restarts every 10 s (4566 times in /var/log/messages):
   Guix's serial getty runs on the console= of the kernel command line,
   ttyMSM0, and /dev/ttyMSM0 does not exist (no UART enabled), so agetty
-  exits with 1.  Fix: drop console=ttyMSM0,115200n8 from the kernel
-  arguments (mobile, minimal, mobile-encrypted); needs a reboot.
+  exits with 1.  63db506 drops console=ttyMSM0 (mobile, minimal,
+  mobile-encrypted; flash-encrypted.sh and update-encrypted-boot.sh
+  keep theirs); deploy with the CI kernel, then reboot.
 
 ## Research notes (2026-10-30, agent)
 
