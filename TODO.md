@@ -153,6 +153,14 @@ then deploys of next up to cc16582; generation 2 and later):
   failure: glib graft cannot read glib's etc/ld.so.cache (permission
   denied) under the unprivileged daemon.
 
+Tailscale on the phone (author, 2026-10-30: soon), so the agent can
+deploy while the phone is away from the PC (GPS tests outdoors, for
+one).  The PC's tailscale package comes from the btv channel
+(btv/tailscale.scm, 1.96.4), which the phone does not follow: either add
+btv to the phone's channels or package Tailscale here; author's choice.
+Then a Shepherd service for tailscaled, and deploy/pro1x.scm's host
+switched to the phone's tailnet name.
+
 Updating the phone without the PC replacing its configuration: let the
 phone reconfigure from its own config.scm but download what the PC built,
 `guix publish` on the PC reachable over Tailscale, the PC's signing key
