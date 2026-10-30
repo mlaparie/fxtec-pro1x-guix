@@ -32,8 +32,8 @@ sig=""
 pick() { pactl list short "$1" | awk -v pat="$2" '$2 ~ pat && $2 !~ /monitor/ { print $2; exit }'; }
 
 start_keepers() {
-  sink=$(pick sinks 'platform-sound.*Voice_Call')
-  src=$(pick sources 'platform-sound.*Voice_Call')
+  sink=$(pick sinks 'platform.sound.*Voice_Call')
+  src=$(pick sources 'platform.sound.*Voice_Call')
   cur="$sink $src"
   [ -n "$sink" ] || return 1
   echo "keep-alive on $sink / $src"
@@ -53,7 +53,7 @@ stop_keepers() {
 alive() {
   [ -n "$kp" ] || return 1
   for p in $kp; do kill -0 $p 2>/dev/null || return 1; done
-  [ "$cur" = "$(pick sinks 'platform-sound.*Voice_Call') $(pick sources 'platform-sound.*Voice_Call')" ]
+  [ "$cur" = "$(pick sinks 'platform.sound.*Voice_Call') $(pick sources 'platform.sound.*Voice_Call')" ]
 }
 
 # The DSP voice session (pro1x-voicepcm) is tied to the call: it was found to work when
