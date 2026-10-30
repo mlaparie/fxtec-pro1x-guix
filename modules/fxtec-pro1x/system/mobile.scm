@@ -75,6 +75,71 @@
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services usb-network))
 
+;; Keyboard slider in Phosh: landscape while the keyboard is out.  Phosh
+;; does not know SW_KEYPAD_SLIDE (gpio-keys, /dev/input/pro1x-slider, group
+;; input), so with auto-rotation it also rotated with the keyboard out
+;; (author, 2026-10-30).  On slide-out: remember the user's orientation
+;; lock, lock, and turn the panel to landscape (transform 90, as in Sway);
+;; Phosh leaves the transform alone while locked.  On slide-in: restore the
+;; remembered lock, so auto-rotation resumes if it was on.
+(define phosh-pro1x-slider
+  (program-file "phosh-pro1x-slider"
+    #~(begin
+        (use-modules (ice-9 binary-ports)
+                     (ice-9 match)
+                     (ice-9 popen)
+                     (ice-9 rdelim)
+                     (rnrs bytevectors))
+
+        (define slider "/dev/input/pro1x-slider")
+        (define gsettings (string-append #$glib:bin "/bin/gsettings"))
+        (define schema "org.gnome.settings-daemon.peripherals.touchscreen")
+
+        (define (slider-open?)
+          ;; `evtest --query' exits with 10 when the switch is set.
+          (= 10 (status:exit-val
+                 (system* #$(file-append evtest "/bin/evtest") "--query"
+                          slider "EV_SW" "SW_KEYPAD_SLIDE"))))
+
+        (define (orientation-lock)
+          (let* ((port (open-pipe* OPEN_READ gsettings "get" schema
+                                   "orientation-lock"))
+                 (value (read-line port)))
+            (close-pipe port)
+            (if (eof-object? value) "false" value)))
+
+        (define (set-orientation-lock! value)
+          (system* gsettings "set" schema "orientation-lock" value))
+
+        (define (slid-out! saved)
+          (let ((lock (or saved (orientation-lock))))
+            (set-orientation-lock! "true")
+            (system* #$(file-append wlr-randr "/bin/wlr-randr")
+                     "--output" "DSI-1" "--transform" "90")
+            lock))
+
+        (define (slid-in! saved)
+          (when saved
+            (set-orientation-lock! saved))
+          #f)
+
+        ;; Let the shell start before the first change.
+        (sleep 3)
+        (let ((port (open-input-file slider #:binary #t)))
+          (setvbuf port 'none)
+          ;; SAVED: the user's lock before slide-out, #f while slid in.
+          (let loop ((saved (if (slider-open?) (slid-out! #f) #f)))
+            ;; struct input_event on aarch64: 16-byte timeval, u16 type,
+            ;; u16 code, s32 value.  EV_SW 5, SW_KEYPAD_SLIDE 10.
+            (let ((event (get-bytevector-n port 24)))
+              (if (and (bytevector? event)
+                       (= 5 (bytevector-u16-native-ref event 16))
+                       (= 10 (bytevector-u16-native-ref event 18)))
+                  (loop (if (= 1 (bytevector-s32-native-ref event 20))
+                            (slid-out! saved)
+                            (slid-in! saved)))
+                  (loop saved))))))))
+
 ;; What phoc starts: gsd-media-keys, then the shell.  Phosh does not
 ;; handle the volume keys itself; in GNOME sessions gnome-session starts
 ;; gnome-settings-daemon's media-keys helper, which grabs them through
@@ -89,6 +154,9 @@
           (execl #$(file-append gnome-settings-daemon
                                 "/libexec/gsd-media-keys")
                  "gsd-media-keys"))
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl #$phosh-pro1x-slider "phosh-pro1x-slider"))
         ;; phosh 0.56 installs the shell in libexec; bin/phosh-session
         ;; wants gnome-session.
         (execl #$(file-append phosh-pro1x "/libexec/phosh") "phosh"))))
