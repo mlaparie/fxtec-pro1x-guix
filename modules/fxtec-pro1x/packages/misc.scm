@@ -708,12 +708,9 @@ It runs on top of the Phoc compositor.")
                       ;; Keyboard out: keep landscape across lock and unlock.
                       (local-file
                        (repository-file "device/phosh/lockscreen-keep-locked-orientation.patch"))
-                      ;; Snapshot stays in portrait whatever the rotation.
+                      ;; Round volume knob; orange bar above 100%.
                       (local-file
-                       (repository-file "device/phosh/portrait-apps.patch"))
-                      ;; Round volume knob: no marks on the amplified bar.
-                      (local-file
-                       (repository-file "device/phosh/volume-no-marks.patch"))
+                       (repository-file "device/phosh/volume-bar-amplified.patch"))
                       ;; Torch: numbered flash LEDs, sysfs without logind.
                       (local-file
                        (repository-file "device/phosh/torch-without-logind.patch")))))))
