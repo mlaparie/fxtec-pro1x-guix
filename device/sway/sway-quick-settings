@@ -89,7 +89,9 @@ qs_start() {                    # qs_start [hidden]
 qs_show() {
     case "$(qs_state)" in
         hidden)
-            swaymsg '[app_id="^quicksettings$"] scratchpad show' >/dev/null
+            # Same geometry as the Sway config's rule, for the current
+            # orientation.
+            swaymsg '[app_id="^quicksettings$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;

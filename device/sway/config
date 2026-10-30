@@ -36,7 +36,7 @@ client.background       #404552
 ### /etc/sway/config.d/pro1x.conf (device/sway/pro1x.conf), shared with Sxmo.
 include /etc/sway/config.d/*
 
-output DSI-1 bg #1d2021 solid_color
+output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/guix-disc.png fill #000000
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
@@ -87,10 +87,12 @@ exec pro1x-osk-slider
 bindsym $mod+i exec sway-quick-settings --osk toggle
 
 ### Launcher window
-for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 90 ppt 70 ppt, border pixel 2
-for_window [app_id="^launcher$"] move position center
-for_window [app_id="^windowswitcher$"] floating enable, sticky enable, resize set 45 ppt 35 ppt, border pixel 2, move position center
-for_window [app_id="^quicksettings$"] floating enable, sticky enable, resize set 60 ppt 60 ppt, border pixel 2, move position center
+### The three menus open against the edge their swipe comes from, sized in
+### percent of the screen (portrait or landscape): quick settings at the top,
+### the launcher on the right, the window switcher on the left.
+for_window [app_id="^quicksettings$"] floating enable, sticky enable, border pixel 2, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt
+for_window [app_id="^launcher$"] floating enable, sticky enable, border pixel 2, resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt
+for_window [app_id="^windowswitcher$"] floating enable, sticky enable, border pixel 2, resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt
 for_window [app_id="^swayhelp$"] floating enable, sticky enable, resize set 90 ppt 80 ppt, border pixel 2, move position center
 
 ########## KEYBINDINGS ##########

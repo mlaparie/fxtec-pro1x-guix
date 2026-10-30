@@ -95,18 +95,29 @@ echo $$ > "$pidfile"
 rm -f "$fifo" "$events"; mkfifo "$fifo" "$events"
 sensor=                         # monitor-sensor's PID while held
 
+apply() {                       # apply <orientation>
+    if slider_out; then
+        set_transform 90
+    else
+        t=$(transform_for "$1")
+        [ -n "$t" ] && set_transform "$t"
+    fi
+}
+
+# An orientation is applied once it has held for SETTLE seconds: a quick
+# tilt no longer rotates the panel (too sensitive before; author,
+# 2026-10-30).  A newer reading cancels the pending one.
+SETTLE=1.5
 follow() {                      # read monitor-sensor's lines from the fifo
+    timer=
     while IFS= read -r line; do
         # "=== Has accelerometer (orientation: right-up, tilt: ...)" first,
         # then "Accelerometer orientation changed: left-up".
         o=$(echo "$line" | sed -n 's/.*orientation[a-z ]*: \([a-z-]*\).*/\1/p')
         [ -n "$o" ] || continue
-        if slider_out; then
-            set_transform 90
-        else
-            t=$(transform_for "$o")
-            [ -n "$t" ] && set_transform "$t"
-        fi
+        [ -n "$timer" ] && kill "$timer" 2>/dev/null
+        ( sleep "$SETTLE"; apply "$o" ) &
+        timer=$!
     done < "$fifo"
 }
 

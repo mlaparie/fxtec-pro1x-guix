@@ -39,6 +39,7 @@
   #:use-module (gnu packages guile)
   #:use-module (gnu packages image)        ; grim, slurp
   #:use-module (gnu packages imagemagick)
+  #:use-module (gnu packages package-management) ; guix-backgrounds
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
@@ -780,7 +781,17 @@ It runs on top of the Phoc compositor.")
                     (lambda (port)
                       (display "[sm.puri.phosh]\napp-filter-mode=@as []\n
 [org.gnome.settings-daemon.peripherals.touchscreen]\norientation-lock=true\n
-[org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n"
+[org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n
+[org.gnome.desktop.background:Phosh]
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-uri-dark='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-options='zoom'
+primary-color='#000000'
+
+[org.gnome.desktop.screensaver:Phosh]
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-options='zoom'
+"
                                port)))
                   (invoke "glib-compile-schemas" schema-dir))))))))
     (synopsis "Phosh mobile shell configured for the F(x)tec Pro1X (phoc-pro1x compositor)")))
@@ -973,6 +984,48 @@ mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
      "pro1x-doubletap watches the touchscreen while the panel is off and
 sends a power-key press when it sees two quick taps close together.")
     (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-background — the Sway and Phosh background
+;;; Guix's own disc emblem on black (guix-backgrounds, guix-disc-flat-16-9;
+;;; CC-BY-SA 4.0), rendered to a square 2160x2160 PNG with the emblem in the
+;;; middle, so it fills the panel in portrait and landscape; a PNG, since the
+;;; image loaders here did not take SVG backgrounds.  Black costs nothing on
+;;; the AMOLED panel.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-background
+  (package
+    (name "pro1x-background")
+    (version "0.1")
+    (source #f)
+    (build-system trivial-build-system)
+    (native-inputs (list guix-backgrounds imagemagick librsvg))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((dir (string-append #$output "/share/backgrounds/pro1x"))
+                (svg (string-append #$(this-package-native-input
+                                       "guix-backgrounds")
+                                    "/share/backgrounds/guix/"
+                                    "guix-disc-flat-16-9.svg"))
+                (wide "wide.png"))
+            (setenv "PATH"
+                    (string-append #$(this-package-native-input "librsvg")
+                                   "/bin:"
+                                   #$(this-package-native-input "imagemagick")
+                                   "/bin"))
+            (mkdir-p dir)
+            (invoke "rsvg-convert" "-h" "2160" svg "-o" wide)
+            (invoke "convert" wide "-gravity" "center" "-crop" "2160x2160+0+0"
+                    "+repage" (string-append dir "/guix-disc.png"))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Background image for the F(x)tec Pro1X sessions")
+    (description "Guix's disc emblem on black, as a square PNG for the
+Sway and Phosh backgrounds.")
+    (license license:cc-by-sa4.0)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-gsettings-defaults — system-wide GSettings defaults
@@ -1234,6 +1287,7 @@ window opened by a sway key binding.")
       #~'(("config" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
+          ("foot.ini" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
           ("pro1x-idle" "bin/")

@@ -383,6 +383,8 @@ files root may log in with."
        ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
       (".config/i3status-rust/config.toml"
        ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml"))
+      (".config/foot/foot.ini"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/foot.ini"))
       ;; XDG user directories, set when the account is created (first boot
       ;; after flashing), as xdg-user-dirs-update would write them: Snapshot
       ;; saves into XDG_PICTURES_DIR and failed without it (2026-10-30).
@@ -688,6 +690,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
      ;; sounds were installed, no theme with the freedesktop names.
      sound-theme-freedesktop
+     ;; Sway and Phosh background (Guix's disc emblem).
+     pro1x-background
      i3status-rust font-awesome
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
