@@ -286,11 +286,22 @@ and Phosh itself.  Not set up yet.
   call cyan).
 - Toggle persistence: Wi-Fi and mobile radios (NetworkManager.state),
   feedback profile (GSettings), volume and mute (WirePlumber) persist
-  already (from their storage; reboot not checked).  Bluetooth: 33915ed
-  saves and restores its rfkill state through udev; the WCN3950 came
-  back after an rfkill block and after a BlueZ power off/on on 7.1
-  (2026-10-30, confirmed; the mobile.scm worry, reported from SailfishOS,
-  did not show).  Torch and caffeine: not persisted on purpose.
+  already (from their storage; reboot not checked).  Auto-rotation kept
+  "off" across the reboot into 34, caffeine was gone (confirmed).
+  Bluetooth: NOT persisted.  33915ed restored an rfkill block at boot;
+  in generation 34, with Bluetooth blocked from boot, `rfkill unblock
+  bluetooth' never returned and the phone hung (black screen, red LED,
+  no keys; hard reboot, 2026-10-30 ~13:37).  /var/log/messages stops at
+  13:35:08, so the cause is inferred from the timing only.  Block and
+  unblock of a Bluetooth powered at boot did work (twice).  Reverted
+  (c9f6b8f, generation 35); /var/lib/pro1x/rfkill-bluetooth set to 0.
+  Do not unblock Bluetooth in a boot that started with it blocked.  To
+  find out: a logger that survives the hang (dmesg -w over SSH to the
+  PC) and the author's go-ahead.  Torch and caffeine: not persisted on
+  purpose.
+- Generation 34 (2026-10-30 13:33): CI kernel 3zg5vbvf (handover patch),
+  no console=ttyMSM0: 0 handover lines, term-console idle ("no serial
+  port console requested"), no respawns (confirmed).
 - OSK: stevia runs in Sway (started by hand; Visible follows SetVisible).
   22e3cff starts it from the Sway config, Super+k and a Keyboard line in
   quick settings show/hide it (the Sway config is a skeleton: existing
