@@ -199,6 +199,28 @@ and URL added to the phone's guix-configuration (authorized-keys,
 substitute-urls) in config.scm.  Otherwise the phone builds the kernel
 and Phosh itself.  Not set up yet.
 
+## Next big items (author, 2026-10-30)
+
+1. **Guix Home** for the user's files: Sway config, foot, i3status-rust,
+   .bashrc, phoc.ini (scale), later the author's PC scripts.  The port
+   provides a default home environment the user's inherits (as config.scm
+   inherits the port's system); embedded in the system with
+   guix-home-service-type, so the same deploy builds both and one
+   generation rolls back both.  Per-path policy in the user's home
+   config, author's idea:
+   - managed: read-only store link, Guix Home wins (edit the home config);
+   - seeded: copied once when missing, then the user's (the user's file
+     wins; later port defaults do not overwrite it);
+   - unmanaged: left alone.
+   Seeded is the safe default for apps that write their own config (Sxmo
+   copies its defaults into ~/.config: foot.ini, sway).  dconf settings
+   (GNOME Settings) are not files and stay outside.  Tonight's hand edits
+   of the user's copies (sway config x3, foot.ini; .bak files beside them)
+   are what this replaces.
+2. **GPS**: see the GPS entry above (LOC present, no NMEA yet).
+3. **Bluetooth**: adapter powered in BlueZ; find what fails in the UI
+   (bluetoothctl now installed for testing).
+
 ## Next steps (author's order, 2026-10-29)
 
 1. **Phosh settings and power key** (in progress).
