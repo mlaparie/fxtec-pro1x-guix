@@ -311,6 +311,20 @@ and Phosh itself.  Not set up yet.
   landscape, author), Calls fullscreen/portrait rule.  Vibration works
   (fbcli phone-incoming-call, author).  Ringtone: profile was quiet.
   Need a Sway relog to test most of it; an incoming call for Calls.
+- Generations 44-45 (2026-10-30 evening): foot server with footclient
+  for quick settings, launcher, switcher and Super+Return (pro1x-term;
+  Super+Shift+Return plain foot); pro1x-call-watch (incoming call while
+  locked: unlock with swaylock SIGUSR1, relock when the call is deleted;
+  the phone stays unlocked during the call); notification wake at half
+  the dim level with the backlight at 0 across power-on (red flash,
+  author); Calls fullscreen/portrait rule.  The author's Sway config has
+  all of it (backups beside it).  Needs a Sway relog; calls need a call.
+- Swipes (pro1x-gestures): the switcher toggles (second swipe closes,
+  log), the launcher did not: at the second swipe no launcher window was
+  open, in released and pressed modes.  Guess, not checked: the lift
+  that ends the swipe taps inside the new launcher and starts an entry.
+  Asked the author what they saw (they answer later).  The session runs
+  the logging copy /tmp/gestures-dbg (pressed mode) until the next login.
 - Proximity (2026-10-30): iio-sensor-proxy reports "Has proximity sensor
   (near: 0)" and ssccli --sensor proximity "FAR"; neither changed while
   the author covered the sensor (twice; timing against the logger not
