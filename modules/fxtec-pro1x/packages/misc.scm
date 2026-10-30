@@ -461,8 +461,11 @@ Used as the compositor for the Phosh mobile shell.")
          (origin-patches (package-source phoc))
          (list
           (local-file (repository-file "device/phoc/ignore-unknown-switch.patch")
-                      "phoc-ignore-unknown-switch.patch"))))))
-    (synopsis "phoc compositor patched to ignore SW_KEYPAD_SLIDE (Pro1X keyboard slider)")))
+                      "phoc-ignore-unknown-switch.patch")
+          ;; No black shield on rotation (experiment, author's dislike).
+          (local-file (repository-file "device/phoc/rotation-without-shield.patch")
+                      "phoc-rotation-without-shield.patch"))))))
+    (synopsis "phoc compositor patched for the Pro1X keyboard slider and rotation")))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libqmi-1.36 — libqmi >= 1.36 required by ModemManager 1.24

@@ -1,0 +1,49 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] output: no modeset shield for a rotation alone
+
+phoc raises a black shield on every mode, scale or transform change
+until the layer surfaces are arranged again, then fades it out in
+150 ms.  On the Pro1X each rotation flashed the screen black, which
+the author found worse than a moment of old layout.  Keep the shield
+when the mode size or the scale changed; skip it when only the
+transform did (every configuration commit sets all three, so compare
+with the previous commit).  phoc 0.56.0.
+---
+--- a/src/output.c
++++ b/src/output.c
+@@ -74,6 +74,9 @@
+ 
+   PhocLayoutTransaction *transaction;
+   gboolean modeset_shield;
++  /* Mode size and scale at the last commit, to tell a rotation alone */
++  int      last_width, last_height;
++  float    last_scale;
+ 
+   GSList  *blings;          /* (element-type: PhocBling) */
+   GSList  *debug_damage;    /* (element-type: PhocDebugDamageRegion) */
+@@ -722,10 +725,24 @@
+                                  WLR_OUTPUT_STATE_TRANSFORM)) {
+     gboolean configure_sent;
+ 
++    gboolean rotation_only;
++
++    /* Every configuration commit sets mode, scale and transform, so
++     * compare with the previous commit. */
++    rotation_only = self->wlr_output->width == priv->last_width &&
++                    self->wlr_output->height == priv->last_height &&
++                    self->wlr_output->scale == priv->last_scale;
++    priv->last_width = self->wlr_output->width;
++    priv->last_height = self->wlr_output->height;
++    priv->last_scale = self->wlr_output->scale;
++
+     configure_sent = phoc_layer_shell_arrange (self);
+     /* The arranging of the layer surfaces will kick of a transaction,
+-     * dim screen until this finished to avoid flickering */
++     * dim screen until this finished to avoid flickering.  Not for a
++     * rotation alone: the black frame on every turn was worse than a
++     * moment of old layout (fxtec-pro1x-guix). */
+     if (configure_sent &&
++        !rotation_only &&
+         !priv->modeset_shield &&
+         !phoc_output_shield_is_raised (priv->shield)) {
+       phoc_output_raise_shield (self, FALSE);
