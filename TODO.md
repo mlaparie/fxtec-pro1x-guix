@@ -238,6 +238,23 @@ and Phosh itself.  Not set up yet.
 - guix pull as user on the phone: running (window 3).
 - Calls speaker/mute: a measurement call when the author has time.
 
+## Research notes (2026-10-30, agent)
+
+- **GPS**: ModemManager (QMI) lists gps-raw, gps-nmea, agps-msa/msb and
+  has gps-raw and gps-nmea enabled, but `mmcli --location-get` returns no
+  NMEA at all, not even fixless sentences (confirmed, indoors).  moWerk's
+  direct QMI LOC client (LOC service 16 over QRTR, REG_EVENTS + START)
+  gets NMEA at 1 Hz indoors without a fix (reported,
+  sailfishos-pro1x-mainline notes/gnss.md).  So ModemManager probably
+  never starts a LOC session here, or misses its indications.  Next: MM
+  debug log while enabling gps-nmea; compare with moWerk's probe; then
+  geoclue (modem source) and XTRA/time injection for faster fixes.
+- **Fingerprint**: side sensor; nothing in the mainline device tree, the
+  NixOS port or moWerk's notes, and no mainline or libfprint support found.
+  Qualcomm phones usually route such sensors through TrustZone (inferred,
+  not checked for this phone).  Needs the stock device tree or vendor
+  sources to identify the part and its bus; not worth more without them.
+
 ## Next big items (author, 2026-10-30)
 
 1. **Guix Home** for the user's files: Sway config, foot, i3status-rust,
