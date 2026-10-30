@@ -246,6 +246,10 @@ bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
 # Screenshots (pro1x-screenshot): to ~/Pictures/Screenshots and the
 # clipboard.  Print is Fn+Alt+p on the Pro1X keyboard, Ctrl+Print
 # Ctrl+Fn+Alt+p (keyd).
+### Camera button: start Snapshot, focus it, or take a picture when it
+### has the focus.
+bindsym XF86WebCam exec pro1x-camera
+
 bindsym Print exec pro1x-screenshot full
 bindsym Ctrl+Print exec pro1x-screenshot region
 bindsym $mod+Shift+p exec pro1x-screenshot full

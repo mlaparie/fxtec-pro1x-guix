@@ -1318,6 +1318,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
+;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1355,7 +1356,8 @@ window opened by a sway key binding.")
           ("pro1x-menu" "bin/")
           ("pro1x-switcher" "bin/")
           ("pro1x-wifi" "bin/")
-          ("pro1x-blank-led" "bin/"))
+          ("pro1x-blank-led" "bin/")
+          ("pro1x-camera" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1423,8 +1425,10 @@ window opened by a sway key binding.")
                          (,(string-append #$output "/bin")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
-                                 '("coreutils" "curl" "fzf" "jq")))))))
-                 '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"))
+                                 '("coreutils" "curl" "fzf" "jq" "procps"
+                                   "glib")))))))
+                 '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
+                   "pro1x-camera"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

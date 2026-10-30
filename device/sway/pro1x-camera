@@ -1,0 +1,28 @@
+#!/bin/sh
+# pro1x-camera — the camera button (KEY_CAMERA, XF86WebCam) in Sway
+#
+# Snapshot focused: take a picture (its win.take-picture action, which GTK
+# exposes on D-Bus as org.gtk.Actions on each window).  Snapshot open but
+# not focused: focus it.  Not running: start it.  (Author, 2026-10-31.)
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+app=org.gnome.Snapshot
+focused=$(swaymsg -t get_tree -r |
+              jq -r '.. | objects | select(.focused == true) | .app_id // empty')
+
+if [ "$focused" = "$app" ]; then
+    # Window object paths are /org/gnome/Snapshot/window/N.
+    for n in $(gdbus introspect --session --dest "$app" \
+                   --object-path /org/gnome/Snapshot/window 2>/dev/null |
+                   sed -n 's/^ *node \([0-9]*\) .*/\1/p'); do
+        gdbus call --session --dest "$app" \
+            --object-path "/org/gnome/Snapshot/window/$n" \
+            --method org.gtk.Actions.Activate take-picture '[]' '{}' \
+            >/dev/null 2>&1 && exit 0
+    done
+elif swaymsg "[app_id=\"^$app\$\"] focus" >/dev/null 2>&1; then
+    exit 0
+else
+    exec snapshot
+fi
