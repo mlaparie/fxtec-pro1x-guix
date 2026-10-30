@@ -50,7 +50,7 @@ TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # ── Wrap U-Boot as boot.img ───────────────────────────────────────────────────
-echo "==> Wrapping U-Boot as boot.img …"
+echo "==> Wrapping U-Boot as boot.img…"
 cp "$_UBOOT_BIN" "$TMPDIR/u-boot.bin"
 chmod +w "$TMPDIR/u-boot.bin"
 printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
@@ -66,7 +66,7 @@ mkbootimg \
     --output "$TMPDIR/boot.img"
 
 # ── Extract root partition ────────────────────────────────────────────────────
-echo "==> Extracting root partition …"
+echo "==> Extracting root partition…"
 PART_INFO=$(partx -o START,SECTORS -g -n 2 "$_DISK_IMAGE")
 PART_START=$(echo "$PART_INFO" | awk '{print $1}')
 PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
@@ -80,7 +80,7 @@ ACTUAL=$(e2label "$TMPDIR/root.ext4" 2>/dev/null || true)
 [[ "$ACTUAL" == "guix" ]] || e2label "$TMPDIR/root.ext4" guix
 
 # ── Extract boot files ────────────────────────────────────────────────────────
-echo "==> Extracting boot files …"
+echo "==> Extracting boot files…"
 EXTLINUX_CONF=$(debugfs -R "cat /boot/extlinux/extlinux.conf" \
     "$TMPDIR/root.ext4" 2>/dev/null || true)
 
@@ -119,7 +119,7 @@ echo "    kernel: $(( $(wc -c < "$TMPDIR/vmlinuz")   / 1024 / 1024 + 1 )) MiB" \
      "  initrd: $(( $(wc -c < "$TMPDIR/initrd.img") / 1024 / 1024 + 1 )) MiB"
 
 # ── Plain boot ext4 ───────────────────────────────────────────────────────────
-echo "==> Creating plain boot ext4 (${BOOT_MIB} MiB) …"
+echo "==> Creating plain boot ext4 (${BOOT_MIB} MiB)…"
 dd if=/dev/zero of="$TMPDIR/boot.ext4" bs=1M count="$BOOT_MIB" 2>/dev/null
 mke2fs -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
     "$TMPDIR/boot.ext4" 2>/dev/null
@@ -161,7 +161,7 @@ XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 [[ -x "$XTS_ENC" ]] || die "pro1x-xts-encrypt not found at $XTS_ENC"
 
 # ── LUKS2 container ───────────────────────────────────────────────────────────
-echo "==> Creating LUKS2 container …"
+echo "==> Creating LUKS2 container…"
 ROOT_SIZE=$(wc -c < "$TMPDIR/root.ext4")
 LUKS_MIB=$(( LUKS_PAYLOAD_MIB + (ROOT_SIZE + 1024*1024 - 1) / (1024*1024) ))
 dd if=/dev/zero    of="$TMPDIR/luks-container.bin" bs=1M count="$LUKS_MIB" 2>/dev/null
@@ -183,13 +183,13 @@ PAYLOAD_BYTES=$(cryptsetup luksDump "$TMPDIR/luks-container.bin" 2>/dev/null | \
 [[ -n "$PAYLOAD_BYTES" ]] || PAYLOAD_BYTES=$(( LUKS_PAYLOAD_MIB * 1024 * 1024 ))
 echo "    LUKS2 payload offset: $(( PAYLOAD_BYTES / 1024 / 1024 )) MiB"
 
-echo "==> Encrypting root partition …"
+echo "==> Encrypting root partition…"
 "$XTS_ENC" "$TMPDIR/volkey.bin" "$TMPDIR/luks-container.bin" \
     "$PAYLOAD_BYTES" < "$TMPDIR/root.ext4"
 shred -u "$TMPDIR/volkey.bin"
 
 # ── Assemble userdata.img ─────────────────────────────────────────────────────
-echo "==> Assembling userdata image …"
+echo "==> Assembling userdata image…"
 LUKS_SIZE=$(wc -c < "$TMPDIR/luks-container.bin")
 TOTAL_MIB=$(( BOOT_MIB + (LUKS_SIZE + 1024*1024 - 1) / (1024*1024) ))
 dd if=/dev/zero of="$TMPDIR/userdata.img" bs=1M count="$TOTAL_MIB" 2>/dev/null
@@ -216,24 +216,24 @@ read -r -p "Flash now? [y/N] " CONFIRM
 CONFIRM="${CONFIRM//$'\r'/}"
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
-echo "==> Erasing dtbo …"
+echo "==> Erasing dtbo…"
 fastboot erase dtbo
 
-echo "==> Flashing U-Boot to both slots …"
+echo "==> Flashing U-Boot to both slots…"
 fastboot flash boot_a "$TMPDIR/boot.img"
 fastboot flash boot_b "$TMPDIR/boot.img"
 
-echo "==> Disabling vbmeta verification …"
+echo "==> Disabling vbmeta verification…"
 fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
 fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 
-echo "==> Flashing userdata …"
+echo "==> Flashing userdata…"
 fastboot flash userdata "$TMPDIR/userdata.img"
 
-echo "==> Setting active slot to A …"
+echo "==> Setting active slot to A…"
 fastboot set_active a
 
-echo "==> Rebooting …"
+echo "==> Rebooting…"
 fastboot reboot
 
 echo ""

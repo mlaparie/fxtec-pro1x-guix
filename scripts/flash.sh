@@ -84,7 +84,7 @@ guix_select_or_build() {
 
     if [[ -z "$choice" ]]; then
         if [[ ${#hits[@]} -gt 0 ]]; then
-            printf "    building %s (guix is deterministic — same image if config unchanged) …\n" \
+            printf "    building %s (guix is deterministic — same image if config unchanged)…\n" \
                 "$label" >&2
         else
             ask "    build $label?" || die "Aborted."
@@ -289,7 +289,7 @@ else
 fi
 
 # ── Prepare artifacts ─────────────────────────────────────────────────────────
-echo "==> Wrapping U-Boot as boot.img …"
+echo "==> Wrapping U-Boot as boot.img…"
 # U-Boot's ARM64 Image header has text_offset = -0x80000000 (bytes 8-15).
 # The Qualcomm ABL rejects that and falls straight back to fastboot.
 # Zero the field so ABL sees offset=0 (same as Linux) and accepts the image.
@@ -310,7 +310,7 @@ mkbootimg \
     --output "$TMPDIR/boot.img"
 
 if [[ "$NEED_EXTRACT" == true ]]; then
-    echo "==> Extracting root partition from disk image …"
+    echo "==> Extracting root partition from disk image…"
     PART_INFO=$(partx -o START,SECTORS -g -n 2 "$DISK_IMAGE")
     PART_START=$(echo "$PART_INFO" | awk '{print $1}')
     PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
@@ -327,11 +327,11 @@ fi
 
 ACTUAL_LABEL=$(quiet e2label "$ROOTFS_FLASH" || true)
 if [[ "$ACTUAL_LABEL" != "guix" ]]; then
-    echo "    Relabelling root partition 'guix' (was: '${ACTUAL_LABEL:-<none>}') …"
+    echo "    Relabelling root partition 'guix' (was: '${ACTUAL_LABEL:-<none>}')…"
     e2label "$ROOTFS_FLASH" guix
 fi
 
-echo "==> Generating vbmeta with verification disabled …"
+echo "==> Generating vbmeta with verification disabled…"
 # Proper AvbVBMetaImageHeader (256 bytes, big-endian) padded to 4096 bytes.
 # flags=2 (VERIFICATION_DISABLED) matches the NixOS port; no keys, algorithm NONE.
 python3 -c "
@@ -378,24 +378,24 @@ CONFIRM="${CONFIRM//$'\r'/}"
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
 # ── Flash ─────────────────────────────────────────────────────────────────────
-echo "==> Erasing dtbo …"
+echo "==> Erasing dtbo…"
 fastboot erase dtbo
 
-echo "==> Flashing U-Boot to both slots (prevents A/B bootloop) …"
+echo "==> Flashing U-Boot to both slots (prevents A/B bootloop)…"
 fastboot flash boot_a "$TMPDIR/boot.img"
 fastboot flash boot_b "$TMPDIR/boot.img"
 
-echo "==> Disabling vbmeta verification on both slots …"
+echo "==> Disabling vbmeta verification on both slots…"
 fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
 fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 
-echo "==> Flashing rootfs to userdata …"
+echo "==> Flashing rootfs to userdata…"
 fastboot flash userdata "$ROOTFS_FLASH"
 
-echo "==> Setting active slot to A …"
+echo "==> Setting active slot to A…"
 fastboot set_active a
 
-echo "==> Rebooting …"
+echo "==> Rebooting…"
 fastboot reboot
 
 echo ""

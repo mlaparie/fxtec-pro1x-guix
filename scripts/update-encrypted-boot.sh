@@ -70,7 +70,7 @@ info "Copying initrd → /boot/initrd.img"
 cp -f "$INITRD" /boot/initrd.img
 
 # ── Write extlinux.conf ───────────────────────────────────────────────────────
-info "Writing /boot/extlinux/extlinux.conf …"
+info "Writing /boot/extlinux/extlinux.conf…"
 mkdir -p /boot/extlinux
 cat > /boot/extlinux/extlinux.conf << EOF
 # Updated by scripts/update-encrypted-boot.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ).
