@@ -303,6 +303,30 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "session 2026-10-30"
+      },
+      {
+        "title": "Deploys over Tailscale work; check the host key against the USB one",
+        "general": "guix deploy to the phone's tailnet address works as over USB. Add the tailnet address's host key only after comparing its fingerprint with the key seen over the cable. Keep the tailnet address out of git (add it to the private patterns).",
+        "instance": "Pro1X 2026-10-30: several deploys over the tailnet.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "TODO.md; session"
+      },
+      {
+        "title": "When deploying past unbuilt kernel changes, revert them all in the worktree and compare the kernel path",
+        "general": "To deploy userspace fixes while a kernel change waits for CI, deploy from a worktree where every kernel change is reverted (patches and config), and compare the worktree's kernel store path with the phone's (/run/current-system/parameters) before deploying; a missed config line starts a multi-hour kernel build under QEMU.",
+        "instance": "Pro1X: a worktree without the new patch but with the new CONFIG_LEDS_TRIGGER_PATTERN started a kernel build; caught and stopped.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "session 2026-10-30"
+      },
+      {
+        "title": "git commit <path> leaves new files out",
+        "general": "Committing with a path argument skips untracked files under it; a package that refers to such a file builds only from the working tree. Look at the ?? lines of git status before pushing, or build from a clean worktree.",
+        "instance": "device/sway/pro1x.conf was never committed (f725625), so main failed to build for others for hours; found by deploying from a worktree.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 0bc8d46, 453deb8"
       }
     ],
     "licensing": [
@@ -395,6 +419,54 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "ls on the phone; commit d6257e1"
+      },
+      {
+        "title": "Phosh does not detect idleness: gnome-session does",
+        "general": "Phosh blanks and locks on idle only when gnome-session reports idle through its presence interface (it watches org.gnome.desktop.session idle-delay). Without gnome-session, Phosh never blanks or locks by itself. org.gnome.ScreenSaver.SetActive(true) from an idle daemon (swayidle) blanks and starts Phosh's lock-delay timer.",
+        "instance": "phosh 0.56 src/screen-saver-manager.c (comment and screen_saver_set_active). pro1x-idle calls SetActive after idle-delay; author confirmed blank and lock.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 288da1d; phosh source"
+      },
+      {
+        "title": "PulseAudio autospawn can take pipewire-pulse's socket",
+        "general": "With PulseAudio's libpulse and binary installed, a client starting before pipewire-pulse listens (or one left from the previous session when pipewire-pulse stops) runs `pulseaudio --start`, which takes the PulseAudio socket; pipewire-pulse then dies and PulseAudio drives the card without the session's UCM settings. Set autospawn = no in /etc/pulse/client.conf and PULSE_CLIENTCONFIG in the session environment (as Guix's pulseaudio-service-type does).",
+        "instance": "Pro1X: login with no sound, card named alsa_card.0 with generic profiles, pipewire-pulse defunct ('Address already in use'), pulseaudio started 15 s before PipeWire.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 32946bc; ps and session log on the phone"
+      },
+      {
+        "title": "A UCM verb's exec runs during PipeWire's profile probe too",
+        "general": "UCM EnableSequence exec commands run whenever the verb is set, including PipeWire's probe of every profile at session start. A helper started from a verb must be single-instance and must not act unless its condition (a call) holds; otherwise copies pile up across logins and their side effects (keep-alive streams, profile holds) run outside calls. Put the card back on the default profile after a call, or WirePlumber saves the call profile and restores it at every login.",
+        "instance": "Pro1X: three pro1x-voice-call copies from three logins, keep-alive streams running, card restored to Voice Call (Earpiece) at login; probable cause of the login pops (not yet confirmed by ear).",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commit 7aff1ef; ps and WirePlumber state on the phone"
+      },
+      {
+        "title": "callaudiod's speaker switch does nothing with PipeWire 1.2+ per-output profiles",
+        "general": "callaudiod 0.1.9 switches sink ports, but PipeWire creates one card profile per output when outputs share a PCM (ConflictingDevice in UCM changes nothing). callaudiod upstream is deprecated; speaker switching in calls is open upstream (pipewire issue 4868). Following callaudiod's state with profile switches changes the profile but not necessarily the DSP voice route.",
+        "instance": "Pro1X: profile switched to Voice Call (Mic, Speaker) and back on the button, capture route off on mute, but no audible change (author). Two attempts, stopped.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "call logs 2026-10-30; callaudiod git history"
+      },
+      {
+        "title": "Phosh's notification banners show no action buttons",
+        "general": "Do not rely on notification actions (notify-send -A --wait) for a confirmation in Phosh: banners showed none, and notify-send returned at once without an answer. Use a launcher (with desktop actions for alternatives) and repeated reminders instead.",
+        "instance": "Pro1X, phosh 0.56: MMS confirmation redesigned as a Fetch MMS launcher plus 30-min reminders.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "author 2026-10-30; commit ca7725c"
+      },
+      {
+        "title": "Packages missing from the profile: callaudiod, mmsd-tng, stevia, xdg-user-dirs",
+        "general": "On a Phosh system without gnome-session, check what gnome-session or a distribution would start or install: callaudiod (Calls' audio routing), mmsd-tng (Chatty's MMS), the OSK (sm.puri.OSK0), xdg-user-dirs-update (Snapshot needs XDG_PICTURES_DIR), gsd-rfkill (Bluetooth state in Phosh and GNOME Settings, with /dev/rfkill writable without logind).",
+        "instance": "Pro1X 2026-10-30: each found missing from a user-visible symptom; mmsd-tng and stevia packaged here.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "commits 6d6cc2a, ff2261c, 1a3b582, 3473f61, acc408c"
       }
     ]
   }

@@ -93,6 +93,22 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "ModemManager log and qmicli on the phone"
+      },
+      {
+        "title": "QMI data bearers are multiplexed; a second context may still be refused by the network",
+        "general": "ModemManager on QMI/rmnet multiplexes bearers (qmapmux links), so two data contexts are possible on the modem side. Whether the network accepts a second PDP context on another APN is the operator's decision; 3GPP cause 33 (option unsubscribed) is the network refusing, not a modem fault. A second bearer without its own 3GPP profile can fail with 'call-already-present' (same profile slot). Snapshot the 3GPP profile list before adding one, and compare after deleting it.",
+        "instance": "Pro1X, 2026-10-30: data bearer on qmapmux0.0; a second bearer created qmapmux0.1 (mux id 2); with a dedicated profile (IPv4) the network answered cause 33. The profile was deleted and the list compared with the snapshot: identical. Earlier refusals came from a mistyped APN.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "ModemManager log and mmcli on the phone"
+      },
+      {
+        "title": "Check the operator's published APN before assuming a separate MMS APN",
+        "general": "Many operators carry MMS on the data APN (APN type default,mms). A separate MMS APN entered by mistake makes every MMS download fail; with the combined APN, mmsd-tng fetches over the data connection. Restart mmsd-tng after changing its settings so it processes its queue again.",
+        "instance": "Pro1X with the author's operator: combined APN; after correcting the MMS APN and a proxy port typo (89 for 80) the four waiting MMS downloaded at once.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "author 2026-10-30; mmsd-tng log"
       }
     ],
     "usb_network": [
