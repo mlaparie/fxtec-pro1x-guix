@@ -10,7 +10,8 @@ bash scripts/deploy.sh <host>           # e.g. its Tailscale name
 Builds on the PC what a reconfigure on the phone would build: it copies
 the phone's `~/.config/guix/config.scm` and `channels.scm` (or
 `/etc/guix`'s), builds with those channels, installs over SSH as root and
-activates the result.  Your `config.scm` is kept.
+activates the result.  Your `config.scm` is kept.  The port's modules
+come from your checkout of this repository (`git pull` it first).
 
 `bash scripts/deploy.sh --repo [systems/mobile.scm]` deploys a system file
 from the repository instead, replacing the phone's configuration (for

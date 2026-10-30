@@ -35,4 +35,5 @@ installs it over USB or Tailscale; each update is a boot-menu entry you
 can go back to ([update.md](update.md)).
 
 [install.md](install.md) · [configure.md](configure.md) ·
-[update.md](update.md) · [troubleshoot.md](troubleshoot.md)
+[update.md](update.md) · [channels.md](channels.md) ·
+[troubleshoot.md](troubleshoot.md)

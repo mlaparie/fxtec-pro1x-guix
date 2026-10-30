@@ -22,6 +22,7 @@ kernel patches, firmware, and flash approach originate there.
 | [docs/install.md](docs/install.md) | flashing the first time |
 | [docs/configure.md](docs/configure.md) | your config.scm and channels, the port's options |
 | [docs/update.md](docs/update.md) | updating, generations, rollback |
+| [docs/channels.md](docs/channels.md) | why pins, the channel files, adding channels, Guix on a phone vs a desktop |
 | [docs/troubleshoot.md](docs/troubleshoot.md) | logs, known problems, recovery |
 
 The rest of this README is the reference for working on the port.
