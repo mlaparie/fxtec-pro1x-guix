@@ -21,6 +21,13 @@
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
+;;;   • notification LED colours (notification-leds): a feedbackd device
+;;;     theme, share/feedbackd/themes/fxtec,pro1x.json in the system profile,
+;;;     which feedbackd loads for its default theme on this phone.  In
+;;;     config.scm, (notification-leds '(("message-missed-sms" "green")
+;;;     ("phone-missed-call" "#FF8000" 1000))).  Events: battery-caution,
+;;;     message-missed-email, -instant, -notification, -sms,
+;;;     notification-missed-generic, phone-missed-call;
 ;;;   • idle dimming of the panel: /etc/pro1x/dim.conf, read by pro1x-idle
 ;;;     and pro1x-dim (pro1x-sway-config) in the Sway and Phosh sessions.
 ;;;     In config.scm:
@@ -48,7 +55,12 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix packages)
   #:use-module (guix records)
+  #:use-module (guix diagnostics)            ; formatted-message
+  #:use-module (guix i18n)                   ; G_
+  #:use-module (ice-9 match)
   #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-13)                ; string-every
+  #:use-module (srfi srfi-34)                ; raise
   #:export (pro1x-hardware-configuration
             pro1x-hardware-configuration?
             make-pro1x-hardware-configuration
@@ -81,7 +93,82 @@
   (charge-limit       pro1x-hardware-charge-limit       (default 85))
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
-  (torch-timeout      pro1x-hardware-torch-timeout      (default 60)))
+  (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
+  ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
+  ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
+  ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.
+  (notification-leds  pro1x-hardware-notification-leds (default '())))
+
+;;; feedbackd's own LED events and blink periods (data/default.json, 0.8.1),
+;;; used when an entry of notification-leds gives no period.
+(define %feedbackd-led-periods
+  '(("battery-caution" . 5000)
+    ("message-missed-email" . 2000)
+    ("message-missed-instant" . 1000)
+    ("message-missed-notification" . 500)
+    ("message-missed-sms" . 2000)
+    ("notification-missed-generic" . 500)
+    ("phone-missed-call" . 3000)))
+
+(define (led-colour? colour)
+  (or (member colour '("red" "green" "blue" "white"))
+      (and (= (string-length colour) 7)
+           (char=? (string-ref colour 0) #\#)
+           (string-every (char-set-union (char-set #\a #\b #\c #\d #\e #\f
+                                                   #\A #\B #\C #\D #\E #\F)
+                                         char-set:digit)
+                         colour 1))))
+
+(define (pro1x-feedbackd-theme-json leds)
+  ;; A feedbackd device theme (named after the device tree compatible) that
+  ;; inherits feedbackd's default theme and replaces its LED entries.
+  (define (entry spec)
+    (match spec
+      ((event colour . rest)
+       (unless (led-colour? colour)
+         (raise (formatted-message
+                 (G_ "notification-leds: ~s: colour ~s is not red, green, \
+blue, white or #RRGGBB")
+                 event colour)))
+       (let ((period (match rest
+                       ((p) p)
+                       (() (or (assoc-ref %feedbackd-led-periods event) 1000)))))
+         (format #f "        { \"event-name\": ~s, \"type\": \"Led\",
+          \"color\": ~s, \"frequency\": ~a }"
+                 event colour period)))))
+  (string-append
+   "{\n  \"name\": \"fxtec,pro1x\",\n  \"parent-name\": \"default\",\n"
+   "  \"profiles\": [\n    { \"name\": \"silent\",\n      \"feedbacks\": [\n"
+   (string-join (map entry leds) ",\n")
+   "\n      ]\n    }\n  ]\n}\n"))
+
+(define (pro1x-feedbackd-theme config)
+  ;; Empty notification-leds: no theme, feedbackd's defaults.
+  (match (pro1x-hardware-notification-leds config)
+    (() '())
+    (leds
+     (let ((json (plain-file "pro1x-feedbackd-theme.json"   ;no "," in store names
+                             (pro1x-feedbackd-theme-json leds))))
+       (list
+        (package
+          (name "pro1x-feedbackd-theme")
+          (version "0.1")
+          (source #f)
+          (build-system trivial-build-system)
+          (arguments
+           (list
+            #:modules '((guix build utils))
+            #:builder
+            #~(begin
+                (use-modules (guix build utils))
+                (let ((dir (string-append #$output "/share/feedbackd/themes")))
+                  (mkdir-p dir)
+                  (copy-file #$json (string-append dir "/fxtec,pro1x.json"))))))
+          (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+          (synopsis "Pro1X notification LED colours for feedbackd")
+          (description "feedbackd device theme with the notification LED
+colours from the system configuration.")
+          (license license:gpl3+)))))))
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules optionally extended with a
@@ -360,9 +447,11 @@ esac
                                  pro1x-feedbackd-led-rules))))
      ;; /etc/pro1x/dim.conf
      (service-extension etc-service-type pro1x-hardware-etc)
-     ;; Phosh's blank and lock delays
+     ;; Phosh's blank and lock delays; notification LED colours
      (service-extension profile-service-type
-                        (lambda (config) (list (pro1x-idle-gsettings config))))
+                        (lambda (config)
+                          (cons (pro1x-idle-gsettings config)
+                                (pro1x-feedbackd-theme config))))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)

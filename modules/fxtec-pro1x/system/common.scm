@@ -77,9 +77,12 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                 (operating-system-packages base)))
   ;; (services (cons (service some-service-type)
   ;;                 (operating-system-user-services base)))
-  ;; Keyboard light timeout and panel dimming (seconds; #f for never);
-  ;; needs (fxtec-pro1x services keyboard) and (fxtec-pro1x services
-  ;; hardware) in use-modules, and only one services field:
+  ;; Keyboard light timeout, panel dimming (seconds; #f for never) and
+  ;; notification LED colours (\"red\", \"green\", \"blue\", \"white\" or
+  ;; \"#RRGGBB\", optionally a blink period in ms; unlisted events keep
+  ;; feedbackd's colours); needs (fxtec-pro1x services keyboard) and
+  ;; (fxtec-pro1x services hardware) in use-modules, and only one services
+  ;; field:
   ;; (services
   ;;  (modify-services (operating-system-user-services base)
   ;;    (pro1x-keyboard-service-type
@@ -87,7 +90,10 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config) (backlight-timeout 60)))
   ;;    (pro1x-hardware-service-type
   ;;     config => (pro1x-hardware-configuration
-  ;;                (inherit config) (dim-after 30) (dim-level 20)))))
+  ;;                (inherit config) (dim-after 30) (dim-level 20)
+  ;;                (notification-leds
+  ;;                 '((\"message-missed-sms\" \"green\")
+  ;;                   (\"phone-missed-call\" \"#FF8000\" 1000)))))))
   )
 "))
 
