@@ -299,6 +299,23 @@ and Phosh itself.  Not set up yet.
   find out: a logger that survives the hang (dmesg -w over SSH to the
   PC) and the author's go-ahead.  Torch and caffeine: not persisted on
   purpose.
+- 2026-10-30 evening round (generations 41-43), author's list:
+  quick settings (notifications and Lock first, signal % first, cycling,
+  Super+q closes, dock OK/Tab dismiss), portrait with the keyboard closed
+  (Sway and Phosh), Chatty and Calls in the background (Sway only),
+  stevia patched for Sway (phoc's device-state protocol optional; not yet
+  seen drawn), notification wake and lock refresh (pro1x-notify),
+  "Guix" in yellow on the lock screen, battery LED patterns (yellow
+  breathing charging, green full/held, red blip low; seen by hand),
+  freedesktop sound theme, edge swipes (pro1x-gestures: all three work in
+  landscape, author), Calls fullscreen/portrait rule.  Vibration works
+  (fbcli phone-incoming-call, author).  Ringtone: profile was quiet.
+  Need a Sway relog to test most of it; an incoming call for Calls.
+- Proximity (2026-10-30): iio-sensor-proxy reports "Has proximity sensor
+  (near: 0)" and ssccli --sensor proximity "FAR"; neither changed while
+  the author covered the sensor (twice; timing against the logger not
+  certain).  Not working so far; retry with the sensor covered before
+  the logger starts, then compare with moWerk's notes.
 - Blank after 180 s, dim at 150 s (3ee97f9, 59ad954): Phosh's own
   [org.gnome.desktop.session:Phosh] idle-delay=60 had kept Phosh at 60 s;
   generation 40's Phosh session: swayidle dims at 150, blanks at 180
