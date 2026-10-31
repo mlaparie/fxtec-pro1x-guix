@@ -1448,6 +1448,8 @@ window opened by a sway key binding.")
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
           ("desktop.conf" "share/pro1x-sway/")
+          ("effects-swayfx.conf" "share/pro1x-sway/")
+          ("effects-plain.conf" "share/pro1x-sway/")
           ("foot-user.ini" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
