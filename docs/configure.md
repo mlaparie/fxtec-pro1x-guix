@@ -65,7 +65,7 @@ once, so combine changes in one expression:
 | hardware `landscape-apps` | none | the same, landscape |
 | hardware `fullscreen-apps` | Calls, Snapshot | app_ids made fullscreen when they open (Sway) |
 | hardware `lock-screen-apps` | Calls, Snapshot | app_ids allowed to open over the lock screen: an incoming call, the camera button's double press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
-| hardware `camera-double-press` | `"pro1x-camera"` | shell command for a double press of the camera button (default: the camera); a press in Snapshot takes a picture, a single press elsewhere right-clicks, held is a left drag |
+| hardware `camera-double-press` | `"snapshot"` | shell command for a double press of the camera button (default: the camera; not while the proximity sensor reads near); a press in Snapshot takes a picture, a single press elsewhere right-clicks where the finger last touched, held is a left-button drag following the finger |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
 

@@ -78,6 +78,10 @@ for d in $devices; do evtest "$d" 2>/dev/null & done |
             # Both: lock, and no menu action for either key.
             rm -f "$rt/pro1x-vol-up" "$rt/pro1x-vol-down"
             touch "$rt/pro1x-vol-up.fired" "$rt/pro1x-vol-down.fired"
+            # Put back the volume from before the first of the two keys:
+            # each key changed it as it went down (pro1x-osd notes it).
+            v=$(cat "$rt/pro1x-vol-before" 2>/dev/null)
+            [ -n "$v" ] && ( sleep 0.15; wpctl set-volume @DEFAULT_AUDIO_SINK@ "$v" ) &
             pro1x-lock --locked || pro1x-lock &
             up=0 down=0
         fi

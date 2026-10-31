@@ -49,9 +49,13 @@ start() {                       # start <transform>
         90) o=1 ;; 180) o=2 ;; 270) o=3 ;; *) o=0 ;;
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
-    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
+    # The keyboard swipe acts as soon as it is 125 px long, the finger
+    # still down (P; author: stevia was slow to come); the touch stays with
+    # the window it began on, so lifting types nothing.  The others act on
+    # release.
+    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 125 \
         -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
-        -g "1,DU,B,*,R,sway-quick-actions --osk toggle &" \
+        -g "1,DU,B,*,P,sway-quick-actions --osk toggle &" \
         -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
         -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &

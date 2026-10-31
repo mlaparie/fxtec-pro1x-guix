@@ -1,6 +1,7 @@
 #!/bin/sh
-# pro1x-portrait-apps — app rules from config.scm: portrait or landscape
-# while focused (default: Snapshot, Calls in portrait), fullscreen ones
+# pro1x-portrait-apps — portrait or landscape while an app has the focus
+# (portrait-apps, landscape-apps in config.scm; default: Snapshot, Calls in
+# portrait).  fullscreen-apps are Sway rules, /etc/sway/pro1x.d/apps.conf.
 #
 # Sway rotates whole outputs, not windows.  While a portrait app (the
 # camera, Calls) is the focused window, the panel is put in portrait and
@@ -17,7 +18,6 @@
 # The apps: portrait-apps, landscape-apps and fullscreen-apps in
 # config.scm (/etc/pro1x/apps.conf).
 PORTRAIT_APPS='org.gnome.Snapshot org.gnome.Calls' LANDSCAPE_APPS=
-FULLSCREEN_APPS='org.gnome.Snapshot org.gnome.Calls'
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 flag="$rt/pro1x-portrait-app"
@@ -59,20 +59,12 @@ check() {
     fi
 }
 
-# Fullscreen apps: fullscreen as they open.
-fullscreen_new() {
-    [ -n "$FULLSCREEN_APPS" ] || return
-    for a in $FULLSCREEN_APPS; do
-        swaymsg "[app_id=\"^$a\$\" fullscreen_mode=0] fullscreen enable" >/dev/null 2>&1
-    done
-}
 
 rm -f "$flag"
 trap 'rm -f "$events"' EXIT
 trap 'exit 0' INT TERM HUP
 rm -f "$events"; mkfifo "$events"
 swaymsg -m -r -t subscribe '["window", "workspace"]' > "$events" 2>/dev/null &
-while IFS= read -r ev; do
-    case "$ev" in *'"change": "new"'*|*'"change":"new"'*) fullscreen_new ;; esac
+while IFS= read -r _; do
     check
 done < "$events"

@@ -13,8 +13,7 @@
 ;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?,
 ;;;     shake-action;
 ;;;   • app rules for Sway: portrait-apps, landscape-apps, fullscreen-apps,
-;;;     lock-screen-apps; the camera button (camera-double-press, and
-;;;     clicks through pro1x-ydotoold);
+;;;     lock-screen-apps; the camera button (camera-double-press);
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
@@ -58,8 +57,8 @@
   #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
   #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
   #:use-module (gnu packages linux)         ; kmod
-  #:use-module ((gnu packages xdisorg) #:select (ydotool))
   #:use-module (gnu services)
+  #:use-module ((ice-9 regex) #:select (regexp-quote))
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module ((gnu packages window-management) #:select (swayfx))
@@ -145,9 +144,10 @@
                       (default '("org.gnome.Calls" "org.gnome.Snapshot")))
   ;; The camera button in Sway: a double press runs this shell command
   ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
-  ;; a single press elsewhere is a right click, held a left button held.
+  ;; a single press elsewhere right-clicks where the finger last touched,
+  ;; held it is a left-button drag following the finger.
   (camera-double-press pro1x-hardware-camera-double-press
-                       (default "pro1x-camera"))
+                       (default "snapshot"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
@@ -614,31 +614,37 @@ esac
                    (toggle!)))
                (set! last-motion m)))))
        (setvbuf (current-output-port) 'line)
-       (let loop ()
+       ;; In a pocket the sensor rests (it costs about 4 % of a core,
+       ;; measured 2026-11-01): streams of 20 s, none started while the
+       ;; proximity sensor reads near; a stream under way runs out.
+       (define (pocketed?) (file-exists? "/run/pro1x-pocket"))
+       (let loop ((resting? #f))
+         (if (pocketed?)
+             (begin
+               (unless resting? (format #t "pocket: sensor resting~%"))
+               (sleep 1)
+               (loop #t))
          (let ((port (open-pipe* OPEN_READ
                                  #$(file-append libssc "/bin/ssccli")
                                  "--sensor" "accelerometer"
-                                 "--timeout" "86400"))
+                                 "--timeout" "20"))
                (start (now)))
            (let read-loop ((n 0))
              (let ((line (read-line port)))
                (cond
                 ((eof-object? line)
-                 (format #t "ssccli ended after ~a samples (~,1f/s)~%"
-                         n (/ n (max 1 (- (now) start)))))
+                 (when (< (- (now) start) 15)    ;ended early: a problem
+                   (format #t "ssccli ended after ~a samples~%" n)))
                 ((regexp-exec rx line)
                  => (lambda (m)
                       (sample! (string->number (match:substring m 1))
                                (string->number (match:substring m 2))
                                (string->number (match:substring m 3)))
-                      (when (= n 200)
-                        (format #t "~,1f samples/s~%"
-                                (/ 200 (max 0.01 (- (now) start)))))
                       (read-loop (+ n 1))))
                 (else (format #t "ssccli: ~a~%" line) (read-loop n)))))
+           (when (< (- (now) start) 15) (sleep 5))   ;failing: slow down
            (close-pipe port)
-           (sleep 5)
-           (loop))))))
+           (loop #f)))))))
 
 (define (pro1x-shake-torch-shepherd-service config)
   (if (pro1x-hardware-shake-torch? config)
@@ -655,26 +661,6 @@ esac
         (stop #~(make-kill-destructor))
         (respawn? #t)))
       '()))
-
-(define (pro1x-ydotoold-shepherd-service config)
-  ;; ydotoold, the virtual mouse behind the camera button's clicks
-  ;; (pro1x-camera-button): root for /dev/uinput, its socket for the input
-  ;; group (the Sway user is in it).
-  (list
-   (shepherd-service
-    (provision '(pro1x-ydotoold))
-    (documentation "Virtual input device for the camera button's clicks.")
-    (start #~(lambda _
-               (let ((input (group:gid (getgrnam "input"))))
-                 ((make-forkexec-constructor
-                   (list #$(file-append ydotool "/bin/ydotoold")
-                         "--socket-path=/run/pro1x-ydotool.sock"
-                         "--socket-perm=0660"
-                         (string-append "--socket-own=0:"
-                                        (number->string input)))
-                   #:log-file "/var/log/pro1x-ydotoold.log")))))
-    (stop #~(make-kill-destructor))
-    (respawn? #t))))
 
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
@@ -871,6 +857,19 @@ esac
                      (string-join (pro1x-hardware-lock-screen-apps config)) "'\n"
                      "CAMERA_DOUBLE_PRESS='"
                      (pro1x-hardware-camera-double-press config) "'\n")))
+      ;; /etc/sway/pro1x.d/apps.conf: fullscreen-apps as Sway rules (the
+      ;; Sway config includes the directory).
+      ("sway/pro1x.d/apps.conf"
+       ,(plain-file "apps.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm):\n"
+                     "# fullscreen-apps.\n"
+                     (string-concatenate
+                      (map (lambda (app)
+                             (string-append "for_window [app_id=\"^"
+                                            (regexp-quote app)
+                                            "$\"] fullscreen enable\n"))
+                           (pro1x-hardware-fullscreen-apps config))))))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"
@@ -960,7 +959,6 @@ light or dark colour scheme.")
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
                                   (pro1x-shake-torch-shepherd-service config)
-                                  (pro1x-ydotoold-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service

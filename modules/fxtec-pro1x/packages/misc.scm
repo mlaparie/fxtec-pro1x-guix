@@ -1472,7 +1472,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, double press,
-;;;                                      right click, held left drag
+;;;                                      right click, held left drag (at the touch)
 ;;;   bin/pro1x-open                     run a command; over the lock screen
 ;;;                                      for lock-screen-apps
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
@@ -1492,7 +1492,7 @@ window opened by a sway key binding.")
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick jq lisgd procps sed slurp swayidle
-                  wl-clipboard ydotool (list glib "bin")))
+                  wl-clipboard (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1603,7 +1603,7 @@ window opened by a sway key binding.")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
                                  '("coreutils" "curl" "evtest" "fzf" "jq"
-                                   "procps" "glib" "ydotool")))))))
+                                   "procps" "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"

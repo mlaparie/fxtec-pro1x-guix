@@ -110,6 +110,21 @@ static int lock_tap_allowed(int y, int ymax)
 	return 0;
 }
 
+/* The last touch, for the camera button's clicks (pro1x-camera-button,
+ * author 2026-11-01): /run/pro1x-touch holds "X Y XMAX YMAX DOWN" in
+ * touchscreen units, written at each frame with a touch and at its end.
+ * Through a temporary file, so a reader never sees half a line. */
+static void note_touch(int x, int y, int xmax, int ymax, int down)
+{
+	FILE *f = fopen("/run/pro1x-touch.new", "w");
+
+	if (!f)
+		return;
+	fprintf(f, "%d %d %d %d %d\n", x, y, xmax, ymax, down);
+	fclose(f);
+	rename("/run/pro1x-touch.new", "/run/pro1x-touch");
+}
+
 /* "On" or "Off" in /sys/class/drm/<connector>/dpms for the DSI panel.
  * A cached kernel value: reading it does not touch the DSI link. */
 static int panel_off(void)
@@ -194,7 +209,7 @@ int main(int argc, char **argv)
 	int touch, out, x = 0, y = 0;
 	long last_down = 0, quiet_until = 0;
 	int last_x = 0, last_y = 0;
-	int ymax = 0;
+	int ymax = 0, xmax = 0, down = 0, moved = 0;
 
 	if (argc > 1)
 		interval_ms = atol(argv[1]);
@@ -211,6 +226,8 @@ int main(int argc, char **argv)
 
 		if (ioctl(touch, EVIOCGABS(ABS_MT_POSITION_Y), &abs) == 0)
 			ymax = abs.maximum;
+		if (ioctl(touch, EVIOCGABS(ABS_MT_POSITION_X), &abs) == 0)
+			xmax = abs.maximum;
 	}
 	out = open_uinput();
 	if (out < 0) {
@@ -263,9 +280,15 @@ int main(int argc, char **argv)
 			long t;
 
 			if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_X)
-				x = ev.value;
+				x = ev.value, moved = 1;
 			else if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_Y)
-				y = ev.value;
+				y = ev.value, moved = 1;
+			else if (ev.type == EV_KEY && ev.code == BTN_TOUCH)
+				down = ev.value, moved = 1;
+			else if (ev.type == EV_SYN && ev.code == SYN_REPORT && moved) {
+				note_touch(x, y, xmax, ymax, down);
+				moved = 0;
+			}
 			if (!(ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 1))
 				continue;
 

@@ -2,9 +2,10 @@
 # pro1x-open COMMAND… — run a command in Sway, over the lock screen for the
 # apps allowed there
 #
-# Unlocked: runs COMMAND.  Locked: runs it, and if within 8 s the focus
-# goes to a window of an app in LOCK_SCREEN_APPS (/etc/pro1x/apps.conf,
-# lock-screen-apps in config.scm), unlocks for it, lights the panel, and
+# Unlocked: runs COMMAND.  Locked: runs it, and if within 8 s a window of
+# an app in LOCK_SCREEN_APPS appears (/etc/pro1x/apps.conf,
+# lock-screen-apps in config.scm), unlocks for it, focuses it, lights the
+# panel, and
 # locks again as soon as the focus goes to another app or the app closes
 # (author, 2026-10-31: the camera, like Calls, should open while locked).
 # Used by the camera button's double press and the shake action; Calls has
@@ -23,24 +24,49 @@ focused() {                     # "CON_ID APP_ID" of the focused window
         jq -r '[.. | objects | select(.focused? == true)
                 | "\(.id) \(.app_id // "")"] | .[0] // ""'
 }
+windows() {                     # "CON_ID APP_ID" of every app window
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r '.. | objects | select(.pid? != null and .app_id? != null)
+               | "\(.id) \(.app_id)"'
+}
 allowed() { case " $LOCK_SCREEN_APPS " in *" $1 "*) return 0 ;; esac; return 1; }
 
-before=$(focused)
+# The app the command is for, when it is a known one: its window counts
+# even if it was open before (Snapshot is a single instance: the command
+# only presents the window it has).
+case "${1##*/}" in
+    snapshot|pro1x-camera) want=org.gnome.Snapshot ;;
+    gnome-calls) want=org.gnome.Calls ;;
+    *) want= ;;
+esac
+
+# While locked, Sway does not focus new windows (author: Snapshot started
+# but stayed behind the lock): watch the tree for a new window of an
+# allowed app instead.
+before=$(windows | cut -d' ' -f1)
 sh -c "$*" &
-app=
+app= con=
 for i in $(seq 40); do
     sleep 0.2
-    now=$(focused)
-    if [ "$now" != "$before" ] && allowed "${now#* }"; then app=${now#* }; break; fi
+    while read -r c a; do
+        allowed "$a" || continue
+        if [ "$a" = "$want" ] ||
+           ! printf '%s\n' "$before" | grep -qx "$c"; then
+            app=$a con=$c; break
+        fi
+    done <<WINDOWS
+$(windows)
+WINDOWS
+    [ -n "$app" ] && break
 done
-# Already focused (the camera focused before locking): it counts too.
-[ -z "$app" ] && allowed "${before#* }" && app=${before#* }
 [ -n "$app" ] || exit 0
 
 pro1x-lock --unlock
 swaymsg 'output * power on' >/dev/null
 swaymsg 'input type:touch events enabled' >/dev/null
 pro1x-dim restore 2>/dev/null
+swaymsg "[con_id=$con] focus" >/dev/null
+sleep 0.5                       # the focus settles after the unlock
 
 # Lock again when the focus leaves APP (another app, a workspace switch,
 # APP closed).  Our menus are no exception: they would reach everything.

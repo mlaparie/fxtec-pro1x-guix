@@ -26,6 +26,7 @@ esac
 choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
                       "Hibernate" "Reboot" "Power off" |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
+                 --footer="↵/power choose  vol move  esc" --color=footer:8 \
                  --no-info --cycle --margin=1,2 --color=16,gutter:-1)
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;

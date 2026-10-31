@@ -5,8 +5,8 @@
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
 # Enter and Ctrl-o (a short power press) ask Focus / Close window / Cancel
-# (author: Return does what the power key does), Ctrl-k closes the window,
-# Esc hides the switcher.  It
+# (author: Return does what the power key does), Right (or vol+ held)
+# focuses at once, Ctrl-k closes the window, Esc hides the switcher.  It
 # stays alive hidden (pro1x-menu); each show reloads the list through
 # fzf's socket.  Replaces sway-window-switcher, which started a new foot,
 # bash and jq run each time (slow on the phone; author, 2026-10-30).
@@ -53,7 +53,9 @@ hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] mo
 "$self" --list |
     fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+        --footer="↵/power ask  → focus  ^k close  esc" --color=footer:8 \
         --bind="enter:execute($self --ask {1})+reload($self --list)" \
+        --bind="right:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
         --bind="ctrl-k:execute-silent(swaymsg \"[con_id={1}] kill\")+reload($self --list)" \
         --bind="ctrl-o:execute($self --ask {1})+reload($self --list)" \
         --bind="esc:$hide" >/dev/null
