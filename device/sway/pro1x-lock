@@ -236,7 +236,7 @@ mv "$ui.new" "$ui"
 
 # One key size for both orientations, narrow enough for portrait (the
 # module has a single, landscape, layout; larger keys fell off the sides).
-key_size=95% key_pad=1px
+key_size=70% key_pad=0
 if [ "$keyboard" = light ]; then
     key_bg='#ebdbb2' key_fg='#1d2021' key_line='#d5c4a1'
 else
@@ -245,12 +245,12 @@ fi
 cat > "$css" <<EOF
 window { background-color: #1d2021; color: #d5c4a1; }
 #pro1x-gnu, #pro1x-guix, #pro1x-notes { font-family: "DejaVu Sans Mono", monospace; }
-#pro1x-gnu, #pro1x-guix { font-size: 11px; }
+#pro1x-gnu, #pro1x-guix { font-size: 14px; }
 #pro1x-gnu { color: #d5c4a1; }
 #pro1x-guix { color: #FFCC00; }
-#pro1x-notes { color: #928374; font-size: 12px; margin-top: 6px; }
-#clock-label { font-size: 44px; color: #ebdbb2; }
-#date-label { font-size: 14px; color: #a89984; }
+#pro1x-notes { color: #928374; font-size: 16px; margin-top: 8px; }
+#clock-label { font-size: 56px; color: #ebdbb2; }
+#date-label { font-size: 18px; color: #a89984; }
 #input-field { background: #282828; color: #ebdbb2; border: 1px solid #458588;
                border-radius: 8px; caret-color: #FFCC00; }
 #error-label { color: #fb4934; }
