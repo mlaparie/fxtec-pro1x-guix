@@ -43,6 +43,10 @@ for d in $devices; do evtest "$d" 2>/dev/null & done |
                 ( stamp=$(cat "$held"); sleep 0.6
                   [ "$(cat "$held" 2>/dev/null)" = "$stamp" ] || exit 0
                   rm -f "$held"
+                  # Locked: nothing shows over the lock screen, so the
+                  # menu would wait behind it (author saw it after
+                  # unlocking): a long press is a short one then.
+                  if pro1x-lock --locked; then pro1x-power-key; exit 0; fi
                   # A menu focused: put it away; else the power menu.
                   pro1x-menu key hide || menu_open || pro1x-power-menu ) & ;;
             *"(KEY_POWER), value 0"*)
