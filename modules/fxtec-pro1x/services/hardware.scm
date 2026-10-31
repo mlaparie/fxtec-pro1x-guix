@@ -397,10 +397,18 @@ esac
   (program-file
    "pro1x-pocket"
    #~(begin
-       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 ftw) (srfi srfi-1))
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 ftw) (ice-9 match)
+                    (srfi srfi-1))
        (define flag "/run/pro1x-pocket")
        (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
-       (sigaction SIGCHLD SIG_IGN)      ;reap the delayed-blanking children
+       ;; Reap the delayed-blanking children.  (Not SIGCHLD ignored: then
+       ;; system* fails with "No child processes", which crashed the
+       ;; service at start, 2026-10-31.)
+       (define (reap!)
+         (let loop ()
+           (match (false-if-exception (waitpid WAIT_ANY WNOHANG))
+             ((pid . _) (unless (zero? pid) (loop)))
+             (_ #t))))
        (define (sway-sockets)           ;every user's Sway IPC socket
          (append-map
           (lambda (uid)
@@ -437,6 +445,7 @@ esac
          (let loop ()
            (let ((line (read-line port)))
              (unless (eof-object? line)
+               (reap!)
                (cond ((or (string-contains line "near: 1")
                           (string-contains line "value changed: 1"))
                       (set-near! #t))
