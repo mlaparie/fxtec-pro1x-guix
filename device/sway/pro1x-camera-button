@@ -7,19 +7,21 @@
 #                      through pro1x-open, so it opens over the lock screen;
 #                      not while the proximity sensor reads near (a pocket)
 #   single press:      a right click where the finger last touched
-#   held 0.4 s:        the left button held there, the pointer following
-#                      the finger, until released (a mouse drag)
+#   held 0.4 s:        Super and the left button held there, the pointer
+#                      following the finger, until released: drags windows
+#                      (Sway's floating_modifier); touch is off meanwhile
 #
 # Reads KEY_CAMERA from gpio-keys with evtest (Sway acts on presses only,
 # and cannot tell a double press; Sway's own XF86WebCam binding is a nop,
-# so apps do not get the key).  The clicks are Sway's own pointer (seat
-# cursor set/press/release); the touch position comes from pro1x-doubletap
-# (/run/pro1x-touch), mapped onto the output as wlroots maps touches
-# (apply_output_transform in wlr_cursor.c).  A single press waits 0.35 s
-# for a second one.  Started by the Sway config; ends with Sway.
+# so apps do not get the key).  The pointer is pro1x-doubletap's virtual
+# absolute one, at the touch's own position (no lag: it follows in C, not
+# in this script); this sends it rclick, drag and end through
+# /run/pro1x-pointer.  A single press waits 0.35 s for a second one.
+# Started by the Sway config; ends with Sway.
 #
-# State: 2026-11-01: double press opened Snapshot (author); clicks were
-# ydotool, which left them where the pointer was: now at the touch.
+# State: 2026-11-01: double press opened Snapshot (author); the first
+# follower (this script moving Sway's cursor) lagged and could not drag
+# windows: now pro1x-doubletap's pointer, with Super.
 
 CAMERA_DOUBLE_PRESS=snapshot
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
@@ -42,23 +44,9 @@ snapshot_focused() {
       = org.gnome.Snapshot ]
 }
 
-# The last touch as layout coordinates "X Y" (DSI-1's rectangle, transform).
-touch_xy() {
-    read -r tx ty txmax tymax _ < /run/pro1x-touch 2>/dev/null || return 1
-    swaymsg -t get_outputs -r |
-        jq -r --argjson tx "$tx" --argjson ty "$ty" \
-              --argjson mx "$txmax" --argjson my "$tymax" '
-            .[] | select(.name == "DSI-1") |
-            ($tx / $mx) as $x | ($ty / $my) as $y |
-            (if .transform == "90" then [1 - $y, $x]
-             elif .transform == "180" then [1 - $x, 1 - $y]
-             elif .transform == "270" then [$y, 1 - $x]
-             else [$x, $y] end) as $d |
-            "\(.rect.x + ($d[0] * .rect.width | floor)) \(.rect.y + ($d[1] * .rect.height | floor))"'
-}
-cursor_to_touch() {
-    xy=$(touch_xy) && swaymsg "seat seat0 cursor set $xy" >/dev/null
-}
+# The pointer is pro1x-doubletap's (it reads the touchscreen): a word to
+# its fifo.
+pointer() { [ -p /run/pro1x-pointer ] && echo "$1" > /run/pro1x-pointer; }
 
 rm -f "$st" "$st.pending" "$st.drag"
 evtest "$dev" 2>/dev/null |
@@ -76,29 +64,22 @@ evtest "$dev" 2>/dev/null |
                 ( sleep 0.4
                   [ "$(cat "$st" 2>/dev/null)" = "$stamp" ] || exit 0
                   touch "$st.drag"
-                  cursor_to_touch
-                  swaymsg 'seat seat0 cursor press button1' >/dev/null
-                  # Follow the finger while held.
-                  last=
-                  while [ -f "$st.drag" ]; do
-                      now=$(cat /run/pro1x-touch 2>/dev/null)
-                      [ "$now" != "$last" ] && { last=$now; cursor_to_touch; }
-                      sleep 0.05
-                  done ) & ;;
+                  # Touch off in Sway meanwhile: the finger moves the
+                  # pointer, not the app under it.
+                  swaymsg 'input type:touch events disabled' >/dev/null
+                  pointer drag ) & ;;
             *"(KEY_CAMERA), value 0"*)
                 if [ -f "$st.drag" ]; then
                     rm -f "$st.drag" "$st"
-                    sleep 0.06                        # the follower's last move
-                    swaymsg 'seat seat0 cursor release button1' >/dev/null
+                    pointer end
+                    swaymsg 'input type:touch events enabled' >/dev/null
                 elif [ -f "$st" ]; then              # a short press
                     rm -f "$st"
                     stamp=$(date +%s%N); echo "$stamp" > "$st.pending"
                     ( sleep 0.35
                       [ "$(cat "$st.pending" 2>/dev/null)" = "$stamp" ] || exit 0
                       rm -f "$st.pending"
-                      cursor_to_touch
-                      swaymsg 'seat seat0 cursor press button3, seat seat0 cursor release button3' \
-                          >/dev/null ) &
+                      pointer rclick ) &
                 fi ;;
         esac
     done

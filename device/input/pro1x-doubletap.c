@@ -25,6 +25,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <glob.h>
+#include <grp.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
@@ -180,11 +182,68 @@ static int open_uinput(void)
 		return -1;
 	ioctl(fd, UI_SET_EVBIT, EV_KEY);
 	ioctl(fd, UI_SET_KEYBIT, KEY_POWER);
+	ioctl(fd, UI_SET_KEYBIT, KEY_LEFTMETA);	/* Super, for window drags */
 	strcpy(setup.name, "pro1x-doubletap");
 	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
 		close(fd);
 		return -1;
 	}
+	return fd;
+}
+
+/* The camera button's pointer (pro1x-camera-button, author 2026-11-01):
+ * an absolute pointer whose position is the touch's own, in the same
+ * device units scaled to 0..65535.  Mapped to DSI-1 (pro1x.conf), wlroots
+ * turns it with the output exactly as it turns touches, so it lands under
+ * the finger at any rotation.  Driven through the /run/pro1x-pointer fifo
+ * (the input group may write): "rclick" clicks the right button at the
+ * last touch; "drag" holds Super and the left button there and follows
+ * the finger (Sway's floating_modifier: moves windows); "end" lets go. */
+#define POINTER_FIFO "/run/pro1x-pointer"
+#define POINTER_VENDOR 0x1234
+#define POINTER_PRODUCT 0x5678
+
+static int open_pointer(void)
+{
+	struct uinput_setup setup = { .id = { .bustype = BUS_VIRTUAL,
+		.vendor = POINTER_VENDOR, .product = POINTER_PRODUCT } };
+	struct uinput_abs_setup abs = { .absinfo = { .maximum = 65535 } };
+	int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+
+	if (fd < 0)
+		return -1;
+	ioctl(fd, UI_SET_EVBIT, EV_KEY);
+	ioctl(fd, UI_SET_KEYBIT, BTN_LEFT);
+	ioctl(fd, UI_SET_KEYBIT, BTN_RIGHT);
+	ioctl(fd, UI_SET_EVBIT, EV_ABS);
+	ioctl(fd, UI_SET_ABSBIT, ABS_X);
+	ioctl(fd, UI_SET_ABSBIT, ABS_Y);
+	abs.code = ABS_X;
+	ioctl(fd, UI_ABS_SETUP, &abs);
+	abs.code = ABS_Y;
+	ioctl(fd, UI_ABS_SETUP, &abs);
+	strcpy(setup.name, "pro1x-pointer");
+	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+/* The fifo, read end; a write end of our own so it never reads EOF. */
+static int open_pointer_fifo(void)
+{
+	struct group *input = getgrnam("input");
+	int fd;
+
+	unlink(POINTER_FIFO);
+	if (mkfifo(POINTER_FIFO, 0620) < 0)
+		return -1;
+	if (input)
+		chown(POINTER_FIFO, 0, input->gr_gid);
+	fd = open(POINTER_FIFO, O_RDONLY | O_NONBLOCK);
+	if (fd >= 0)
+		open(POINTER_FIFO, O_WRONLY | O_NONBLOCK);
 	return fd;
 }
 
@@ -204,12 +263,30 @@ static void press_power(int fd)
 	emit(fd, EV_SYN, SYN_REPORT, 0);
 }
 
+static void pointer_to(int fd, int x, int y, int xmax, int ymax)
+{
+	if (fd < 0 || xmax <= 0 || ymax <= 0)
+		return;
+	emit(fd, EV_ABS, ABS_X, (int) ((long) x * 65535 / xmax));
+	emit(fd, EV_ABS, ABS_Y, (int) ((long) y * 65535 / ymax));
+	emit(fd, EV_SYN, SYN_REPORT, 0);
+}
+
+static void pointer_button(int fd, int code, int value)
+{
+	if (fd < 0)
+		return;
+	emit(fd, EV_KEY, code, value);
+	emit(fd, EV_SYN, SYN_REPORT, 0);
+}
+
 int main(int argc, char **argv)
 {
 	int touch, out, x = 0, y = 0;
 	long last_down = 0, quiet_until = 0;
 	int last_x = 0, last_y = 0;
 	int ymax = 0, xmax = 0, down = 0, moved = 0;
+	int pointer, pfifo, dragging = 0;
 
 	if (argc > 1)
 		interval_ms = atol(argv[1]);
@@ -234,19 +311,25 @@ int main(int argc, char **argv)
 		perror("pro1x-doubletap: /dev/uinput");
 		return 1;
 	}
+	pointer = open_pointer();
+	pfifo = open_pointer_fifo();
+	if (pointer < 0 || pfifo < 0)
+		perror("pro1x-doubletap: camera button pointer");
 	fprintf(stderr, "pro1x-doubletap: watching, interval %ld ms, distance %ld\n",
 		interval_ms, distance);
 
 	int kbd = open_named(KEYBOARD_NAME);	/* -1 until keyd made it */
 
 	for (;;) {
-		struct pollfd p[2] = {
+		/* poll skips the entries whose fd is -1. */
+		struct pollfd p[3] = {
 			{ .fd = touch, .events = POLLIN },
 			{ .fd = kbd, .events = POLLIN },
+			{ .fd = pfifo, .events = POLLIN },
 		};
 		struct input_event ev;
 
-		if (poll(p, kbd >= 0 ? 2 : 1, kbd >= 0 ? -1 : 5000) < 0) {
+		if (poll(p, 3, kbd >= 0 ? -1 : 5000) < 0) {
 			if (errno == EINTR)
 				continue;
 			perror("poll");
@@ -255,6 +338,28 @@ int main(int argc, char **argv)
 		if (p[0].revents & (POLLERR | POLLHUP)) {
 			fprintf(stderr, "pro1x-doubletap: touch device gone\n");
 			return 1;	/* Shepherd respawns us */
+		}
+		if (p[2].revents & POLLIN) {
+			char cmd[64];
+			ssize_t n = read(pfifo, cmd, sizeof cmd - 1);
+
+			cmd[n > 0 ? n : 0] = 0;
+			if (strstr(cmd, "rclick")) {
+				pointer_to(pointer, x, y, xmax, ymax);
+				pointer_button(pointer, BTN_RIGHT, 1);
+				pointer_button(pointer, BTN_RIGHT, 0);
+			} else if (strstr(cmd, "drag") && !dragging) {
+				dragging = 1;
+				emit(out, EV_KEY, KEY_LEFTMETA, 1);
+				emit(out, EV_SYN, SYN_REPORT, 0);
+				pointer_to(pointer, x, y, xmax, ymax);
+				pointer_button(pointer, BTN_LEFT, 1);
+			} else if (strstr(cmd, "end") && dragging) {
+				dragging = 0;
+				pointer_button(pointer, BTN_LEFT, 0);
+				emit(out, EV_KEY, KEY_LEFTMETA, 0);
+				emit(out, EV_SYN, SYN_REPORT, 0);
+			}
 		}
 		if (kbd < 0) {
 			kbd = open_named(KEYBOARD_NAME);
@@ -287,6 +392,8 @@ int main(int argc, char **argv)
 				down = ev.value, moved = 1;
 			else if (ev.type == EV_SYN && ev.code == SYN_REPORT && moved) {
 				note_touch(x, y, xmax, ymax, down);
+				if (dragging && down)
+					pointer_to(pointer, x, y, xmax, ymax);
 				moved = 0;
 			}
 			if (!(ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 1))
