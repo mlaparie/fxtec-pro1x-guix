@@ -503,11 +503,13 @@ esac
   ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
   ;; m/s²".  A shake is a burst where the acceleration's magnitude differs
   ;; from gravity by more than THRESHOLD; two bursts 0.25-1.5 s apart, with
-  ;; the phone upright in portrait just before (gravity mostly along Y,
-  ;; measured while still), toggle white:flash-0.  Not in a pocket
+  ;; the phone held up just before (gravity measured while still: top end
+  ;; up, not flat), toggle white:flash-0.  Not in a pocket
   ;; (/run/pro1x-pocket).  The torch guard turns it off after its timeout.
   ;; Every burst is logged with its peak, to tune THRESHOLD on the phone.
-  ;; State: written 2026-10-31; sample rate and axes not yet seen.
+  ;; State: 2026-10-31: shakes seen on the phone (peaks 16-45 m/s², 12 to
+  ;; 35 readings a second, more while moving); the first upright test was
+  ;; too strict, loosened.
   (program-file
    "pro1x-shake-torch"
    #~(begin
@@ -535,8 +537,13 @@ esac
        (define in-burst? #f) (define peak 0.0) (define last-high 0.0)
        (define first-burst #f) (define upright-at-first? #f)
        (define quiet-until 0.0)
+       ;; Held up, top end upwards: not flat, and gravity at least partly
+       ;; along the sensor's Y.  Held "upright in portrait" by the author,
+       ;; gravity was X 7.7, Y 6.0, Z 4.3 (2026-10-31): a hand tilts it
+       ;; much more than 45°, so Y need not dominate.  Landscape (Y near
+       ;; 0) and upside down stay out.
        (define (upright?)
-         (and (> (abs gy) 6.5) (> (abs gy) (abs gx)) (> (abs gy) (abs gz))))
+         (and (> gy 3.0) (< (abs gz) 8.0)))
        (define (sample! x y z)
          (let* ((t (now))
                 (d (abs (- (sqrt (+ (* x x) (* y y) (* z z))) 9.81))))
