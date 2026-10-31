@@ -10,6 +10,7 @@
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
 ;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
+;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?;
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
@@ -118,6 +119,9 @@
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
+  ;; Two shakes of the phone held upright in portrait toggle the torch,
+  ;; locked or not (author); torch-timeout still applies.
+  (shake-torch?       pro1x-hardware-shake-torch?       (default #t))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
@@ -489,6 +493,118 @@ esac
          (set-near! #f)
          (close-pipe port)))))
 
+(define pro1x-shake-torch-program
+  ;; Two shakes toggle the torch (author, 2026-10-31): reads the
+  ;; accelerometer from the SSC (ssccli, a second client next to
+  ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
+  ;; m/s²".  A shake is a burst where the acceleration's magnitude differs
+  ;; from gravity by more than THRESHOLD; two bursts 0.25-1.5 s apart, with
+  ;; the phone upright in portrait just before (gravity mostly along Y,
+  ;; measured while still), toggle white:flash-0.  Not in a pocket
+  ;; (/run/pro1x-pocket).  The torch guard turns it off after its timeout.
+  ;; Every burst is logged with its peak, to tune THRESHOLD on the phone.
+  ;; State: written 2026-10-31; sample rate and axes not yet seen.
+  (program-file
+   "pro1x-shake-torch"
+   #~(begin
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format))
+       (define threshold 12.0)          ;m/s² beyond gravity
+       (define gap 0.15)                ;s below it that ends a burst
+       (define torch "/sys/class/leds/white:flash-0")
+       (define (now)
+         (/ (get-internal-real-time) 1.0 internal-time-units-per-second))
+       (define (read-number file)
+         (or (false-if-exception
+              (string->number (call-with-input-file file read-line)))
+             0))
+       (define (toggle!)
+         (let ((on? (> (read-number (string-append torch "/brightness")) 0)))
+           (call-with-output-file (string-append torch "/brightness")
+             (lambda (port)
+               (display (if on? 0 (read-number
+                                   (string-append torch "/max_brightness")))
+                        port)))
+           (format #t "two shakes: torch ~a~%" (if on? "off" "on"))))
+       (define rx (make-regexp "X=([-0-9.]+) Y=([-0-9.]+) Z=([-0-9.]+)"))
+       ;; Gravity, smoothed over still samples; the bursts' times.
+       (define gx 0.0) (define gy 9.8) (define gz 0.0)
+       (define in-burst? #f) (define peak 0.0) (define last-high 0.0)
+       (define first-burst #f) (define upright-at-first? #f)
+       (define quiet-until 0.0)
+       (define (upright?)
+         (and (> (abs gy) 6.5) (> (abs gy) (abs gx)) (> (abs gy) (abs gz))))
+       (define (sample! x y z)
+         (let* ((t (now))
+                (d (abs (- (sqrt (+ (* x x) (* y y) (* z z))) 9.81))))
+           (cond
+            ((> d threshold)
+             (set! last-high t)
+             (set! peak (max peak d))
+             (unless in-burst?
+               (set! in-burst? #t)
+               (let ((upright (upright?)))
+                 (cond
+                  ((or (< t quiet-until) (file-exists? "/run/pro1x-pocket"))
+                   (set! first-burst #f))
+                  ((and first-burst (> (- t first-burst) 0.25)
+                        (< (- t first-burst) 1.5) upright-at-first?)
+                   (set! first-burst #f)
+                   (set! quiet-until (+ t 2))
+                   (toggle!))
+                  (else
+                   (set! first-burst t)
+                   (set! upright-at-first? upright))))))
+            (else
+             (when (and in-burst? (> (- t last-high) gap))
+               (format #t "burst: peak ~,1f m/s², upright ~a (g ~,1f ~,1f ~,1f)~%"
+                       peak (upright?) gx gy gz)
+               (set! in-burst? #f)
+               (set! peak 0.0))
+             (when (and (not in-burst?) (< d 1.5))
+               (set! gx (+ (* 0.8 gx) (* 0.2 x)))
+               (set! gy (+ (* 0.8 gy) (* 0.2 y)))
+               (set! gz (+ (* 0.8 gz) (* 0.2 z))))))))
+       (setvbuf (current-output-port) 'line)
+       (let loop ()
+         (let ((port (open-pipe* OPEN_READ
+                                 #$(file-append libssc "/bin/ssccli")
+                                 "--sensor" "accelerometer"
+                                 "--timeout" "86400"))
+               (start (now)))
+           (let read-loop ((n 0))
+             (let ((line (read-line port)))
+               (cond
+                ((eof-object? line)
+                 (format #t "ssccli ended after ~a samples (~,1f/s)~%"
+                         n (/ n (max 1 (- (now) start)))))
+                ((regexp-exec rx line)
+                 => (lambda (m)
+                      (sample! (string->number (match:substring m 1))
+                               (string->number (match:substring m 2))
+                               (string->number (match:substring m 3)))
+                      (when (= n 200)
+                        (format #t "~,1f samples/s~%"
+                                (/ 200 (max 0.01 (- (now) start)))))
+                      (read-loop (+ n 1))))
+                (else (format #t "ssccli: ~a~%" line) (read-loop n)))))
+           (close-pipe port)
+           (sleep 5)
+           (loop))))))
+
+(define (pro1x-shake-torch-shepherd-service config)
+  (if (pro1x-hardware-shake-torch? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-shake-torch))
+        (requirement '(iio-sensor-proxy))
+        (documentation "Toggle the torch with two shakes.")
+        (start #~(make-forkexec-constructor
+                  (list #$pro1x-shake-torch-program)
+                  #:log-file "/var/log/pro1x-shake-torch.log"))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
       (list
@@ -755,6 +871,7 @@ light or dark colour scheme.")
                           (append (pro1x-clock-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
+                                  (pro1x-shake-torch-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service
