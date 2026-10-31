@@ -4,8 +4,9 @@
 # keyboard is closed
 #
 #   pro1x-lock [gtklock arguments...]   lock
-#   pro1x-lock --refresh   redraw while locked (pro1x-notify, new
-#                          notification): the running gtklock is replaced by
+#   pro1x-lock --refresh   redraw while locked (pro1x-notify on a new
+#                          notification, pro1x-osk-slider on a slide, to add
+#                          or drop the keyboard): the running gtklock is replaced by
 #                          one with the new text; Sway stays locked meanwhile
 #                          (ext-session-lock keeps the session locked when a
 #                          locker dies without unlocking)
@@ -233,15 +234,9 @@ cat > "$ui.new" <<EOF
 EOF
 mv "$ui.new" "$ui"
 
-# The module has one (landscape) layout: smaller keys in portrait, or the
-# outer ones fall off the screen.
-if swaymsg -t get_outputs -r 2>/dev/null |
-       jq -e '.[] | select(.name == "DSI-1")
-              | .transform == "normal" or .transform == "180"' >/dev/null; then
-    key_size=95% key_pad=1px
-else
-    key_size=150% key_pad=4px
-fi
+# One key size for both orientations, narrow enough for portrait (the
+# module has a single, landscape, layout; larger keys fell off the sides).
+key_size=95% key_pad=1px
 if [ "$keyboard" = light ]; then
     key_bg='#ebdbb2' key_fg='#1d2021' key_line='#d5c4a1'
 else

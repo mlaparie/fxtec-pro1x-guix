@@ -1013,7 +1013,12 @@ sends a power-key press when it sees two quick taps close together.")
                (url "https://github.com/progandy/gtklock-virtkb-module")
                (commit commit)))
          (file-name (git-file-name name version))
-         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))))
+         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))
+         ;; Ours: a digit row (numeric passwords could not be typed).
+         (patches
+          (list (local-file
+                 (repository-file "device/phosh/gtklock-virtkb-digit-row.patch")
+                 "gtklock-virtkb-digit-row.patch")))))
       (build-system gnu-build-system)
       (arguments
        (list
