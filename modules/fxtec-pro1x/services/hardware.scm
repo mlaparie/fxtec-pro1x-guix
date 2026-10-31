@@ -247,7 +247,9 @@ white, #RRGGBB or #f")
   ;; A feedbackd device theme (named after the device tree compatible) that
   ;; inherits feedbackd's default theme and replaces its LED entries.  With
   ;; HAPTICS?, also a short vibration for stevia's key-pressed event, which
-  ;; feedbackd's default theme leaves without feedback; in the quiet
+  ;; feedbackd's default theme leaves without feedback, and a stronger one
+  ;; for button-pressed (Shift, layout keys): the default's 7 ms at 0.2
+  ;; ran but could not be felt on this motor (aw86224).  In the quiet
   ;; profile, so in quiet and full.
   (define (entry spec)
     (match spec
@@ -271,7 +273,9 @@ blue, white or #RRGGBB")
    (if haptics?
        ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.2], \"durations\": [7] }\n      ]\n    }"
+          \"magnitudes\": [0.6], \"durations\": [20] },
+        { \"event-name\": \"button-pressed\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [0.6], \"durations\": [20] }\n      ]\n    }"
        "")
    "\n  ]\n}\n"))
 
