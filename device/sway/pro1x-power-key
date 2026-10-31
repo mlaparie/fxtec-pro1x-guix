@@ -13,6 +13,7 @@ on=$(swaymsg -t get_outputs -r |
 if [ "$on" = true ]; then
     woke=$(cat "$rt/pro1x-woke" 2>/dev/null || echo 0)
     [ $(( $(date +%s%N) - woke )) -lt 800000000 ] && exit 0
+    pro1x-menu hide-all               # blanking hides the menus
     swaymsg 'output DSI-1 power off' >/dev/null
 else
     swaymsg 'output DSI-1 power on' >/dev/null

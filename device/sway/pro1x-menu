@@ -1,6 +1,7 @@
 #!/bin/sh
 # pro1x-menu toggle|start quickactions|launcher|windowswitcher [hidden]
-# pro1x-menu key up|down|accept     drive the focused menu (volume, power)
+# pro1x-menu key up|down|left|right|accept|hide   drive the focused menu
+# pro1x-menu focused | hide-all
 #
 # The three Sway menus stay alive in the scratchpad: toggle hides a shown
 # one, or shows a hidden one placed against its edge for the current
@@ -49,21 +50,57 @@ start() {
 }
 
 case "$cmd" in
+    focused)
+        # Exit 0 when one of the four menus has the focus (prints its id).
+        f=$(swaymsg -t get_tree -r |
+                jq -r '.. | objects | select(.focused? == true) | .app_id // empty')
+        case "$f" in
+            quickactions|launcher|windowswitcher|powermenu) echo "$f"; exit 0 ;;
+            *) exit 1 ;;
+        esac ;;
+    hide-all)
+        # Blanking or rotation hides them (author, 2026-10-31).
+        for m in quickactions launcher windowswitcher; do
+            swaymsg "[app_id=\"^$m\$\"] move scratchpad" >/dev/null 2>&1
+        done
+        swaymsg '[app_id="^powermenu$"] kill' >/dev/null 2>&1
+        exit 0 ;;
     key)
-        # pro1x-menu key up|down|accept: to the menu that has the focus
-        # (volume keys and a short power press, keyboard closed; author,
-        # 2026-10-31).  Exit 1 when no menu has it, so the key keeps its
-        # usual meaning.
-        focused=$(swaymsg -t get_tree -r |
-                      jq -r '.. | objects | select(.focused? == true) | .app_id // empty')
+        # pro1x-menu key up|down|left|right|accept|hide: to the focused menu
+        # (volume keys and the power key, keyboard closed; author,
+        # 2026-10-31).  Exit 1 when no menu has the focus, so the key keeps
+        # its usual meaning.  accept replays the menu's own Enter (fzf's
+        # accept would end it); hide puts the menu away.
+        focused=$("$0" focused) || exit 1
         case "$focused" in
             quickactions) sock="$rt/pro1x-quick-actions.sock" ;;
             launcher) sock="$rt/pro1x-launcher.sock" ;;
-            windowswitcher) sock="$rt/pro1x-switcher.sock" ;;
+            windowswitcher)
+                sock="$rt/pro1x-switcher.sock"
+                # Its Focus / Close / Cancel question, when open.
+                [ -S "$rt/pro1x-switcher-ask.sock" ] && sock="$rt/pro1x-switcher-ask.sock" ;;
             powermenu) sock="$rt/pro1x-power-menu.sock" ;;
+        esac
+        case "$id" in
+            up|down) action=$id ;;
+            left|right)
+                # Steps exist in quick actions only; elsewhere, move.
+                if [ "$focused" = quickactions ]; then action="trigger($id)"
+                elif [ "$id" = right ]; then action=down; else action=up; fi ;;
+            accept)
+                if [ "$focused" = windowswitcher ] && [ "$sock" = "$rt/pro1x-switcher.sock" ]
+                then action="trigger(ctrl-o)"     # ask Focus / Close / Cancel
+                else action="trigger(enter)"; fi ;;
+            hide)
+                if [ "$focused" = powermenu ]; then
+                    swaymsg '[app_id="^powermenu$"] kill' >/dev/null
+                else
+                    swaymsg "[app_id=\"^$focused\$\"] move scratchpad" >/dev/null
+                fi
+                exit 0 ;;
             *) exit 1 ;;
         esac
-        curl -s --unix-socket "$sock" -X POST http://localhost -d "$id" >/dev/null
+        curl -s --unix-socket "$sock" -X POST http://localhost -d "$action" >/dev/null
         exit 0 ;;
     start) start ;;
     toggle)

@@ -1,7 +1,8 @@
 #!/bin/sh
 # pro1x-power-button — the power key in Sway: short press screen off/on
 # (on release), held 0.6 s the power menu; with a menu focused (power,
-# quick actions, launcher, switcher), a short press confirms in it
+# quick actions, launcher, switcher), a short press acts on its line (its
+# Enter, without hiding it) and a long one hides it
 #
 # Sway acted on the key the moment it went down, so a long press could not
 # be told apart (author, 2026-10-31); keyd does not grab the PMIC's power
@@ -41,7 +42,8 @@ for d in $devices; do evtest "$d" 2>/dev/null & done |
                 ( stamp=$(cat "$held"); sleep 0.6
                   [ "$(cat "$held" 2>/dev/null)" = "$stamp" ] || exit 0
                   rm -f "$held"
-                  menu_open || pro1x-power-menu ) & ;;
+                  # A menu focused: put it away; else the power menu.
+                  pro1x-menu key hide || menu_open || pro1x-power-menu ) & ;;
             *"(KEY_POWER), value 0"*)
                 # Released early: a short press.
                 if [ -f "$held" ]; then

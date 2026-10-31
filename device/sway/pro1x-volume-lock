@@ -1,5 +1,6 @@
 #!/bin/sh
-# pro1x-volume-lock — both volume keys held together lock the screen (Sway)
+# pro1x-volume-lock — the volume keys beyond volume (Sway): both held
+# together lock the screen; in a menu, short and long presses drive it
 #
 # A way to lock with the hardware keyboard closed (author, 2026-10-31).
 # Sway did not match a binding of two ordinary keys (tried with
@@ -28,18 +29,50 @@ if [ -n "${SWAYSOCK:-}" ]; then
     ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
 fi
 
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+
+# In a menu (quick actions, launcher, switcher, power menu; pro1x-osd then
+# leaves the volume alone): a short press moves the selection, on release;
+# held 0.4 s it steps the line in quick actions (Right for up, Left for
+# down) or keeps moving elsewhere, every 0.25 s until released (author,
+# 2026-10-31).  KEY: up or down; files in $rt mark a press and a fired hold.
+press() {
+    key=$1; stamp=$(date +%s%N)
+    rm -f "$rt/pro1x-vol-$key.fired"
+    pro1x-menu focused >/dev/null || { rm -f "$rt/pro1x-vol-$key"; return; }
+    echo "$stamp" > "$rt/pro1x-vol-$key"
+    ( sleep 0.4
+      if [ "$key" = up ]; then step=right; else step=left; fi
+      while [ "$(cat "$rt/pro1x-vol-$key" 2>/dev/null)" = "$stamp" ]; do
+          touch "$rt/pro1x-vol-$key.fired"
+          pro1x-menu key "$step"
+          sleep 0.25
+      done ) &
+}
+release() {
+    key=$1
+    if [ -f "$rt/pro1x-vol-$key" ]; then
+        rm -f "$rt/pro1x-vol-$key"
+        [ -f "$rt/pro1x-vol-$key.fired" ] || pro1x-menu key "$key"
+    fi
+    rm -f "$rt/pro1x-vol-$key.fired"
+}
+
 up=0 down=0
 # "Event: time …, type 1 (EV_KEY), code 115 (KEY_VOLUMEUP), value 1"
 for d in $devices; do evtest "$d" 2>/dev/null & done |
     while IFS= read -r line; do
         case "$line" in
-            *"(KEY_VOLUMEUP), value 1"*) up=1 ;;
-            *"(KEY_VOLUMEUP), value 0"*) up=0 ;;
-            *"(KEY_VOLUMEDOWN), value 1"*) down=1 ;;
-            *"(KEY_VOLUMEDOWN), value 0"*) down=0 ;;
+            *"(KEY_VOLUMEUP), value 1"*) up=1; press up ;;
+            *"(KEY_VOLUMEUP), value 0"*) up=0; release up ;;
+            *"(KEY_VOLUMEDOWN), value 1"*) down=1; press down ;;
+            *"(KEY_VOLUMEDOWN), value 0"*) down=0; release down ;;
             *) continue ;;
         esac
         if [ "$up$down" = 11 ]; then
+            # Both: lock, and no menu action for either key.
+            rm -f "$rt/pro1x-vol-up" "$rt/pro1x-vol-down"
+            touch "$rt/pro1x-vol-up.fired" "$rt/pro1x-vol-down.fired"
             pro1x-lock --locked || pro1x-lock &
             up=0 down=0
         fi

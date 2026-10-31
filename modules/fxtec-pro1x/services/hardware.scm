@@ -455,6 +455,9 @@ esac
                    (when (panel-on?)
                      (close-port (open-output-file blanked)))
                    (sway! "input type:touch events disabled")
+                   ;; Blanking hides the Sway menus (pro1x-menu hide-all).
+                   (sway! "[app_id=\"^(quickactions|launcher|windowswitcher)$\"] move scratchpad")
+                   (sway! "[app_id=\"^powermenu$\"] kill")
                    (sway! "output * power off"))
                  (primitive-_exit 0)))
              (begin

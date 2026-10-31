@@ -24,10 +24,11 @@ case "$1 ${2:-}" in
         conf="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/wob.ini"
         # tail keeps the fifo open between writers.
         exec sh -c "tail -f '$fifo' | wob -c '$conf'" ;;
-    # With a menu focused, the volume keys move its selection instead.
-    "volume up") pro1x-menu key up && exit 0
+    # With a menu focused the volume keys drive it (pro1x-volume-lock reads
+    # their presses and holds); the volume stays.
+    "volume up") pro1x-menu focused >/dev/null && exit 0
                  wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
-    "volume down") pro1x-menu key down && exit 0
+    "volume down") pro1x-menu focused >/dev/null && exit 0
                    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
     "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
     "bright up") brightnessctl -q set 5%+ ;;

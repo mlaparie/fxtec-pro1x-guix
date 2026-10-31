@@ -4,7 +4,8 @@
 #   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
-# Enter focuses the window, Ctrl-k closes it, Esc hides the switcher.  It
+# Enter focuses the window, Ctrl-k closes it, Ctrl-o (a short power press)
+# asks Focus / Close window / Cancel, Esc hides the switcher.  It
 # stays alive hidden (pro1x-menu); each show reloads the list through
 # fzf's socket.  Replaces sway-window-switcher, which started a new foot,
 # bash and jq run each time (slow on the phone; author, 2026-10-30).
@@ -13,6 +14,22 @@
 
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-switcher.sock"
 self=$0
+
+if [ "${1:-}" = --ask ]; then
+    # pro1x-switcher --ask CON_ID: Focus / Close window / Cancel, for the
+    # power key (short press on a line; author, 2026-10-31).  Its own fzf
+    # socket, which pro1x-menu key drives while it is open.
+    asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-switcher-ask.sock"
+    choice=$(printf '%s\n' "Focus" "Close window" "Cancel" |
+                 fzf --listen="$asksock" --prompt="window > " --layout=reverse-list \
+                     --no-info --cycle --margin=1,2 --color=16,gutter:-1)
+    rm -f "$asksock"
+    case "$choice" in
+        Focus) swaymsg "[con_id=$2] focus" >/dev/null ;;
+        "Close window") swaymsg "[con_id=$2] kill" >/dev/null ;;
+    esac
+    exit
+fi
 
 if [ "${1:-}" = --list ]; then
     swaymsg -t get_tree -r |
@@ -31,4 +48,5 @@ hide='execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --bind="enter:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
         --bind="ctrl-k:execute-silent(swaymsg \"[con_id={1}] kill\")+reload($self --list)" \
+        --bind="ctrl-o:execute($self --ask {1})+reload($self --list)" \
         --bind="esc:$hide" >/dev/null
