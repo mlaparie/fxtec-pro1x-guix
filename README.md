@@ -127,7 +127,8 @@ guix system build -L modules --system=aarch64-linux systems/mobile.scm
 
 The flash script builds automatically; no need to run this first.
 
-**Pre-built artifacts** (rootfs.img, and u-boot-nodtb.bin plus the DTB when
+**Pre-built artifacts** (rootfs.img.zst, to unpack with `zstd -d`, and
+u-boot-nodtb.bin plus the DTB when
 the CI U-Boot build succeeds) come with each release on GitHub (`v*` tags,
 release notes in NEWS.md), for those without Guix or an aarch64 build
 machine.  With them,
