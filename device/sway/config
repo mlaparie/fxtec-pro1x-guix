@@ -103,9 +103,11 @@ bindsym $mod+i exec sway-quick-actions --osk toggle
 ### The three menus open against the edge their swipe comes from, sized in
 ### percent of the screen (portrait or landscape): quick actions at the top,
 ### the launcher on the right, the window switcher on the left.
-for_window [app_id="^quickactions$"] floating enable, sticky enable, border pixel 2, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt
-for_window [app_id="^launcher$"] floating enable, sticky enable, border pixel 2, resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt
-for_window [app_id="^windowswitcher$"] floating enable, sticky enable, border pixel 2, resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt
+### Each starts hidden in the scratchpad (pro1x-menu shows it), however long
+### it takes to appear: a timed hide missed a slow first launcher.
+for_window [app_id="^quickactions$"] floating enable, sticky enable, border pixel 2, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt, move scratchpad
+for_window [app_id="^launcher$"] floating enable, sticky enable, border pixel 2, resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt, move scratchpad
+for_window [app_id="^windowswitcher$"] floating enable, sticky enable, border pixel 2, resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt, move scratchpad
 for_window [app_id="^swayhelp$"] floating enable, sticky enable, resize set 90 ppt 80 ppt, border pixel 2, move position center
 
 ########## KEYBINDINGS ##########

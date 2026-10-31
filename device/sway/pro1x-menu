@@ -40,19 +40,12 @@ start() {
                         GLYPH_PROMPT="apps > " sway-launcher-desktop
                     swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
                 done' >/dev/null 2>&1 < /dev/null &
-            [ -n "$hidden" ] && hide_when_mapped ;;
+            ;;
         windowswitcher)
             setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -e pro1x-switcher \
                 >/dev/null 2>&1 < /dev/null &
-            [ -n "$hidden" ] && hide_when_mapped ;;
+            ;;
     esac
-}
-
-hide_when_mapped() {
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        sleep 0.3
-        swaymsg "[app_id=\"^$id\$\"] move scratchpad" >/dev/null 2>&1 && return
-    done
 }
 
 case "$cmd" in
@@ -71,8 +64,8 @@ case "$cmd" in
             [ -n "$sock" ] && curl -s --unix-socket "$sock" -X POST \
                 http://localhost -d "$action" >/dev/null 2>&1 &
         else
-            # Start it hidden, so it is a scratchpad window from the
-            # start, then show it once it is there.
+            # Start it (the Sway config puts it in the scratchpad as it
+            # appears), then show it once it is there.
             hidden=1; start
             for i in 1 2 3 4 5 6 7 8 9 10; do
                 sleep 0.3
