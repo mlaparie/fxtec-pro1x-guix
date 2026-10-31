@@ -547,10 +547,11 @@ set --
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
     # Same layout and colours as the launcher and window switcher: list
-    # from the top, prompt at the bottom (the battery header just above it).
+    # from the top, prompt at the bottom.  Notification preview on the right
+    # (below when narrower than 60 columns, in portrait).
     fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --with-nth=2.. --header-lines=1 \
-        --ansi --preview="$self --notif-summary" --preview-window=hidden,up,50%,wrap \
+        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,50%,wrap,<60(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
