@@ -29,7 +29,8 @@ choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
                  --no-info --cycle --margin=1,2 --color=16,gutter:-1)
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
-    "Blank screen") swaymsg 'output * power off' >/dev/null ;;
+    "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
+                    swaymsg 'output * power off' >/dev/null ;;
     "Suspend") sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;

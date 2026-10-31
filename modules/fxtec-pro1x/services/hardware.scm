@@ -466,12 +466,16 @@ esac
                  (primitive-_exit 0)))
              (begin
                (false-if-exception (delete-file flag))
-               (sway! "input type:touch events enabled")
                ;; Back as it was: on if it was on (a lock screen stays
-               ;; locked, it is only lit again).
-               (when (file-exists? blanked)
-                 (false-if-exception (delete-file blanked))
-                 (sway! "output * power on")))))
+               ;; locked, it is only lit again), with touch; a panel left
+               ;; dark keeps touch off (the lock screen took taps with the
+               ;; screen off, author, 2026-10-31).
+               (cond ((file-exists? blanked)
+                      (false-if-exception (delete-file blanked))
+                      (sway! "output * power on")
+                      (sway! "input type:touch events enabled"))
+                     ((panel-on?)
+                      (sway! "input type:touch events enabled"))))))
        (set-near! #f)
        (let ((port (open-pipe* OPEN_READ
                                #$(file-append iio-sensor-proxy-ssc
