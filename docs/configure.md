@@ -70,13 +70,20 @@ reconfigure.
 
 ## Files outside config.scm
 
-Edited in place for now (Guix Home is planned):
+The port's Sway, bar and foot settings follow each deploy; your files add
+to them, and a later setting wins:
 
 | file | |
 |---|---|
-| `~/.config/sway/config` | Sway; device settings are in `/etc/sway/config.d/pro1x.conf` |
+| `~/.config/sway/config` | includes the port's `/etc/sway/pro1x.d/desktop.conf`, then your lines; a `bindsym` for a key the port binds replaces it |
+| `~/.config/foot/foot.ini` | includes the port's foot settings, then yours |
+| `~/.config/i3status-rust/` | none by default: the bar uses the port's blocks; `config.toml` (landscape) or `portrait.toml` here replaces them (copy from `/run/current-system/profile/share/pro1x-sway/`) |
 | `~/.config/phoc/phoc.ini` | Phosh's scale (copy `/etc/phoc.ini`, set `scale=`); Phosh does not save the one picked in Settings |
-| `~/.config/foot/foot.ini` | terminal |
+
+Accounts made before 2026-10-31 have full copies instead: replace
+`~/.config/sway/config` and `foot.ini` with the files in
+`/run/current-system/profile/share/pro1x-sway/` (`config`, `foot-user.ini`)
+and remove `~/.config/i3status-rust/config.toml` to follow the port.
 
 GNOME Settings choices live in dconf and survive updates.
 
