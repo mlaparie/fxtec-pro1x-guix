@@ -1,6 +1,10 @@
 # Release notes
 
-## 0.1.0 — 2026-10-31
+## 0.1.1 — 2026-10-31
+
+0.1.0 was tagged but never published: its root file system was over
+GitHub's 2 GiB limit for release files.  0.1.1 is the same system with the
+image compressed (`rootfs.img.zst`).
 
 First release of GNU Guix System for the F(x)tec Pro¹x (QX1050,
 SM6115): a near-mainline Linux 7.1 kernel, U-Boot chainloaded from the
@@ -17,7 +21,8 @@ Follow README "Flashing (first install)": back up the stock partitions,
 unlock the bootloader, then `scripts/flash.sh`.  The release assets are
 built by CI from `systems/mobile.scm`:
 
-- `rootfs.img` — the root file system (grows to the whole userdata
+- `rootfs.img.zst` — the root file system, compressed: `zstd -d
+  rootfs.img.zst` gives `rootfs.img` (it grows to the whole userdata
   partition on first boot);
 - `u-boot-nodtb.bin` and `sm6115-fxtec-pro1x.dtb` — present only if the
   CI U-Boot build succeeded; otherwise `scripts/flash.sh` builds U-Boot

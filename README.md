@@ -1,7 +1,6 @@
-> **Work in progress.**  Display, touch, GPU, keyboard, Wi-Fi, speaker,
-> cameras, auto-rotation and 3G data work; LTE, GPS, calls, SMS and
-> microphones do not yet (status below).  Do not flash this on a device
-> you depend on.
+> **Developer preview.**  Calls, SMS, MMS, mobile data, Wi-Fi, audio,
+> cameras and sensors work; GPS, speakerphone and suspend do not yet
+> (status below).  Do not flash this on a device you depend on.
 
 # Guix System on the F(x)tec Pro¹x (QX1050)
 
@@ -31,7 +30,7 @@ The rest of this README is the reference for working on the port.
 
 ## Port status
 
-As observed on the phone (2026-10-30, Linux 7.1).  Phone comforts and the
+As observed on the phone (2026-10-31, Linux 7.1).  Phone comforts and the
 Sway session: [features.md](docs/features.md).
 
 ```
@@ -42,7 +41,7 @@ Auto-rotation                    Working    portrait with the keyboard closed, l
 Hardware keyboard                Working    AW9523B driver, Fn layer via keyd
 Keyboard backlight               Working    on while slid out; off after 60 s without a key (configurable)
 Keyboard slider switch           Working    backlight, rotation, on-screen keyboard
-Volume keys                      Working    Phosh (gsd-media-keys); Sway untested
+Volume keys                      Working    Phosh (gsd-media-keys), Sway
 Wi-Fi                            Working    firmware via tqftpserv over QRTR
 Bluetooth                        Working    on/off, scan, pairing, audio to a speaker
 USB gadget (Ethernet)            Working    172.16.42.1 SSH; requires host udev/network setup
@@ -54,7 +53,7 @@ Vibration motor                  Working    feedbackd
 Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
 SMS                              Working    Chatty
 MMS                              Working    mmsd-tng + Chatty
-Mobile data                      Working    3G and LTE seen
+Mobile data                      Working    3G; LTE seen, not confirmed
 Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity sensor                 Working    calls (Sway), no wake in a pocket
@@ -76,7 +75,7 @@ modules/fxtec-pro1x/packages/  kernel, u-boot, firmware, audio, misc, sxmo
 modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels,
                              fde, hardware, keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
-systems/mobile.scm           Phosh + Sxmo desktop (greetd/tuigreet session picker)
+systems/mobile.scm           Sway, Phosh and Sxmo sessions (greetd/tuigreet)
 systems/mobile-encrypted.scm Phosh with LUKS2 full-disk encryption
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
@@ -128,7 +127,8 @@ guix system build -L modules --system=aarch64-linux systems/mobile.scm
 
 The flash script builds automatically; no need to run this first.
 
-**Pre-built artifacts** (rootfs.img, and u-boot-nodtb.bin plus the DTB when
+**Pre-built artifacts** (rootfs.img.zst, to unpack with `zstd -d`, and
+u-boot-nodtb.bin plus the DTB when
 the CI U-Boot build succeeds) come with each release on GitHub (`v*` tags,
 release notes in NEWS.md), for those without Guix or an aarch64 build
 machine.  With them,
@@ -237,67 +237,28 @@ bash scripts/deploy.sh --repo          # systems/mobile.scm from this tree
 
 ## Your home configuration
 
-New accounts get Guix's default skeleton: `~/.bash_profile` and
-`~/guix-home-config.scm`, but no `~/.bashrc`.  That is Guix's choice, not
-a missing file: `guix-home-config.scm` is a ready Guix Home configuration
-in which you uncomment the shell you use (Bash, Fish or Zsh); `guix home
-reconfigure ~/guix-home-config.scm` then writes that shell's files, a
-`~/.bashrc` included for Bash.  `~/.bash_profile` already loads the
-profile from your latest `guix pull` (through `/etc/profile`): you do not
-need to add it by hand.
+The port's Sway, bar and foot settings live outside your home and follow
+every deploy; the files in `~/.config` only add to them
+([configure.md](docs/configure.md#files-outside-configscm)).  For other
+home files, Guix Home can manage them from `config.scm`
+([home.md](docs/home.md)).
 
-### Home services from this channel (plan, not in place yet)
-
-Guix manages two things separately: the **system** (kernel, drivers, system
-services; `guix system reconfigure`) and your **home** (your programs'
-settings in `~/.config`, and programs that run for you, such as the sound
-server or notifications; `guix home reconfigure`).  Both are written in a
-Scheme file, both can be rolled back.
-
-This channel will provide ready-made home pieces for the Pro¹x: the sway
-session and its bar, sound (PipeWire), and later mpv.  How you get them:
-
-- **Do nothing.**  The default image sets up the home of the `user` account
-  with the Pro¹x defaults.  Each system update (new image, `deploy.sh`) also
-  updates them.
-- **Use your own home config.**  If you already describe your home with Guix
-  Home, add the Pro¹x pieces to it and keep the rest yours.  A sketch (names
-  are not final):
-
-  ```scheme
-  ;; ~/home.scm -- apply with: guix home reconfigure ~/home.scm
-  (use-modules (gnu home)
-               (gnu home services)
-               (fxtec-pro1x home))          ; this channel
-
-  (home-environment
-    (packages (list htop))                 ; your own programs
-    (services
-     (append
-      (list
-       ;; Pro¹x sway, bar and sound, with one change of your own:
-       (service pro1x-home-sway-service-type
-                (pro1x-home-sway-configuration
-                 (extra-config "bindsym $mod+b exec icecat")))
-       (service pro1x-home-audio-service-type))
-      %base-home-services)))
-  ```
-
-Files managed this way are links into the store, so you change them in the
-Scheme file and run `guix home reconfigure`, not by editing `~/.config`.
-Until this is in place, the image puts the sway and bar configs in
-`~/.config` once, for new accounts, and you edit them there.
+New accounts also get Guix's default `~/.bash_profile` (it loads your
+`guix pull` profile) and `~/guix-home-config.scm`, a ready Guix Home file
+in which you uncomment your shell; there is no `~/.bashrc` until then.
 
 ## Updates in the long run (plan, not in place yet)
 
 How a phone running this port is meant to stay up to date once the port is
-stable.  Today only `scripts/deploy.sh` exists.
+stable.  Today: `scripts/deploy.sh`, or `guix pull` and a reconfigure on
+the phone with the pinned channels (which builds this channel's packages
+there).
 
 - **Three channels.**  The phone's `~/.config/guix/channels.scm` lists `guix`,
   `nonguix` and `fxtec-pro1x` (this public repository).  Updating is plain
-  Guix: `guix pull`, then `sudo guix system reconfigure config.scm` with a
-  config file you own, based on `systems/mobile.scm`, and `guix package -u`
-  for user packages.
+  Guix: `guix pull`, then `sudo guix system reconfigure` with your
+  `config.scm`, which inherits the port's system; `guix package -u` for
+  user packages.
 - **Substitutes for this channel.**  Guix's servers build Guix proper for
   aarch64; nobody builds this channel's packages (kernel, U-Boot, phosh/phoc,
   ModemManager, libqmi, hexagonrpcd…).  Without a substitute server for them,
@@ -352,8 +313,8 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
  ─────────────────────────────────────────────────────────────────────
   esc  1    2    3    4    5    6    7    8    9    0    -    =    bspc
   tab  q    w    e    r    t    y    u    i    o    p    [    ]    del
-    caps a    s    d    f    g    h    j    k    l    ;    '    ret
-  sft  `~   z    x    c    v    b    n    m    ,    .    /    up   sft
+    caps a    s    d    f    g    h    j    k    l    ?:   '    ret
+  sft  `~   z    x    c    v    b    n    m    ,    .    /|   up   sft
   ctl  sup  fx   alt  \|   spc ──────────────  ctl  sup  lft  down rght
 
  Fn layer: hold fx (· = as in the base layer)
@@ -368,24 +329,30 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   fx    F(x) key: hold for the Fn layer
   \|    key labelled Sym: \ (Shift: |); with fx it is AltGr (agr),
         so fx+Sym+letter types é, ñ etc. on us-intl
+  ?:    the key right of l types ? (Shift: :)
+  /|    the key left of up types / (Shift: |)
   ; \ |  on fx+l, fx+p, fx+/ as on the yellow keycaps
   `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth
+  fx+alt+p   screenshot (with Ctrl: a region)
   bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media
 
- Sway (Super = yellow arrow)
+ Sway (Super = yellow arrow); all of them: Super+Ctrl+h
  ─────────────────────────────────────────────────────────────────────
-  Super+Return                terminal (foot)
-  Super+m                     application launcher
-  Super+Tab                   window switcher
-  Super+BackSpace, Super+Shift+q   close window
-  Super+1…0, Super+Shift+1…0  go to / move to workspace
-  Super+h j k l, Super+arrows focus; with Shift: move
-  Super+f, Super+Shift+space  fullscreen, floating
-  Super+r                     resize mode
-  Super+Ctrl+h                show all sway key bindings
-  Super+Shift+c, Super+Shift+e   reload sway, exit sway
-  Power key                   panel off / on
+  Super+Return, +Shift        terminal (foot server), plain foot
+  Super+q, Super+m, Super+Tab quick actions, launcher, window switcher
+  Super+BackSpace, +Shift+q   close window
+  Super+1…0, Ctrl+Super+1…0   go to / move to workspace; Super+; back
+  Alt/Shift+Super+1…0         numbered scratchpad: put away / bring back
+  Super+arrows, +Shift        focus, move
+  Super+f, Super+space        fullscreen, floating
+  Super+h, Super+v            split vertically, horizontally
+  Super+e, Super+w, Super+r   split layout, tabs, resize mode
+  Super+o, Ctrl+Super+o       window opacity up, down
+  Super+i, Super+b            on-screen keyboard, bar
+  Ctrl+Super+l                lock
+  Super+Shift+r, +Shift+e     reload sway, exit sway
+  Power key, camera button    panel off / on; Snapshot, take a picture
 ```
 
 `keyd monitor` (as root) shows what each key sends.
@@ -406,6 +373,7 @@ and session):
 | **Sway** | the port's config in `/etc/sway/pro1x.d/`, yours in `~/.config/sway/config` ([configure.md](docs/configure.md#files-outside-configscm)); see [features.md](docs/features.md#sway-on-the-phone) |
 | **Phosh** | phoc-pro1x + phosh-pro1x |
 | **Sxmo + Sway** | needs superd (not packaged yet) |
+| **Sway (plain)** | Guix's sway with the same config, without SwayFX's blur; for comparing speed |
 
 Session files in `/etc/wayland-sessions/` use store paths in `Exec=`.
 
@@ -413,7 +381,7 @@ Session files in `/etc/wayland-sessions/` use store paths in `Exec=`.
 
 | Service | What it does |
 |---|---|
-| `pro1x-hardware-service-type` | udev rules, feedbackd group |
+| `pro1x-hardware-service-type` | udev rules; notification and charge LEDs, charge limit, idle dim/blank/lock, double tap to wake, pocket detection, torch guard, key haptics, light/dark theme, lock-screen keyboard (fields in [configure.md](docs/configure.md)) |
 | `pro1x-usb-network-service-type` | USB CDC Ethernet gadget + DHCP |
 | `pro1x-keyboard-service-type` | Fn-layer (keyd), xkb layout/variant |
 | `pro1x-modem-service-type` | tqftpserv, rmtfs, ModemManager |
@@ -448,7 +416,7 @@ herd log pro1x-audio-init   # view a service log
 herd restart pipewire
 ```
 
-Serial console: `ttyMSM0` at 115200 8N1. Hold volume-down at boot for U-Boot menu.
+Hold volume-down at power-on for the U-Boot menu (earlier generations).
 
 Kernel log level is `loglevel=4`; raise in `kernel-arguments` for more output.
 

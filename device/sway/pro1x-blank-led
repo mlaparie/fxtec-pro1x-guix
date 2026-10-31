@@ -9,7 +9,8 @@
 # feedbackd).  Follows Sway's output events, and every 10 s for the lock,
 # which starts without one.  Started by the Sway config; ends with Sway.
 #
-# State: written 2026-10-30, not yet run on the phone.
+# State: run on the phone 2026-10-31: lit within 2 s of blanking, off when
+# lit again; once it stayed dark (relit-when-dark fix since).
 
 led=/sys/class/leds/rgb:status
 white="255 255 255" level=6
@@ -18,13 +19,19 @@ events="$rt/pro1x-blank-led.events"
 mine=0
 
 ours() { [ "$(cat "$led/multi_intensity")" = "$white" ]; }
-dark() { [ "$(cat "$led/brightness")" = 0 ]; }
+# Dark: an all-zero pattern (off, as feedbackd and pro1x-charge-led leave
+# it), not brightness 0, which a breathing pattern passes through.
+dark() {
+    awk '{ for (i = 1; i <= NF; i += 2) if ($i != 0) exit 1 }' "$led/pattern" 2>/dev/null
+}
 
 check() {
     lit=$(swaymsg -t get_outputs -r 2>/dev/null |
               jq -r '[.[] | select(.active) | .power] | any')
     if [ "$lit" = false ] && ! pro1x-lock --locked; then
-        if [ "$mine" = 0 ] && dark; then
+        # Dark: light it, even if we think it is ours (feedbackd's white
+        # terminal-bell pattern can end and leave it dark behind our back).
+        if dark; then
             echo "$white" > "$led/multi_intensity"
             echo "$level 1000 $level 1000" > "$led/pattern"
             mine=1

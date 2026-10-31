@@ -35,7 +35,8 @@ guix shell -m manifest.scm -- bash scripts/flash.sh systems/mobile.scm
 Writes `boot_a/b`, `vbmeta_a/b` and `userdata`, erases `dtbo`, sets slot
 a.  Makes `~/.ssh/pro1x-guix` on the PC if missing (the deploy key).
 
-From a ready-made image (CI artifact or release):
+From a ready-made image (CI artifact, or a release's `rootfs.img.zst`
+unpacked with `zstd -d rootfs.img.zst`):
 
 ```sh
 bash scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img

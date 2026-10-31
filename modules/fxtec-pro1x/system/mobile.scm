@@ -231,7 +231,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         ;; greetd's pam_mount creates /run/user/UID; fall back just in case.
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
@@ -273,7 +280,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
@@ -292,10 +306,13 @@
                #$pro1x-audio-session
                #$(file-append sxmo-utils "/bin/sxmo_swayinit.sh")))))
 
-;; Bare sway session for greetd.
-(define sway-session
-  (program-file "start-sway"
+;; Sway session for greetd: SWAY is swayfx (the "1 Sway" session) or sway
+;; (plain, to compare speed; author, 2026-10-31); FLAVOUR, in PRO1X_SWAY,
+;; picks the effects file the port's config includes.
+(define (make-sway-session name sway flavour)
+  (program-file name
     #~(begin
+        (setenv "PRO1X_SWAY" #$flavour)
         (setenv "WLR_BACKENDS" "drm,libinput")
         (setenv "MOZ_ENABLE_WAYLAND" "1")
         ;; xdg-desktop-portal picks its back ends by desktop name
@@ -305,7 +322,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
@@ -326,8 +350,10 @@
                "dbus-run-session" "--"
                ;; PipeWire, WirePlumber, pipewire-pulse for the session.
                #$pro1x-audio-session
-               ;; SwayFX: Sway with blur and rounded corners (author).
-               #$(file-append swayfx "/bin/sway")))))
+               #$(file-append sway "/bin/sway")))))
+
+(define sway-session (make-sway-session "start-sway" swayfx "swayfx"))
+(define sway-plain-session (make-sway-session "start-sway-plain" sway "plain"))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
@@ -486,6 +512,12 @@ files root may log in with."
           ,(mixed-text-file "sway.desktop"
              "[Desktop Entry]\nName=1 Sway\nExec="
              sway-session
+             "\nType=Application\n"))
+        ;; Plain sway with the same configuration, to compare with SwayFX.
+        `("wayland-sessions/sway-plain.desktop"
+          ,(mixed-text-file "sway-plain.desktop"
+             "[Desktop Entry]\nName=4 Sway (plain, for comparison)\nExec="
+             sway-plain-session
              "\nType=Application\n"))))
 
      ;; Device settings shared by the Sway and Sxmo sessions; the port's
@@ -497,7 +529,11 @@ files root may log in with."
         `("sway/config.d/pro1x.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/pro1x.conf"))
         `("sway/pro1x.d/desktop.conf"
-          ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))))
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))
+        `("sway/pro1x-effects/swayfx.conf"
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))
+        `("sway/pro1x-effects/plain.conf"
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-plain.conf"))))
 
      ;; /etc/phoc.ini — scale 1.75 for the 1080×2160 panel (author's
      ;; default, 2026-10-30; was 2).  Phosh does not save display changes,
@@ -514,21 +550,22 @@ files root may log in with."
      (simple-service 'phosh-pam pam-root-service-type
        (list (unix-pam-service "phosh")))
 
-     ;; Console font for tuigreet: 16x32, double the kernel's 8x16.  Guix's
+     ;; Console font for tuigreet: sun12x22 doubled (setfont -d), 24x44,
+     ;; about 90x24 cells in landscape; 16x32 left room (author).  Guix's
      ;; console-font-service-type needs mingetty's term-ttyN, removed here.
      (simple-service 'pro1x-console-font shepherd-root-service-type
        (list (shepherd-service
               (provision '(pro1x-console-font))
               (requirement '(virtual-terminal))
               (one-shot? #t)
-              (documentation "Console for tuigreet: 16x32 font on tty1,
+              (documentation "Console for tuigreet: 24x44 font on tty1,
 Dracula palette, no kernel messages over the greeter.")
               (start #~(lambda _
                          (system* #$(file-append kbd "/bin/setfont")
-                                  "-C" "/dev/tty1"
+                                  "-C" "/dev/tty1" "-d"
                                   #$(file-append
                                      kbd "/share/consolefonts/"
-                                     "latarcyrheb-sun32.psfu.gz"))
+                                     "sun12x22.psfu.gz"))
                          ;; Dracula (draculatheme.com) as the 16 console
                          ;; colours, red/green/blue rows; colour 0 is the
                          ;; background #282a36.  Not vt.default_* on the
