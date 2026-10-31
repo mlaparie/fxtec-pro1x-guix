@@ -234,9 +234,17 @@ cat > "$ui.new" <<EOF
 EOF
 mv "$ui.new" "$ui"
 
-# One key size for both orientations, narrow enough for portrait (the
-# module has a single, landscape, layout; larger keys fell off the sides).
+# Keys: one size for both orientations.  The module's landscape layout
+# has a numpad on the right (four rows), its portrait one a digit row
+# instead (narrow screen; our patch, GTKLOCK_VIRTKB_PORTRAIT).
 key_size=70% key_pad=0
+if swaymsg -t get_outputs -r 2>/dev/null |
+       jq -e '.[] | select(.name == "DSI-1")
+              | .transform == "normal" or .transform == "180"' >/dev/null; then
+    export GTKLOCK_VIRTKB_PORTRAIT=1
+else
+    unset GTKLOCK_VIRTKB_PORTRAIT
+fi
 if [ "$keyboard" = light ]; then
     key_bg='#ebdbb2' key_fg='#1d2021' key_line='#d5c4a1'
 else
@@ -245,12 +253,12 @@ fi
 cat > "$css" <<EOF
 window { background-color: #1d2021; color: #d5c4a1; }
 #pro1x-gnu, #pro1x-guix, #pro1x-notes { font-family: "DejaVu Sans Mono", monospace; }
-#pro1x-gnu, #pro1x-guix { font-size: 14px; }
+#pro1x-gnu, #pro1x-guix { font-size: 16px; }
 #pro1x-gnu { color: #d5c4a1; }
 #pro1x-guix { color: #FFCC00; }
-#pro1x-notes { color: #928374; font-size: 16px; margin-top: 8px; }
-#clock-label { font-size: 56px; color: #ebdbb2; }
-#date-label { font-size: 18px; color: #a89984; }
+#pro1x-notes { color: #928374; font-size: 18px; margin-top: 8px; }
+#clock-label { font-size: 64px; color: #ebdbb2; }
+#date-label { font-size: 20px; color: #a89984; }
 #input-field { background: #282828; color: #ebdbb2; border: 1px solid #458588;
                border-radius: 8px; caret-color: #FFCC00; }
 #error-label { color: #fb4934; }

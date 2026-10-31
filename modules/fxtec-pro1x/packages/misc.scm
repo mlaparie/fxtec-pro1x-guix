@@ -1014,11 +1014,12 @@ sends a power-key press when it sees two quick taps close together.")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))
-         ;; Ours: a digit row (numeric passwords could not be typed).
+         ;; Ours: digits (numeric passwords could not be typed): a numpad
+         ;; on the right in landscape, a digit row in portrait.
          (patches
           (list (local-file
-                 (repository-file "device/phosh/gtklock-virtkb-digit-row.patch")
-                 "gtklock-virtkb-digit-row.patch")))))
+                 (repository-file "device/phosh/gtklock-virtkb-digits.patch")
+                 "gtklock-virtkb-digits.patch")))))
       (build-system gnu-build-system)
       (arguments
        (list
@@ -1516,8 +1517,8 @@ window opened by a sway key binding.")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
                               ;; gtklock and swaylock: system profile.
-                              '("coreutils" "evtest" "gawk" "grep" "procps"
-                                "sed"))))))
+                              '("coreutils" "evtest" "gawk" "grep" "jq"
+                                "procps" "sed"))))))
                 (for-each
                  (lambda (name)
                    (let ((f (string-append #$output "/bin/" name)))
