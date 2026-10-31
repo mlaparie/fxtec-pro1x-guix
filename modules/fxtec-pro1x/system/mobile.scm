@@ -520,6 +520,13 @@ files root may log in with."
              sway-plain-session
              "\nType=Application\n"))))
 
+     ;; Readline (bash and others): no bell.  Tab with several completions
+     ;; rang the terminal bell, which lights the LED and vibrates (foot's
+     ;; [bell], feedbackd's bell-terminal); real bells from programs still
+     ;; do (author, 2026-10-31).
+     (simple-service 'pro1x-inputrc etc-service-type
+       (list `("inputrc" ,(plain-file "inputrc" "set bell-style none\n"))))
+
      ;; Device settings shared by the Sway and Sxmo sessions; the port's
      ;; Sway desktop (keys, menus, bar, rules) in its own directory, which
      ;; ~/.config/sway/config includes and Sxmo does not.  Both follow
