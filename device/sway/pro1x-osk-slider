@@ -49,11 +49,8 @@ slid_in() {
     fi
 }
 
-# While locked, redraw the lock screen: its on-screen keyboard is only
-# there with the hardware keyboard closed (pro1x-lock).
-relock() {
-    pro1x-lock --locked && pro1x-lock --refresh >/dev/null 2>&1 &
-}
+# The lock screen is redrawn on the rotation a slide causes (pro1x-bar
+# watch), which also adds or drops its keyboard.
 
 # evtest --query exits with 10 while the switch is set (keyboard out).
 evtest --query "$slider" EV_SW SW_KEYPAD_SLIDE
@@ -72,7 +69,7 @@ fi
 # "Event: time ..., type 5 (EV_SW), code 10 (SW_KEYPAD_SLIDE), value 1"
 while IFS= read -r line; do
     case "$line" in
-        *"(SW_KEYPAD_SLIDE), value 1"*) slid_out; relock ;;
-        *"(SW_KEYPAD_SLIDE), value 0"*) slid_in; relock ;;
+        *"(SW_KEYPAD_SLIDE), value 1"*) slid_out ;;
+        *"(SW_KEYPAD_SLIDE), value 0"*) slid_in ;;
     esac
 done < "$events"
