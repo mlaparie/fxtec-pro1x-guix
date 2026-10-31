@@ -392,13 +392,13 @@ esac
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
   ;; still near after a second, the panel goes off and touch is disabled
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
-  ;; touch comes back and the panel stays off until woken.  During calls
+  ;; touch comes back, and the panel too if it was on before.  During calls
   ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
   (program-file
    "pro1x-pocket"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 ftw) (ice-9 match)
-                    (srfi srfi-1))
+                    (ice-9 textual-ports) (srfi srfi-1))
        (define flag "/run/pro1x-pocket")
        (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
        ;; Reap the delayed-blanking children.  (Not SIGCHLD ignored: then
@@ -409,32 +409,54 @@ esac
            (match (false-if-exception (waitpid WAIT_ANY WNOHANG))
              ((pid . _) (unless (zero? pid) (loop)))
              (_ #t))))
-       (define (sway-sockets)           ;every user's Sway IPC socket
+       (define (live-socket? f)         ;sway-ipc.UID.PID.sock, PID alive
+         (match (string-split f #\.)
+           ((_ _ pid _) (file-exists? (string-append "/proc/" pid)))
+           (_ #f)))
+       (define (sway-sockets)           ;every running Sway's IPC socket
          (append-map
           (lambda (uid)
             (map (lambda (f) (string-append "/run/user/" uid "/" f))
                  (or (scandir (string-append "/run/user/" uid)
-                              (lambda (f) (string-prefix? "sway-ipc." f)))
+                              (lambda (f) (and (string-prefix? "sway-ipc." f)
+                                               (live-socket? f))))
                      '())))
           (or (scandir "/run/user" (lambda (f) (string->number f))) '())))
        (define (sway! command)
          (for-each (lambda (sock)
                      (system* swaymsg "-s" sock command))
                    (sway-sockets)))
+       (define blanked "/run/pro1x-pocket-blanked") ;we turned it off
+       (define (panel-on?)              ;any Sway output powered on
+         (any (lambda (sock)
+                (let* ((port (open-pipe* OPEN_READ swaymsg "-s" sock
+                                         "-t" "get_outputs" "-r"))
+                       (text (get-string-all port)))
+                  (close-pipe port)
+                  (string-contains text "\"power\": true")))
+              (sway-sockets)))
        (define (set-near! near?)
          (if near?
              (begin
                (close-port (open-output-file flag))
-               ;; A second later, still near: off, and no touch.
+               ;; A second later, still near: off, and no touch.  Note
+               ;; whether the panel was on, to light it again when away.
                (when (zero? (primitive-fork))
                  (sleep 1)
                  (when (file-exists? flag)
+                   (when (panel-on?)
+                     (close-port (open-output-file blanked)))
                    (sway! "input type:touch events disabled")
                    (sway! "output * power off"))
                  (primitive-_exit 0)))
              (begin
                (false-if-exception (delete-file flag))
-               (sway! "input type:touch events enabled"))))
+               (sway! "input type:touch events enabled")
+               ;; Back as it was: on if it was on (a lock screen stays
+               ;; locked, it is only lit again).
+               (when (file-exists? blanked)
+                 (false-if-exception (delete-file blanked))
+                 (sway! "output * power on")))))
        (set-near! #f)
        (let ((port (open-pipe* OPEN_READ
                                #$(file-append iio-sensor-proxy-ssc

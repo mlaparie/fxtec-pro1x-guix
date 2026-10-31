@@ -61,7 +61,7 @@ if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
 fi
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
     set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \
-        resume 'swaymsg "output * power on"' "$@"
+        resume 'swaymsg "output * power on"; date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"' "$@"
 fi
 if [ -n "$DIM_AFTER" ]; then
     set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"
