@@ -129,6 +129,7 @@ exec pro1x-menu start windowswitcher hidden
 bindsym $mod+BackSpace kill
 bindsym $mod+Shift+q kill
 bindsym $mod+Shift+r reload
+bindsym $mod+Ctrl+l exec pro1x-lock
 bindsym $mod+Shift+e exec swaynag -t warning -m 'Exit sway?' -B 'Exit' 'swaymsg exit'
 # Super and drag moves a floating window (touch too, on windows that do
 # not take touch themselves, such as foot); with a mouse, Super and the
