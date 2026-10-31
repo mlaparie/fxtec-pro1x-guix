@@ -394,7 +394,7 @@ esac
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
   ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
-  ;; near for 1 s (10 s with the keyboard out), the panel goes off
+  ;; near for 1 s (5 s with the keyboard out), the panel goes off
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
   ;; touch comes back, and the panel too if it was on before.  During calls
   ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
@@ -453,13 +453,13 @@ esac
                (call-with-output-file flag
                  (lambda (port) (display stamp port)))
                ;; A moment later, still near: off, and no touch input.  1 s
-               ;; with the keyboard closed, 10 s slid out: a phone is rarely
+               ;; with the keyboard closed, 5 s slid out: a phone is rarely
                ;; pocketed with it out, and a finger scrolling near the
-               ;; sensor (which reads near too) is not held there 10 s
+               ;; sensor (which reads near too) is not held there 5 s
                ;; (author).  Note whether the panel was on, to light it
                ;; again when away.
                (when (zero? (primitive-fork))
-                 (sleep (if (keyboard-out?) 10 1))
+                 (sleep (if (keyboard-out?) 5 1))
                  (when (equal? stamp
                                (false-if-exception
                                 (call-with-input-file flag get-string-all)))
