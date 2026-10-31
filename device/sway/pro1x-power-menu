@@ -5,10 +5,10 @@
 #   pro1x-power-menu              open the menu
 #   pro1x-power-menu --key up|down|accept   drive it (Sway's powermenu mode)
 #
-# keyd turns a held power key into F24 (device/input/keyd.conf); Sway binds
-# F24 to this.  While it shows, Sway's "powermenu" mode makes the volume
-# keys move the selection and the power key confirm, so it works with the
-# keyboard closed (author, 2026-10-31); Esc leaves the mode.  Cancel is
+# pro1x-power-button opens it on a held power key, and turns a short
+# press into confirm while it shows; Sway's "powermenu" mode makes the
+# volume keys move the selection, so it works with the keyboard closed
+# (author, 2026-10-31); Esc leaves the mode.  Cancel is
 # first and selected.  Power off, reboot, suspend and hibernate run as root
 # through sudo rules for wheel users (no password).  Suspend and hibernate
 # are untested; hibernate needs swap, which the port does not set up.

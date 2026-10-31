@@ -1477,6 +1477,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
 ;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
+;;;   bin/pro1x-power-button             power key: short off/on, held the menu
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1528,6 +1529,7 @@ window opened by a sway key binding.")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
           ("pro1x-sleep" "bin/")
+          ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases
       #~(modify-phases %standard-phases
@@ -1598,7 +1600,8 @@ window opened by a sway key binding.")
                                    "procps" "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
-                   "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"))
+                   "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
+                   "pro1x-power-button"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa
