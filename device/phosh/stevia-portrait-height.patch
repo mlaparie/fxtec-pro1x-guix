@@ -1,0 +1,23 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] 50 px taller in portrait without automatic scaling
+
+With scaling=[] (no automatic scaling), the keyboard keeps the base
+height in both orientations.  The automatic portrait height (40 mm, 352
+px on the Pro¹x) was too tall and the base 200 px a little short: in
+portrait, without automatic scaling, use the base height plus 50 px.
+---
+--- a/src/pos-size-manager.c
++++ b/src/pos-size-manager.c
+@@ -90,8 +90,10 @@
+   if (!output)
+     return osk_height;
+ 
+-  if (!flags)
+-    return osk_height;
++  if (!flags) {
++    /* Pro¹x: a little taller in portrait (author, 2026-11-01). */
++    return pos_output_is_portrait (output) ? osk_height + 50 : osk_height;
++  }
+ 
+   screen_logical_height = pos_output_get_logical_height (output);
+   screen_physical_height = pos_output_get_transformed_phys_height (output);

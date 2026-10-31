@@ -862,7 +862,11 @@ ModemManager, for clients such as Chatty.")
                "stevia-optional-device-state.patch")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
-               "stevia-shortcuts-bar-at-start.patch")))))
+               "stevia-shortcuts-bar-at-start.patch")
+              ;; Ours: 250 px in portrait (author: a little taller).
+              (local-file
+               (repository-file "device/phosh/stevia-portrait-height.patch")
+               "stevia-portrait-height.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
@@ -892,8 +896,9 @@ ModemManager, for clients such as Chatty.")
                 (call-with-output-file
                     (string-append dir "/90_fxtec-pro1x.gschema.override")
                   (lambda (port)
-                    ;; scaling=[]: the base height (200) in portrait too,
-                    ;; not 40 mm (352 px here), which was too tall (author).
+                    ;; scaling=[]: the base height (200), 250 in portrait
+                    ;; (our patch), not 40 mm (352 px here), which was too
+                    ;; tall (author).
                     (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']

@@ -280,7 +280,8 @@ white, #RRGGBB or #f")
   ;; HAPTICS?, also a short vibration for stevia's key-pressed event, which
   ;; feedbackd's default theme leaves without feedback, and a stronger one
   ;; for button-pressed (Shift, layout keys): the default's 7 ms at 0.2
-  ;; ran but could not be felt on this motor (aw86224).  In the quiet
+  ;; ran but could not be felt on this motor (aw86224).  0.6 for 20 ms
+  ;; was a little weak (author, 2026-11-01): 0.8 for 25 ms.  In the quiet
   ;; profile, so in quiet and full.
   (define (entry spec)
     (match spec
@@ -304,9 +305,9 @@ blue, white or #RRGGBB")
    (if haptics?
        ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.6], \"durations\": [20] },
+          \"magnitudes\": [0.8], \"durations\": [25] },
         { \"event-name\": \"button-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.6], \"durations\": [20] }\n      ]\n    }"
+          \"magnitudes\": [0.8], \"durations\": [25] }\n      ]\n    }"
        "")
    "\n  ]\n}\n"))
 

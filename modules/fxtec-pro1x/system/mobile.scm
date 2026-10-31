@@ -789,6 +789,10 @@ Dracula palette, no kernel messages over the greeter.")
      ;; fell back to the terminal in Sway, which runs without XWayland.
      emacs-pgtk mpv nnn
      calls chatty
+     ;; Alarms, timers, world clocks (author).  It rings only while the
+     ;; phone is awake: waking from suspend or power-off for an alarm is
+     ;; not done yet.
+     gnome-clocks
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
      ;; microphone through it (org.mobian_project.CallAudio).  It was only a
      ;; library dependency of Calls, so its D-Bus service was not found and
