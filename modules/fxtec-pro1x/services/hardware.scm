@@ -390,7 +390,7 @@ esac
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
   ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
-  ;; near for 1 s (5 s with the keyboard out) without touches, the panel goes off
+  ;; near for 1 s (5 s with the keyboard out), the panel goes off
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
   ;; touch comes back, and the panel too if it was on before.  During calls
   ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
@@ -431,16 +431,6 @@ esac
          (= 10 (status:exit-val
                 (system* #$(file-append evtest "/bin/evtest") "--query"
                          "/dev/input/pro1x-slider" "EV_SW" "SW_KEYPAD_SLIDE"))))
-       (define (touch-interrupts)       ;the Goodix controller's IRQ count
-         (call-with-input-file "/proc/interrupts"
-           (lambda (port)
-             (let loop ()
-               (let ((line (read-line port)))
-                 (cond ((eof-object? line) 0)
-                       ((string-contains line "gt9286")
-                        (apply + (filter-map string->number
-                                             (cdr (string-tokenize line)))))
-                       (else (loop))))))))
        (define (panel-on?)              ;any Sway output powered on
          (any (lambda (sock)
                 (let* ((port (open-pipe* OPEN_READ swaymsg "-s" sock
@@ -453,19 +443,14 @@ esac
          (if near?
              (begin
                (close-port (open-output-file flag))
-               ;; A moment later, still near and no touch meanwhile: off,
-               ;; and no touch input.  A finger scrolling near the sensor
-               ;; reads near too, but it touches the screen (the touch
-               ;; controller's interrupts); a pocket does not.  Note whether
-               ;; the panel was on, to light it again when away.
+               ;; A moment later, still near: off, and no touch input.  1 s
+               ;; with the keyboard closed, 5 s slid out: a phone is rarely
+               ;; pocketed with it out, and a finger scrolling near the
+               ;; sensor (which reads near too) is not held there 5 s
+               ;; (author).  Note whether the panel was on, to light it
+               ;; again when away.
                (when (zero? (primitive-fork))
-                 (let ((touches (touch-interrupts)))
-                   ;; 1 s with the keyboard closed, 5 s slid out: a phone
-                   ;; is rarely pocketed with it out (author).
-                   (sleep (if (keyboard-out?) 5 1))
-                   (unless (and (file-exists? flag)
-                                (< (- (touch-interrupts) touches) 3))
-                     (primitive-_exit 0)))
+                 (sleep (if (keyboard-out?) 5 1))
                  (when (file-exists? flag)
                    (when (panel-on?)
                      (close-port (open-output-file blanked)))
