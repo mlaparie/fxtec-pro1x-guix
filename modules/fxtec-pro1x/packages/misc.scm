@@ -892,7 +892,9 @@ ModemManager, for clients such as Chatty.")
                 (call-with-output-file
                     (string-append dir "/90_fxtec-pro1x.gschema.override")
                   (lambda (port)
-                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n
+                    ;; scaling=[]: the base height (200) in portrait too,
+                    ;; not 40 mm (352 px here), which was too tall (author).
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
 "

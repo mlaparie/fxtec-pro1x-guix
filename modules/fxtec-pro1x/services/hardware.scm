@@ -20,6 +20,7 @@
 ;;;     stops: keep the gap wider than that drop (not measured yet);
 ;;;   • light or dark apps (color-scheme, default 'prefer-dark): GSettings;
 ;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
+;;;   • on-screen keyboard haptics (keyboard-haptics?, default #t): feedbackd theme;
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
@@ -103,6 +104,9 @@
   ;; Settings or with gsettings wins.  Sway passes it to libadwaita apps
   ;; (Calls, Chatty) through the GTK portal.
   (color-scheme       pro1x-hardware-color-scheme       (default 'prefer-dark))
+  ;; A short vibration on each on-screen keyboard key (stevia), in
+  ;; feedbackd's quiet and full profiles (author).
+  (keyboard-haptics?  pro1x-hardware-keyboard-haptics?  (default #t))
   ;; The lock screen's on-screen keyboard (Sway, gtklock): 'dark or 'light.
   (lock-keyboard      pro1x-hardware-lock-keyboard      (default 'dark))
   ;; Wake the panel with a double tap while it is off.
@@ -239,9 +243,12 @@ white, #RRGGBB or #f")
                                          char-set:digit)
                          colour 1))))
 
-(define (pro1x-feedbackd-theme-json leds)
+(define (pro1x-feedbackd-theme-json leds haptics?)
   ;; A feedbackd device theme (named after the device tree compatible) that
-  ;; inherits feedbackd's default theme and replaces its LED entries.
+  ;; inherits feedbackd's default theme and replaces its LED entries.  With
+  ;; HAPTICS?, also a short vibration for stevia's key-pressed event, which
+  ;; feedbackd's default theme leaves without feedback; in the quiet
+  ;; profile, so in quiet and full.
   (define (entry spec)
     (match spec
       ((event colour . rest)
@@ -260,15 +267,22 @@ blue, white or #RRGGBB")
    "{\n  \"name\": \"fxtec,pro1x\",\n  \"parent-name\": \"default\",\n"
    "  \"profiles\": [\n    { \"name\": \"silent\",\n      \"feedbacks\": [\n"
    (string-join (map entry leds) ",\n")
-   "\n      ]\n    }\n  ]\n}\n"))
+   "\n      ]\n    }"
+   (if haptics?
+       ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
+        { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [0.2], \"durations\": [7] }\n      ]\n    }"
+       "")
+   "\n  ]\n}\n"))
 
 (define (pro1x-feedbackd-theme config)
-  ;; Empty notification-leds: no theme, feedbackd's defaults.
-  (match (pro1x-hardware-notification-leds config)
-    (() '())
-    (leds
+  ;; No LED colours and no key haptics: no theme, feedbackd's defaults.
+  (match (list (pro1x-hardware-notification-leds config)
+               (pro1x-hardware-keyboard-haptics? config))
+    ((() #f) '())
+    ((leds haptics?)
      (let ((json (plain-file "pro1x-feedbackd-theme.json"   ;no "," in store names
-                             (pro1x-feedbackd-theme-json leds))))
+                             (pro1x-feedbackd-theme-json leds haptics?))))
        (list
         (package
           (name "pro1x-feedbackd-theme")
