@@ -60,6 +60,7 @@ Tailscale.
   Calls and the camera open fullscreen in portrait, the previous
   rotation comes back after.
 - Chatty and Calls run in the background.
+- Volume and brightness keys show a bar for a second (grey when muted).
 - Screenshots: Fn+Alt+P (region: with Ctrl); camera button opens
   Snapshot, or takes a picture in it.
 - SwayFX: blur behind the 90 % opaque foot (Iosevka); foot server for

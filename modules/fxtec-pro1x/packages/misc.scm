@@ -1474,6 +1474,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
 ;;;   bin/pro1x-volume-lock              both volume keys together lock
 ;;;   bin/pro1x-power-key                power key: screen off or on
+;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1521,7 +1522,9 @@ window opened by a sway key binding.")
           ("pro1x-camera" "bin/")
           ("pro1x-bar" "bin/")
           ("pro1x-volume-lock" "bin/")
-          ("pro1x-power-key" "bin/"))
+          ("pro1x-power-key" "bin/")
+          ("pro1x-osd" "bin/")
+          ("wob.ini" "share/pro1x-sway/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1591,7 +1594,7 @@ window opened by a sway key binding.")
                                    "procps" "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
-                   "pro1x-power-key"))
+                   "pro1x-power-key" "pro1x-osd"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

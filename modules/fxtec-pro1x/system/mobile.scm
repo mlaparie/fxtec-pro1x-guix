@@ -755,6 +755,8 @@ Dracula palette, no kernel messages over the greeter.")
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
      foot swayfx/pro1x wdisplays swayidle swaylock-effects mako
+     ;; On-screen bar for volume and brightness (pro1x-osd).
+     wob
      gtklock gtklock-virtkb-module
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).

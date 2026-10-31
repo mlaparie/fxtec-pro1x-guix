@@ -6,17 +6,19 @@
 # XF86AudioRaiseVolume+XF86AudioLowerVolume), and keyd cannot take the
 # gpio-keys device, which also carries the keyboard slide switch.  So this
 # reads the key events itself (the user is in the input group): volume up
-# from gpio-keys, volume down from keyd's virtual keyboard (keyd grabs the
-# PMIC key and sends it again there); both kinds from either device.  Each
+# from gpio-keys, volume down from pm8941_resin (the PMIC key; recorded on
+# the phone: not through keyd), and keyd's virtual keyboard in case.  Each
 # key alone still changes the volume first.  Started by the Sway config;
 # ends with Sway.
 #
-# State: written 2026-10-31, not yet run on the phone.
+# State: 2026-10-31: chord seen with ydotool; real keys missed volume down
+# (wrong device), fixed.
 
 devices=""
 for e in /sys/class/input/event*; do
     case "$(cat "$e/device/name" 2>/dev/null)" in
-        gpio-keys|"keyd virtual keyboard") devices="$devices /dev/input/${e##*/}" ;;
+        gpio-keys|pm8941_resin|"keyd virtual keyboard")
+            devices="$devices /dev/input/${e##*/}" ;;
     esac
 done
 [ -n "$devices" ] || exit 0

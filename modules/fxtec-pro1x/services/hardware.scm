@@ -390,7 +390,7 @@ esac
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
   ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
-  ;; still near after a second, the panel goes off and touch is disabled
+  ;; near for two seconds without touches, the panel goes off and touch is disabled
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
   ;; touch comes back, and the panel too if it was on before.  During calls
   ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
@@ -427,6 +427,16 @@ esac
                      (system* swaymsg "-s" sock command))
                    (sway-sockets)))
        (define blanked "/run/pro1x-pocket-blanked") ;we turned it off
+       (define (touch-interrupts)       ;the Goodix controller's IRQ count
+         (call-with-input-file "/proc/interrupts"
+           (lambda (port)
+             (let loop ()
+               (let ((line (read-line port)))
+                 (cond ((eof-object? line) 0)
+                       ((string-contains line "gt9286")
+                        (apply + (filter-map string->number
+                                             (cdr (string-tokenize line)))))
+                       (else (loop))))))))
        (define (panel-on?)              ;any Sway output powered on
          (any (lambda (sock)
                 (let* ((port (open-pipe* OPEN_READ swaymsg "-s" sock
@@ -439,10 +449,17 @@ esac
          (if near?
              (begin
                (close-port (open-output-file flag))
-               ;; A second later, still near: off, and no touch.  Note
-               ;; whether the panel was on, to light it again when away.
+               ;; Two seconds later, still near and no touch meanwhile: off,
+               ;; and no touch input.  A finger scrolling near the sensor
+               ;; reads near too, but it touches the screen (the touch
+               ;; controller's interrupts); a pocket does not.  Note whether
+               ;; the panel was on, to light it again when away.
                (when (zero? (primitive-fork))
-                 (sleep 1)
+                 (let ((touches (touch-interrupts)))
+                   (sleep 2)
+                   (unless (and (file-exists? flag)
+                                (< (- (touch-interrupts) touches) 3))
+                     (primitive-_exit 0)))
                  (when (file-exists? flag)
                    (when (panel-on?)
                      (close-port (open-output-file blanked)))
