@@ -1,5 +1,6 @@
 #!/bin/sh
-# pro1x-lock — swaylock with a GNU Guix banner and unread notifications
+# pro1x-lock — swaylock-effects with a clock, a GNU Guix banner and unread
+# notifications
 #
 #   pro1x-lock [swaylock arguments...]
 #   pro1x-lock --refresh     redraw while locked (pro1x-notify, new
@@ -7,11 +8,13 @@
 #                            swaylock is replaced by one showing it; Sway
 #                            stays locked meanwhile (ext-session-lock)
 #
-# swaylock draws no text of its own, so this renders a picture of the size
-# of the panel (ImageMagick, DejaVu Sans Mono): a "GNU Guix" banner (figlet,
-# standard font), the date and time of locking, and one line per app with
-# notifications still shown by mako: how many, and when the latest arrived
-# (sway-notifications summary; times logged by pro1x-mako).  Used by
+# swaylock-effects draws its ring with the live time and date in the middle
+# (--clock).  Around it, a picture of the size of the panel (ImageMagick,
+# DejaVu Sans Mono): a "GNU Guix" banner (figlet, standard font) above the
+# ring, and below it one line per app with notifications still shown by
+# mako: how many, and when the latest arrived (sway-notifications summary;
+# times logged by pro1x-mako).  The picture is only redrawn on a new
+# notification, so the time is the ring's, not the picture's (author).  Used by
 # pro1x-idle --sway and the Lock line of sway-quick-actions.
 #
 # State: written 2026-10-30, not yet run on the phone.
@@ -42,15 +45,23 @@ lead() {
 gnu=$(lead "$gnu")
 guixpart=$(lead "$guixpart")
 
-# The panel's size as drawn: its mode, swapped when rotated a quarter turn.
-size=$(swaymsg -t get_outputs -r 2>/dev/null | jq -r --arg o "$output" '
+# The panel's size as drawn (its mode, swapped when rotated a quarter turn)
+# and its scale.
+geom=$(swaymsg -t get_outputs -r 2>/dev/null | jq -r --arg o "$output" '
     .[] | select(.name == $o) |
-    if (.transform == "90" or .transform == "270"
-        or .transform == "flipped-90" or .transform == "flipped-270")
-    then "\(.current_mode.height)x\(.current_mode.width)"
-    else "\(.current_mode.width)x\(.current_mode.height)" end')
-[ -n "$size" ] || size=1080x2160
+    (if (.transform == "90" or .transform == "270"
+         or .transform == "flipped-90" or .transform == "flipped-270")
+     then "\(.current_mode.height)x\(.current_mode.width)"
+     else "\(.current_mode.width)x\(.current_mode.height)" end)
+    + " \(.scale)"')
+[ -n "$geom" ] || geom="1080x2160 2"
+size=${geom% *} scale=${geom#* }
 w=${size%x*} h=${size#*x}
+
+# The ring, in swaylock's logical pixels: radius and thickness.
+radius=90 thickness=8
+# Its outer edge from the centre, in panel pixels, plus a gap.
+ring=$(awk -v r=$radius -v t=$thickness -v s="$scale" 'BEGIN { printf "%d", (r + t) * s * 1.15 }')
 
 when() {                        # epoch -> "14:32", or "Mon 14:32" before today
     [ "$1" -gt 0 ] 2>/dev/null || { echo "?"; return; }
@@ -74,6 +85,11 @@ notes=$(printf '%s\n' "$notes" |
 # About 44 columns across, and room for some 26 lines down, portrait or
 # landscape (keyboard out).
 pt=$((w / 44)); [ $((h / 26)) -lt "$pt" ] && pt=$((h / 26))
+# Banner (5 lines) ending just above the ring, notifications starting just
+# below it; DejaVu Sans Mono lines are about 1.17 em apart.
+lh=$((pt * 117 / 100))
+by=$((h / 2 - ring - 5 * lh)); [ "$by" -lt 0 ] && by=0
+ny=$((h / 2 + ring))
 # -annotate reads \ and % as escapes.
 esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/%/%%/g'; }
 # The two halves side by side: DejaVu Sans Mono advances 0.602 em per
@@ -82,13 +98,10 @@ cw=$((pt * 602 / 1000))
 x=$(( (w - 41 * cw) / 2 ))
 convert -size "$size" "xc:$bg" -font "$PRO1X_LOCK_FONT" \
     -fill "$fg" -pointsize "$pt" -gravity northwest \
-    -annotate +$x+$((pt * 3)) "$(esc "$gnu")" \
-    -fill "$guix" -annotate +$((x + 20 * cw))+$((pt * 3)) "$(esc "$guixpart")" \
-    -fill "$fg" -gravity north \
-    -pointsize $((pt * 3 / 2)) \
-    -annotate +0+$((pt * 11)) "$(esc "$(date '+%A %d %B, %H:%M')")" \
-    -fill "$dim" -pointsize "$pt" \
-    -annotate +0+$((pt * 15)) "$(esc "$notes")" \
+    -annotate +$x+$by "$(esc "$gnu")" \
+    -fill "$guix" -annotate +$((x + 20 * cw))+$by "$(esc "$guixpart")" \
+    -fill "$dim" -gravity north \
+    -annotate +0+$ny "$(esc "$notes")" \
     "$png" 2>/dev/null
 
 if [ "${1:-}" = --refresh ]; then
@@ -103,8 +116,19 @@ if [ "${1:-}" = --refresh ]; then
     done
 fi
 
+# Ring and clock: the port's colours; the ring turns Guix yellow on keys.
+ring_args="--clock --indicator --indicator-radius $radius
+    --indicator-thickness $thickness --timestr %H:%M
+    --inside-color 1d2021e6 --ring-color 458588 --line-color 00000000
+    --separator-color 00000000 --text-color d5c4a1 --key-hl-color FFCC00
+    --bs-hl-color fb4934 --inside-ver-color 1d2021e6 --ring-ver-color 83a598
+    --text-ver-color d5c4a1 --inside-wrong-color 1d2021e6
+    --ring-wrong-color fb4934 --text-wrong-color fb4934"
+
 if [ -s "$png" ]; then
-    exec swaylock -f -c "${bg#\#}" -i "$output:$png" -s center "$@"
+    # shellcheck disable=SC2086
+    exec swaylock -f -c "${bg#\#}" -i "$output:$png" -s center $ring_args --datestr '%a %d %b' "$@"
 else
-    exec swaylock -f -c "${bg#\#}" "$@"
+    # shellcheck disable=SC2086
+    exec swaylock -f -c "${bg#\#}" $ring_args --datestr '%a %d %b' "$@"
 fi

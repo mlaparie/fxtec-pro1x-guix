@@ -592,7 +592,9 @@ Dracula palette, no kernel messages over the greeter.")
      (service screen-locker-service-type
               (screen-locker-configuration
                (name "swaylock")
-               (program (file-append swaylock "/bin/swaylock"))
+               ;; swaylock-effects: swaylock with a clock in its ring
+               ;; (pro1x-lock); same command and PAM service.
+               (program (file-append swaylock-effects "/bin/swaylock"))
                (using-pam? #t)
                (using-setuid? #f)))
 
@@ -684,7 +686,7 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot swayfx wdisplays swayidle swaylock mako
+     foot swayfx wdisplays swayidle swaylock-effects mako
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia

@@ -17,7 +17,7 @@ idle_fg = "#B1B1B1"
 icons = "awesome4"
 
 # Portrait, one line (author, 2026-10-31): window, memory, Wi-Fi, mobile,
-# Bluetooth, volume, battery, time.
+# volume, Bluetooth, battery, time.
 
 [[block]]
 block = "focused_window"
@@ -48,19 +48,20 @@ format = " \uf012 $text "
 hide_when_empty = true
 
 [[block]]
+block = "sound"
+driver = "pulseaudio"
+format = " $icon {$volume|muted} "
+
+[[block]]
 block = "custom"
 command = "pro1x-status bt"
+json = true
 interval = 2
-format = " $text.pango-str() "
+format = " $icon "
 [[block.click]]
 button = "left"
 cmd = "pro1x-status bt-toggle"
 update = true
-
-[[block]]
-block = "sound"
-driver = "pulseaudio"
-format = " $icon {$volume|muted} "
 
 [[block]]
 block = "battery"

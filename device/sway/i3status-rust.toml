@@ -23,7 +23,7 @@ full = "{ $title.str(max_w:40) |}"
 short = "{ $title.str(max_w:10) |}"
 
 # Order (author, 2026-10-31): window, load, temperature, memory, storage,
-# Wi-Fi, mobile, Bluetooth, volume, brightness, battery, date.  Blocks
+# Wi-Fi, mobile, volume, brightness, Bluetooth, battery, date.  Blocks
 # that read a file run every 1-2 s; the shell commands every 2 s;
 # ModemManager (mmcli, a D-Bus round trip) every 5 s; storage every 30 s.
 
@@ -69,18 +69,6 @@ interval = 5
 format = " \uf012 $text "
 hide_when_empty = true
 
-# Bluetooth icon, light when on, dark grey when off (rfkill), no coloured
-# background; left click toggles.
-[[block]]
-block = "custom"
-command = "pro1x-status bt"
-interval = 2
-format = " $text.pango-str() "
-[[block.click]]
-button = "left"
-cmd = "pro1x-status bt-toggle"
-update = true
-
 # Volume through pipewire-pulse (follows changes); left click mutes.
 [[block]]
 block = "sound"
@@ -101,6 +89,18 @@ update = true
 [[block.click]]
 button = "down"
 cmd = "pro1x-status bright-down"
+update = true
+
+# Bluetooth icon, coloured when on (rfkill); left click toggles.
+[[block]]
+block = "custom"
+command = "pro1x-status bt"
+json = true
+interval = 2
+format = " $icon "
+[[block.click]]
+button = "left"
+cmd = "pro1x-status bt-toggle"
 update = true
 
 [[block]]
