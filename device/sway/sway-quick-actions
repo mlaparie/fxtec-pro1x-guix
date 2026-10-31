@@ -1,8 +1,8 @@
 #!/bin/sh
-# sway-quick-settings — Phosh's quick settings for Sway, as an fzf menu
+# sway-quick-actions — Phosh's quick actions for Sway, as an fzf menu
 #
 # Opened by Super+q, or the gear in the bar (--bar), in a floating foot
-# (app id quicksettings).  One line
+# (app id quickactions).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
@@ -65,24 +65,24 @@ fi
 # it.  A new foot and fzf each time took too long to show (author,
 # 2026-10-30).
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-sock="$rt/pro1x-quick-settings.sock"
-osk_flag="$rt/pro1x-quick-settings.osk"   # --bar showed the keyboard
+sock="$rt/pro1x-quick-actions.sock"
+osk_flag="$rt/pro1x-quick-actions.osk"   # --bar showed the keyboard
 
 qs_state() {                    # shown, hidden or none
     swaymsg -t get_tree -r 2>/dev/null |
-        jq -r '[.. | objects | select(.app_id? == "quicksettings") | .visible]
+        jq -r '[.. | objects | select(.app_id? == "quickactions") | .visible]
                | if length == 0 then "none"
                  elif .[0] then "shown" else "hidden" end'
 }
 
 qs_hide() {
-    swaymsg '[app_id="^quicksettings$"] move scratchpad' >/dev/null
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quicksettings -o pad=24x16 "$0" \
+        setsid pro1x-term --app-id=quickactions -o pad=12x8 -o "font=Iosevka Term:size=13" "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
@@ -91,7 +91,7 @@ qs_show() {
         hidden)
             # Same geometry as the Sway config's rule, for the current
             # orientation.
-            swaymsg '[app_id="^quicksettings$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
+            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt' >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;
@@ -178,6 +178,70 @@ sim_unlock() {
     pin=
 }
 
+dim() {                         # grey for off states
+    case "$1" in
+        off|hidden|"not running"|*"(muted)") printf '\033[90m%s\033[0m' "$1" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# Mobile data options, cycled with Enter/Right (next) and Left (back).
+# The chosen one shows on its line for 2 s, then the status again.
+MOBILE_OPTS="off 234 34 23 3"
+mobile_label() {
+    case "$1" in
+        off) echo "mobile data off" ;;   234) echo "2G/3G/4G" ;;
+        34) echo "3G/4G" ;;              23) echo "2G/3G" ;;
+        3) echo "3G only" ;;
+    esac
+}
+mobile_flash() {                # label if an option was set < 2 s ago
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    [ -f "$f" ] || return 1
+    read -r opt when < "$f"
+    [ $(( $(date +%s) - when )) -lt 2 ] || return 1
+    mobile_label "$opt"
+}
+mobile_cycle() {                # mobile_cycle + | -
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    cur=$( [ -f "$f" ] && cut -d' ' -f1 "$f")
+    set -- "$1" $MOBILE_OPTS
+    dir=$1; shift
+    n=$#; i=1; idx=0
+    for o in "$@"; do [ "$o" = "$cur" ] && idx=$i; i=$((i + 1)); done
+    if [ "$dir" = + ]; then idx=$(( idx % n + 1 ))
+    else idx=$(( (idx + n - 2) % n + 1 )); fi
+    eval "opt=\${$idx}"
+    case "$opt" in
+        off) nmcli radio wwan off ;;
+        234|34|23|3)
+            nmcli radio wwan on
+            case "$opt" in
+                234) mmcli -m any --set-allowed-modes='2g|3g|4g' --set-preferred-mode=4g ;;
+                34) mmcli -m any --set-allowed-modes='3g|4g' --set-preferred-mode=4g ;;
+                23) mmcli -m any --set-allowed-modes='2g|3g' --set-preferred-mode=3g ;;
+                3) mmcli -m any --set-allowed-modes='3g' ;;
+            esac >/dev/null 2>&1 ;;
+    esac
+    echo "$opt $(date +%s)" > "$f"
+    # The status again once the 2 s are over.
+    ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
+          -d "reload($self --lines)" >/dev/null 2>&1 ) &
+}
+
+# Roaming: its own line, so it combines with any Mobile data option.  It
+# is the gsm.home-only setting of the mobile connection (on = not
+# home-only); the connection comes up again to apply it.
+gsm_conn() {
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null |
+        awk -F: '$2 == "gsm" { print $1; exit }'
+}
+roaming() {                     # roaming: on, off or "no connection"
+    c=$(gsm_conn)
+    [ -n "$c" ] || { echo "no connection"; return; }
+    [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
+}
+
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
 blocked() {                     # rfkill type -> on/off (on = not blocked)
@@ -215,14 +279,24 @@ wifi_info() {                   # " · 75% SSID" for the connected network
                        printf " · %s%% %s", sig, ssid; exit }'
 }
 
-mobile_info() {                 # " · 59% Operator LTE", from modem key-values
+gen() {                         # ModemManager access technology -> 2G/3G/4G/5G
+    case "$1" in
+        gsm*|gprs|edge) echo 2G ;;
+        umts|hsdpa|hsupa|hspa|hspa-plus|1xrtt|evdo*) echo 3G ;;
+        lte*) echo 4G ;;
+        5gnr) echo 5G ;;
+        *) echo "$1" | tr 'a-z' 'A-Z' ;;
+    esac
+}
+
+mobile_info() {                 # " · 59% Operator 4G", from modem key-values
     [ -n "$1" ] || return
     tech=$(printf '%s\n' "$1" | kv_get 'modem.generic.access-technologies.value\[1\]')
     sig=$(printf '%s\n' "$1" | kv_get modem.generic.signal-quality.value)
     op=$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-name)
     [ "$op" = -- ] && op=
     [ -n "$tech$sig" ] || return
-    printf ' · %s%% %s %s' "$sig" "$op" "$(echo "$tech" | tr 'a-z' 'A-Z')"
+    printf ' · %s%% %s %s' "$sig" "$op" "$(gen "$tech")"
 }
 
 volume() {                      # "60%" or "60% muted"
@@ -256,25 +330,30 @@ lines() {
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
-    case "$vol" in *muted) mute=muted ;; *) mute=$vol ;; esac
+    case "$vol" in
+        *muted) vol=$(dim "${vol%% *} (muted)") ;;
+    esac
+    mobile="$(dim "$wwan")$(mobile_info "$kv")"
+    flash=$(mobile_flash) && mobile="→ $flash"
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
         "notif       Notifications        $(cat "$d/notif")" \
         "lock        Lock screen" \
-        "wifi        Wi-Fi                $wifi$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
-        "wwan        Mobile data          $wwan$(mobile_info "$kv")" \
+        "camera      Camera" \
+        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wwan        Mobile data          $mobile" \
+        "roaming     Roaming              $(dim "$(roaming)")" \
         "sim         SIM                  $(sim_state "$kv")" \
-        "bluetooth   Bluetooth            $bt" \
-        "airplane    Airplane mode        $plane" \
-        "rotation    Auto-rotation        $rot" \
-        "caffeine    Keep screen on       $caf" \
-        "osk         Keyboard             $(cat "$d/osk")" \
-        "torch       Torch                $t" \
+        "bluetooth   Bluetooth            $(dim "$bt")" \
+        "airplane    Airplane mode        $(dim "$plane")" \
+        "rotation    Auto-rotation        $(dim "$rot")" \
+        "caffeine    Keep screen on       $(dim "$caf")" \
+        "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
+        "torch       Torch                $(dim "$t")" \
         "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
         "bright      Brightness           $(cat "$d/br")" \
-        "volume      Volume               ${vol%% *}" \
-        "mute        Mute                 $mute" \
+        "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
@@ -310,6 +389,12 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        roaming)
+            c=$(gsm_conn); [ -n "$c" ] || return
+            [ "$(roaming)" = "$2" ] && return
+            nmcli connection modify "$c" gsm.home-only \
+                "$( [ "$2" = on ] && echo no || echo yes)"
+            nmcli connection up "$c" >/dev/null 2>&1 & ;;
         mute)
             if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
             else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
@@ -330,6 +415,7 @@ state_of() {                    # state_of <setting>: on or off
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
+        roaming) roaming ;;
     esac
 }
 
@@ -343,11 +429,24 @@ feedback_step() {               # + towards full, - towards silent
     gsettings set org.sigxcpu.feedbackd profile "$next"
 }
 
+# Keys, the same on every line: Enter does the line's main thing (toggle;
+# mute for Volume; cycle Mobile data and Feedback; open Lock, Camera, SIM,
+# Notifications).  Right is "more": the Wi-Fi or Bluetooth tool, the next
+# Mobile data option, a step up, on.  Left goes back: off, a step down,
+# the previous Mobile data option.
+open_tool() {                   # a terminal tool in a floating foot
+    qs_hide
+    swaymsg exec "pro1x-term --app-id=qs-tool -e $1" >/dev/null
+}
+
 act() {                         # Enter
     case "$1" in
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
+        camera) qs_hide; swaymsg exec snapshot >/dev/null ;;
+        wwan) mobile_cycle + ;;
+        volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -363,6 +462,11 @@ act() {                         # Enter
 
 step() {                        # Right (+) and Left (-)
     case "$1$2" in
+        wifi+) open_tool pro1x-wifi ;;
+        bluetooth+) open_tool bluetuith ;;
+        wwan+) mobile_cycle + ;;
+        wwan-) mobile_cycle - ;;
+        lock+|camera+) act "$1" ;;
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
@@ -427,6 +531,10 @@ case "${1:-}" in
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
     --notif-lines) notif_lines; exit ;;
+    --notif-summary)            # preview of the Notifications line
+        sway-notifications list 2>/dev/null |
+            awk -F'\t' '{ printf "%s %s: %s\n", ($1 == "new" ? "•" : " "), $4, $5 }'
+        exit ;;
     --notif-preview) notif_preview "$2" "$3"; exit ;;
     --notif-default) notif_default "$2" "$3" >/dev/null 2>&1; exit ;;
     --notif-pick) notif_pick "$2" "$3"; exit ;;
@@ -448,8 +556,14 @@ set --
 [ -n "${QS_RESIDENT:-}" ] &&
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
-    fzf "$@" --prompt="quick settings > " --no-sort --layout=reverse \
-        --with-nth=2.. --info=hidden --header-lines=1 --cycle \
+    # Same layout and colours as the launcher and window switcher: list
+    # from the top, prompt at the bottom.  Notification preview on the right,
+    # in portrait too.
+    fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+        --with-nth=2.. --header-lines=1 \
+        --ansi --preview="$self --notif-summary" --preview-window=hidden,right,45%,wrap \
+        --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
+        --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
@@ -458,10 +572,10 @@ lines |
         --bind="right:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  charge|lock) ;;
+                  charge) ;;
                   *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  sim|notif|charge|lock) ;;
+                  sim|notif|charge|lock|camera) ;;
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null

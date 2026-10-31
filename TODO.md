@@ -300,7 +300,7 @@ and Phosh itself.  Not set up yet.
   PC) and the author's go-ahead.  Torch and caffeine: not persisted on
   purpose.
 - 2026-10-30 evening round (generations 41-43), author's list:
-  quick settings (notifications and Lock first, signal % first, cycling,
+  quick actions (notifications and Lock first, signal % first, cycling,
   Super+q closes, dock OK/Tab dismiss), portrait with the keyboard closed
   (Sway and Phosh), Chatty and Calls in the background (Sway only),
   stevia patched for Sway (phoc's device-state protocol optional; not yet
@@ -312,7 +312,7 @@ and Phosh itself.  Not set up yet.
   (fbcli phone-incoming-call, author).  Ringtone: profile was quiet.
   Need a Sway relog to test most of it; an incoming call for Calls.
 - Generations 44-45 (2026-10-30 evening): foot server with footclient
-  for quick settings, launcher, switcher and Super+Return (pro1x-term;
+  for quick actions, launcher, switcher and Super+Return (pro1x-term;
   Super+Shift+Return plain foot); pro1x-call-watch (incoming call while
   locked: unlock with swaylock SIGUSR1, relock when the call is deleted;
   the phone stays unlocked during the call); notification wake at half
@@ -341,7 +341,7 @@ and Phosh itself.  Not set up yet.
   port console requested"), no respawns (confirmed).
 - OSK: stevia runs in Sway (started by hand; Visible follows SetVisible).
   22e3cff starts it from the Sway config, Super+k and a Keyboard line in
-  quick settings show/hide it (the Sway config is a skeleton: existing
+  quick actions show/hide it (the Sway config is a skeleton: existing
   accounts need the lines).  Drawn and typing in Sway: not yet seen.
   Phosh: works in generation 40 (author, 2026-10-30): stevia on text
   fields with the keyboard closed, hidden with it out.  Causes found:
@@ -352,14 +352,14 @@ and Phosh itself.  Not set up yet.
   author's ~/.config/sway/config with stevia and Super+k, backups
   beside it).  At the next Sway login, check: stevia on a text field
   slid in, none slid out, Super+k, the Keyboard line, the bar gear.
-- Quick settings (33a09c7, 7f8d774): battery header, Wi-Fi network and
+- Quick actions (33a09c7, 7f8d774): battery header, Wi-Fi network and
   signal, mobile technology/signal/operator, charge limit line (from
   /etc/pro1x/charge.conf), Right on / Left off for every toggle, bar gear
   (skeleton i3status-rust config; the author's copy needs the block).
   Modem on LTE now (signal 52-60%, 2026-10-30, after the PIN).
 - sway-autorotate (0c05b2d, run by hand): ended with the Sway session at
   the logout (confirmed).
-- Sway quick settings (Super+q), generation 33 (9c452f5): SIM line with
+- Sway quick actions (Super+q), generation 33 (9c452f5): SIM line with
   PIN entry (e87e971), one fzf with reload (0.47 s per reload on the
   phone), Left/Right on Brightness/Volume, Mute shows muted or the
   volume, notification dock (mako over D-Bus: preview, Enter default
@@ -423,7 +423,7 @@ and Phosh itself.  Not set up yet.
 3. **Bluetooth**: works from Phosh once gsd-rfkill runs and /dev/rfkill
    is writable by netdev (acc408c; author, 2026-10-30).  Pairing with
    a speaker works, and sound plays on it (author, 2026-10-30).
-4. **Sway quick settings** (low priority, author 2026-10-30): an fzf menu
+4. **Sway quick actions** (low priority, author 2026-10-30): an fzf menu
    like sway-window-switcher for Wi-Fi (the author's nmcli-fzf), mobile
    data, Bluetooth, torch, auto-rotate, brightness, volume, later
    location.  Auto-rotate needs a Sway rotation helper: rot8 1.0 (in

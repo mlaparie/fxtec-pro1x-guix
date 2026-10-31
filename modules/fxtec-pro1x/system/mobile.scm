@@ -298,6 +298,10 @@
     #~(begin
         (setenv "WLR_BACKENDS" "drm,libinput")
         (setenv "MOZ_ENABLE_WAYLAND" "1")
+        ;; xdg-desktop-portal picks its back ends by desktop name
+        ;; (sway-portals.conf, pro1x-sway-config); without one, libadwaita
+        ;; apps got no colour scheme and stayed light (Calls, Chatty).
+        (setenv "XDG_CURRENT_DESKTOP" "sway")
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
@@ -322,7 +326,8 @@
                "dbus-run-session" "--"
                ;; PipeWire, WirePlumber, pipewire-pulse for the session.
                #$pro1x-audio-session
-               #$(file-append sway "/bin/sway")))))
+               ;; SwayFX: Sway with blur and rounded corners (author).
+               #$(file-append swayfx "/bin/sway")))))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
@@ -591,7 +596,9 @@ Dracula palette, no kernel messages over the greeter.")
      (service screen-locker-service-type
               (screen-locker-configuration
                (name "swaylock")
-               (program (file-append swaylock "/bin/swaylock"))
+               ;; swaylock-effects: swaylock with a clock in its ring
+               ;; (pro1x-lock); same command and PAM service.
+               (program (file-append swaylock-effects "/bin/swaylock"))
                (using-pam? #t)
                (using-setuid? #f)))
 
@@ -683,16 +690,22 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot sway wdisplays swayidle swaylock mako
+     foot swayfx wdisplays swayidle swaylock-effects mako
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia
      ;; Event sounds for feedbackd (ringtone, messages): only alsa and gnome
      ;; sounds were installed, no theme with the freedesktop names.
      sound-theme-freedesktop
-     ;; Sway and Phosh background (Guix's disc emblem).
-     pro1x-background
+     ;; The default "pro1x" theme: calmer ringtone and message sounds.
+     pro1x-sounds
+     ;; Sway and Phosh backgrounds (light and dark).
+     pro1x-wallpapers
+     ;; Bluetooth manager for Sway's quick actions (Right on Bluetooth).
+     bluetuith
      i3status-rust font-awesome
+     ;; foot's font (skeleton foot.ini).
+     font-iosevka-term
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Browser, terminal, editors
      ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
@@ -700,7 +713,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; LibreWolf: Firefox 158 with privacy defaults; aarch64 substitutes on
      ;; bordeaux (nonguix's firefox is x86_64 only).
      librewolf
-     emacs mpv nnn
+     ;; emacs-pgtk: native Wayland.  The plain emacs is an X11 build and
+     ;; fell back to the terminal in Sway, which runs without XWayland.
+     emacs-pgtk mpv nnn
      calls chatty
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
      ;; microphone through it (org.mobian_project.CallAudio).  It was only a

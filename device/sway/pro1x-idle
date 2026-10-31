@@ -19,7 +19,7 @@
 # blanked by itself.  Started by the Phosh session and the Sway config.
 #
 # Caffeine (Sway): while $XDG_RUNTIME_DIR/pro1x-caffeine says on, --sway
-# starts no swayidle at all (no dim, blank or lock); sway-quick-settings
+# starts no swayidle at all (no dim, blank or lock); sway-quick-actions
 # stops and starts it when the setting changes.  Not kept across reboots,
 # on purpose (author, 2026-10-30).
 #

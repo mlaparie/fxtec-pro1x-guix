@@ -30,8 +30,10 @@ Tailscale.
 - On-screen keyboard (stevia) when the keyboard is closed, never when it
   is out; Super key in its terminal layout.
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
-- Charge limit (85/80 %), shown in quick settings.
-- Notification LED: per-event colours in config.scm; breathing yellow
+- Dark apps and shell by default (color-scheme in config.scm).
+- Charge limit (85/80 %), shown in quick actions.
+- Notification LED: blue for messages, purple for missed calls, white
+  for the terminal bell (config.scm); breathing yellow
   while charging, green when full or held, red blip on low battery.
 - Keyboard backlight only while slid out, off after 60 s idle.
 - Speaker pops at login removed.
@@ -40,9 +42,9 @@ Tailscale.
 
 ## Sway on the phone
 
-- Edge swipes: top, quick settings; bottom, on-screen keyboard; right,
+- Edge swipes: top, quick actions; bottom, on-screen keyboard; right,
   app launcher; left, window switcher.  Same swipe again closes.
-- Quick settings (Super+q): toggles with Left/Right, battery, network
+- Quick actions (Super+q): toggles with Left/Right, battery, network
   details, SIM PIN entry, notification dock, lock, charge limit.
 - Status bar: temperature, disk, mobile signal, volume, Bluetooth,
   brightness, battery.

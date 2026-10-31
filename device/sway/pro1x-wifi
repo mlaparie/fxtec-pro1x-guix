@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# pro1x-wifi — pick a Wi-Fi network with fzf and connect, asking for the
+# password of a new one (nmcli -a).  The author's nmcli-fzf script
+# (mlaparie's guix-config, .config/sway/scripts/nmcli-fzf), opened by
+# Right on the Wi-Fi line of sway-quick-actions.
+
+err=0
+ssid=$(nmcli -f 'bssid,in-use,signal,bars,freq,rate,security,ssid' \
+    --color yes device wifi list --rescan yes \
+    | fzf --ansi \
+          --with-nth=2.. \
+          --reverse \
+          --cycle \
+	  --print-query \
+          --header-lines=1 \
+	  --margin='1,2,1,2' \
+          --color='16,gutter:-1' \
+    | sed 's/^ *\*//' \
+    | awk '{print $1}')
+echo "Please wait while connecting to network $ssid…"
+nmcli device wifi connect ${ssid} 2> /dev/null || err=1
+if [[ "$err" = 1 ]]; then
+  printf "SSID "
+  nmcli -a device wifi connect ${ssid}
+fi
+printf "Press any key to close.\n" && read -n1
+

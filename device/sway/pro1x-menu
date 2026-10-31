@@ -1,0 +1,82 @@
+#!/bin/sh
+# pro1x-menu toggle|start quickactions|launcher|windowswitcher [hidden]
+#
+# The three Sway menus stay alive in the scratchpad: toggle hides a shown
+# one, or shows a hidden one placed against its edge for the current
+# orientation, and only when there is no such window yet starts one.
+# Starting a new foot and script each time was too slow (author, 2026-10-30; the launcher alone spent 240 ms
+# reading desktop files).  Quick actions and the window switcher reload
+# their lists through their fzf sockets when shown; the launcher restarts
+# hidden after each use, its list ready.  Started hidden at login by the
+# Sway config; used by the swipes (pro1x-gestures) and Super+q/m/Tab.
+#
+# State: written 2026-10-30, not yet run on the phone.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+cmd=${1:-toggle} id=${2:-quickactions} hidden=${3:-}
+
+geometry() {
+    case "$1" in
+        quickactions) echo "resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt" ;;
+        launcher) echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt" ;;
+        windowswitcher) echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt" ;;
+    esac
+}
+
+start() {
+    case "$id" in
+        quickactions) sway-quick-actions --resident ;;   # always hidden
+        launcher)
+            # Esc or a launch ends sway-launcher-desktop; the loop hides the
+            # window and starts it again, hidden, its list ready.
+            # Its own fzf options (margin, colours, no info, cycling) are the
+            # ones the other two menus copy; the layout and prompt come from
+            # here.
+            setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e sh -c '
+                while :; do
+                    env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder \
+                        FZF_DEFAULT_OPTS="--layout=reverse-list" \
+                        GLYPH_PROMPT="apps > " sway-launcher-desktop
+                    swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+                done' >/dev/null 2>&1 < /dev/null &
+            ;;
+        windowswitcher)
+            setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e pro1x-switcher \
+                >/dev/null 2>&1 < /dev/null &
+            ;;
+    esac
+}
+
+case "$cmd" in
+    start) start ;;
+    toggle)
+        # Shown: hide it.  (A `scratchpad show' chained with the resize and
+        # move brought it straight back: they re-show a hidden window.)
+        shown=$(swaymsg -t get_tree -r |
+                    jq -r --arg id "$id" '[.. | objects
+                        | select(.app_id? == $id and .visible == true)] | length')
+        if [ "${shown:-0}" -gt 0 ]; then
+            swaymsg "[app_id=\"^$id\$\"] move scratchpad" >/dev/null 2>&1
+        elif swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
+               >/dev/null 2>&1; then
+            # Refresh the list as it shows (cheap).
+            case "$id" in
+                quickactions) sock="$rt/pro1x-quick-actions.sock"
+                               action="reload(sway-quick-actions --lines)+first" ;;
+                windowswitcher) sock="$rt/pro1x-switcher.sock"
+                                action="reload(pro1x-switcher --list)+first" ;;
+                *) sock= ;;
+            esac
+            [ -n "$sock" ] && curl -s --unix-socket "$sock" -X POST \
+                http://localhost -d "$action" >/dev/null 2>&1 &
+        else
+            # Start it (the Sway config puts it in the scratchpad as it
+            # appears), then show it once it is there.
+            hidden=1; start
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                sleep 0.3
+                swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
+                    >/dev/null 2>&1 && break
+            done
+        fi ;;
+esac

@@ -264,7 +264,16 @@ and a key was pressed recently.")
     (list
      (service-extension etc-service-type          pro1x-keyboard-etc)
      (service-extension shepherd-root-service-type pro1x-keyboard-shepherd-services)
-     (service-extension profile-service-type       pro1x-keyboard-packages)))
+     (service-extension profile-service-type       pro1x-keyboard-packages)
+     ;; A deploy installs a new /etc/keyd/default.conf, but the running
+     ;; keyd kept the old map until a reboot (author, 2026-10-30): reload
+     ;; it at activation.  At boot keyd is not running yet; that reload
+     ;; fails and does nothing.
+     (service-extension activation-service-type
+                        (const
+                         #~(false-if-exception
+                            (system* #$(file-append keyd "/bin/keyd")
+                                     "reload"))))))
    (default-value (pro1x-keyboard-configuration))
    (description "Hardware keyboard support for the F(x)tec Pro1X: keyd Fn-layer
 remapping, XKB layout, dconf system-db so the layout survives reboots, and the

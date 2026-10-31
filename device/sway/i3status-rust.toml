@@ -19,85 +19,68 @@ icons = "awesome4"
 [[block]]
 block = "focused_window"
 [block.format]
-full = " $title.str(max_w:40) |"
-short = " $title.str(max_w:10) |"
+full = "{ $title.str(max_w:40) |}"
+short = "{ $title.str(max_w:10) |}"
+
+# Order (author, 2026-10-31): window, load, temperature, memory, storage,
+# Wi-Fi, mobile, volume, brightness, Bluetooth, battery, date.  Blocks
+# that read a file run every 1-2 s; the shell commands every 2 s;
+# ModemManager (mmcli, a D-Bus round trip) every 5 s; storage every 30 s.
 
 [[block]]
-block = "cpu"
+block = "load"
+interval = 1
+format = " $icon $1m.eng(w:4) "
+
+[[block]]
+block = "custom"
+command = "pro1x-status temp"
 interval = 2
-format = " $barchart $utilization "
+format = " $text "
 
 [[block]]
 block = "memory"
 format = " $icon $mem_avail free "
-interval = 5
+interval = 1
 warning_mem = 80
 critical_mem = 95
+
+[[block]]
+block = "disk_space"
+path = "/"
+info_type = "available"
+interval = 30
+format = " $icon $available "
 
 [[block]]
 block = "net"
 device = "wlan0"
 format = " $icon $signal_strength "
 format_alt = " $icon $ssid $ip "
-interval = 5
+interval = 2
 inactive_format = ""
 missing_format = ""
-
-[[block]]
-block = "battery"
-driver = "sysfs"
-device = "battery"
-interval = 10
-format = " $icon $percentage "
-good = 101
-info = 60
-warning = 30
-critical = 15
-
-[[block]]
-block = "custom"
-command = "pro1x-status temp"
-interval = 10
-format = " $text "
-
-[[block]]
-block = "disk_space"
-path = "/"
-info_type = "available"
-interval = 60
-format = " $icon $available "
 
 # Mobile data: access technology and signal (ModemManager).
 [[block]]
 block = "custom"
 command = "pro1x-status mobile"
-interval = 30
-format = " $text "
+interval = 5
+format = " \uf012 $text "
 hide_when_empty = true
 
-# Volume through pipewire-pulse; left click mutes.
+# Volume through pipewire-pulse (follows changes); left click mutes.
 [[block]]
 block = "sound"
 driver = "pulseaudio"
-format = " $icon $volume "
-
-# Bluetooth on/off (rfkill); left click toggles.
-[[block]]
-block = "custom"
-command = "pro1x-status bt"
-interval = 30
-format = " $text "
-[[block.click]]
-button = "left"
-cmd = "pro1x-status bt-toggle"
-update = true
+format = " $icon {$volume|muted} "
 
 # Brightness from the backlight's brightness file (not actual_brightness,
 # see pro1x-status); scroll to change it.
 [[block]]
 block = "custom"
 command = "pro1x-status bright"
-interval = 30
+interval = 2
 format = " ☀ $text "
 [[block.click]]
 button = "up"
@@ -108,7 +91,30 @@ button = "down"
 cmd = "pro1x-status bright-down"
 update = true
 
+# Bluetooth icon, coloured when on (rfkill); left click toggles.
+[[block]]
+block = "custom"
+command = "pro1x-status bt"
+json = true
+interval = 2
+format = " $icon "
+[[block.click]]
+button = "left"
+cmd = "pro1x-status bt-toggle"
+update = true
+
+[[block]]
+block = "battery"
+driver = "sysfs"
+device = "battery"
+interval = 2
+format = " $icon $percentage "
+good = 101
+info = 60
+warning = 30
+critical = 15
+
 [[block]]
 block = "time"
-interval = 10
+interval = 1
 format = " $timestamp.datetime(f:'%a %d, %R') "

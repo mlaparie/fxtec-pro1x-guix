@@ -203,6 +203,14 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "build logs; commit e4051eb"
+      },
+      {
+        "title": "gtklock 4.0.0 dies at lock time under Sway: committed surface size does not match the acked configure",
+        "general": "A session locker that dies leaves Sway locked with a red screen and nothing to type into. Before switching lockers, run the new one in a throwaway headless Sway (WLR_BACKENDS=headless, short XDG_RUNTIME_DIR for the socket) and grab the screen with grim.",
+        "instance": "gtklock 4.0.0 (gtk-session-lock 0.2.0) from the pinned Guix, with and without gtklock-virtkb-module, in headless SwayFX 0.6 and plain Sway, at scale 2 and scale 1: Wayland error on ext_session_lock_surface_v1 'committed surface dimensions do not match last acked configure', Gdk protocol error 71, red lock screen. Not tried on the phone. swaylock-effects works there.",
+        "confidence": "confirmed (headless on the PC); inferred for the phone",
+        "date": "2026-10-31",
+        "source": "WAYLAND_DEBUG=1 gtklock log; scratchpad mock-up runs"
       }
     ],
     "ci": [

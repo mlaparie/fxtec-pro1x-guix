@@ -1,13 +1,13 @@
 #!/bin/sh
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
-#   swipe down from the top edge      quick settings (sway-quick-settings)
+#   swipe down from the top edge      quick actions (sway-quick-actions)
 #   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
-# COMMAND...; quick settings closes itself).  Every command runs in the
+# COMMAND...; quick actions closes itself).  Every command runs in the
 # background: lisgd waits for a command to end before taking the next
 # gesture, so a second swipe used to wait for the first window to close
 # and then open another (author, 2026-10-30).
@@ -50,10 +50,10 @@ start() {                       # start <transform>
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" \
-        -g "1,UD,T,*,R,sway-quick-settings &" \
-        -g "1,DU,B,*,R,sway-quick-settings --osk toggle &" \
-        -g "1,RL,R,*,R,pro1x-gestures toggle launcher $launcher &" \
-        -g "1,LR,L,*,R,pro1x-gestures toggle windowswitcher sway-window-switcher &" \
+        -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
+        -g "1,DU,B,*,R,sway-quick-actions --osk toggle &" \
+        -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
+        -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }

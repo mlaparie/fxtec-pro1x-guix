@@ -3,7 +3,7 @@
 #
 #   pro1x-status temp            hottest CPU thermal zone, "44°C"
 #   pro1x-status mobile          "LTE 52%" (ModemManager), empty without modem
-#   pro1x-status bt              "BT on" / "BT off" (rfkill)
+#   pro1x-status bt (JSON)              "BT on" / "BT off" (rfkill)
 #   pro1x-status bt-toggle
 #   pro1x-status bright          backlight in percent, "60%"
 #   pro1x-status bright-up|bright-down   by 10%
@@ -15,6 +15,16 @@
 # temperature block wants lm_sensors chips).
 #
 # State: written 2026-10-30, not yet run on the phone.
+
+gen() {                         # ModemManager access technology -> 2G/3G/4G/5G
+    case "$1" in
+        gsm*|gprs|edge) echo 2G ;;
+        umts|hsdpa|hsupa|hspa|hspa-plus|1xrtt|evdo*) echo 3G ;;
+        lte*) echo 4G ;;
+        5gnr) echo 5G ;;
+        *) echo "$1" | tr 'a-z' 'A-Z' ;;
+    esac
+}
 
 case "${1:-}" in
     temp)
@@ -33,12 +43,13 @@ case "${1:-}" in
         sig=$(printf '%s\n' "$kv" |
                   sed -n 's/^modem.generic.signal-quality.value *: //p')
         [ -n "$tech" ] && [ "$tech" != -- ] &&
-            echo "$(echo "$tech" | tr 'a-z' 'A-Z') ${sig}%" ;;
-    bt)
+            echo "$(gen "$tech") ${sig}%" ;;
+    bt)                         # JSON: the bar's Bluetooth icon, coloured when on
+        # (Pango colours on the glyph picked a fallback font: a blob.)
         if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
-            echo "BT off"
+            echo '{"icon": "bluetooth", "text": "", "state": "Idle"}'
         else
-            echo "BT on"
+            echo '{"icon": "bluetooth", "text": "", "state": "Good"}'
         fi ;;
     bt-toggle)
         if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then

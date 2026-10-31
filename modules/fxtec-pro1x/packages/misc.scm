@@ -43,6 +43,8 @@
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
+  #:use-module ((gnu packages kde-plasma) #:select (plasma-mobile-sounds))
+  #:use-module (nonguix build-system binary)  ; bluetuith
   #:use-module (gnu packages perl)
   #:use-module (gnu packages gettext)
   #:use-module (gnu packages pkg-config)
@@ -783,13 +785,13 @@ It runs on top of the Phoc compositor.")
 [org.gnome.settings-daemon.peripherals.touchscreen]\norientation-lock=true\n
 [org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n
 [org.gnome.desktop.background:Phosh]
-picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
-picture-uri-dark='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/light.png'
+picture-uri-dark='file:///run/current-system/profile/share/backgrounds/pro1x/dark.png'
 picture-options='zoom'
-primary-color='#000000'
+primary-color='#252a3a'
 
 [org.gnome.desktop.screensaver:Phosh]
-picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/guix-disc.png'
+picture-uri='file:///run/current-system/profile/share/backgrounds/pro1x/dark.png'
 picture-options='zoom'
 "
                                port)))
@@ -851,11 +853,16 @@ ModemManager, for clients such as Chatty.")
        (sha256
         (base32 "0lvc6c6nrm7zc5ff7v8c92l7v2ksdicdlshbxk7xjm7rlj3ndn9y"))
        ;; Ours: phoc's device-state protocol optional, so stevia also
-       ;; runs in Sway (it never drew its keyboard there).
+       ;; runs in Sway (it never drew its keyboard there); the terminal
+       ;; shortcuts bar shown when the keyboard starts on that layout (in
+       ;; Sway, with only terminals, it never appeared).
        (patches
         (list (local-file
                (repository-file "device/phosh/stevia-optional-device-state.patch")
-               "stevia-optional-device-state.patch")))))
+               "stevia-optional-device-state.patch")
+              (local-file
+               (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
+               "stevia-shortcuts-bar-at-start.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
@@ -986,20 +993,143 @@ sends a power-key press when it sees two quick taps close together.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
-;;; pro1x-background — the Sway and Phosh background
-;;; Guix's own disc emblem on black (guix-backgrounds, guix-disc-flat-16-9;
-;;; CC-BY-SA 4.0), rendered to a square 2160x2160 PNG with the emblem in the
-;;; middle, so it fills the panel in portrait and landscape; a PNG, since the
-;;; image loaders here did not take SVG backgrounds.  Black costs nothing on
-;;; the AMOLED panel.
+;;; gtklock-virtkb-module — an on-screen keyboard inside gtklock
+;;; Sway's lock screen hides every other surface, stevia included, so the
+;;; phone could not be unlocked with the keyboard closed (author).  This
+;;; gtklock module (ProgAndy, GPL-3; wvkbd's layout) draws its own keyboard
+;;; in the lock window.  Its version follows gtklock's: 4.0 for gtklock
+;;; 4.0.0 in Guix.
 ;;; ---------------------------------------------------------------------------
-(define-public pro1x-background
+(define-public gtklock-virtkb-module
+  (let ((commit "fafbef742c582be361306ccf2d0b45cc1a09136d")
+        (revision "0"))
+    (package
+      (name "gtklock-virtkb-module")
+      (version (git-version "4.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/progandy/gtklock-virtkb-module")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))))
+      (build-system gnu-build-system)
+      (arguments
+       (list
+        #:tests? #f                     ; none
+        #:make-flags
+        #~(list (string-append "CC=" #$(cc-for-target))
+                (string-append "PREFIX=" #$output))
+        #:phases
+        #~(modify-phases %standard-phases
+            (delete 'configure))))
+      (native-inputs (list pkg-config))
+      (inputs (list gtk+))
+      (home-page "https://github.com/progandy/gtklock-virtkb-module")
+      (synopsis "On-screen keyboard for gtklock")
+      (description "This gtklock module adds a touch keyboard to the lock
+screen, for entering the password without a hardware keyboard.")
+      (license license:gpl3))))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
+;;; freedesktop's phone sounds were too old-fashioned and harsh (author).
+;;; These come from Plasma Mobile's sounds (plasma-mobile-sounds, CC0 and
+;;; CC-BY 4.0), linked under the XDG sound names feedbackd plays; every
+;;; other event falls back to freedesktop (Inherits).  The default theme
+;;; through pro1x-gsettings-defaults (org.gnome.desktop.sound theme-name);
+;;; another theme or sound: GNOME Settings, or gsettings.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-sounds
   (package
-    (name "pro1x-background")
+    (name "pro1x-sounds")
     (version "0.1")
     (source #f)
     (build-system trivial-build-system)
-    (native-inputs (list guix-backgrounds imagemagick librsvg))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let ((dir (string-append #$output "/share/sounds/pro1x"))
+                (from (string-append #$plasma-mobile-sounds
+                                     "/share/sounds/plasma-mobile/stereo/")))
+            (mkdir-p (string-append dir "/stereo"))
+            (call-with-output-file (string-append dir "/index.theme")
+              (lambda (port)
+                (display "[Sound Theme]
+Name=Pro1x
+Comment=Calm phone sounds (from Plasma Mobile), freedesktop for the rest
+Inherits=freedesktop
+Directories=stereo
+
+[stereo]
+OutputProfile=stereo
+" port)))
+            (for-each
+             (lambda (pair)
+               (symlink (string-append from (cdr pair))
+                        (string-append dir "/stereo/" (car pair) ".oga")))
+             '(("phone-incoming-call" . "ringtones/Gentle.oga")
+               ("message-new-instant" . "notifications/Blip.oga")
+               ("message-new-email" . "notifications/Pointed.oga")
+               ("alarm-clock-elapsed" . "ringtones/Slowly.oga")))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Calm sound theme for the F(x)tec Pro1X")
+    (description "A sound theme with Plasma Mobile's ringtone and message
+sounds under their XDG names, falling back to the freedesktop theme.")
+    (license (list license:cc0 license:cc-by4.0))))
+
+;;; ---------------------------------------------------------------------------
+;;; bluetuith — Bluetooth manager in the terminal, for Sway's quick actions
+;;; From the author's guix-private-channel (mlaparie/packages/bluetuith.scm):
+;;; upstream's release binary (Go, MIT).  Fixed to the arm64 build here: the
+;;; original picks the build from %current-system when the package is
+;;; defined, which is the PC's when the PC builds for the phone.
+;;; ---------------------------------------------------------------------------
+(define-public bluetuith
+  (package
+    (name "bluetuith")
+    (version "0.1.9")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/darkhz/bluetuith/releases/download/v"
+                           version "/bluetuith_" version "_Linux_arm64.tar.gz"))
+       (sha256
+        (base32 "0h1hynihinvrpf1l67d5yxhrfhiq3x4xi84f3fzfcbwndd7lfsl9"))))
+    (supported-systems '("aarch64-linux"))
+    (build-system binary-build-system)
+    (arguments
+     (list
+      #:install-plan #~'(("bluetuith" "bin/"))
+      #:strip-binaries? #t))
+    (inputs (list bluez))
+    (home-page "https://github.com/darkhz/bluetuith")
+    (synopsis "Bluetooth manager in the terminal")
+    (description "bluetuith manages Bluetooth adapters and devices from a
+terminal interface.")
+    (license license:expat)))
+
+;;; ---------------------------------------------------------------------------
+;;; pro1x-wallpapers — the Sway and Phosh backgrounds, made for the port
+;;;   light.png  a low-poly gradient (coral, plum, deep teal), generated
+;;;   dark.png   Guix's gnu (guix-backgrounds, CC-BY-SA 4.0), lilac on slate
+;;; Square 2160x2160, so they fill the panel in portrait and landscape.
+;;; Generated by device/wallpapers/make-wallpapers.py (fixed seed), rendered
+;;; with rsvg-convert, composed with ImageMagick: PNGs, since the image
+;;; loaders here did not take SVG backgrounds.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-wallpapers
+  (package
+    (name "pro1x-wallpapers")
+    (version "0.1")
+    (source (local-file (repository-file "device/wallpapers") "pro1x-wallpapers"
+                        #:recursive? #t))
+    (build-system trivial-build-system)
+    (native-inputs (list guix-backgrounds imagemagick librsvg python-minimal))
     (arguments
      (list
       #:modules '((guix build utils))
@@ -1007,25 +1137,35 @@ sends a power-key press when it sees two quick taps close together.")
       #~(begin
           (use-modules (guix build utils))
           (let ((dir (string-append #$output "/share/backgrounds/pro1x"))
-                (svg (string-append #$(this-package-native-input
-                                       "guix-backgrounds")
-                                    "/share/backgrounds/guix/"
-                                    "guix-disc-flat-16-9.svg"))
-                (wide "wide.png"))
+                (disc (string-append #$(this-package-native-input
+                                        "guix-backgrounds")
+                                     "/share/backgrounds/guix/"
+                                     "guix-disc-flat-16-9.svg")))
             (setenv "PATH"
-                    (string-append #$(this-package-native-input "librsvg")
-                                   "/bin:"
-                                   #$(this-package-native-input "imagemagick")
-                                   "/bin"))
+                    (string-join
+                     (map (lambda (p) (string-append p "/bin"))
+                          (list #$(this-package-native-input "librsvg")
+                                #$(this-package-native-input "imagemagick")
+                                #$(this-package-native-input "python-minimal")))
+                     ":"))
             (mkdir-p dir)
-            (invoke "rsvg-convert" "-h" "2160" svg "-o" wide)
-            (invoke "convert" wide "-gravity" "center" "-crop" "2160x2160+0+0"
-                    "+repage" (string-append dir "/guix-disc.png"))))))
+            (invoke "python3" (string-append #$source "/make-wallpapers.py")
+                    disc ".")
+            (invoke "rsvg-convert" "light.svg"
+                    "-o" (string-append dir "/light.png"))
+            (invoke "rsvg-convert" "-w" "3840" "gnu.svg" "-o" "gnu-wide.png")
+            (invoke "convert" "gnu-wide.png" "-trim" "+repage"
+                    "-resize" "520x520" "gnu.png")
+            ;; A little above the middle.
+            (invoke "convert" "-size" "2160x2160" "xc:#252a3a" "gnu.png"
+                    "-gravity" "center" "-geometry" "+0-90" "-composite"
+                    (string-append dir "/dark.png"))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-    (synopsis "Background image for the F(x)tec Pro1X sessions")
-    (description "Guix's disc emblem on black, as a square PNG for the
-Sway and Phosh backgrounds.")
-    (license license:cc-by-sa4.0)))
+    (synopsis "Background images for the F(x)tec Pro1X sessions")
+    (description "A low-poly gradient and Guix's gnu on slate, as square
+PNGs for the light and dark Sway and Phosh backgrounds.")
+    (license (list license:gpl3+          ;the generator, light.png
+                   license:cc-by-sa4.0)))) ;dark.png, after Guix's artwork
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-gsettings-defaults — system-wide GSettings defaults
@@ -1060,6 +1200,7 @@ Sway and Phosh backgrounds.")
               (lambda (port)
                 (display "[org.gnome.desktop.sound]
 allow-volume-above-100-percent=true
+theme-name='pro1x'
 
 [mobi.phosh.osk]
 ignore-hw-keyboards=true
@@ -1258,7 +1399,7 @@ window opened by a sway key binding.")
 ;;;                                        (skeleton)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
-;;;   bin/sway-quick-settings            Phosh-like toggles in fzf (Super+q)
+;;;   bin/sway-quick-actions            Phosh-like toggles in fzf (Super+q)
 ;;;   bin/sway-notifications             mako's notifications for its dock
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
@@ -1270,6 +1411,12 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
 ;;;   bin/pro1x-screenshot               screenshots (grim, slurp)
 ;;;   bin/pro1x-portrait-apps            portrait while Snapshot or Calls is focused
+;;;   bin/pro1x-menu                     resident menus, toggled from the scratchpad
+;;;   bin/pro1x-switcher                 the window switcher (fzf)
+;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
+;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
+;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
+;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1287,12 +1434,14 @@ window opened by a sway key binding.")
       #~'(("config" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
+          ("i3status-portrait.toml" "share/pro1x-sway/")
+          ("sway-portals.conf" "share/xdg-desktop-portal/")
           ("foot.ini" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
           ("pro1x-idle" "bin/")
           ("sway-autorotate" "bin/")
-          ("sway-quick-settings" "bin/")
+          ("sway-quick-actions" "bin/")
           ("sway-notifications" "bin/")
           ("pro1x-osk-slider" "bin/")
           ("pro1x-lock" "bin/")
@@ -1303,7 +1452,13 @@ window opened by a sway key binding.")
           ("pro1x-call-watch" "bin/")
           ("pro1x-status" "bin/")
           ("pro1x-screenshot" "bin/")
-          ("pro1x-portrait-apps" "bin/"))
+          ("pro1x-portrait-apps" "bin/")
+          ("pro1x-menu" "bin/")
+          ("pro1x-switcher" "bin/")
+          ("pro1x-wifi" "bin/")
+          ("pro1x-blank-led" "bin/")
+          ("pro1x-camera" "bin/")
+          ("pro1x-bar" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1339,7 +1494,7 @@ window opened by a sway key binding.")
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
                             '("coreutils" "evtest" "jq" "sed")))))
-                (let ((qs (string-append #$output "/bin/sway-quick-settings")))
+                (let ((qs (string-append #$output "/bin/sway-quick-actions")))
                   (chmod qs #o755)
                   (wrap-program qs
                     `("PATH" ":" prefix
@@ -1360,6 +1515,21 @@ window opened by a sway key binding.")
                     `("PRO1X_LOCK_FONT" =
                       (,(string-append (assoc-ref inputs "font-dejavu")
                                        "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                (for-each
+                 (lambda (name)
+                   (let ((f (string-append #$output "/bin/" name)))
+                     (chmod f #o755)
+                     ;; swaymsg, foot and sway-launcher-desktop come from
+                     ;; the system profile.
+                     (wrap-program f
+                       `("PATH" ":" prefix
+                         (,(string-append #$output "/bin")
+                          ,@(map (lambda (p)
+                                   (string-append (assoc-ref inputs p) "/bin"))
+                                 '("coreutils" "curl" "fzf" "jq" "procps"
+                                   "glib")))))))
+                 '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
+                   "pro1x-camera" "pro1x-bar"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

@@ -1,0 +1,69 @@
+#!/bin/sh
+# pro1x-bar — Sway's bar, with its own block list in portrait
+#
+#   pro1x-bar main     the bar's status command (i3status-rs)
+#   pro1x-bar watch    follow the panel's rotation (started by the config)
+#   pro1x-bar toggle   hide or show the bar (Super+b)
+#
+# Landscape: the full block list, ~/.config/i3status-rust/config.toml.
+# Portrait, too narrow for it: the essentials on one line (author,
+# 2026-10-31), portrait.toml.  Each is taken from ~/.config/i3status-rust/
+# when there, else from the port.  i3status-rs runs on a link in
+# $XDG_RUNTIME_DIR; on rotation the link is switched and i3status-rs re-reads
+# it (SIGUSR2, a restart in place).
+#
+# State: run on the phone 2026-10-31: portrait and landscape lists switch
+# with the rotation.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+link="$rt/pro1x-bar.toml"
+hidden="$rt/pro1x-bar.hidden"
+port="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway"
+user="${XDG_CONFIG_HOME:-$HOME/.config}/i3status-rust"
+
+conf() {                        # conf <name>: the user's file, else the port's
+    if [ -f "$user/$1" ]; then echo "$user/$1"
+    elif [ "$1" = config.toml ]; then echo "$port/i3status-rust.toml"
+    else echo "$port/i3status-$1"; fi
+}
+
+want() {                        # the block list for the panel's orientation
+    if swaymsg -t get_outputs -r 2>/dev/null |
+           jq -e '.[] | select(.name == "DSI-1")
+                  | .transform == "normal" or .transform == "180"' >/dev/null
+    then conf portrait.toml
+    else conf config.toml; fi
+}
+
+apply() {
+    w=$(want)
+    if [ "$(readlink "$link")" != "$w" ]; then
+        ln -sfn "$w" "$link"
+        pkill -USR2 -u "$(id -u)" -f "i3status-rs.* $link"
+    fi
+    if [ -f "$hidden" ]; then mode=invisible; else mode=dock; fi
+    swaymsg "bar bar-0 mode $mode" >/dev/null
+}
+
+case "${1:-}" in
+    main)
+        # The watcher keeps the link right; make sure there is one.
+        [ -e "$link" ] || ln -sfn "$(want)" "$link"
+        exec i3status-rs "$link" ;;
+    toggle)
+        if [ -f "$hidden" ]; then rm -f "$hidden"; else touch "$hidden"; fi
+        apply ;;
+    watch)
+        rm -f "$hidden"
+        # One watcher per session: end the previous one by its PID (a
+        # pattern would also match other shells mentioning it).
+        pidf="$rt/pro1x-bar.watch.pid"
+        [ -f "$pidf" ] && kill "$(cat "$pidf")" 2>/dev/null
+        echo $$ > "$pidf"
+        apply
+        swaymsg -m -t subscribe '["output"]' 2>/dev/null |
+            while read -r _; do apply; done ;;
+    *)
+        echo "usage: pro1x-bar main|watch|toggle" >&2
+        exit 1 ;;
+esac
