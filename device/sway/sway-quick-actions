@@ -76,6 +76,10 @@ qs_state() {                    # shown, hidden or none
 }
 
 qs_hide() {
+    # Its query cleared, for next time (in the background: called from
+    # inside fzf's execute, which answers only afterwards).
+    curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
+         -d "clear-query+first" >/dev/null 2>&1 &
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
@@ -89,9 +93,8 @@ qs_start() {                    # qs_start [hidden]
 qs_show() {
     case "$(qs_state)" in
         hidden)
-            # Same geometry as the Sway config's rule, for the current
-            # orientation.
-            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt' >/dev/null
+            # pro1x-menu's geometry, for the current orientation.
+            swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;

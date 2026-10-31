@@ -42,7 +42,8 @@ if [ "${1:-}" = --list ]; then
     exit
 fi
 
-hide='execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
+# Hidden with its query cleared, for next time (author, 2026-10-31).
+hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
 "$self" --list |
     fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
