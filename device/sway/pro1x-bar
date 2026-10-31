@@ -9,8 +9,8 @@
 # Portrait, too narrow for it: the essentials on one line (author,
 # 2026-10-31), portrait.toml.  Each is taken from ~/.config/i3status-rust/
 # when there, else from the port.  i3status-rs runs on a link in
-# $XDG_RUNTIME_DIR; on rotation the link is switched and i3status-rs re-reads
-# it (SIGUSR2, a restart in place).
+# $XDG_RUNTIME_DIR; on rotation the watcher gives the bar a new status
+# command (naming the orientation), and swaybar restarts i3status-rs.
 #
 # State: run on the phone 2026-10-31: portrait and landscape lists switch
 # with the rotation.
@@ -27,34 +27,40 @@ conf() {                        # conf <name>: the user's file, else the port's
     else echo "$port/i3status-$1"; fi
 }
 
-want() {                        # the block list for the panel's orientation
+orientation() {                 # portrait or landscape
     if swaymsg -t get_outputs -r 2>/dev/null |
            jq -e '.[] | select(.name == "DSI-1")
                   | .transform == "normal" or .transform == "180"' >/dev/null
-    then conf portrait.toml
-    else conf config.toml; fi
+    then echo portrait
+    else echo landscape; fi
+}
+
+want() {                        # the block list for an orientation
+    if [ "$1" = portrait ]; then conf portrait.toml; else conf config.toml; fi
 }
 
 apply() {
-    w=$(want)
-    if [ "$(readlink "$link")" != "$w" ]; then
-        ln -sfn "$w" "$link"
-        pkill -USR2 -u "$(id -u)" -f "i3status-rs.* $link"
+    o=$(orientation)
+    # A new status command (it names the orientation) makes swaybar restart
+    # i3status-rs itself.  (SIGUSR2, i3status-rs's restart in place, left it
+    # dead once: "[error reading from status command]", 2026-10-31.)
+    if [ "$(cat "$rt/pro1x-bar.orientation" 2>/dev/null)" != "$o" ]; then
+        echo "$o" > "$rt/pro1x-bar.orientation"
+        swaymsg "bar bar-0 status_command pro1x-bar main $o" >/dev/null
     fi
     if [ -f "$hidden" ]; then mode=invisible; else mode=dock; fi
     swaymsg "bar bar-0 mode $mode" >/dev/null
 }
 
 case "${1:-}" in
-    main)
-        # The watcher keeps the link right; make sure there is one.
-        [ -e "$link" ] || ln -sfn "$(want)" "$link"
+    main)                       # main [portrait|landscape]
+        ln -sfn "$(want "${2:-$(orientation)}")" "$link"
         exec i3status-rs "$link" ;;
     toggle)
         if [ -f "$hidden" ]; then rm -f "$hidden"; else touch "$hidden"; fi
         apply ;;
     watch)
-        rm -f "$hidden"
+        rm -f "$hidden" "$rt/pro1x-bar.orientation"
         # One watcher per session: end the previous one by its PID (a
         # pattern would also match other shells mentioning it).
         pidf="$rt/pro1x-bar.watch.pid"

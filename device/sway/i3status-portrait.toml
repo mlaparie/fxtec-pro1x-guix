@@ -69,6 +69,11 @@ driver = "sysfs"
 device = "battery"
 interval = 2
 format = " $icon $percentage "
+# The other states default to the icon alone; always show the percentage.
+full_format = " $icon $percentage "
+charging_format = " $icon $percentage "
+empty_format = " $icon $percentage "
+not_charging_format = " $icon $percentage "
 good = 101
 info = 60
 warning = 30

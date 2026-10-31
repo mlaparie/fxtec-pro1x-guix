@@ -1,0 +1,19 @@
+#!/bin/sh
+# pro1x-power-key — the power key in Sway: screen off when on, on when off
+#
+# It toggled the panel (swaymsg output power toggle), which went wrong
+# after the idle timer had blanked it: the key press is also activity, so
+# swayidle's resume turned the panel on while the toggle turned it off
+# again; the screen flashed and stayed dark (author, 2026-10-31).  Now it
+# decides from the panel's state, and leaves the panel on when pro1x-idle's
+# resume woke it for this very press (it stamps the time).
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+on=$(swaymsg -t get_outputs -r |
+         jq -r '[.[] | select(.name == "DSI-1") | .power] | any')
+if [ "$on" = true ]; then
+    woke=$(cat "$rt/pro1x-woke" 2>/dev/null || echo 0)
+    [ $(( $(date +%s%N) - woke )) -lt 800000000 ] && exit 0
+    swaymsg 'output DSI-1 power off' >/dev/null
+else
+    swaymsg 'output DSI-1 power on' >/dev/null
+fi

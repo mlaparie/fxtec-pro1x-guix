@@ -1,0 +1,44 @@
+#!/bin/sh
+# pro1x-osd — volume and brightness keys with an on-screen bar (wob)
+#
+#   pro1x-osd daemon                  wob reading $XDG_RUNTIME_DIR/pro1x-wob
+#   pro1x-osd volume up|down|mute     change, then show the level
+#   pro1x-osd bright up|down
+#
+# A bar for a second when the volume or the brightness changes from the
+# keys (author, 2026-10-31).  Muted shows the volume in grey.  The bar's
+# look: wob.ini next to the port's sway config.  Brightness only through
+# the backlight's brightness file (brightnessctl), never actual_brightness
+# (AGENTS.md: it wedges the panel).
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+fifo="${XDG_RUNTIME_DIR:-/tmp}/pro1x-wob"
+show() {                        # show VALUE [STYLE]
+    [ -p "$fifo" ] && printf '%s\n' "$*" > "$fifo" &
+}
+
+case "$1 ${2:-}" in
+    "daemon ")
+        rm -f "$fifo"; mkfifo "$fifo"
+        conf="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/wob.ini"
+        # tail keeps the fifo open between writers.
+        exec sh -c "tail -f '$fifo' | wob -c '$conf'" ;;
+    "volume up") wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+    "volume down") wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+    "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    "bright up") brightnessctl -q set 5%+ ;;
+    "bright down") brightnessctl -q set 5%- ;;
+    *) echo "usage: pro1x-osd daemon | volume up|down|mute | bright up|down" >&2
+       exit 1 ;;
+esac
+
+case "$1" in
+    volume)
+        # "Volume: 0.45" or "Volume: 0.45 [MUTED]"
+        wpctl get-volume @DEFAULT_AUDIO_SINK@ |
+            awk '{ v = int($2 * 100 + 0.5); if (v > 100) v = 100
+                   print v ($3 ? " muted" : "") }' | { read -r v s; show "$v" $s; } ;;
+    bright)
+        show "$(brightnessctl -m | cut -d, -f4 | tr -d %)" ;;
+esac

@@ -56,6 +56,7 @@
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
+  #:use-module ((gnu packages window-management) #:select (swayfx))
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
@@ -388,16 +389,97 @@ esac
 (define pro1x-pocket-program
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
   ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
-  ;; not wake the panel then, so a phone in a pocket stays dark.
+  ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
+  ;; near for 1 s (5 s with the keyboard out) without touches, the panel goes off
+  ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
+  ;; touch comes back, and the panel too if it was on before.  During calls
+  ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
   (program-file
    "pro1x-pocket"
    #~(begin
-       (use-modules (ice-9 popen) (ice-9 rdelim))
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 ftw) (ice-9 match)
+                    (ice-9 textual-ports) (srfi srfi-1))
        (define flag "/run/pro1x-pocket")
+       (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
+       ;; Reap the delayed-blanking children.  (Not SIGCHLD ignored: then
+       ;; system* fails with "No child processes", which crashed the
+       ;; service at start, 2026-10-31.)
+       (define (reap!)
+         (let loop ()
+           (match (false-if-exception (waitpid WAIT_ANY WNOHANG))
+             ((pid . _) (unless (zero? pid) (loop)))
+             (_ #t))))
+       (define (live-socket? f)         ;sway-ipc.UID.PID.sock, PID alive
+         (match (string-split f #\.)
+           ((_ _ pid _) (file-exists? (string-append "/proc/" pid)))
+           (_ #f)))
+       (define (sway-sockets)           ;every running Sway's IPC socket
+         (append-map
+          (lambda (uid)
+            (map (lambda (f) (string-append "/run/user/" uid "/" f))
+                 (or (scandir (string-append "/run/user/" uid)
+                              (lambda (f) (and (string-prefix? "sway-ipc." f)
+                                               (live-socket? f))))
+                     '())))
+          (or (scandir "/run/user" (lambda (f) (string->number f))) '())))
+       (define (sway! command)
+         (for-each (lambda (sock)
+                     (system* swaymsg "-s" sock command))
+                   (sway-sockets)))
+       (define blanked "/run/pro1x-pocket-blanked") ;we turned it off
+       (define (keyboard-out?)          ;evtest --query: 10 while slid out
+         (= 10 (status:exit-val
+                (system* #$(file-append evtest "/bin/evtest") "--query"
+                         "/dev/input/pro1x-slider" "EV_SW" "SW_KEYPAD_SLIDE"))))
+       (define (touch-interrupts)       ;the Goodix controller's IRQ count
+         (call-with-input-file "/proc/interrupts"
+           (lambda (port)
+             (let loop ()
+               (let ((line (read-line port)))
+                 (cond ((eof-object? line) 0)
+                       ((string-contains line "gt9286")
+                        (apply + (filter-map string->number
+                                             (cdr (string-tokenize line)))))
+                       (else (loop))))))))
+       (define (panel-on?)              ;any Sway output powered on
+         (any (lambda (sock)
+                (let* ((port (open-pipe* OPEN_READ swaymsg "-s" sock
+                                         "-t" "get_outputs" "-r"))
+                       (text (get-string-all port)))
+                  (close-pipe port)
+                  (string-contains text "\"power\": true")))
+              (sway-sockets)))
        (define (set-near! near?)
          (if near?
-             (close-port (open-output-file flag))
-             (false-if-exception (delete-file flag))))
+             (begin
+               (close-port (open-output-file flag))
+               ;; A moment later, still near and no touch meanwhile: off,
+               ;; and no touch input.  A finger scrolling near the sensor
+               ;; reads near too, but it touches the screen (the touch
+               ;; controller's interrupts); a pocket does not.  Note whether
+               ;; the panel was on, to light it again when away.
+               (when (zero? (primitive-fork))
+                 (let ((touches (touch-interrupts)))
+                   ;; 1 s with the keyboard closed, 5 s slid out: a phone
+                   ;; is rarely pocketed with it out (author).
+                   (sleep (if (keyboard-out?) 5 1))
+                   (unless (and (file-exists? flag)
+                                (< (- (touch-interrupts) touches) 3))
+                     (primitive-_exit 0)))
+                 (when (file-exists? flag)
+                   (when (panel-on?)
+                     (close-port (open-output-file blanked)))
+                   (sway! "input type:touch events disabled")
+                   (sway! "output * power off"))
+                 (primitive-_exit 0)))
+             (begin
+               (false-if-exception (delete-file flag))
+               (sway! "input type:touch events enabled")
+               ;; Back as it was: on if it was on (a lock screen stays
+               ;; locked, it is only lit again).
+               (when (file-exists? blanked)
+                 (false-if-exception (delete-file blanked))
+                 (sway! "output * power on")))))
        (set-near! #f)
        (let ((port (open-pipe* OPEN_READ
                                #$(file-append iio-sensor-proxy-ssc
@@ -408,6 +490,7 @@ esac
          (let loop ()
            (let ((line (read-line port)))
              (unless (eof-object? line)
+               (reap!)
                (cond ((or (string-contains line "near: 1")
                           (string-contains line "value changed: 1"))
                       (set-near! #t))

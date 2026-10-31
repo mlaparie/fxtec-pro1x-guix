@@ -352,8 +352,11 @@
                #$pro1x-audio-session
                #$(file-append sway "/bin/sway")))))
 
-(define sway-session (make-sway-session "start-sway" swayfx "swayfx"))
-(define sway-plain-session (make-sway-session "start-sway-plain" sway "plain"))
+;; Both built against json-c/pro1x: json-c 0.19 leaked every parsed
+;; object (swaybar grew about 0.5 GB an hour).
+(define sway-session (make-sway-session "start-sway" swayfx/pro1x "swayfx"))
+(define sway-plain-session
+  (make-sway-session "start-sway-plain" sway/pro1x "plain"))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
@@ -456,7 +459,12 @@ files root may log in with."
                (string-append (plain-file-content %sudoers-specification)
                               "greeter ALL=(root) NOPASSWD: "
                               "/run/current-system/profile/sbin/halt, "
-                              "/run/current-system/profile/sbin/reboot\n")))
+                              "/run/current-system/profile/sbin/reboot\n"
+                              ;; The Sway power menu (pro1x-power-menu).
+                              "%wheel ALL=(root) NOPASSWD: "
+                              "/run/current-system/profile/sbin/halt, "
+                              "/run/current-system/profile/sbin/reboot, "
+                              "/run/current-system/profile/bin/pro1x-sleep\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
@@ -519,6 +527,13 @@ files root may log in with."
              "[Desktop Entry]\nName=4 Sway (plain, for comparison)\nExec="
              sway-plain-session
              "\nType=Application\n"))))
+
+     ;; Readline (bash and others): no bell.  Tab with several completions
+     ;; rang the terminal bell, which lights the LED and vibrates (foot's
+     ;; [bell], feedbackd's bell-terminal); real bells from programs still
+     ;; do (author, 2026-10-31).
+     (simple-service 'pro1x-inputrc etc-service-type
+       (list `("inputrc" ,(plain-file "inputrc" "set bell-style none\n"))))
 
      ;; Device settings shared by the Sway and Sxmo sessions; the port's
      ;; Sway desktop (keys, menus, bar, rules) in its own directory, which
@@ -744,7 +759,9 @@ Dracula palette, no kernel messages over the greeter.")
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
-     foot swayfx wdisplays swayidle swaylock-effects mako
+     foot swayfx/pro1x wdisplays swayidle swaylock-effects mako
+     ;; On-screen bar for volume and brightness (pro1x-osd).
+     wob
      gtklock gtklock-virtkb-module
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).

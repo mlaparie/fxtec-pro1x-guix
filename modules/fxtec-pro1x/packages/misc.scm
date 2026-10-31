@@ -1041,6 +1041,46 @@ screen, for entering the password without a hardware keyboard.")
       (license license:gpl3))))
 
 ;;; ---------------------------------------------------------------------------
+;;; json-c with a leak fixed, and the Sways built against it
+;;; json-c 0.19 frees containers inside assert(), which NDEBUG compiles out:
+;;; every parsed object or array that held children leaked.  swaybar parses
+;;; a status line a second and grew by about 0.5 GB an hour on the phone;
+;;; sway itself parses every swaymsg request.  Found with valgrind (massif,
+;;; memcheck) on a headless sway on the PC; a json_tokener_parse +
+;;; json_object_put loop went from 992 MB to 21 MB with the patch
+;;; (2026-10-31).  Fixed upstream after the 0.19 release (json-c commit
+;;; f291fa81c6, with two related fixes for the same code, Issue #934);
+;;; Guix master still has plain 0.19.  Drop these once json-c 0.20 is in.
+;;; ---------------------------------------------------------------------------
+(define-public json-c/pro1x
+  (package
+    (inherit json-c)
+    (source
+     (origin
+       (inherit (package-source json-c))
+       ;; Upstream json-c commits from after 0.19 (2026-06-30, 07-04):
+       ;; f291fa81c6, 3aa996b5b6, 0c3a5a1994.
+       (patches
+        (append
+         (map (lambda (name)
+                (local-file (repository-file
+                             (string-append "device/patches/" name))
+                            name))
+              '("json-c-0.19-put-free-outside-assert.patch"
+                "json-c-0.19-put-clear-user-delete.patch"
+                "json-c-0.19-put-clear-userdata.patch"
+                ;; Ours: one C numeric locale per process, not one per
+                ;; parse (each newlocale() leaked in Guix's glibc).
+                "json-c-0.19-tokener-one-c-locale.patch"))
+         (origin-patches (package-source json-c))))))))
+
+(define with-json-c/pro1x
+  (package-input-rewriting `((,json-c . ,json-c/pro1x)) #:deep? #f))
+
+(define-public swayfx/pro1x (with-json-c/pro1x swayfx))
+(define-public sway/pro1x (with-json-c/pro1x sway))
+
+;;; ---------------------------------------------------------------------------
 ;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
 ;;; freedesktop's phone sounds were too old-fashioned and harsh (author).
 ;;; These come from Plasma Mobile's sounds (plasma-mobile-sounds, CC0 and
@@ -1432,6 +1472,11 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
+;;;   bin/pro1x-volume-lock              both volume keys together lock
+;;;   bin/pro1x-power-key                power key: screen off or on
+;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
+;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
+;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1477,7 +1522,13 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
-          ("pro1x-bar" "bin/"))
+          ("pro1x-bar" "bin/")
+          ("pro1x-volume-lock" "bin/")
+          ("pro1x-power-key" "bin/")
+          ("pro1x-osd" "bin/")
+          ("pro1x-power-menu" "bin/")
+          ("pro1x-sleep" "bin/")
+          ("wob.ini" "share/pro1x-sway/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1543,10 +1594,11 @@ window opened by a sway key binding.")
                          (,(string-append #$output "/bin")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
-                                 '("coreutils" "curl" "fzf" "jq" "procps"
-                                   "glib")))))))
+                                 '("coreutils" "curl" "evtest" "fzf" "jq"
+                                   "procps" "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
-                   "pro1x-camera" "pro1x-bar"))
+                   "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
+                   "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

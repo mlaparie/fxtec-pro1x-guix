@@ -1,0 +1,47 @@
+#!/bin/sh
+# pro1x-power-menu — long press on the power key: cancel, lock, blank
+# screen, suspend, hibernate, reboot, power off (fzf, floating foot window)
+#
+#   pro1x-power-menu              open the menu
+#   pro1x-power-menu --key up|down|accept   drive it (Sway's powermenu mode)
+#
+# keyd turns a held power key into F24 (device/input/keyd.conf); Sway binds
+# F24 to this.  While it shows, Sway's "powermenu" mode makes the volume
+# keys move the selection and the power key confirm, so it works with the
+# keyboard closed (author, 2026-10-31); Esc leaves the mode.  Cancel is
+# first and selected.  Power off, reboot, suspend and hibernate run as root
+# through sudo rules for wheel users (no password).  Suspend and hibernate
+# are untested; hibernate needs swap, which the port does not set up.
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
+
+case "${1:-}" in
+    --key)
+        case "${2:-}" in
+            up|down|accept) curl -s --unix-socket "$sock" -X POST \
+                                 http://localhost -d "$2" >/dev/null ;;
+        esac
+        exit ;;
+    --menu) ;;
+    *)
+        exec pro1x-term --app-id=powermenu -o pad=12x8 \
+            -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
+esac
+
+swaymsg mode powermenu >/dev/null
+trap 'swaymsg mode default >/dev/null' EXIT
+choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
+                      "Hibernate" "Reboot" "Power off" |
+             fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
+                 --no-info --cycle --margin=1,2 --color=16,gutter:-1)
+swaymsg mode default >/dev/null
+case "$choice" in
+    "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
+    "Blank screen") swaymsg 'output * power off' >/dev/null ;;
+    "Suspend") sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
+    "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
+    "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
+    "Power off") sudo -n /run/current-system/profile/sbin/halt ;;
+esac
