@@ -85,7 +85,7 @@ update = true
 [[block]]
 block = "sound"
 driver = "pulseaudio"
-format = " $icon $volume "
+format = " $icon {$volume|muted} "
 
 # Brightness from the backlight's brightness file (not actual_brightness,
 # see pro1x-status); scroll to change it.
