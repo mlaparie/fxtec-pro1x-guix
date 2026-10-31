@@ -713,7 +713,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; LibreWolf: Firefox 158 with privacy defaults; aarch64 substitutes on
      ;; bordeaux (nonguix's firefox is x86_64 only).
      librewolf
-     emacs mpv nnn
+     ;; emacs-pgtk: native Wayland.  The plain emacs is an X11 build and
+     ;; fell back to the terminal in Sway, which runs without XWayland.
+     emacs-pgtk mpv nnn
      calls chatty
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
      ;; microphone through it (org.mobian_project.CallAudio).  It was only a
