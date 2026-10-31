@@ -52,6 +52,10 @@ Tailscale.
 - Status bar: the full list in landscape, the essentials in portrait;
   Super+b hides it.
 - Lock with Ctrl+Super+l or both volume keys together.
+- Power key: short press screen off/on, held a power menu (power off,
+  reboot, lock, suspend…).  In the menus (quick actions, launcher, window
+  switcher, power), the volume keys move and the power key confirms, with
+  the keyboard closed.
 - Lock screen (gtklock): clock, GNU Guix banner, unread notifications
   per app; an on-screen keyboard while the keyboard is closed (numpad in
   landscape), dark or light in config.scm.

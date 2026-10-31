@@ -3,12 +3,11 @@
 # screen, suspend, hibernate, reboot, power off (fzf, floating foot window)
 #
 #   pro1x-power-menu              open the menu
-#   pro1x-power-menu --key up|down|accept   drive it (Sway's powermenu mode)
 #
-# pro1x-power-button opens it on a held power key, and turns a short
-# press into confirm while it shows; Sway's "powermenu" mode makes the
-# volume keys move the selection, so it works with the keyboard closed
-# (author, 2026-10-31); Esc leaves the mode.  Cancel is
+# pro1x-power-button opens it on a held power key.  While it has the
+# focus, the volume keys move the selection and a short power press
+# confirms (pro1x-menu key), so it works with the keyboard closed (author,
+# 2026-10-31).  Cancel is
 # first and selected.  Power off, reboot, suspend and hibernate run as root
 # through sudo rules for wheel users (no password).  Suspend and hibernate
 # are untested; hibernate needs swap, which the port does not set up.
@@ -18,25 +17,16 @@
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 
 case "${1:-}" in
-    --key)
-        case "${2:-}" in
-            up|down|accept) curl -s --unix-socket "$sock" -X POST \
-                                 http://localhost -d "$2" >/dev/null ;;
-        esac
-        exit ;;
     --menu) ;;
     *)
         exec pro1x-term --app-id=powermenu -o pad=12x8 \
             -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
 esac
 
-swaymsg mode powermenu >/dev/null
-trap 'swaymsg mode default >/dev/null' EXIT
 choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
                       "Hibernate" "Reboot" "Power off" |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
                  --no-info --cycle --margin=1,2 --color=16,gutter:-1)
-swaymsg mode default >/dev/null
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
     "Blank screen") swaymsg 'output * power off' >/dev/null ;;

@@ -1,5 +1,6 @@
 #!/bin/sh
 # pro1x-menu toggle|start quickactions|launcher|windowswitcher [hidden]
+# pro1x-menu key up|down|accept     drive the focused menu (volume, power)
 #
 # The three Sway menus stay alive in the scratchpad: toggle hides a shown
 # one, or shows a hidden one placed against its edge for the current
@@ -35,7 +36,7 @@ start() {
             setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e sh -c '
                 while :; do
                     env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder \
-                        FZF_DEFAULT_OPTS="--layout=reverse-list" \
+                        FZF_DEFAULT_OPTS="--layout=reverse-list --listen='"$rt"'/pro1x-launcher.sock" \
                         GLYPH_PROMPT="apps > " sway-launcher-desktop
                     swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
                 done' >/dev/null 2>&1 < /dev/null &
@@ -48,6 +49,22 @@ start() {
 }
 
 case "$cmd" in
+    key)
+        # pro1x-menu key up|down|accept: to the menu that has the focus
+        # (volume keys and a short power press, keyboard closed; author,
+        # 2026-10-31).  Exit 1 when no menu has it, so the key keeps its
+        # usual meaning.
+        focused=$(swaymsg -t get_tree -r |
+                      jq -r '.. | objects | select(.focused? == true) | .app_id // empty')
+        case "$focused" in
+            quickactions) sock="$rt/pro1x-quick-actions.sock" ;;
+            launcher) sock="$rt/pro1x-launcher.sock" ;;
+            windowswitcher) sock="$rt/pro1x-switcher.sock" ;;
+            powermenu) sock="$rt/pro1x-power-menu.sock" ;;
+            *) exit 1 ;;
+        esac
+        curl -s --unix-socket "$sock" -X POST http://localhost -d "$id" >/dev/null
+        exit 0 ;;
     start) start ;;
     toggle)
         # Shown: hide it.  (A `scratchpad show' chained with the resize and
