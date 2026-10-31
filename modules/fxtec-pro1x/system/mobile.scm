@@ -231,7 +231,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         ;; greetd's pam_mount creates /run/user/UID; fall back just in case.
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
@@ -273,7 +280,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
@@ -305,7 +319,14 @@
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
-                                 (if d (string-append ":" d) ""))))
+                                 (if d (string-append ":" d) "")
+                                 ;; Flatpak apps, user and system, when there
+                                 ;; are any: Guix's ~/.bash_profile resets
+                                 ;; XDG_DATA_DIRS after flatpak's profile.d
+                                 ;; script, so launchers did not list them.
+                                 ":" (or (getenv "HOME") "")
+                                 "/.local/share/flatpak/exports/share"
+                                 ":/var/lib/flatpak/exports/share")))
         (unless (getenv "XDG_RUNTIME_DIR")
           (setenv "XDG_RUNTIME_DIR"
                   (string-append "/run/user/" (number->string (getuid)))))
