@@ -1068,7 +1068,10 @@ screen, for entering the password without a hardware keyboard.")
                             name))
               '("json-c-0.19-put-free-outside-assert.patch"
                 "json-c-0.19-put-clear-user-delete.patch"
-                "json-c-0.19-put-clear-userdata.patch"))
+                "json-c-0.19-put-clear-userdata.patch"
+                ;; Ours: one C numeric locale per process, not one per
+                ;; parse (each newlocale() leaked in Guix's glibc).
+                "json-c-0.19-tokener-one-c-locale.patch"))
          (origin-patches (package-source json-c))))))))
 
 (define with-json-c/pro1x

@@ -1,0 +1,76 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] json_tokener_parse_ex: make the C numeric locale once
+
+json_tokener_parse_ex() created a "C" LC_NUMERIC locale (duplocale +
+newlocale) at every call and freed it at the end.  With Guix's glibc,
+which computes the locale search path from GUIX_LOCPATH, each
+newlocale() leaks about 160 bytes: swaybar, parsing a status line a
+second plus IPC replies, grew by a few MB an hour.  Make the locale once,
+at the first parse, from the global locale, and keep it.
+
+Local to this channel (json-c/pro1x, used by sway and swayfx); the leak
+itself is in Guix's glibc patch.
+---
+--- a/json_tokener.c
++++ b/json_tokener.c
+@@ -345,32 +345,25 @@
+ 
+ #ifdef HAVE_USELOCALE
+ 	{
+-#ifdef HAVE_DUPLOCALE
+-		locale_t duploc = duplocale(oldlocale);
+-		if (duploc == NULL && errno == ENOMEM)
+-		{
+-			tok->err = json_tokener_error_memory;
+-			return NULL;
+-		}
+-		newloc = newlocale(LC_NUMERIC_MASK, "C", duploc);
+-#else
+-		newloc = newlocale(LC_NUMERIC_MASK, "C", oldlocale);
+-#endif
+-		if (newloc == NULL)
+-		{
+-			tok->err = json_tokener_error_memory;
+-#ifdef HAVE_DUPLOCALE
+-			freelocale(duploc);
+-#endif
+-			return NULL;
++		/* One "C" numeric locale for the process, made at the first parse
++		 * and kept: creating and freeing one per parse leaked memory in
++		 * glibc's newlocale() where GUIX_LOCPATH is set (Guix). */
++		static locale_t c_numeric = (locale_t)0;
++		if (c_numeric == (locale_t)0)
++		{
++			locale_t base = duplocale(LC_GLOBAL_LOCALE);
++			locale_t made = base ? newlocale(LC_NUMERIC_MASK, "C", base) : (locale_t)0;
++			if (made == (locale_t)0)
++			{
++				if (base)
++					freelocale(base);
++				tok->err = json_tokener_error_memory;
++				return NULL;
++			}
++			if (!__sync_bool_compare_and_swap(&c_numeric, (locale_t)0, made))
++				freelocale(made); /* another thread was first */
+ 		}
+-#ifdef NEWLOCALE_NEEDS_FREELOCALE
+-#ifdef HAVE_DUPLOCALE
+-		// Older versions of FreeBSD (<12.4) don't free the locale
+-		// passed to newlocale(), so do it here
+-		freelocale(duploc);
+-#endif
+-#endif
++		newloc = c_numeric;
+ 		uselocale(newloc);
+ 	}
+ #elif defined(HAVE_SETLOCALE)
+@@ -1347,7 +1340,8 @@
+ 
+ #ifdef HAVE_USELOCALE
+ 	uselocale(oldlocale);
+-	freelocale(newloc);
++	/* newloc is the process-wide C numeric locale: kept. */
++	(void)newloc;
+ #elif defined(HAVE_SETLOCALE)
+ 	setlocale(LC_NUMERIC, oldlocale);
+ 	free(oldlocale);
