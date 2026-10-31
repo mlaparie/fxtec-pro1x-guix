@@ -32,7 +32,7 @@ start() {
             # Its own fzf options (margin, colours, no info, cycling) are the
             # ones the other two menus copy; the layout and prompt come from
             # here.
-            setsid pro1x-term --app-id=launcher -o pad=12x8 -e sh -c '
+            setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=15" -e sh -c '
                 while :; do
                     env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder \
                         FZF_DEFAULT_OPTS="--layout=reverse-list" \
@@ -41,7 +41,7 @@ start() {
                 done' >/dev/null 2>&1 < /dev/null &
             ;;
         windowswitcher)
-            setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -e pro1x-switcher \
+            setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -o "font=Iosevka Term:size=15" -e pro1x-switcher \
                 >/dev/null 2>&1 < /dev/null &
             ;;
     esac

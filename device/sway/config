@@ -52,6 +52,13 @@ bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
 ### Idle: dim, blank, then lock with swaylock (pro1x-idle --sway; times and
 ### level set in config.scm, see /etc/pro1x/dim.conf); a touch or key press
+### D-Bus starts services (the desktop portal and its GTK back end) with
+### the bus's environment, from before Sway: give it the display, or the
+### GTK portal could not start and libadwaita apps stayed light.  Apps that
+### may start the portal run after it ($dbusenv && ...).
+set $dbusenv dbus-update-activation-environment WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
+exec $dbusenv
+
 ### brings the panel back.
 exec pro1x-idle --sway
 
@@ -83,8 +90,8 @@ exec foot --server
 exec pro1x-mako
 
 ### Chatty and Calls in the background, for messages and incoming calls
-exec chatty --gapplication-service
-exec gnome-calls --gapplication-service
+exec $dbusenv && chatty --gapplication-service
+exec $dbusenv && gnome-calls --gapplication-service
 ### Calls' window (an incoming call, or opened to dial): fullscreen, focused;
 ### portrait while focused (pro1x-portrait-apps).
 for_window [app_id="^org.gnome.Calls$"] fullscreen enable, focus
@@ -95,7 +102,7 @@ exec pro1x-call-watch
 ### On-screen keyboard: Phosh's (stevia), shown for text fields while the
 ### keyboard is slid in (pro1x-osk-slider turns that off while it is out),
 ### and on demand: Super+i, the Keyboard line in quick actions, the gear.
-exec phosh-osk-stevia
+exec $dbusenv && phosh-osk-stevia
 exec pro1x-osk-slider
 bindsym $mod+i exec sway-quick-actions --osk toggle
 

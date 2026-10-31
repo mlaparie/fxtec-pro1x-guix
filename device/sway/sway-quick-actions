@@ -82,7 +82,7 @@ qs_hide() {
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quickactions -o pad=12x8 "$0" \
+        setsid pro1x-term --app-id=quickactions -o pad=12x8 -o "font=Iosevka Term:size=15" "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
