@@ -1,0 +1,9 @@
+#!/bin/sh
+# pro1x-sleep suspend|hibernate — as root (sudo, from pro1x-power-menu).
+# Untested on the Pro¹x (2026-10-31); hibernate needs swap and a resume
+# device, which the port does not set up yet.
+case "${1:-}" in
+    suspend) echo mem > /sys/power/state ;;
+    hibernate) echo disk > /sys/power/state ;;
+    *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
+esac

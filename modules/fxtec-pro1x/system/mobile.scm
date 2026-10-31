@@ -459,7 +459,12 @@ files root may log in with."
                (string-append (plain-file-content %sudoers-specification)
                               "greeter ALL=(root) NOPASSWD: "
                               "/run/current-system/profile/sbin/halt, "
-                              "/run/current-system/profile/sbin/reboot\n")))
+                              "/run/current-system/profile/sbin/reboot\n"
+                              ;; The Sway power menu (pro1x-power-menu).
+                              "%wheel ALL=(root) NOPASSWD: "
+                              "/run/current-system/profile/sbin/halt, "
+                              "/run/current-system/profile/sbin/reboot, "
+                              "/run/current-system/profile/bin/pro1x-sleep\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
