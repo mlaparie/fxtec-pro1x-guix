@@ -1,0 +1,72 @@
+#!/bin/sh
+# pro1x-bar — Sway's bars: one line in landscape, two in portrait
+#
+#   pro1x-bar main     status command of bar-0 (i3status-rs)
+#   pro1x-bar extra    status command of bar-1, shown in portrait only
+#   pro1x-bar watch    follow the panel's rotation (started by the config)
+#   pro1x-bar toggle   hide or show the bars (Super+b)
+#
+# Landscape: bar-0 with the full block list, ~/.config/i3status-rust/
+# config.toml.  Portrait, too narrow for it (author, 2026-10-31): bar-0
+# with a compact list (portrait.toml) and bar-1 under it with the window
+# title, storage and date (portrait-2.toml).  Each file is taken from
+# ~/.config/i3status-rust/ when there, else from the port.  bar-0 runs
+# i3status-rs on a link in $XDG_RUNTIME_DIR, switched on rotation and
+# re-read with SIGUSR2 (i3status-rs restarts in place).
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+link="$rt/pro1x-bar.toml"
+hidden="$rt/pro1x-bar.hidden"
+port="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway"
+user="${XDG_CONFIG_HOME:-$HOME/.config}/i3status-rust"
+
+conf() {                        # conf <name>: the user's file, else the port's
+    if [ -f "$user/$1" ]; then echo "$user/$1"
+    elif [ "$1" = config.toml ]; then echo "$port/i3status-rust.toml"
+    else echo "$port/i3status-$1"; fi
+}
+
+portrait() {                    # is the panel upright (transform normal/180)?
+    swaymsg -t get_outputs -r |
+        jq -e '.[] | select(.name == "DSI-1")
+               | .transform == "normal" or .transform == "180"' >/dev/null
+}
+
+apply() {
+    if portrait; then
+        want=$(conf portrait.toml) extra=dock
+    else
+        want=$(conf config.toml) extra=invisible
+    fi
+    if [ "$(readlink "$link")" != "$want" ]; then
+        ln -sfn "$want" "$link"
+        pkill -USR2 -u "$(id -u)" -f "$link"
+    fi
+    if [ -f "$hidden" ]; then
+        swaymsg 'bar bar-0 mode invisible; bar bar-1 mode invisible' >/dev/null
+    else
+        swaymsg "bar bar-0 mode dock; bar bar-1 mode $extra" >/dev/null
+    fi
+}
+
+case "${1:-}" in
+    main)
+        portrait && ln -sfn "$(conf portrait.toml)" "$link" ||
+            ln -sfn "$(conf config.toml)" "$link"
+        exec i3status-rs "$link" ;;
+    extra)
+        exec i3status-rs "$(conf portrait-2.toml)" ;;
+    toggle)
+        if [ -f "$hidden" ]; then rm -f "$hidden"; else touch "$hidden"; fi
+        apply ;;
+    watch)
+        rm -f "$hidden"
+        apply
+        swaymsg -m -t subscribe '["output"]' 2>/dev/null |
+            while read -r _; do apply; done ;;
+    *)
+        echo "usage: pro1x-bar main|extra|watch|toggle" >&2
+        exit 1 ;;
+esac

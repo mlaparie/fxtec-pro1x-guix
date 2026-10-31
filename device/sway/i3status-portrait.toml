@@ -1,0 +1,95 @@
+# i3status-rust bar for sway on the F(x)tec Pro1X: portrait, first line (compact; pro1x-bar).
+# Based on mlaparie's guix-config (.config/i3status-rust/config.toml), with the
+# PC-specific blocks removed and phone ones added.  Installed as
+# ~/.config/i3status-rust/config.toml for new accounts.  Icons need font-awesome.
+# No backlight block: polling actual_brightness makes the panel driver send
+# DSI reads, which time out in video mode and wedge the panel (it turned
+# white until reboot, 2026-10-28).
+
+[theme]
+theme = "nord-dark"
+
+[theme.overrides]
+idle_bg = "#313544"
+idle_fg = "#B1B1B1"
+
+[icons]
+icons = "awesome4"
+
+[[block]]
+block = "load"
+interval = 1
+format = " $1m.eng(w:3) "
+
+[[block]]
+block = "custom"
+command = "pro1x-status temp"
+interval = 2
+format = " $text "
+
+[[block]]
+block = "memory"
+format = " $icon $mem_avail.eng(w:2,u:B,p:G,hide_unit:true) "
+interval = 1
+warning_mem = 80
+critical_mem = 95
+
+[[block]]
+block = "net"
+device = "wlan0"
+format = " $icon $signal_strength "
+interval = 2
+inactive_format = ""
+missing_format = ""
+
+[[block]]
+block = "custom"
+command = "pro1x-status mobile"
+interval = 5
+format = " $text "
+hide_when_empty = true
+
+[[block]]
+block = "custom"
+command = "pro1x-status bt"
+interval = 2
+format = " $text.pango-str() "
+[[block.click]]
+button = "left"
+cmd = "pro1x-status bt-toggle"
+update = true
+
+[[block]]
+block = "sound"
+driver = "pulseaudio"
+format = " $icon {$volume|muted} "
+
+[[block]]
+block = "custom"
+command = "pro1x-status bright"
+interval = 2
+format = " ☀ $text "
+[[block.click]]
+button = "up"
+cmd = "pro1x-status bright-up"
+update = true
+[[block.click]]
+button = "down"
+cmd = "pro1x-status bright-down"
+update = true
+
+[[block]]
+block = "battery"
+driver = "sysfs"
+device = "battery"
+interval = 2
+format = " $icon $percentage "
+good = 101
+info = 60
+warning = 30
+critical = 15
+
+[[block]]
+block = "time"
+interval = 1
+format = " $timestamp.datetime(f:'%R') "

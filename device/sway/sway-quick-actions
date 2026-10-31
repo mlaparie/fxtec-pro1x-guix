@@ -279,14 +279,24 @@ wifi_info() {                   # " · 75% SSID" for the connected network
                        printf " · %s%% %s", sig, ssid; exit }'
 }
 
-mobile_info() {                 # " · 59% Operator LTE", from modem key-values
+gen() {                         # ModemManager access technology -> 2G/3G/4G/5G
+    case "$1" in
+        gsm*|gprs|edge) echo 2G ;;
+        umts|hsdpa|hsupa|hspa|hspa-plus|1xrtt|evdo*) echo 3G ;;
+        lte*) echo 4G ;;
+        5gnr) echo 5G ;;
+        *) echo "$1" | tr 'a-z' 'A-Z' ;;
+    esac
+}
+
+mobile_info() {                 # " · 59% Operator 4G", from modem key-values
     [ -n "$1" ] || return
     tech=$(printf '%s\n' "$1" | kv_get 'modem.generic.access-technologies.value\[1\]')
     sig=$(printf '%s\n' "$1" | kv_get modem.generic.signal-quality.value)
     op=$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-name)
     [ "$op" = -- ] && op=
     [ -n "$tech$sig" ] || return
-    printf ' · %s%% %s %s' "$sig" "$op" "$(echo "$tech" | tr 'a-z' 'A-Z')"
+    printf ' · %s%% %s %s' "$sig" "$op" "$(gen "$tech")"
 }
 
 volume() {                      # "60%" or "60% muted"

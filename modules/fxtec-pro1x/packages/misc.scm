@@ -1416,6 +1416,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
+;;;   bin/pro1x-bar                      bars: one line in landscape, two in portrait
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1433,6 +1434,8 @@ window opened by a sway key binding.")
       #~'(("config" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
+          ("i3status-portrait.toml" "share/pro1x-sway/")
+          ("i3status-portrait-2.toml" "share/pro1x-sway/")
           ("foot.ini" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
@@ -1454,7 +1457,8 @@ window opened by a sway key binding.")
           ("pro1x-switcher" "bin/")
           ("pro1x-wifi" "bin/")
           ("pro1x-blank-led" "bin/")
-          ("pro1x-camera" "bin/"))
+          ("pro1x-camera" "bin/")
+          ("pro1x-bar" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1525,7 +1529,7 @@ window opened by a sway key binding.")
                                  '("coreutils" "curl" "fzf" "jq" "procps"
                                    "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
-                   "pro1x-camera"))
+                   "pro1x-camera" "pro1x-bar"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa
