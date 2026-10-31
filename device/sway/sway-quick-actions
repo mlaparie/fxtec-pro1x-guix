@@ -82,7 +82,7 @@ qs_hide() {
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quickactions -o pad=12x8 -o "font=Iosevka Term:size=15" "$0" \
+        setsid pro1x-term --app-id=quickactions -o pad=12x8 -o "font=Iosevka Term:size=13" "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
@@ -91,7 +91,7 @@ qs_show() {
         hidden)
             # Same geometry as the Sway config's rule, for the current
             # orientation.
-            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 55 ppt, move position 10 ppt 2 ppt' >/dev/null
+            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt' >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;
@@ -557,11 +557,11 @@ set --
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
     # Same layout and colours as the launcher and window switcher: list
-    # from the top, prompt at the bottom.  Notification preview on the right
-    # (below when narrower than 60 columns, in portrait).
+    # from the top, prompt at the bottom.  Notification preview on the right,
+    # in portrait too.
     fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --with-nth=2.. --header-lines=1 \
-        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,50%,wrap,<60(hidden,down,50%,wrap)' \
+        --ansi --preview="$self --notif-summary" --preview-window=hidden,right,45%,wrap \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
