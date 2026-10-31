@@ -30,6 +30,7 @@ Tailscale.
 - On-screen keyboard (stevia) when the keyboard is closed, never when it
   is out; Super key in its terminal layout.
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
+- Dark apps and shell by default (color-scheme in config.scm).
 - Charge limit (85/80 %), shown in quick actions.
 - Notification LED: blue for messages, purple for missed calls, white
   for the terminal bell (config.scm); breathing yellow

@@ -18,6 +18,7 @@
 ;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
 ;;;     The percentage is estimated from voltage, which drops when charging
 ;;;     stops: keep the gap wider than that drop (not measured yet);
+;;;   • light or dark apps (color-scheme, default 'prefer-dark): GSettings;
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
@@ -95,6 +96,12 @@
   ;; comes 30 s before the blank.
   (blank-after        pro1x-hardware-blank-after        (default 180))
   (lock-after         pro1x-hardware-lock-after         (default 120))
+  ;; Light or dark apps and shell: 'prefer-dark (default, author) or
+  ;; 'default (light).  A GSettings default (org.gnome.desktop.interface
+  ;; color-scheme, plus Adwaita-dark for GTK 3 apps); a choice made in GNOME
+  ;; Settings or with gsettings wins.  Sway passes it to libadwaita apps
+  ;; (Calls, Chatty) through the GTK portal.
+  (color-scheme       pro1x-hardware-color-scheme       (default 'prefer-dark))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Stop charging at this battery percentage (#f: charge to full), and
@@ -577,7 +584,8 @@ esac
   ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
   ;; override in the system profile, compiled by Guix's glib-schemas hook.
   (let ((blank (pro1x-hardware-blank-after config))
-        (lock (pro1x-hardware-lock-after config)))
+        (lock (pro1x-hardware-lock-after config))
+        (scheme (symbol->string (pro1x-hardware-color-scheme config))))
     (package
       (name "pro1x-idle-gsettings")
       (version "0.1")
@@ -603,10 +611,16 @@ esac
                      (format port "[org.gnome.desktop.session~a]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver~a]~%lock-enabled=~a~%lock-delay=uint32 ~a~%~%"
                              suffix #$blank suffix
                              #$(if lock "true" "false") #$(or lock 0)))
-                   '("" ":Phosh"))))))))
+                   '("" ":Phosh"))
+                  (format port "[org.gnome.desktop.interface]~%color-scheme='~a'~%gtk-theme='~a'~%"
+                          #$scheme
+                          #$(if (string=? scheme "prefer-dark")
+                                "Adwaita-dark"
+                                "Adwaita"))))))))
       (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-      (synopsis "Pro1X blank and lock delays for Phosh")
-      (description "GSettings defaults for the blank and lock delays.")
+      (synopsis "Pro1X blank and lock delays, colour scheme")
+      (description "GSettings defaults for the blank and lock delays and the
+light or dark colour scheme.")
       (license license:gpl3+))))
 
 (define pro1x-hardware-service-type

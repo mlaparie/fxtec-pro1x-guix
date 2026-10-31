@@ -298,6 +298,10 @@
     #~(begin
         (setenv "WLR_BACKENDS" "drm,libinput")
         (setenv "MOZ_ENABLE_WAYLAND" "1")
+        ;; xdg-desktop-portal picks its back ends by desktop name
+        ;; (sway-portals.conf, pro1x-sway-config); without one, libadwaita
+        ;; apps got no colour scheme and stayed light (Calls, Chatty).
+        (setenv "XDG_CURRENT_DESKTOP" "sway")
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
