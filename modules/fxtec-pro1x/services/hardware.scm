@@ -502,19 +502,22 @@ esac
   ;; accelerometer from the SSC (ssccli, a second client next to
   ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
   ;; m/s²".  A shake is a burst where the acceleration's magnitude differs
-  ;; from gravity by more than THRESHOLD; two bursts 0.25-1.5 s apart, with
-  ;; the phone held up just before (gravity measured while still: top end
-  ;; up, not flat), toggle white:flash-0.  Not in a pocket
+  ;; from gravity by more than THRESHOLD; two bursts 0.25-1.5 s apart
+  ;; toggle white:flash-0, in any orientation (author's choice: the
+  ;; gravity seen before a shake held "in portrait" varied too much from
+  ;; one try to the next to tell portrait from the readings).  Not in a pocket
   ;; (/run/pro1x-pocket).  The torch guard turns it off after its timeout.
   ;; Every burst is logged with its peak, to tune THRESHOLD on the phone.
   ;; State: 2026-10-31: shakes seen on the phone (peaks 16-45 m/s², 12 to
   ;; 35 readings a second, more while moving); the first upright test was
-  ;; too strict, loosened.
+  ;; too strict, loosened, then dropped (author); threshold 12 -> 15
+  ;; m/s² against handling (the author's light shakes peaked at 12-14).
+  ;; The orientation is still logged.
   (program-file
    "pro1x-shake-torch"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format))
-       (define threshold 12.0)          ;m/s² beyond gravity
+       (define threshold 15.0)          ;m/s² beyond gravity
        (define gap 0.15)                ;s below it that ends a burst
        (define torch "/sys/class/leds/white:flash-0")
        (define (now)
@@ -535,7 +538,7 @@ esac
        ;; Gravity, smoothed over still samples; the bursts' times.
        (define gx 0.0) (define gy 9.8) (define gz 0.0)
        (define in-burst? #f) (define peak 0.0) (define last-high 0.0)
-       (define first-burst #f) (define upright-at-first? #f)
+       (define first-burst #f)
        (define quiet-until 0.0)
        ;; Held up, top end upwards: not flat, and gravity at least partly
        ;; along the sensor's Y.  Held "upright in portrait" by the author,
@@ -553,18 +556,15 @@ esac
              (set! peak (max peak d))
              (unless in-burst?
                (set! in-burst? #t)
-               (let ((upright (upright?)))
-                 (cond
-                  ((or (< t quiet-until) (file-exists? "/run/pro1x-pocket"))
-                   (set! first-burst #f))
-                  ((and first-burst (> (- t first-burst) 0.25)
-                        (< (- t first-burst) 1.5) upright-at-first?)
-                   (set! first-burst #f)
-                   (set! quiet-until (+ t 2))
-                   (toggle!))
-                  (else
-                   (set! first-burst t)
-                   (set! upright-at-first? upright))))))
+               (cond
+                ((or (< t quiet-until) (file-exists? "/run/pro1x-pocket"))
+                 (set! first-burst #f))
+                ((and first-burst (> (- t first-burst) 0.25)
+                      (< (- t first-burst) 1.5))
+                 (set! first-burst #f)
+                 (set! quiet-until (+ t 2))
+                 (toggle!))
+                (else (set! first-burst t)))))
             (else
              (when (and in-burst? (> (- t last-high) gap))
                (format #t "burst: peak ~,1f m/s², upright ~a (g ~,1f ~,1f ~,1f)~%"
