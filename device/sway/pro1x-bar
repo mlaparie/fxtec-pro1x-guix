@@ -12,7 +12,8 @@
 # $XDG_RUNTIME_DIR; on rotation the link is switched and i3status-rs re-reads
 # it (SIGUSR2, a restart in place).
 #
-# State: written 2026-10-31, not yet run on the phone.
+# State: run on the phone 2026-10-31: portrait and landscape lists switch
+# with the rotation.
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 link="$rt/pro1x-bar.toml"
@@ -54,10 +55,11 @@ case "${1:-}" in
         apply ;;
     watch)
         rm -f "$hidden"
-        # One watcher per session.
-        for p in $(pgrep -u "$(id -u)" -f "pro1x-bar(-real)? watch"); do
-            [ "$p" != $$ ] && kill "$p" 2>/dev/null
-        done
+        # One watcher per session: end the previous one by its PID (a
+        # pattern would also match other shells mentioning it).
+        pidf="$rt/pro1x-bar.watch.pid"
+        [ -f "$pidf" ] && kill "$(cat "$pidf")" 2>/dev/null
+        echo $$ > "$pidf"
         apply
         swaymsg -m -t subscribe '["output"]' 2>/dev/null |
             while read -r _; do apply; done ;;
