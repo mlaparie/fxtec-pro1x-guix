@@ -9,7 +9,9 @@ Files in your home directory come in three kinds:
 | unmanaged | nothing | on the phone |
 
 Use *managed* for files you want reproducible, *seeded* for defaults you
-will keep editing on the phone (Sway's config, for example).
+will keep editing on the phone.  The port's Sway, bar and foot settings
+need neither: they follow deploys, and your `~/.config` files only add to
+them ([configure.md](configure.md#files-outside-configscm)).
 
 ## Setting it up
 

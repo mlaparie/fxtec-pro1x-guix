@@ -46,19 +46,26 @@ once, so combine changes in one expression:
 |---|---|---|
 | keyboard `backlight-timeout` | `60` | seconds without a key before the keyboard light goes off; `#f` never |
 | keyboard `xkb-layout`, `xkb-variant` | `"us"`, `"intl"` | session keyboard layout |
-| hardware `dim-after` | `30` | idle seconds before the panel dims; `#f` never |
+| hardware `dim-after` | `150` | idle seconds before the panel dims; `#f` never |
 | hardware `dim-level` | `20` | dim level, % of maximum |
-| hardware `blank-after` | `60` | idle seconds before the panel turns off |
+| hardware `blank-after` | `180` | idle seconds before the panel turns off |
 | hardware `lock-after` | `120` | seconds after blanking before locking; `#f` never |
+| hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
+| hardware `color-scheme` | `'prefer-dark` | `'default` for light apps and shell |
+| hardware `keyboard-haptics?` | `#t` | a short vibration per on-screen key |
+| hardware `lock-keyboard` | `'dark` | the Sway lock screen's keyboard, `'dark` or `'light` |
+| hardware `notification-leds` | blue messages, purple missed calls, white bell | list of `(EVENT COLOUR)` or `(EVENT COLOUR PERIOD-MS)`; colours `"red"` … or `"#RRGGBB"` |
+| hardware `charging-led`, `charged-led` | `"#FFA000"`, `"#00FF00"` | breathing while charging, steady when full or held; `#f` off |
+| hardware `low-battery-led`, `low-battery-level` | `"#FF4000"`, `15` | a short blip every 4 s at or below that % |
+| hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
+| hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
+| hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
+| hardware `serial-enable?` | `#f` | USB serial rescue console |
 
 `blank-after` and `lock-after` are the defaults of the GSettings keys that
 GNOME Settings (blank) and Phosh Mobile Settings ("Automatic screen lock
 delay") show and change; a value set there wins, in Phosh and in Sway.
-| hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
-| hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
-| hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
-| hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
-| hardware `serial-enable?` | `#f` | USB serial rescue console |
+`color-scheme` too.
 
 Keyboard: `pro1x-keyboard-configuration` in `(fxtec-pro1x services
 keyboard)`; hardware: `pro1x-hardware-configuration` in `(fxtec-pro1x
