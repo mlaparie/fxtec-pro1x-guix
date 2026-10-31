@@ -234,7 +234,7 @@ cat > "$ui.new" <<EOF
 EOF
 mv "$ui.new" "$ui"
 
-# Keys: one size for both orientations.  The module's landscape layout
+# Keys: the module's landscape layout
 # has a numpad on the right (four rows), its portrait one a digit row
 # instead (narrow screen; our patch, GTKLOCK_VIRTKB_PORTRAIT).
 key_size=70% key_pad=0
@@ -242,6 +242,7 @@ if swaymsg -t get_outputs -r 2>/dev/null |
        jq -e '.[] | select(.name == "DSI-1")
               | .transform == "normal" or .transform == "180"' >/dev/null; then
     export GTKLOCK_VIRTKB_PORTRAIT=1
+    key_size=60%                # 70% overran the portrait width a little
 else
     unset GTKLOCK_VIRTKB_PORTRAIT
 fi
