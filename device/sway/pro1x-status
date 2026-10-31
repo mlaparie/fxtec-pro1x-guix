@@ -3,7 +3,7 @@
 #
 #   pro1x-status temp            hottest CPU thermal zone, "44°C"
 #   pro1x-status mobile          "LTE 52%" (ModemManager), empty without modem
-#   pro1x-status bt (JSON)              "BT on" / "BT off" (rfkill)
+#   pro1x-status bt (Pango)              "BT on" / "BT off" (rfkill)
 #   pro1x-status bt-toggle
 #   pro1x-status bright          backlight in percent, "60%"
 #   pro1x-status bright-up|bright-down   by 10%
@@ -34,11 +34,11 @@ case "${1:-}" in
                   sed -n 's/^modem.generic.signal-quality.value *: //p')
         [ -n "$tech" ] && [ "$tech" != -- ] &&
             echo "$(echo "$tech" | tr 'a-z' 'A-Z') ${sig}%" ;;
-    bt)                         # JSON for the custom block: icon, grey when off
+    bt)                         # Pango: the icon, light when on, dark grey when off
         if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
-            echo '{"text": "\uf294", "state": "Idle"}'
+            printf '<span foreground="#5C6370">\357\202\224</span>\n'
         else
-            echo '{"text": "\uf294", "state": "Good"}'
+            printf '<span foreground="#E5E9F0">\357\202\224</span>\n'
         fi ;;
     bt-toggle)
         if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then

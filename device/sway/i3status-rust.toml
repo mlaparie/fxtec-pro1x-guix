@@ -69,13 +69,13 @@ interval = 5
 format = " $text "
 hide_when_empty = true
 
-# Bluetooth icon, grey when off (rfkill); left click toggles.
+# Bluetooth icon, light when on, dark grey when off (rfkill), no coloured
+# background; left click toggles.
 [[block]]
 block = "custom"
 command = "pro1x-status bt"
-json = true
 interval = 2
-format = " $text "
+format = " $text.pango-str() "
 [[block.click]]
 button = "left"
 cmd = "pro1x-status bt-toggle"
