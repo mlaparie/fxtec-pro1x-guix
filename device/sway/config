@@ -260,10 +260,9 @@ bindsym $mod+Shift+p exec pro1x-screenshot full
 bindsym $mod+Shift+s exec pro1x-screenshot region
 
 ########## BAR ##########
-### Bars: i3status-rust through pro1x-bar.  Landscape: one line,
-### ~/.config/i3status-rust/config.toml.  Portrait: a compact first line
-### and a second one (window, storage, date); portrait.toml and
-### portrait-2.toml there override the port's.
+### Bar: i3status-rust through pro1x-bar.  Landscape:
+### ~/.config/i3status-rust/config.toml; portrait, the essentials on one
+### line: portrait.toml there, else the port's.
 exec pro1x-bar watch
 bar bar-0 {
     position top
@@ -274,17 +273,5 @@ bar bar-0 {
         background #1d2021
         focused_workspace #458588 #458588 #ebdbb2
         inactive_workspace #1d2021 #1d2021 #a89984
-    }
-}
-bar bar-1 {
-    position top
-    mode invisible
-    workspace_buttons no
-    tray_output none
-    font pango:monospace, FontAwesome 10
-    status_command pro1x-bar extra
-    colors {
-        statusline #ebdbb2
-        background #1d2021
     }
 }

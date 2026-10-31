@@ -1,4 +1,4 @@
-# i3status-rust bar for sway on the F(x)tec Pro1X: portrait, first line (compact; pro1x-bar).
+# i3status-rust bar for sway on the F(x)tec Pro1X: portrait (essentials on one line; pro1x-bar).
 # Based on mlaparie's guix-config (.config/i3status-rust/config.toml), with the
 # PC-specific blocks removed and phone ones added.  Installed as
 # ~/.config/i3status-rust/config.toml for new accounts.  Icons need font-awesome.
@@ -16,16 +16,14 @@ idle_fg = "#B1B1B1"
 [icons]
 icons = "awesome4"
 
-[[block]]
-block = "load"
-interval = 1
-format = " $1m.eng(w:3) "
+# Portrait, one line (author, 2026-10-31): window, memory, Wi-Fi, mobile,
+# Bluetooth, volume, battery, time.
 
 [[block]]
-block = "custom"
-command = "pro1x-status temp"
-interval = 2
-format = " $text "
+block = "focused_window"
+[block.format]
+full = "{ $title.str(max_w:14) |}"
+short = "{ $title.str(max_w:8) |}"
 
 [[block]]
 block = "memory"
@@ -46,7 +44,7 @@ missing_format = ""
 block = "custom"
 command = "pro1x-status mobile"
 interval = 5
-format = " $text "
+format = " \uf012 $text "
 hide_when_empty = true
 
 [[block]]
@@ -63,20 +61,6 @@ update = true
 block = "sound"
 driver = "pulseaudio"
 format = " $icon {$volume|muted} "
-
-[[block]]
-block = "custom"
-command = "pro1x-status bright"
-interval = 2
-format = " ☀ $text "
-[[block.click]]
-button = "up"
-cmd = "pro1x-status bright-up"
-update = true
-[[block.click]]
-button = "down"
-cmd = "pro1x-status bright-down"
-update = true
 
 [[block]]
 block = "battery"

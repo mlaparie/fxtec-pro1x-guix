@@ -19,8 +19,8 @@ icons = "awesome4"
 [[block]]
 block = "focused_window"
 [block.format]
-full = " $title.str(max_w:40) |"
-short = " $title.str(max_w:10) |"
+full = "{ $title.str(max_w:40) |}"
+short = "{ $title.str(max_w:10) |}"
 
 # Order (author, 2026-10-31): window, load, temperature, memory, storage,
 # Wi-Fi, mobile, Bluetooth, volume, brightness, battery, date.  Blocks
@@ -66,7 +66,7 @@ missing_format = ""
 block = "custom"
 command = "pro1x-status mobile"
 interval = 5
-format = " $text "
+format = " \uf012 $text "
 hide_when_empty = true
 
 # Bluetooth icon, light when on, dark grey when off (rfkill), no coloured

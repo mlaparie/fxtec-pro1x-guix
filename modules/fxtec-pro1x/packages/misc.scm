@@ -1416,7 +1416,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
-;;;   bin/pro1x-bar                      bars: one line in landscape, two in portrait
+;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1435,7 +1435,6 @@ window opened by a sway key binding.")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("i3status-portrait.toml" "share/pro1x-sway/")
-          ("i3status-portrait-2.toml" "share/pro1x-sway/")
           ("foot.ini" "share/pro1x-sway/")
           ("sway-window-switcher" "bin/")
           ("pro1x-dim" "bin/")
