@@ -381,15 +381,16 @@ files root may log in with."
       (flags '(no-atime)))
     %base-file-systems))
 
-  ;; ── Home skeleton: sway and bar configs for new accounts ─────────────────
+  ;; ── Home skeleton for new accounts ────────────────────────────────────
+  ;; Sway and foot: small files that include the port's, which follow
+  ;; deploys (copies would go stale).  The bar has none: pro1x-bar uses
+  ;; the port's block lists unless ~/.config/i3status-rust/ has its own.
   (skeletons
    (append
     `((".config/sway/config"
        ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
-      (".config/i3status-rust/config.toml"
-       ,(file-append pro1x-sway-config "/share/pro1x-sway/i3status-rust.toml"))
       (".config/foot/foot.ini"
-       ,(file-append pro1x-sway-config "/share/pro1x-sway/foot.ini"))
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/foot-user.ini"))
       ;; XDG user directories, set when the account is created (first boot
       ;; after flashing), as xdg-user-dirs-update would write them: Snapshot
       ;; saves into XDG_PICTURES_DIR and failed without it (2026-10-30).
@@ -487,11 +488,16 @@ files root may log in with."
              sway-session
              "\nType=Application\n"))))
 
-     ;; Device settings shared by the Sway and Sxmo sessions.
+     ;; Device settings shared by the Sway and Sxmo sessions; the port's
+     ;; Sway desktop (keys, menus, bar, rules) in its own directory, which
+     ;; ~/.config/sway/config includes and Sxmo does not.  Both follow
+     ;; deploys.
      (simple-service 'sway-device-config etc-service-type
        (list
         `("sway/config.d/pro1x.conf"
-          ,(file-append pro1x-sway-config "/share/pro1x-sway/pro1x.conf"))))
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/pro1x.conf"))
+        `("sway/pro1x.d/desktop.conf"
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))))
 
      ;; /etc/phoc.ini — scale 1.75 for the 1080×2160 panel (author's
      ;; default, 2026-10-30; was 2).  Phosh does not save display changes,
@@ -591,8 +597,19 @@ Dracula palette, no kernel messages over the greeter.")
                                 " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
+     ;; gtklock: Sway's lock screen (pro1x-lock), with an on-screen keyboard
+     ;; when the hardware keyboard is closed.  Its PAM service, like
+     ;; swaylock's below.
+     (service screen-locker-service-type
+              (screen-locker-configuration
+               (name "gtklock")
+               (program (file-append gtklock "/bin/gtklock"))
+               (using-pam? #t)
+               (using-setuid? #f)))
+
      ;; swaylock's PAM service: without it swaylock cannot unlock, so Sway
-     ;; had no idle lock (pro1x-idle --sway locks after lock-after).
+     ;; had no idle lock (pro1x-idle --sway locks after lock-after).  Kept
+     ;; as pro1x-lock's fallback.
      (service screen-locker-service-type
               (screen-locker-configuration
                (name "swaylock")
@@ -691,6 +708,7 @@ Dracula palette, no kernel messages over the greeter.")
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
      foot swayfx wdisplays swayidle swaylock-effects mako
+     gtklock gtklock-virtkb-module
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia

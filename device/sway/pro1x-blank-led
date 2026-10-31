@@ -6,7 +6,7 @@
 # writes the RGB LED only while the LED is dark or shows this white, so
 # feedbackd's notification patterns and pro1x-charge-led's colours keep it
 # when they use it; off is a zero pattern (the pattern trigger stays, for
-# feedbackd).  Follows Sway's output events, and every 10 s for swaylock,
+# feedbackd).  Follows Sway's output events, and every 10 s for the lock,
 # which starts without one.  Started by the Sway config; ends with Sway.
 #
 # State: written 2026-10-30, not yet run on the phone.
@@ -23,7 +23,7 @@ dark() { [ "$(cat "$led/brightness")" = 0 ]; }
 check() {
     lit=$(swaymsg -t get_outputs -r 2>/dev/null |
               jq -r '[.[] | select(.active) | .power] | any')
-    if [ "$lit" = false ] && ! pgrep -u "$(id -u)" -x swaylock >/dev/null; then
+    if [ "$lit" = false ] && ! pro1x-lock --locked; then
         if [ "$mine" = 0 ] && dark; then
             echo "$white" > "$led/multi_intensity"
             echo "$level 1000 $level 1000" > "$led/pattern"

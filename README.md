@@ -403,7 +403,7 @@ and session):
 
 | Session | |
 |---|---|
-| **Sway** | `~/.config/sway/config`; device settings in `/etc/sway/config.d/pro1x.conf`; see [features.md](docs/features.md#sway-on-the-phone) |
+| **Sway** | the port's config in `/etc/sway/pro1x.d/`, yours in `~/.config/sway/config` ([configure.md](docs/configure.md#files-outside-configscm)); see [features.md](docs/features.md#sway-on-the-phone) |
 | **Phosh** | phoc-pro1x + phosh-pro1x |
 | **Sxmo + Sway** | needs superd (not packaged yet) |
 

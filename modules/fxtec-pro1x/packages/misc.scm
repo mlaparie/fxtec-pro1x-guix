@@ -892,7 +892,9 @@ ModemManager, for clients such as Chatty.")
                 (call-with-output-file
                     (string-append dir "/90_fxtec-pro1x.gschema.override")
                   (lambda (port)
-                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\n
+                    ;; scaling=[]: the base height (200) in portrait too,
+                    ;; not 40 mm (352 px here), which was too tall (author).
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
 "
@@ -1013,7 +1015,13 @@ sends a power-key press when it sees two quick taps close together.")
                (url "https://github.com/progandy/gtklock-virtkb-module")
                (commit commit)))
          (file-name (git-file-name name version))
-         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))))
+         (sha256 (base32 "1hdddi7q3y9jr69lsrr7jan5i9fn6i4brvj73fkkwjq88d2g1zhq"))
+         ;; Ours: digits (numeric passwords could not be typed): a numpad
+         ;; on the right in landscape, a digit row in portrait.
+         (patches
+          (list (local-file
+                 (repository-file "device/phosh/gtklock-virtkb-digits.patch")
+                 "gtklock-virtkb-digits.patch")))))
       (build-system gnu-build-system)
       (arguments
        (list
@@ -1394,9 +1402,16 @@ window opened by a sway key binding.")
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sway-config — sway defaults for the Pro1X, from device/sway/
-;;;   share/pro1x-sway/config              ~/.config/sway/config (skeleton)
-;;;   share/pro1x-sway/i3status-rust.toml  ~/.config/i3status-rust/config.toml
-;;;                                        (skeleton)
+;;;   share/pro1x-sway/desktop.conf        the port's sway config
+;;;                                        (/etc/sway/pro1x.d/desktop.conf)
+;;;   share/pro1x-sway/config              ~/.config/sway/config (skeleton:
+;;;                                        includes the above)
+;;;   share/pro1x-sway/foot.ini            the port's foot settings
+;;;   share/pro1x-sway/foot-user.ini       ~/.config/foot/foot.ini (skeleton:
+;;;                                        includes foot.ini)
+;;;   share/pro1x-sway/i3status-*.toml     bar blocks, landscape and portrait
+;;;                                        (pro1x-bar; ~/.config/i3status-rust/
+;;;                                        overrides)
 ;;;   bin/sway-window-switcher           fzf window switcher (Super+Tab)
 ;;;   bin/sway-autorotate                rotation from iio-sensor-proxy
 ;;;   bin/sway-quick-actions            Phosh-like toggles in fzf (Super+q)
@@ -1432,6 +1447,8 @@ window opened by a sway key binding.")
      (list
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
+          ("desktop.conf" "share/pro1x-sway/")
+          ("foot-user.ini" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("i3status-portrait.toml" "share/pro1x-sway/")
@@ -1510,11 +1527,9 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "gawk" "imagemagick" "jq" "procps"
-                                "sed"))))
-                    `("PRO1X_LOCK_FONT" =
-                      (,(string-append (assoc-ref inputs "font-dejavu")
-                                       "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                              ;; gtklock and swaylock: system profile.
+                              '("coreutils" "evtest" "gawk" "grep" "jq"
+                                "procps" "sed"))))))
                 (for-each
                  (lambda (name)
                    (let ((f (string-append #$output "/bin/" name)))
