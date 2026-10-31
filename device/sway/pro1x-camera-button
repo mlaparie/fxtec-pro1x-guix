@@ -1,0 +1,70 @@
+#!/bin/sh
+# pro1x-camera-button — the camera button in Sway (author, 2026-10-31)
+#
+#   Snapshot focused:  a press takes a picture (pro1x-camera), at once
+#   double press:      CAMERA_DOUBLE_PRESS (/etc/pro1x/apps.conf,
+#                      camera-double-press in config.scm; default
+#                      pro1x-camera: start or focus Snapshot), through
+#                      pro1x-open, so it opens over the lock screen
+#   single press:      a right click where the pointer is
+#   held 0.4 s:        the left button held until released (drag)
+#
+# Reads KEY_CAMERA from gpio-keys with evtest (Sway acts on presses only,
+# and cannot tell a double press); the clicks go through ydotoold
+# (pro1x-ydotoold service, /run/pro1x-ydotool.sock).  A single press waits
+# 0.35 s for a second one.  Started by the Sway config; ends with Sway.
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+CAMERA_DOUBLE_PRESS=pro1x-camera
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+st="$rt/pro1x-camera-button"           # press stamp; .pending: a first press
+export YDOTOOL_SOCKET=/run/pro1x-ydotool.sock
+
+dev=
+for e in /sys/class/input/event*; do
+    [ "$(cat "$e/device/name" 2>/dev/null)" = gpio-keys ] && dev=/dev/input/${e##*/}
+done
+[ -n "$dev" ] || exit 0
+
+if [ -n "${SWAYSOCK:-}" ]; then
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
+fi
+
+snapshot_focused() {
+    [ "$(swaymsg -t get_tree -r |
+         jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" \
+      = org.gnome.Snapshot ]
+}
+
+rm -f "$st" "$st.pending" "$st.drag"
+evtest "$dev" 2>/dev/null |
+    while IFS= read -r line; do
+        case "$line" in
+            *"(KEY_CAMERA), value 1"*)
+                if [ -f "$st.pending" ]; then        # the second press
+                    rm -f "$st.pending" "$st"
+                    pro1x-open "$CAMERA_DOUBLE_PRESS" &
+                    continue
+                fi
+                if snapshot_focused; then pro1x-camera & continue; fi
+                stamp=$(date +%s%N); echo "$stamp" > "$st"
+                ( sleep 0.4
+                  [ "$(cat "$st" 2>/dev/null)" = "$stamp" ] || exit 0
+                  touch "$st.drag"
+                  ydotool click 0x40 ) & ;;        # left button down
+            *"(KEY_CAMERA), value 0"*)
+                if [ -f "$st.drag" ]; then
+                    rm -f "$st.drag" "$st"
+                    ydotool click 0x80                 # left button up
+                elif [ -f "$st" ]; then              # a short press
+                    rm -f "$st"
+                    stamp=$(date +%s%N); echo "$stamp" > "$st.pending"
+                    ( sleep 0.35
+                      [ "$(cat "$st.pending" 2>/dev/null)" = "$stamp" ] || exit 0
+                      rm -f "$st.pending"
+                      ydotool click 0xC1 ) &          # right click
+                fi ;;
+        esac
+    done

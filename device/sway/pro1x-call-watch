@@ -21,6 +21,8 @@
 # State: written 2026-10-30, not yet run on the phone (needs a call).
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
+LOCK_SCREEN_APPS=org.gnome.Calls
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 flag="$rt/pro1x-call-unlocked"        # path of the call we unlocked for
 calls="$rt/pro1x-calls"               # paths of the calls in progress
 proxpid="$rt/pro1x-call-proximity.pid"
@@ -81,7 +83,10 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
         case "$line" in
             *Modem.Voice.CallAdded*)
                 [ -n "$call" ] && echo "$call" >> "$calls" && proximity_start
+                # Only when Calls may open over the lock screen
+                # (lock-screen-apps in config.scm).
                 if [ -n "$call" ] && incoming "$call" &&
+                   case " $LOCK_SCREEN_APPS " in *" org.gnome.Calls "*) true ;; *) false ;; esac &&
                    pro1x-lock --locked; then
                     echo "$call" > "$flag"
                     pro1x-lock --unlock

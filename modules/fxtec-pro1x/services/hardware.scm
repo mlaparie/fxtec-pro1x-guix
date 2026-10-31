@@ -10,7 +10,11 @@
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
 ;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
-;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?;
+;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?,
+;;;     shake-action;
+;;;   • app rules for Sway: portrait-apps, landscape-apps, fullscreen-apps,
+;;;     lock-screen-apps; the camera button (camera-double-press, and
+;;;     clicks through pro1x-ydotoold);
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
@@ -54,6 +58,7 @@
   #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
   #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
   #:use-module (gnu packages linux)         ; kmod
+  #:use-module ((gnu packages xdisorg) #:select (ydotool))
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
@@ -119,9 +124,30 @@
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
-  ;; Two shakes of the phone held upright in portrait toggle the torch,
-  ;; locked or not (author); torch-timeout still applies.
+  ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
+  ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
+  ;; a string is a shell command run in the Sway session through pro1x-open
+  ;; (so an app in lock-screen-apps opens over the lock screen).
   (shake-torch?       pro1x-hardware-shake-torch?       (default #t))
+  (shake-action       pro1x-hardware-shake-action       (default 'torch))
+  ;; Apps, by Wayland app_id (Sway; swaymsg -t get_tree shows them).
+  ;; Portrait or landscape while focused (the panel turns; Sway rotates
+  ;; whole outputs), fullscreen when they open, and allowed to open over
+  ;; the lock screen: the session unlocks for them and locks again when
+  ;; they lose the focus or close.  What opens them while locked: an
+  ;; incoming call (Calls), the camera button, shake-action.
+  (portrait-apps      pro1x-hardware-portrait-apps
+                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+  (landscape-apps     pro1x-hardware-landscape-apps     (default '()))
+  (fullscreen-apps    pro1x-hardware-fullscreen-apps
+                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+  (lock-screen-apps   pro1x-hardware-lock-screen-apps
+                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+  ;; The camera button in Sway: a double press runs this shell command
+  ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
+  ;; a single press elsewhere is a right click, held a left button held.
+  (camera-double-press pro1x-hardware-camera-double-press
+                       (default "pro1x-camera"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
@@ -504,7 +530,7 @@ esac
          (set-near! #f)
          (close-pipe port)))))
 
-(define pro1x-shake-torch-program
+(define (pro1x-shake-torch-program action)
   ;; Two shakes toggle the torch (author, 2026-10-31): reads the
   ;; accelerometer from the SSC (ssccli, a second client next to
   ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
@@ -518,13 +544,14 @@ esac
   ;; State: 2026-10-31: the first detector (bursts of total force, upright
   ;; test) missed fast and slow pairs on the phone; this one calibrated on
   ;; the author's recorded shakes (12-35 readings a second): 2-3
-  ;; reversals per double shake.
+  ;; reversals per double shake.  Threshold 5 -> 8 m/s²: too sensitive
+  ;; (author); the recorded double shakes still reverse beyond 9.
   (program-file
    "pro1x-shake-torch"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format)
-                    (srfi srfi-1))
-       (define threshold 5.0)           ;m/s² of motion (gravity removed)
+                    (ice-9 ftw) (srfi srfi-1))
+       (define threshold 8.0)           ;m/s² of motion (gravity removed)
        (define needed 3)                ;reversals …
        (define window 1.2)              ;… within this many seconds
        (define torch "/sys/class/leds/white:flash-0")
@@ -534,7 +561,25 @@ esac
          (or (false-if-exception
               (string->number (call-with-input-file file read-line)))
              0))
+       ;; A command: run in each Sway session, through pro1x-open.
+       (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
+       (define (sway-exec! command)
+         (for-each
+          (lambda (uid)
+            (for-each (lambda (f)
+                        (system* swaymsg "-s"
+                                 (string-append "/run/user/" uid "/" f)
+                                 (string-append "exec pro1x-open " command)))
+                      (or (scandir (string-append "/run/user/" uid)
+                                   (lambda (f) (string-prefix? "sway-ipc." f)))
+                          '())))
+          (or (scandir "/run/user" string->number) '())))
        (define (toggle!)
+         (if (string? #$action)
+             (begin (sway-exec! #$action)
+                    (format #t "shake: ~a~%" #$action))
+             (torch!)))
+       (define (torch!)
          (let ((on? (> (read-number (string-append torch "/brightness")) 0)))
            (call-with-output-file (string-append torch "/brightness")
              (lambda (port)
@@ -601,13 +646,35 @@ esac
        (shepherd-service
         (provision '(pro1x-shake-torch))
         (requirement '(iio-sensor-proxy))
-        (documentation "Toggle the torch with two shakes.")
+        (documentation "Toggle the torch (or run shake-action) with two shakes.")
         (start #~(make-forkexec-constructor
-                  (list #$pro1x-shake-torch-program)
+                  (list #$(pro1x-shake-torch-program
+                           (let ((a (pro1x-hardware-shake-action config)))
+                             (if (string? a) a #f))))
                   #:log-file "/var/log/pro1x-shake-torch.log"))
         (stop #~(make-kill-destructor))
         (respawn? #t)))
       '()))
+
+(define (pro1x-ydotoold-shepherd-service config)
+  ;; ydotoold, the virtual mouse behind the camera button's clicks
+  ;; (pro1x-camera-button): root for /dev/uinput, its socket for the input
+  ;; group (the Sway user is in it).
+  (list
+   (shepherd-service
+    (provision '(pro1x-ydotoold))
+    (documentation "Virtual input device for the camera button's clicks.")
+    (start #~(lambda _
+               (let ((input (group:gid (getgrnam "input"))))
+                 ((make-forkexec-constructor
+                   (list #$(file-append ydotool "/bin/ydotoold")
+                         "--socket-path=/run/pro1x-ydotool.sock"
+                         "--socket-perm=0660"
+                         (string-append "--socket-own=0:"
+                                        (number->string input)))
+                   #:log-file "/var/log/pro1x-ydotoold.log")))))
+    (stop #~(make-kill-destructor))
+    (respawn? #t))))
 
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
@@ -787,6 +854,23 @@ esac
                      "KEYBOARD="
                      (symbol->string (pro1x-hardware-lock-keyboard config))
                      "\n")))
+      ;; /etc/pro1x/apps.conf: the app lists and the camera button's
+      ;; double press, for pro1x-portrait-apps, pro1x-open,
+      ;; pro1x-camera-button and pro1x-call-watch.
+      ("pro1x/apps.conf"
+       ,(plain-file "apps.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "PORTRAIT_APPS='"
+                     (string-join (pro1x-hardware-portrait-apps config)) "'\n"
+                     "LANDSCAPE_APPS='"
+                     (string-join (pro1x-hardware-landscape-apps config)) "'\n"
+                     "FULLSCREEN_APPS='"
+                     (string-join (pro1x-hardware-fullscreen-apps config)) "'\n"
+                     "LOCK_SCREEN_APPS='"
+                     (string-join (pro1x-hardware-lock-screen-apps config)) "'\n"
+                     "CAMERA_DOUBLE_PRESS='"
+                     (pro1x-hardware-camera-double-press config) "'\n")))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"
@@ -876,6 +960,7 @@ light or dark colour scheme.")
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
                                   (pro1x-shake-torch-shepherd-service config)
+                                  (pro1x-ydotoold-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service

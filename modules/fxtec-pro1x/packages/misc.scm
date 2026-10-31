@@ -1470,7 +1470,11 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
-;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
+;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
+;;;   bin/pro1x-camera-button            the camera button: shoot, double press,
+;;;                                      right click, held left drag
+;;;   bin/pro1x-open                     run a command; over the lock screen
+;;;                                      for lock-screen-apps
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
 ;;;   bin/pro1x-volume-lock              both volume keys together lock
 ;;;   bin/pro1x-power-key                power key: screen off or on
@@ -1488,7 +1492,7 @@ window opened by a sway key binding.")
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick jq lisgd procps sed slurp swayidle
-                  wl-clipboard (list glib "bin")))
+                  wl-clipboard ydotool (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1523,6 +1527,8 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
+          ("pro1x-camera-button" "bin/")
+          ("pro1x-open" "bin/")
           ("pro1x-bar" "bin/")
           ("pro1x-volume-lock" "bin/")
           ("pro1x-power-key" "bin/")
@@ -1597,11 +1603,11 @@ window opened by a sway key binding.")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
                                  '("coreutils" "curl" "evtest" "fzf" "jq"
-                                   "procps" "glib")))))))
+                                   "procps" "glib" "ydotool")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
-                   "pro1x-power-button"))
+                   "pro1x-power-button" "pro1x-camera-button" "pro1x-open"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

@@ -1,5 +1,6 @@
 #!/bin/sh
-# pro1x-portrait-apps — portrait while Snapshot or Calls has the focus
+# pro1x-portrait-apps — app rules from config.scm: portrait or landscape
+# while focused (default: Snapshot, Calls in portrait), fullscreen ones
 #
 # Sway rotates whole outputs, not windows.  While a portrait app (the
 # camera, Calls) is the focused window, the panel is put in portrait and
@@ -13,7 +14,11 @@
 #
 # State: written 2026-10-30, not yet run on the phone.
 
-apps='org.gnome.Snapshot org.gnome.Calls'
+# The apps: portrait-apps, landscape-apps and fullscreen-apps in
+# config.scm (/etc/pro1x/apps.conf).
+PORTRAIT_APPS='org.gnome.Snapshot org.gnome.Calls' LANDSCAPE_APPS=
+FULLSCREEN_APPS='org.gnome.Snapshot org.gnome.Calls'
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 flag="$rt/pro1x-portrait-app"
 events="$rt/pro1x-portrait-apps.events"
@@ -42,15 +47,24 @@ restore() {
 
 check() {
     app=$(focused_app)
-    case " $apps " in
-        *" $app "*)
-            if [ ! -f "$flag" ]; then
-                touch "$flag"
-                swaymsg output DSI-1 transform normal >/dev/null
-            fi ;;
-        *)
-            [ -f "$flag" ] && restore ;;
-    esac
+    case " $PORTRAIT_APPS " in *" $app "*) want=normal ;; *) want= ;; esac
+    case " $LANDSCAPE_APPS " in *" $app "*) want=90 ;; esac
+    if [ -n "$want" ]; then
+        if [ "$(cat "$flag" 2>/dev/null)" != "$want" ]; then
+            echo "$want" > "$flag"
+            swaymsg output DSI-1 transform "$want" >/dev/null
+        fi
+    elif [ -f "$flag" ]; then
+        restore
+    fi
+}
+
+# Fullscreen apps: fullscreen as they open.
+fullscreen_new() {
+    [ -n "$FULLSCREEN_APPS" ] || return
+    for a in $FULLSCREEN_APPS; do
+        swaymsg "[app_id=\"^$a\$\" fullscreen_mode=0] fullscreen enable" >/dev/null 2>&1
+    done
 }
 
 rm -f "$flag"
@@ -58,6 +72,7 @@ trap 'rm -f "$events"' EXIT
 trap 'exit 0' INT TERM HUP
 rm -f "$events"; mkfifo "$events"
 swaymsg -m -r -t subscribe '["window", "workspace"]' > "$events" 2>/dev/null &
-while IFS= read -r _; do
+while IFS= read -r ev; do
+    case "$ev" in *'"change": "new"'*|*'"change":"new"'*) fullscreen_new ;; esac
     check
 done < "$events"

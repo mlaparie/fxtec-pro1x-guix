@@ -1,0 +1,53 @@
+#!/bin/sh
+# pro1x-open COMMAND… — run a command in Sway, over the lock screen for the
+# apps allowed there
+#
+# Unlocked: runs COMMAND.  Locked: runs it, and if within 8 s the focus
+# goes to a window of an app in LOCK_SCREEN_APPS (/etc/pro1x/apps.conf,
+# lock-screen-apps in config.scm), unlocks for it, lights the panel, and
+# locks again as soon as the focus goes to another app or the app closes
+# (author, 2026-10-31: the camera, like Calls, should open while locked).
+# Used by the camera button's double press and the shake action; Calls has
+# pro1x-call-watch.  Meanwhile the phone is unlocked behind that app.
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+[ $# -gt 0 ] || exit 2
+LOCK_SCREEN_APPS=
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
+
+pro1x-lock --locked || exec sh -c "$*"
+
+focused() {                     # "CON_ID APP_ID" of the focused window
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r '[.. | objects | select(.focused? == true)
+                | "\(.id) \(.app_id // "")"] | .[0] // ""'
+}
+allowed() { case " $LOCK_SCREEN_APPS " in *" $1 "*) return 0 ;; esac; return 1; }
+
+before=$(focused)
+sh -c "$*" &
+app=
+for i in $(seq 40); do
+    sleep 0.2
+    now=$(focused)
+    if [ "$now" != "$before" ] && allowed "${now#* }"; then app=${now#* }; break; fi
+done
+# Already focused (the camera focused before locking): it counts too.
+[ -z "$app" ] && allowed "${before#* }" && app=${before#* }
+[ -n "$app" ] || exit 0
+
+pro1x-lock --unlock
+swaymsg 'output * power on' >/dev/null
+swaymsg 'input type:touch events enabled' >/dev/null
+pro1x-dim restore 2>/dev/null
+
+# Lock again when the focus leaves APP (another app, a workspace switch,
+# APP closed).  Our menus are no exception: they would reach everything.
+swaymsg -m -r -t subscribe '["window", "workspace"]' 2>/dev/null |
+    while IFS= read -r _; do
+        now=$(focused)
+        [ "${now#* }" = "$app" ] && continue
+        pro1x-lock
+        break
+    done
