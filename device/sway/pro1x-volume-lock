@@ -1,0 +1,44 @@
+#!/bin/sh
+# pro1x-volume-lock — both volume keys held together lock the screen (Sway)
+#
+# A way to lock with the hardware keyboard closed (author, 2026-10-31).
+# Sway did not match a binding of two ordinary keys (tried with
+# XF86AudioRaiseVolume+XF86AudioLowerVolume), and keyd cannot take the
+# gpio-keys device, which also carries the keyboard slide switch.  So this
+# reads the key events itself (the user is in the input group): volume up
+# from gpio-keys, volume down from keyd's virtual keyboard (keyd grabs the
+# PMIC key and sends it again there); both kinds from either device.  Each
+# key alone still changes the volume first.  Started by the Sway config;
+# ends with Sway.
+#
+# State: written 2026-10-31, not yet run on the phone.
+
+devices=""
+for e in /sys/class/input/event*; do
+    case "$(cat "$e/device/name" 2>/dev/null)" in
+        gpio-keys|"keyd virtual keyboard") devices="$devices /dev/input/${e##*/}" ;;
+    esac
+done
+[ -n "$devices" ] || exit 0
+
+if [ -n "${SWAYSOCK:-}" ]; then
+    # Sway's exec double-forks: end with its IPC socket, whole group.
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
+fi
+
+up=0 down=0
+# "Event: time …, type 1 (EV_KEY), code 115 (KEY_VOLUMEUP), value 1"
+for d in $devices; do evtest "$d" 2>/dev/null & done |
+    while IFS= read -r line; do
+        case "$line" in
+            *"(KEY_VOLUMEUP), value 1"*) up=1 ;;
+            *"(KEY_VOLUMEUP), value 0"*) up=0 ;;
+            *"(KEY_VOLUMEDOWN), value 1"*) down=1 ;;
+            *"(KEY_VOLUMEDOWN), value 0"*) down=0 ;;
+            *) continue ;;
+        esac
+        if [ "$up$down" = 11 ]; then
+            pro1x-lock --locked || pro1x-lock &
+            up=0 down=0
+        fi
+    done

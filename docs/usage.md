@@ -26,6 +26,7 @@ session; F12 for shutdown and reboot):
 | | |
 |---|---|
 | power key | screen off / on |
+| both volume keys together (Sway) | lock, keyboard closed or not |
 | double tap, Esc | screen on, while it is off (not in a pocket) |
 | idle 150 s | dims to 20% |
 | idle 180 s | screen off; locked 2 min later |

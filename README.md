@@ -350,7 +350,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   Super+e, Super+w, Super+r   split layout, tabs, resize mode
   Super+o, Ctrl+Super+o       window opacity up, down
   Super+i, Super+b            on-screen keyboard, bar
-  Ctrl+Super+l                lock
+  Ctrl+Super+l, both volume keys   lock
   Super+Shift+r, +Shift+e     reload sway, exit sway
   Power key, camera button    panel off / on; Snapshot, take a picture
 ```

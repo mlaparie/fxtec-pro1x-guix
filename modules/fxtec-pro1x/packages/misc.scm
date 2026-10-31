@@ -1472,6 +1472,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
+;;;   bin/pro1x-volume-lock              both volume keys together lock
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
   (package
@@ -1517,7 +1518,8 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
-          ("pro1x-bar" "bin/"))
+          ("pro1x-bar" "bin/")
+          ("pro1x-volume-lock" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1583,10 +1585,10 @@ window opened by a sway key binding.")
                          (,(string-append #$output "/bin")
                           ,@(map (lambda (p)
                                    (string-append (assoc-ref inputs p) "/bin"))
-                                 '("coreutils" "curl" "fzf" "jq" "procps"
-                                   "glib")))))))
+                                 '("coreutils" "curl" "evtest" "fzf" "jq"
+                                   "procps" "glib")))))))
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
-                   "pro1x-camera" "pro1x-bar"))
+                   "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa
