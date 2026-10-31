@@ -1049,7 +1049,9 @@ screen, for entering the password without a hardware keyboard.")
 ;;; sway itself parses every swaymsg request.  Found with valgrind (massif,
 ;;; memcheck) on a headless sway on the PC; a json_tokener_parse +
 ;;; json_object_put loop went from 992 MB to 21 MB with the patch
-;;; (2026-10-31).  Not yet sent upstream (author's review first).
+;;; (2026-10-31).  Fixed upstream after the 0.19 release (json-c commit
+;;; f291fa81c6, with two related fixes for the same code, Issue #934);
+;;; Guix master still has plain 0.19.  Drop these once json-c 0.20 is in.
 ;;; ---------------------------------------------------------------------------
 (define-public json-c/pro1x
   (package
@@ -1057,11 +1059,18 @@ screen, for entering the password without a hardware keyboard.")
     (source
      (origin
        (inherit (package-source json-c))
+       ;; Upstream json-c commits from after 0.19 (2026-06-30, 07-04):
+       ;; f291fa81c6, 3aa996b5b6, 0c3a5a1994.
        (patches
-        (cons (local-file
-               (repository-file "device/patches/json-c-put-ndebug.patch")
-               "json-c-put-ndebug.patch")
-              (origin-patches (package-source json-c))))))))
+        (append
+         (map (lambda (name)
+                (local-file (repository-file
+                             (string-append "device/patches/" name))
+                            name))
+              '("json-c-0.19-put-free-outside-assert.patch"
+                "json-c-0.19-put-clear-user-delete.patch"
+                "json-c-0.19-put-clear-userdata.patch"))
+         (origin-patches (package-source json-c))))))))
 
 (define with-json-c/pro1x
   (package-input-rewriting `((,json-c . ,json-c/pro1x)) #:deep? #f))
