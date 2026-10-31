@@ -58,6 +58,7 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
+  #:use-module ((gnu packages wm) #:select (sway))
   #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
@@ -1039,6 +1040,34 @@ sends a power-key press when it sees two quick taps close together.")
       (description "This gtklock module adds a touch keyboard to the lock
 screen, for entering the password without a hardware keyboard.")
       (license license:gpl3))))
+
+;;; ---------------------------------------------------------------------------
+;;; json-c with a leak fixed, and the Sways built against it
+;;; json-c 0.19 frees containers inside assert(), which NDEBUG compiles out:
+;;; every parsed object or array that held children leaked.  swaybar parses
+;;; a status line a second and grew by about 0.5 GB an hour on the phone;
+;;; sway itself parses every swaymsg request.  Found with valgrind (massif,
+;;; memcheck) on a headless sway on the PC; a json_tokener_parse +
+;;; json_object_put loop went from 992 MB to 21 MB with the patch
+;;; (2026-10-31).  Not yet sent upstream (author's review first).
+;;; ---------------------------------------------------------------------------
+(define-public json-c/pro1x
+  (package
+    (inherit json-c)
+    (source
+     (origin
+       (inherit (package-source json-c))
+       (patches
+        (cons (local-file
+               (repository-file "device/patches/json-c-put-ndebug.patch")
+               "json-c-put-ndebug.patch")
+              (origin-patches (package-source json-c))))))))
+
+(define with-json-c/pro1x
+  (package-input-rewriting `((,json-c . ,json-c/pro1x)) #:deep? #f))
+
+(define-public swayfx/pro1x (with-json-c/pro1x swayfx))
+(define-public sway/pro1x (with-json-c/pro1x sway))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
