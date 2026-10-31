@@ -12,7 +12,9 @@
  * virtual keyboard, since keyd grabs the real one).  Nothing happens while
  * the panel is on, nor in a pocket: while /run/pro1x-pocket exists (the
  * proximity sensor sees something near, kept by pro1x-pocket; author,
- * 2026-10-30).
+ * 2026-10-30) — except on a lock screen, where a double tap away from its
+ * keyboard sends the power key too, which blanks the panel (author,
+ * 2026-10-31).
  *
  * Usage: pro1x-doubletap [interval-ms [distance]]   (defaults 400, 150)
  *
@@ -22,6 +24,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <glob.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
@@ -52,6 +55,59 @@ static long now_ms(void)
 static int pocketed(void)
 {
 	return access("/run/pro1x-pocket", F_OK) == 0;
+}
+
+/* A lock screen runs: a gtklock or swaylock process. */
+static int locker_running(void)
+{
+	DIR *d = opendir("/proc");
+	struct dirent *e;
+	int found = 0;
+
+	if (!d)
+		return 0;
+	while (!found && (e = readdir(d))) {
+		char path[300], comm[32] = "";
+		FILE *f;
+
+		if (e->d_name[0] < '0' || e->d_name[0] > '9')
+			continue;
+		snprintf(path, sizeof path, "/proc/%s/comm", e->d_name);
+		if (!(f = fopen(path, "r")))
+			continue;
+		if (fgets(comm, sizeof comm, f))
+			found = !strncmp(comm, "gtklock\n", 8) || !strncmp(comm, "swaylock\n", 9);
+		fclose(f);
+	}
+	closedir(d);
+	return found;
+}
+
+/* On a lock screen, may a double tap at touch row Y blank the panel?  Not
+ * over the lock screen's keyboard, where a doubled letter looks like a
+ * double tap: pro1x-lock writes /run/user/UID/pro1x-lock-osk, "none" (no
+ * keyboard: anywhere), "portrait" (keyboard in the lower half: upper half
+ * only), or "landscape" (not mapped: never). */
+static int lock_tap_allowed(int y, int ymax)
+{
+	glob_t g;
+	char mode[16] = "none";
+
+	if (glob("/run/user/*/pro1x-lock-osk", 0, NULL, &g) == 0) {
+		FILE *f = fopen(g.gl_pathv[0], "r");
+
+		if (f) {
+			if (!fgets(mode, sizeof mode, f))
+				strcpy(mode, "none");
+			fclose(f);
+		}
+		globfree(&g);
+	}
+	if (!strncmp(mode, "none", 4))
+		return 1;
+	if (!strncmp(mode, "portrait", 8))
+		return ymax > 0 && y < ymax / 2;
+	return 0;
 }
 
 /* "On" or "Off" in /sys/class/drm/<connector>/dpms for the DSI panel.
@@ -138,6 +194,7 @@ int main(int argc, char **argv)
 	int touch, out, x = 0, y = 0;
 	long last_down = 0, quiet_until = 0;
 	int last_x = 0, last_y = 0;
+	int ymax = 0;
 
 	if (argc > 1)
 		interval_ms = atol(argv[1]);
@@ -148,6 +205,12 @@ int main(int argc, char **argv)
 	if (touch < 0) {
 		fprintf(stderr, "pro1x-doubletap: no \"%s\" device\n", TOUCH_NAME);
 		return 1;
+	}
+	{
+		struct input_absinfo abs;
+
+		if (ioctl(touch, EVIOCGABS(ABS_MT_POSITION_Y), &abs) == 0)
+			ymax = abs.maximum;
 	}
 	out = open_uinput();
 	if (out < 0) {
@@ -209,14 +272,22 @@ int main(int argc, char **argv)
 			/* A touch-down.  Position events of this touch may follow in
 			 * the same frame; the previous ones are close enough. */
 			t = now_ms();
-			if (t < quiet_until || !panel_off() || pocketed()) {
+			int off = panel_off();
+			/* Panel off: a double tap wakes it.  Panel on with a lock
+			 * screen: a double tap blanks it (author, 2026-10-31). */
+			if (t < quiet_until || pocketed() || (!off && !locker_running())) {
 				last_down = 0;
 				continue;
 			}
 			if (last_down && t - last_down < interval_ms &&
 			    abs(x - last_x) < distance && abs(y - last_y) < distance) {
+				if (!off && !lock_tap_allowed(y, ymax)) {
+					last_down = 0;
+					continue;
+				}
 				press_power(out);
-				fprintf(stderr, "pro1x-doubletap: double tap, power key sent\n");
+				fprintf(stderr, "pro1x-doubletap: double tap, power key sent (%s)\n",
+					off ? "wake" : "lock screen, blank");
 				last_down = 0;
 				quiet_until = t + 1500;
 			} else {

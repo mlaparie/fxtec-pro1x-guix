@@ -87,6 +87,19 @@ case "$cmd" in
                 # Steps exist in quick actions only; elsewhere, move.
                 if [ "$focused" = quickactions ]; then action="trigger($id)"
                 elif [ "$id" = right ]; then action=down; else action=up; fi ;;
+            hold-up|hold-down|repeat-up|repeat-down)
+                # A held volume key (pro1x-volume-lock): in quick actions,
+                # the first tick steps a gauge or toggles an on/off line
+                # (F1/F2), repeats step gauges only (F3/F4); elsewhere it
+                # moves.
+                case "$focused:$id" in
+                    quickactions:hold-up) action="trigger(f1)" ;;
+                    quickactions:hold-down) action="trigger(f2)" ;;
+                    quickactions:repeat-up) action="trigger(f3)" ;;
+                    quickactions:repeat-down) action="trigger(f4)" ;;
+                    *:*-up) action=up ;;
+                    *) action=down ;;
+                esac ;;
             accept)
                 if [ "$focused" = windowswitcher ] && [ "$sock" = "$rt/pro1x-switcher.sock" ]
                 then action="trigger(ctrl-o)"     # ask Focus / Close / Cancel

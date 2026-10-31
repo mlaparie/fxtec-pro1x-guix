@@ -292,6 +292,14 @@ fi
 # The keyboard only with the hardware keyboard closed: evtest --query exits
 # with 10 while the slide switch is set (keyboard out).
 evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE 2>/dev/null
-[ $? -ne 10 ] && [ -n "$module" ] && set -- -m "$module" "$@"
+if [ $? -ne 10 ] && [ -n "$module" ]; then
+    set -- -m "$module" "$@"
+    # Where the keyboard is, for pro1x-doubletap: a double tap blanks the
+    # lock screen, but not over the keys.
+    if [ -n "${GTKLOCK_VIRTKB_PORTRAIT:-}" ]; then echo portrait; else echo landscape; fi \
+        > "$rt/pro1x-lock-osk"
+else
+    echo none > "$rt/pro1x-lock-osk"
+fi
 
 exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"

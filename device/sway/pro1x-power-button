@@ -20,7 +20,8 @@ held="$rt/pro1x-power-held"
 devices=""
 for e in /sys/class/input/event*; do
     case "$(cat "$e/device/name" 2>/dev/null)" in
-        pm8941_pwrkey|"keyd virtual keyboard")
+        # pro1x-doubletap: its virtual power key (double tap to wake).
+        pm8941_pwrkey|"keyd virtual keyboard"|pro1x-doubletap)
             devices="$devices /dev/input/${e##*/}" ;;
     esac
 done

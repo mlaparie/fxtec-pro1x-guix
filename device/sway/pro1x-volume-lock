@@ -33,19 +33,20 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 
 # In a menu (quick actions, launcher, switcher, power menu; pro1x-osd then
 # leaves the volume alone): a short press moves the selection, on release;
-# held 0.4 s it steps the line in quick actions (Right for up, Left for
-# down) or keeps moving elsewhere, every 0.25 s until released (author,
-# 2026-10-31).  KEY: up or down; files in $rt mark a press and a fired hold.
+# held 0.4 s, in quick actions, it toggles an on/off line once or steps a
+# gauge or multi-option line (up: more, down: less) every 0.25 s until
+# released; elsewhere it keeps moving (author, 2026-10-31).  KEY: up or down; files in $rt mark a press and a fired hold.
 press() {
     key=$1; stamp=$(date +%s%N)
     rm -f "$rt/pro1x-vol-$key.fired"
     pro1x-menu focused >/dev/null || { rm -f "$rt/pro1x-vol-$key"; return; }
     echo "$stamp" > "$rt/pro1x-vol-$key"
     ( sleep 0.4
-      if [ "$key" = up ]; then step=right; else step=left; fi
+      tick=hold
       while [ "$(cat "$rt/pro1x-vol-$key" 2>/dev/null)" = "$stamp" ]; do
           touch "$rt/pro1x-vol-$key.fired"
-          pro1x-menu key "$step"
+          pro1x-menu key "$tick-$key"
+          tick=repeat
           sleep 0.25
       done ) &
 }

@@ -606,4 +606,18 @@ lines |
         --bind="left:transform:case {1} in
                   sim|notif|charge|lock|camera) ;;
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                esac" \
+        --bind="f1:transform:case {1} in
+                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="f2:transform:case {1} in
+                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="f3:transform:case {1} in
+                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                esac" \
+        --bind="f4:transform:case {1} in
+                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null
