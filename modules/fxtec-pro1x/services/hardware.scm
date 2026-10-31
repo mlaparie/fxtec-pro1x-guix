@@ -508,24 +508,25 @@ esac
   ;; Two shakes toggle the torch (author, 2026-10-31): reads the
   ;; accelerometer from the SSC (ssccli, a second client next to
   ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
-  ;; m/s²".  A shake is a burst where the acceleration's magnitude differs
-  ;; from gravity by more than THRESHOLD; two bursts 0.25-1.5 s apart
-  ;; toggle white:flash-0, in any orientation (author's choice: the
-  ;; gravity seen before a shake held "in portrait" varied too much from
-  ;; one try to the next to tell portrait from the readings).  Not in a pocket
-  ;; (/run/pro1x-pocket).  The torch guard turns it off after its timeout.
-  ;; Every burst is logged with its peak, to tune THRESHOLD on the phone.
-  ;; State: 2026-10-31: shakes seen on the phone (peaks 16-45 m/s², 12 to
-  ;; 35 readings a second, more while moving); the first upright test was
-  ;; too strict, loosened, then dropped (author); threshold 12 -> 15
-  ;; m/s² against handling (the author's light shakes peaked at 12-14).
-  ;; The orientation is still logged.
+  ;; m/s²".  What marks a shake is a quick change of direction (author):
+  ;; NEEDED reversals of the motion (the sample minus a slow gravity
+  ;; average, beyond THRESHOLD) within WINDOW toggle white:flash-0, in any
+  ;; orientation; a single out-and-back flick gives about two, a double
+  ;; shake three or more, and jitter only adds reversals.  Not in a
+  ;; pocket (/run/pro1x-pocket); 1.5 s quiet after a toggle.  The torch
+  ;; guard turns it off after its timeout.  Every reversal is logged.
+  ;; State: 2026-10-31: the first detector (bursts of total force, upright
+  ;; test) missed fast and slow pairs on the phone; this one calibrated on
+  ;; the author's recorded shakes (12-35 readings a second): 2-3
+  ;; reversals per double shake.
   (program-file
    "pro1x-shake-torch"
    #~(begin
-       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format))
-       (define threshold 15.0)          ;m/s² beyond gravity
-       (define gap 0.15)                ;s below it that ends a burst
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format)
+                    (srfi srfi-1))
+       (define threshold 5.0)           ;m/s² of motion (gravity removed)
+       (define needed 3)                ;reversals …
+       (define window 1.2)              ;… within this many seconds
        (define torch "/sys/class/leds/white:flash-0")
        (define (now)
          (/ (get-internal-real-time) 1.0 internal-time-units-per-second))
@@ -540,48 +541,33 @@ esac
                (display (if on? 0 (read-number
                                    (string-append torch "/max_brightness")))
                         port)))
-           (format #t "two shakes: torch ~a~%" (if on? "off" "on"))))
+           (format #t "shake: torch ~a~%" (if on? "off" "on"))))
        (define rx (make-regexp "X=([-0-9.]+) Y=([-0-9.]+) Z=([-0-9.]+)"))
-       ;; Gravity, smoothed over still samples; the bursts' times.
-       (define gx 0.0) (define gy 9.8) (define gz 0.0)
-       (define in-burst? #f) (define peak 0.0) (define last-high 0.0)
-       (define first-burst #f)
-       (define quiet-until 0.0)
-       ;; Held up, top end upwards: not flat, and gravity at least partly
-       ;; along the sensor's Y.  Held "upright in portrait" by the author,
-       ;; gravity was X 7.7, Y 6.0, Z 4.3 (2026-10-31): a hand tilts it
-       ;; much more than 45°, so Y need not dominate.  Landscape (Y near
-       ;; 0) and upside down stay out.
-       (define (upright?)
-         (and (> gy 3.0) (< (abs gz) 8.0)))
+       ;; Gravity: a slow average of every sample (about 0.5 s at the
+       ;; sensor's rate), which follows the hand.  The motion is the sample
+       ;; minus gravity; a reversal is a strong motion pointing against the
+       ;; previous strong one.  REVERSALS: their times, newest first.
+       (define g #f) (define last-motion #f)
+       (define reversals '()) (define quiet-until 0.0)
        (define (sample! x y z)
-         (let* ((t (now))
-                (d (abs (- (sqrt (+ (* x x) (* y y) (* z z))) 9.81))))
-           (cond
-            ((> d threshold)
-             (set! last-high t)
-             (set! peak (max peak d))
-             (unless in-burst?
-               (set! in-burst? #t)
-               (cond
-                ((or (< t quiet-until) (file-exists? "/run/pro1x-pocket"))
-                 (set! first-burst #f))
-                ((and first-burst (> (- t first-burst) 0.25)
-                      (< (- t first-burst) 1.5))
-                 (set! first-burst #f)
-                 (set! quiet-until (+ t 2))
-                 (toggle!))
-                (else (set! first-burst t)))))
-            (else
-             (when (and in-burst? (> (- t last-high) gap))
-               (format #t "burst: peak ~,1f m/s², upright ~a (g ~,1f ~,1f ~,1f)~%"
-                       peak (upright?) gx gy gz)
-               (set! in-burst? #f)
-               (set! peak 0.0))
-             (when (and (not in-burst?) (< d 1.5))
-               (set! gx (+ (* 0.8 gx) (* 0.2 x)))
-               (set! gy (+ (* 0.8 gy) (* 0.2 y)))
-               (set! gz (+ (* 0.8 gz) (* 0.2 z))))))))
+         (let ((t (now)) (a (list x y z)))
+           (unless g (set! g a))
+           (let* ((m (map - a g))
+                  (n (sqrt (apply + (map * m m)))))
+             (set! g (map (lambda (gi ai) (+ (* 0.93 gi) (* 0.07 ai))) g a))
+             (when (> n threshold)
+               (when (and last-motion (< (apply + (map * m last-motion)) 0))
+                 (set! reversals
+                       (cons t (filter (lambda (r) (< (- t r) window))
+                                       reversals)))
+                 (format #t "reversal ~a, ~,1f m/s²~%" (length reversals) n)
+                 (when (and (>= (length reversals) needed)
+                            (>= t quiet-until)
+                            (not (file-exists? "/run/pro1x-pocket")))
+                   (set! reversals '())
+                   (set! quiet-until (+ t 1.5))
+                   (toggle!)))
+               (set! last-motion m)))))
        (setvbuf (current-output-port) 'line)
        (let loop ()
          (let ((port (open-pipe* OPEN_READ
