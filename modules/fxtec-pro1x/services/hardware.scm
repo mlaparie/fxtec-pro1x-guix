@@ -19,6 +19,7 @@
 ;;;     The percentage is estimated from voltage, which drops when charging
 ;;;     stops: keep the gap wider than that drop (not measured yet);
 ;;;   • light or dark apps (color-scheme, default 'prefer-dark): GSettings;
+;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
@@ -102,6 +103,8 @@
   ;; Settings or with gsettings wins.  Sway passes it to libadwaita apps
   ;; (Calls, Chatty) through the GTK portal.
   (color-scheme       pro1x-hardware-color-scheme       (default 'prefer-dark))
+  ;; The lock screen's on-screen keyboard (Sway, gtklock): 'dark or 'light.
+  (lock-keyboard      pro1x-hardware-lock-keyboard      (default 'dark))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Stop charging at this battery percentage (#f: charge to full), and
@@ -565,6 +568,15 @@ esac
                      "LOCK_AFTER="
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
+                     "\n")))
+      ;; /etc/pro1x/lock.conf: the lock screen keyboard's colours, for
+      ;; pro1x-lock.
+      ("pro1x/lock.conf"
+       ,(plain-file "lock.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "KEYBOARD="
+                     (symbol->string (pro1x-hardware-lock-keyboard config))
                      "\n")))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).

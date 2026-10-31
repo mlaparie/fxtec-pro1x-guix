@@ -4,8 +4,8 @@
 # Nothing can be drawn above Sway's lock screen (ext-session-lock), so an
 # incoming call could not be answered while locked (author, 2026-10-30).
 # This follows ModemManager's CallAdded and CallDeleted signals on the
-# system bus.  For an incoming call (Call Direction 1) while swaylock runs,
-# it unlocks (SIGUSR1, swaylock's own way out) and lights the panel; Calls
+# system bus.  For an incoming call (Call Direction 1) while locked, it
+# unlocks (pro1x-lock --unlock) and lights the panel; Calls
 # then shows its window fullscreen (Sway config rule).  When that call is
 # deleted (hung up, rejected or missed), it locks again (pro1x-lock).
 # Meanwhile the phone is unlocked for as long as the call lasts: the price
@@ -82,9 +82,9 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
             *Modem.Voice.CallAdded*)
                 [ -n "$call" ] && echo "$call" >> "$calls" && proximity_start
                 if [ -n "$call" ] && incoming "$call" &&
-                   pgrep -u "$(id -u)" -x swaylock >/dev/null; then
+                   pro1x-lock --locked; then
                     echo "$call" > "$flag"
-                    pkill -USR1 -u "$(id -u)" -x swaylock
+                    pro1x-lock --unlock
                     swaymsg 'output * power on' >/dev/null
                     pro1x-dim restore 2>/dev/null
                 fi ;;

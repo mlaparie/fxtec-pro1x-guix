@@ -1,67 +1,64 @@
 #!/bin/sh
-# pro1x-lock — swaylock-effects with a clock, a GNU Guix banner and unread
-# notifications
+# pro1x-lock — the Sway lock screen: gtklock with a GNU Guix banner, the
+# clock, unread notifications, and an on-screen keyboard when the hardware
+# keyboard is closed
 #
-#   pro1x-lock [swaylock arguments...]
-#   pro1x-lock --refresh     redraw while locked (pro1x-notify, new
-#                            notification): a new picture, then the running
-#                            swaylock is replaced by one showing it; Sway
-#                            stays locked meanwhile (ext-session-lock)
+#   pro1x-lock [gtklock arguments...]   lock
+#   pro1x-lock --refresh   redraw while locked (pro1x-notify, new
+#                          notification): the running gtklock is replaced by
+#                          one with the new text; Sway stays locked meanwhile
+#                          (ext-session-lock keeps the session locked when a
+#                          locker dies without unlocking)
+#   pro1x-lock --locked    exit 0 when a lock screen is up
+#   pro1x-lock --unlock    unlock from a script (pro1x-call-watch, incoming
+#                          call): gtklock unlocks on SIGTERM
 #
-# swaylock-effects draws its ring with the live time and date in the middle
-# (--clock).  Around it, a picture of the size of the panel (ImageMagick,
-# DejaVu Sans Mono): a "GNU Guix" banner (figlet, standard font) above the
-# ring, and below it one line per app with notifications still shown by
-# mako: how many, and when the latest arrived (sway-notifications summary;
-# times logged by pro1x-mako).  The picture is only redrawn on a new
-# notification, so the time is the ring's, not the picture's (author).  Used by
-# pro1x-idle --sway and the Lock line of sway-quick-actions.
+# gtklock replaced swaylock so the phone can be unlocked with the keyboard
+# closed (author, 2026-10-31): Sway hides every other surface while locked,
+# stevia included, and gtklock-virtkb-module draws a keyboard inside the
+# lock window.  Everything is text in a GTK layout written here
+# ($XDG_RUNTIME_DIR/pro1x-lock.ui): the banner (figlet, standard font) with
+# "Guix" in Guix's yellow, gtklock's clock and date, the password field,
+# and one line per app with notifications still shown by mako (how many,
+# and when the latest arrived; sway-notifications summary).  Styles in
+# pro1x-lock.css next to it; the keyboard is dark or light after
+# /etc/pro1x/lock.conf (lock-keyboard in config.scm).  Without gtklock it
+# falls back to swaylock(-effects) with its clock.  Used by pro1x-idle
+# --sway, Ctrl+Super+l and the Lock line of sway-quick-actions.
 #
-# State: written 2026-10-30, not yet run on the phone.
+# State: gtklock with the module run on the phone 2026-10-31 (it drew its
+# keyboard and unlocked on SIGTERM); this script built, not yet run there.
 
-output=DSI-1
-png="${XDG_RUNTIME_DIR:-/tmp}/pro1x-lock.png"
-bg='#1d2021' fg='#d5c4a1' dim='#928374'
-guix='#FFCC00'                  # Guix's yellow, for "Guix" in the banner
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+ui="$rt/pro1x-lock.ui" css="$rt/pro1x-lock.css"
+uid=$(id -u)
+module=${PRO1X_LOCK_MODULE:-$(ls /run/current-system/profile/lib/gtklock/virtkb-module.so 2>/dev/null)}
+keyboard=dark
+[ -r /etc/pro1x/lock.conf ] && . /etc/pro1x/lock.conf   # KEYBOARD=dark|light
+[ -n "${KEYBOARD:-}" ] && keyboard=$KEYBOARD
+
+case "${1:-}" in
+    --locked)
+        pgrep -u "$uid" -x gtklock >/dev/null ||
+            pgrep -u "$uid" -x swaylock >/dev/null
+        exit ;;
+    --unlock)
+        pkill -TERM -u "$uid" -x gtklock
+        pkill -USR1 -u "$uid" -x swaylock
+        exit 0 ;;
+esac
+
+# XML text: & < > escaped.
+xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 banner='  ____ _   _ _   _    ____       _
  / ___| \ | | | | |  / ___|_   _(_)_  __
 | |  _|  \| | | | | | |  _| | | | \ \/ /
 | |_| | |\  | |_| | | |_| | |_| | |>  <
  \____|_| \_|\___/   \____|\__,_|_/_/\_\'
-# ImageMagick centres each line on its own: pad them to one width.  "GNU"
-# is columns 1-20, "Guix" the rest, drawn in its yellow.
-banner=$(printf '%s\n' "$banner" | awk '{ printf "%-41s\n", $0 }')
-gnu=$(printf '%s\n' "$banner" | cut -c1-20)
-guixpart=$(printf '%s\n' "$banner" | cut -c21-)
-# ImageMagick drops the leading spaces of a text's first line, which
-# shifted that line left: lead it with figure spaces (U+2007, one column
-# in a monospace font) instead.
-lead() {
-    printf '%s\n' "$1" | awk 'NR == 1 { match($0, /^ */); s = ""
-                                       for (i = 0; i < RLENGTH; i++) s = s "\342\200\207"
-                                       $0 = s substr($0, RLENGTH + 1) } { print }'
-}
-gnu=$(lead "$gnu")
-guixpart=$(lead "$guixpart")
-
-# The panel's size as drawn (its mode, swapped when rotated a quarter turn)
-# and its scale.
-geom=$(swaymsg -t get_outputs -r 2>/dev/null | jq -r --arg o "$output" '
-    .[] | select(.name == $o) |
-    (if (.transform == "90" or .transform == "270"
-         or .transform == "flipped-90" or .transform == "flipped-270")
-     then "\(.current_mode.height)x\(.current_mode.width)"
-     else "\(.current_mode.width)x\(.current_mode.height)" end)
-    + " \(.scale)"')
-[ -n "$geom" ] || geom="1080x2160 2"
-size=${geom% *} scale=${geom#* }
-w=${size%x*} h=${size#*x}
-
-# The ring, in swaylock's logical pixels: radius and thickness.
-radius=90 thickness=8
-# Its outer edge from the centre, in panel pixels, plus a gap.
-ring=$(awk -v r=$radius -v t=$thickness -v s="$scale" 'BEGIN { printf "%d", (r + t) * s * 1.15 }')
+# "GNU" is columns 1-20, "Guix" the rest: two labels side by side.
+gnu=$(printf '%s\n' "$banner" | awk '{ printf "%-20.20s\n", $0 }' | xml)
+guixpart=$(printf '%s\n' "$banner" | cut -c21- | awk '{ printf "%-21s\n", $0 }' | xml)
 
 when() {                        # epoch -> "14:32", or "Mon 14:32" before today
     [ "$1" -gt 0 ] 2>/dev/null || { echo "?"; return; }
@@ -71,64 +68,226 @@ when() {                        # epoch -> "14:32", or "Mon 14:32" before today
         date -d "@$1" '+%a %d %H:%M'
     fi
 }
-
 notes=$(sway-notifications summary 2>/dev/null |
             while IFS='	' read -r app n last; do
                 printf '%-16.16s %3s unread   last %s\n' "$app" "$n" "$(when "$last")"
             done)
 [ -n "$notes" ] || notes='No unread notifications'
-# Pad to the longest line, for the same reason as the banner.
-notes=$(printf '%s\n' "$notes" |
-            awk '{ l[NR] = $0; if (length($0) > m) m = length($0) }
-                 END { for (i = 1; i <= NR; i++) printf "%-*s\n", m, l[i] }')
+notes=$(printf '%s' "$notes" | xml)
 
-# About 44 columns across, and room for some 26 lines down, portrait or
-# landscape (keyboard out).
-pt=$((w / 44)); [ $((h / 26)) -lt "$pt" ] && pt=$((h / 26))
-# Banner (5 lines) ending just above the ring, notifications starting just
-# below it; DejaVu Sans Mono lines are about 1.17 em apart.
-lh=$((pt * 117 / 100))
-by=$((h / 2 - ring - 5 * lh)); [ "$by" -lt 0 ] && by=0
-ny=$((h / 2 + ring))
-# -annotate reads \ and % as escapes.
-esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/%/%%/g'; }
-# The two halves side by side: DejaVu Sans Mono advances 0.602 em per
-# column; the 41-column banner is centred.
-cw=$((pt * 602 / 1000))
-x=$(( (w - 41 * cw) / 2 ))
-convert -size "$size" "xc:$bg" -font "$PRO1X_LOCK_FONT" \
-    -fill "$fg" -pointsize "$pt" -gravity northwest \
-    -annotate +$x+$by "$(esc "$gnu")" \
-    -fill "$guix" -annotate +$((x + 20 * cw))+$by "$(esc "$guixpart")" \
-    -fill "$dim" -gravity north \
-    -annotate +0+$ny "$(esc "$notes")" \
-    "$png" 2>/dev/null
+# gtklock's own layout (res/gtklock.ui, 4.0.0) with the banner above the
+# clock and the notifications under the password field; the IDs it looks
+# up are kept.  At the top, so the keyboard overlay has the bottom.
+cat > "$ui.new" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkBox" id="window-box">
+    <property name="name">window-box</property>
+    <property name="margin">16</property>
+    <property name="halign">center</property>
+    <property name="valign">start</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">10</property>
+    <child>
+      <object class="GtkBox">
+        <property name="halign">center</property>
+        <child>
+          <object class="GtkLabel" id="pro1x-gnu">
+            <property name="name">pro1x-gnu</property>
+            <property name="label">$gnu</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="pro1x-guix">
+            <property name="name">pro1x-guix</property>
+            <property name="label">$guixpart</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkBox" id="info-box">
+        <property name="name">info-box</property>
+        <property name="halign">center</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkBox" id="time-box">
+            <property name="name">time-box</property>
+            <property name="halign">center</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel" id="clock-label">
+                <property name="name">clock-label</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="date-label">
+                <property name="name">date-label</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkRevealer" id="body-revealer">
+        <property name="transition-type">none</property>
+        <property name="reveal-child">1</property>
+        <child>
+          <object class="GtkGrid" id="body-grid">
+            <property name="row-spacing">5</property>
+            <property name="column-spacing">5</property>
+            <property name="halign">center</property>
+            <child>
+              <object class="GtkEntry" id="input-field">
+                <property name="name">input-field</property>
+                <property name="width-request">260</property>
+                <property name="visibility">0</property>
+                <property name="caps-lock-warning">0</property>
+                <property name="input-purpose">password</property>
+                <property name="placeholder-text">Password</property>
+                <signal name="activate" handler="window_pw_check"/>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="input-label">
+                <property name="name">input-label</property>
+                <property name="no-show-all">1</property>
+              </object>
+              <packing>
+                <property name="left-attach">1</property>
+                <property name="top-attach">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkRevealer" id="message-revealer">
+                <property name="transition-type">none</property>
+                <property name="no-show-all">1</property>
+                <child>
+                  <object class="GtkScrolledWindow" id="message-scrolled-window">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="max-content-height">128</property>
+                    <property name="propagate-natural-height">1</property>
+                    <child>
+                      <object class="GtkViewport">
+                        <child>
+                          <object class="GtkBox" id="message-box">
+                            <property name="orientation">vertical</property>
+                            <property name="homogeneous">1</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="halign">center</property>
+                <property name="spacing">5</property>
+                <child>
+                  <object class="GtkLabel" id="warning-label">
+                    <property name="name">warning-label</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="error-label">
+                    <property name="name">error-label</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="unlock-button">
+                    <property name="name">unlock-button</property>
+                    <property name="no-show-all">1</property>
+                    <signal name="clicked" handler="window_pw_check"/>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="left-attach">0</property>
+                <property name="top-attach">2</property>
+              </packing>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkLabel" id="pro1x-notes">
+        <property name="name">pro1x-notes</property>
+        <property name="halign">center</property>
+        <property name="label">$notes</property>
+      </object>
+    </child>
+  </object>
+</interface>
+EOF
+mv "$ui.new" "$ui"
+
+# The module has one (landscape) layout: smaller keys in portrait, or the
+# outer ones fall off the screen.
+if swaymsg -t get_outputs -r 2>/dev/null |
+       jq -e '.[] | select(.name == "DSI-1")
+              | .transform == "normal" or .transform == "180"' >/dev/null; then
+    key_size=95% key_pad=1px
+else
+    key_size=150% key_pad=4px
+fi
+if [ "$keyboard" = light ]; then
+    key_bg='#ebdbb2' key_fg='#1d2021' key_line='#d5c4a1'
+else
+    key_bg='#3c3836' key_fg='#ebdbb2' key_line='#504945'
+fi
+cat > "$css" <<EOF
+window { background-color: #1d2021; color: #d5c4a1; }
+#pro1x-gnu, #pro1x-guix, #pro1x-notes { font-family: "DejaVu Sans Mono", monospace; }
+#pro1x-gnu, #pro1x-guix { font-size: 11px; }
+#pro1x-gnu { color: #d5c4a1; }
+#pro1x-guix { color: #FFCC00; }
+#pro1x-notes { color: #928374; font-size: 12px; margin-top: 6px; }
+#clock-label { font-size: 44px; color: #ebdbb2; }
+#date-label { font-size: 14px; color: #a89984; }
+#input-field { background: #282828; color: #ebdbb2; border: 1px solid #458588;
+               border-radius: 8px; caret-color: #FFCC00; }
+#error-label { color: #fb4934; }
+#warning-label { color: #fabd2f; }
+window #kbgrid button { background: $key_bg; color: $key_fg; border: 1px solid $key_line;
+                        border-radius: 6px; box-shadow: none; background-image: none;
+                        font-size: $key_size; padding: $key_pad; min-width: 0;
+                        min-height: 0; }
+window #kbgrid button label { padding: $key_pad; }
+window #kbgrid button:active, window #kbgrid button:checked { background: #458588; color: #1d2021; }
+EOF
 
 if [ "${1:-}" = --refresh ]; then
     shift
-    old=$(pgrep -u "$(id -u)" -x swaylock)
+    old=$(pgrep -u "$uid" -x gtklock)
     [ -n "$old" ] || exit 0
-    kill $old
-    # The session stays locked without a client; wait for it to go.
+    # SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.  The session stays
+    # locked without a client until the new one takes over.
+    kill -KILL $old
     for i in 1 2 3 4 5 6 7 8 9 10; do
-        pgrep -u "$(id -u)" -x swaylock >/dev/null || break
+        pgrep -u "$uid" -x gtklock >/dev/null || break
         sleep 0.2
     done
 fi
 
-# Ring and clock: the port's colours; the ring turns Guix yellow on keys.
-ring_args="--clock --indicator --indicator-radius $radius
-    --indicator-thickness $thickness --timestr %H:%M
-    --inside-color 1d2021e6 --ring-color 458588 --line-color 00000000
-    --separator-color 00000000 --text-color d5c4a1 --key-hl-color FFCC00
-    --bs-hl-color fb4934 --inside-ver-color 1d2021e6 --ring-ver-color 83a598
-    --text-ver-color d5c4a1 --inside-wrong-color 1d2021e6
-    --ring-wrong-color fb4934 --text-wrong-color fb4934"
-
-if [ -s "$png" ]; then
-    # shellcheck disable=SC2086
-    exec swaylock -f -c "${bg#\#}" -i "$output:$png" -s center $ring_args --datestr '%a %d %b' "$@"
-else
-    # shellcheck disable=SC2086
-    exec swaylock -f -c "${bg#\#}" $ring_args --datestr '%a %d %b' "$@"
+if ! command -v gtklock >/dev/null; then
+    exec swaylock -f -c 1d2021 --clock --indicator "$@"
 fi
+
+# The keyboard only with the hardware keyboard closed: evtest --query exits
+# with 10 while the slide switch is set (keyboard out).
+evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE 2>/dev/null
+[ $? -ne 10 ] && [ -n "$module" ] && set -- -m "$module" "$@"
+
+exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"

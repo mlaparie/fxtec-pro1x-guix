@@ -1510,11 +1510,9 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "gawk" "imagemagick" "jq" "procps"
-                                "sed"))))
-                    `("PRO1X_LOCK_FONT" =
-                      (,(string-append (assoc-ref inputs "font-dejavu")
-                                       "/share/fonts/truetype/DejaVuSansMono.ttf")))))
+                              ;; gtklock and swaylock: system profile.
+                              '("coreutils" "evtest" "gawk" "grep" "procps"
+                                "sed"))))))
                 (for-each
                  (lambda (name)
                    (let ((f (string-append #$output "/bin/" name)))

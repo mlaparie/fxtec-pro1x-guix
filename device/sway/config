@@ -50,7 +50,7 @@ output DSI-1 bg /run/current-system/profile/share/backgrounds/pro1x/dark.png fil
 # Power key turns the panel off and on.
 bindsym --locked XF86PowerOff exec swaymsg output DSI-1 power toggle
 
-### Idle: dim, blank, then lock with swaylock (pro1x-idle --sway; times and
+### Idle: dim, blank, then lock with pro1x-lock (pro1x-idle --sway; times and
 ### level set in config.scm, see /etc/pro1x/dim.conf); a touch or key press
 ### D-Bus starts services (the desktop portal and its GTK back end) with
 ### the bus's environment, from before Sway: give it the display, or the

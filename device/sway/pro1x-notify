@@ -21,7 +21,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 
 [ -n "$id" ] && sway-notifications log "$id"
 
-if pgrep -u "$(id -u)" -x swaylock >/dev/null; then
+if pro1x-lock --locked; then
     pro1x-lock --refresh &
 fi
 

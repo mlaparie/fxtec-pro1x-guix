@@ -591,8 +591,19 @@ Dracula palette, no kernel messages over the greeter.")
                                 " LIBSEAT_BACKEND=seatd "
                                 #$(file-append bash "/bin/bash") " -lc")))))))))
 
+     ;; gtklock: Sway's lock screen (pro1x-lock), with an on-screen keyboard
+     ;; when the hardware keyboard is closed.  Its PAM service, like
+     ;; swaylock's below.
+     (service screen-locker-service-type
+              (screen-locker-configuration
+               (name "gtklock")
+               (program (file-append gtklock "/bin/gtklock"))
+               (using-pam? #t)
+               (using-setuid? #f)))
+
      ;; swaylock's PAM service: without it swaylock cannot unlock, so Sway
-     ;; had no idle lock (pro1x-idle --sway locks after lock-after).
+     ;; had no idle lock (pro1x-idle --sway locks after lock-after).  Kept
+     ;; as pro1x-lock's fallback.
      (service screen-locker-service-type
               (screen-locker-configuration
                (name "swaylock")
@@ -691,6 +702,7 @@ Dracula palette, no kernel messages over the greeter.")
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
      foot swayfx wdisplays swayidle swaylock-effects mako
+     gtklock gtklock-virtkb-module
      sway-launcher-desktop pro1x-sway-config fzf jq
      ;; On-screen keyboard in Sway (Phosh starts it by store path).
      stevia
