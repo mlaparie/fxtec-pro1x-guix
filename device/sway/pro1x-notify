@@ -37,6 +37,7 @@ if [ "$lit" = false ]; then
         echo 0 > "$bl/brightness"
     fi
     swaymsg 'output * power on' >/dev/null
+    swaymsg 'input type:touch events enabled' >/dev/null
     if [ -n "$bl" ]; then
         sleep 0.2
         echo $(( $(cat "$bl/max_brightness") * DIM_LEVEL / 200 )) > "$bl/brightness"
@@ -46,7 +47,7 @@ if [ "$lit" = false ]; then
     pidfile="$rt/pro1x-notify-wake.pid"
     [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null
     swayidle timeout 1 true resume "pro1x-dim restore; kill \$(cat '$pidfile')" \
-             timeout "$WAKE_FOR" "swaymsg 'output * power off'; kill \$(cat '$pidfile')" \
+             timeout "$WAKE_FOR" "swaymsg 'input type:touch events disabled'; swaymsg 'output * power off'; kill \$(cat '$pidfile')" \
              >/dev/null 2>&1 &
     echo $! > "$pidfile"
 fi

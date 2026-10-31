@@ -86,6 +86,7 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
                     echo "$call" > "$flag"
                     pro1x-lock --unlock
                     swaymsg 'output * power on' >/dev/null
+                    swaymsg 'input type:touch events enabled' >/dev/null
                     pro1x-dim restore 2>/dev/null
                 fi ;;
             *Modem.Voice.CallDeleted*)
