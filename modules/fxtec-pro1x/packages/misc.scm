@@ -58,7 +58,6 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
-  #:use-module ((gnu packages wm) #:select (sway))
   #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
