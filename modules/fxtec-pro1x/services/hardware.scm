@@ -56,6 +56,7 @@
   #:use-module (gnu services)
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
+  #:use-module ((gnu packages window-management) #:select (swayfx))
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
   #:use-module (gnu system accounts)
@@ -388,16 +389,44 @@ esac
 (define pro1x-pocket-program
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
   ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
-  ;; not wake the panel then, so a phone in a pocket stays dark.
+  ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
+  ;; still near after a second, the panel goes off and touch is disabled
+  ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
+  ;; touch comes back and the panel stays off until woken.  During calls
+  ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
   (program-file
    "pro1x-pocket"
    #~(begin
-       (use-modules (ice-9 popen) (ice-9 rdelim))
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 ftw) (srfi srfi-1))
        (define flag "/run/pro1x-pocket")
+       (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
+       (sigaction SIGCHLD SIG_IGN)      ;reap the delayed-blanking children
+       (define (sway-sockets)           ;every user's Sway IPC socket
+         (append-map
+          (lambda (uid)
+            (map (lambda (f) (string-append "/run/user/" uid "/" f))
+                 (or (scandir (string-append "/run/user/" uid)
+                              (lambda (f) (string-prefix? "sway-ipc." f)))
+                     '())))
+          (or (scandir "/run/user" (lambda (f) (string->number f))) '())))
+       (define (sway! command)
+         (for-each (lambda (sock)
+                     (system* swaymsg "-s" sock command))
+                   (sway-sockets)))
        (define (set-near! near?)
          (if near?
-             (close-port (open-output-file flag))
-             (false-if-exception (delete-file flag))))
+             (begin
+               (close-port (open-output-file flag))
+               ;; A second later, still near: off, and no touch.
+               (when (zero? (primitive-fork))
+                 (sleep 1)
+                 (when (file-exists? flag)
+                   (sway! "input type:touch events disabled")
+                   (sway! "output * power off"))
+                 (primitive-_exit 0)))
+             (begin
+               (false-if-exception (delete-file flag))
+               (sway! "input type:touch events enabled"))))
        (set-near! #f)
        (let ((port (open-pipe* OPEN_READ
                                #$(file-append iio-sensor-proxy-ssc
