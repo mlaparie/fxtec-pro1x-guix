@@ -563,7 +563,7 @@ lines |
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
-        --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
+        --bind="focus:transform:[ {1} = notif ] && [ {-1} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
