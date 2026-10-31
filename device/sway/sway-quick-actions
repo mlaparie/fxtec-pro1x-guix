@@ -242,6 +242,21 @@ roaming() {                     # roaming: on, off or "no connection"
     [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
 }
 
+orientation() {                 # portrait or landscape, from the panel
+    case "$(swaymsg -t get_outputs -r 2>/dev/null |
+                jq -r '.[] | select(.name == "DSI-1") | .transform')" in
+        normal|180) echo portrait ;;
+        *) echo landscape ;;
+    esac
+}
+set_orientation() {             # portrait|landscape, unless auto-rotation
+    [ "$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)" = on ] && return
+    case "$1" in
+        portrait) swaymsg output DSI-1 transform normal >/dev/null ;;
+        landscape) swaymsg output DSI-1 transform 90 >/dev/null ;;
+    esac
+}
+
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
 blocked() {                     # rfkill type -> on/off (on = not blocked)
@@ -327,6 +342,13 @@ lines() {
         plane=off
     fi
     rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
+    # Forced orientation; greyed while auto-rotation decides (author).
+    orient=$(orientation)
+    if [ "$rot" = on ]; then
+        orient_shown=$(printf '\033[90m%s (auto)\033[0m' "$orient")
+    else
+        orient_shown=$orient
+    fi
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
@@ -348,6 +370,7 @@ lines() {
         "bluetooth   Bluetooth            $(dim "$bt")" \
         "airplane    Airplane mode        $(dim "$plane")" \
         "rotation    Auto-rotation        $(dim "$rot")" \
+        "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
         "torch       Torch                $(dim "$t")" \
@@ -446,6 +469,9 @@ act() {                         # Enter
             swaymsg exec pro1x-lock >/dev/null ;;
         camera) qs_hide; swaymsg exec snapshot >/dev/null ;;
         wwan) mobile_cycle + ;;
+        orient)
+            if [ "$(orientation)" = portrait ]; then set_orientation landscape
+            else set_orientation portrait; fi ;;
         volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
@@ -466,6 +492,8 @@ step() {                        # Right (+) and Left (-)
         bluetooth+) open_tool bluetuith ;;
         wwan+) mobile_cycle + ;;
         wwan-) mobile_cycle - ;;
+        orient+) set_orientation landscape ;;
+        orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
