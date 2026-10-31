@@ -101,7 +101,9 @@ case "$cmd" in
         # 2026-10-31).  Exit 1 when no menu has the focus, so the key keeps
         # its usual meaning.  accept replays the menu's own Enter (fzf's
         # accept would end it); hide puts the menu away.
-        focused=$("$0" focused) || exit 1
+        # PRO1X_MENU_FOCUSED: the focused menu, when the caller already
+        # asked (pro1x-volume-lock, at the press): saves a get_tree.
+        focused=${PRO1X_MENU_FOCUSED:-$("$0" focused)} || exit 1
         case "$focused" in
             quickactions) sock="$rt/pro1x-quick-actions.sock" ;;
             launcher) sock="$rt/pro1x-launcher.sock" ;;

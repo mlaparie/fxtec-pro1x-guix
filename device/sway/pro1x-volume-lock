@@ -39,13 +39,16 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 press() {
     key=$1; stamp=$(date +%s%N)
     rm -f "$rt/pro1x-vol-$key.fired"
-    pro1x-menu focused >/dev/null || { rm -f "$rt/pro1x-vol-$key"; return; }
+    # Which menu, once per press: the release and the hold reuse it (a
+    # get_tree and jq cost about 0.1 s each on the phone).
+    menu=$(pro1x-menu focused) || { rm -f "$rt/pro1x-vol-$key"; return; }
     echo "$stamp" > "$rt/pro1x-vol-$key"
+    echo "$menu" > "$rt/pro1x-vol-$key.menu"
     ( sleep 0.4
       tick=hold
       while [ "$(cat "$rt/pro1x-vol-$key" 2>/dev/null)" = "$stamp" ]; do
           touch "$rt/pro1x-vol-$key.fired"
-          pro1x-menu key "$tick-$key"
+          PRO1X_MENU_FOCUSED=$menu pro1x-menu key "$tick-$key"
           tick=repeat
           sleep 0.25
       done ) &
@@ -54,7 +57,8 @@ release() {
     key=$1
     if [ -f "$rt/pro1x-vol-$key" ]; then
         rm -f "$rt/pro1x-vol-$key"
-        [ -f "$rt/pro1x-vol-$key.fired" ] || pro1x-menu key "$key"
+        [ -f "$rt/pro1x-vol-$key.fired" ] ||
+            PRO1X_MENU_FOCUSED=$(cat "$rt/pro1x-vol-$key.menu") pro1x-menu key "$key"
     fi
     rm -f "$rt/pro1x-vol-$key.fired"
 }
