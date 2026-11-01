@@ -390,6 +390,7 @@ lines() {
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
         "torch       Torch                $(dim "$t")" \
+        "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
@@ -428,6 +429,9 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        touchpad)                 # on: the touchscreen as a touchpad
+            [ -p /run/pro1x-pointer ] && echo "pad $2" > /run/pro1x-pointer
+            sleep 0.1 ;;
         roaming)
             c=$(gsm_conn); [ -n "$c" ] || return
             [ "$(roaming)" = "$2" ] && return
@@ -438,6 +442,10 @@ set_to() {
             if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
             else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
     esac
+}
+
+touch_mode() {                  # touchscreen or touchpad (pro1x-doubletap)
+    cat /var/lib/pro1x/touch-mode 2>/dev/null || echo touchscreen
 }
 
 state_of() {                    # state_of <setting>: on or off
@@ -455,6 +463,7 @@ state_of() {                    # state_of <setting>: on or off
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
         roaming) roaming ;;
+        touchpad) [ "$(touch_mode)" = touchpad ] && echo on || echo off ;;
     esac
 }
 
@@ -625,11 +634,11 @@ lines |
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;

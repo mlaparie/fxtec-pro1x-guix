@@ -10,10 +10,12 @@
 #                      (the F(x) key) held, a right click
 #   double press:      a double click
 #   held 0.4 s:        the touchscreen is a touchpad until released:
-#                      finger moves move the pointer, touch reaches no app;
-#                      with Super held too, the left button is held: a
-#                      window drag (Sway's floating_modifier).  The pointer
-#                      stays visible 3 s after (hide_cursor)
+#                      finger moves move the pointer, a tap clicks, touch
+#                      reaches no app; Super (before or during) holds the
+#                      left button, a window drag, Super with Fn the right
+#                      one, a resize.  The pointer stays visible 3 s after
+#                      (hide_cursor).  Touchpad mode without holding: the
+#                      Touch input line of quick actions, Super+t
 #
 # Reads KEY_CAMERA from gpio-keys with evtest (Sway acts on presses only,
 # and cannot count presses; Sway's own XF86WebCam binding is a nop,
@@ -74,15 +76,11 @@ evtest "$dev" 2>/dev/null |
                   [ "$(cat "$st" 2>/dev/null)" = "$stamp" ] || exit 0
                   rm -f "$st.pending"
                   touch "$st.drag"
-                  # Touch off in Sway meanwhile: the finger moves the
-                  # pointer (a touchpad), not the app under it.
-                  swaymsg 'input type:touch events disabled' >/dev/null
-                  pointer hold ) & ;;
+                  pointer hold ) & ;;      # it grabs the touchscreen
             *"(KEY_CAMERA), value 0"*)
                 if [ -f "$st.drag" ]; then
                     rm -f "$st.drag" "$st"
                     pointer release
-                    swaymsg 'input type:touch events enabled' >/dev/null
                 elif [ -f "$st" ]; then              # a short press
                     rm -f "$st"
                     n=$(( $(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0) + 1 ))
