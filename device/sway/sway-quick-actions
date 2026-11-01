@@ -14,9 +14,8 @@
 # opens the tool of Wi-Fi, Bluetooth, SIM and Notifications; Esc
 # closes.  The header shows the battery level and charging state; the
 # Wi-Fi line the network and signal, the mobile line the access technology,
-# signal and operator; the charge limit line the limit (set only here:
-# pro1x-charge-limit, kept across reboots).  One fzf stays open and
-# reloads its lines after each action.
+# signal and operator; the charge limit line what config.scm set
+# (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications
@@ -282,16 +281,22 @@ choose() {
             cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
             opts=$(printf 'silent\tsilent\nquiet\tquiet (vibration, no sound)\nfull\tfull (sound and vibration)\n') ;;
         charge)
-            title="charge limit"
+            title="charge limit (until reboot)"
             set -- $(pro1x-charge-limit get 2>/dev/null); cur=${1:-off}
-            opts=$(for o in $CHARGE_OPTS; do
+            . /etc/pro1x/charge.conf 2>/dev/null
+            pro1x-charge-limit temporary || cur=default
+            opts=$(printf 'default\tconfig.scm: %s\n' \
+                          "$( [ -n "${CHARGE_LIMIT:-}" ] && echo "$CHARGE_LIMIT% (again at $CHARGE_RESUME%)" || echo off)"
+                   for o in $CHARGE_OPTS; do
                        if [ "$o" = off ]; then printf 'off\toff (charge to full)\n'
                        else printf '%s\t%s%% (again at %s%%)\n' "$o" "$o" $((o - 5)); fi
                    done) ;;
         cpu)
-            title="CPU mode"
+            title="CPU mode (until reboot)"
             cur=$(pro1x-cpu-mode get 2>/dev/null)
-            opts=$(printf 'auto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n') ;;
+            pro1x-cpu-mode temporary || cur=default
+            CPU_MODE=auto; . /etc/pro1x/cpu.conf 2>/dev/null
+            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n' "$CPU_MODE") ;;
         orient)
             title="orientation"
             cur=$(orientation)
@@ -353,13 +358,22 @@ battery_state() {               # "76% discharging", "85% held at limit"
     echo "$cap% $st"
 }
 
-charge_limit() {                # pro1x-charge-limit: chosen here, kept
+# Shown after a value overridden here: config.scm sets it for good, quick
+# actions only until reboot (author, 2026-11-01).
+until_reboot() { printf ' \033[93m(until reboot)\033[0m'; }
+
+charge_limit() {                # config.scm's, or this boot's override
     if [ ! -e "$charge_param" ]; then
         echo "not in this kernel"
         return
     fi
     set -- $(pro1x-charge-limit get 2>/dev/null)
-    if [ "${1:-off}" = off ]; then echo off; else echo "$1% (again at $2%)"; fi
+    if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (again at %s%%)' "$1" "$2"; fi
+    pro1x-charge-limit temporary && until_reboot
+}
+cpu_mode() {
+    printf '%s' "$(pro1x-cpu-mode get 2>/dev/null || echo auto)"
+    pro1x-cpu-mode temporary && until_reboot
 }
 # The choices: off, then limits with charging again 5 % lower.
 CHARGE_OPTS="off 80 85 90 95"
@@ -457,7 +471,7 @@ lines() {
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")" \
-        "cpu         CPU mode             $(pro1x-cpu-mode get 2>/dev/null || echo auto)" \
+        "cpu         CPU mode             $(cpu_mode)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"

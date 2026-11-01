@@ -1,7 +1,12 @@
 #!/bin/sh
-# pro1x-cpu-mode [auto|battery|balanced|performance|next|apply|watch|get]
+# pro1x-cpu-mode [auto|battery|balanced|performance|next|default|
+#                 temporary|apply|watch|get]
 # — the CPU's energy mode, as root (sudo, from sway-quick-actions; the
-# pro1x-cpu-mode service applies the saved one at boot and follows auto)
+# pro1x-cpu-mode service applies it at boot and follows auto)
+#
+# config.scm's cpu-mode is the mode for good (/etc/pro1x/cpu.conf); a mode
+# chosen in quick actions overrides it until the next reboot (author,
+# 2026-11-01): /run/pro1x-cpu-mode, which /run's emptying at boot drops.
 #
 #   auto         balanced, but battery while the panel is off or the
 #                battery is at 20 % or less and not charging (the default)
@@ -9,9 +14,10 @@
 #   balanced     schedutil over the whole range (the kernel's default)
 #   performance  the performance governor: top frequency all the time
 #   next         the next one: auto, battery, balanced, performance, round
+#   default      back to config.scm's mode
+#   temporary    exit 0 when an override is in force
 #   watch        follow auto (the service): every 10 s
-#   apply        the saved one (/var/lib/pro1x/cpu-mode), or $1 of the
-#                service (cpu-mode in config.scm) when none is saved
+#   apply        the mode in force
 #   get          print the current one
 #
 # User-set energy management (author, 2026-11-01).  The caps are
@@ -19,7 +25,9 @@
 # measured 2026-11-01): policy0 300 MHz-1.80 GHz, policy4 300 MHz-2.02 GHz.
 
 PATH=/run/current-system/profile/bin:$PATH
-state=/var/lib/pro1x/cpu-mode
+state=/run/pro1x-cpu-mode
+CPU_MODE=auto
+[ -r /etc/pro1x/cpu.conf ] && . /etc/pro1x/cpu.conf     # config.scm's
 cpufreq=/sys/devices/system/cpu/cpufreq
 
 # The frequencies and governor of MODE (battery, balanced, performance).
@@ -56,27 +64,30 @@ auto_target() {
     fi
 }
 
+# Apply MODE; with "override", it holds until reboot.
 set_mode() {
     if [ "$1" = auto ]; then apply_mode "$(auto_target)"; else apply_mode "$1"; fi || return
-    mkdir -p "${state%/*}"
-    echo "$1" > "$state"
+    [ "${2:-}" = override ] && echo "$1" > "$state"
+    return 0
 }
 
-current() { cat "$state" 2>/dev/null || echo auto; }
+current() { cat "$state" 2>/dev/null || echo "$CPU_MODE"; }
 
 case "${1:-get}" in
-    auto|battery|balanced|performance) set_mode "$1" ;;
+    auto|battery|balanced|performance) set_mode "$1" override ;;
     next)
         case "$(current)" in
-            auto) set_mode battery ;;
-            battery) set_mode balanced ;;
-            balanced) set_mode performance ;;
-            *) set_mode auto ;;
+            auto) set_mode battery override ;;
+            battery) set_mode balanced override ;;
+            balanced) set_mode performance override ;;
+            *) set_mode auto override ;;
         esac ;;
-    apply) set_mode "$(cat "$state" 2>/dev/null || echo "${2:-auto}")" ;;
+    default) rm -f "$state"; set_mode "$CPU_MODE" ;;
+    temporary) [ -f "$state" ]; exit ;;
+    apply) set_mode "$(current)" ;;
     watch)
-        # Apply the saved mode, then follow auto while it is chosen.
-        set_mode "$(cat "$state" 2>/dev/null || echo "${2:-auto}")"
+        # Apply the mode in force, then follow auto while it is chosen.
+        set_mode "$(current)"
         last=
         while :; do
             if [ "$(current)" = auto ]; then
@@ -89,6 +100,6 @@ case "${1:-get}" in
             sleep 10
         done ;;
     get) current ;;
-    *) echo "usage: pro1x-cpu-mode auto|battery|balanced|performance|next|apply|watch|get" >&2
+    *) echo "usage: pro1x-cpu-mode auto|battery|balanced|performance|next|default|temporary|apply|watch|get" >&2
        exit 1 ;;
 esac
