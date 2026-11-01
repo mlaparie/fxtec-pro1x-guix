@@ -54,8 +54,12 @@ start() {                       # start <transform>
     # The keyboard swipe acts as soon as it is 125 px long, the finger
     # still down (P; author: stevia was slow to come); the touch stays with
     # the window it began on, so lifting types nothing.  The others act on
-    # release.
-    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 125 \
+    # release.  More permissive than lisgd's defaults (author, 2026-11-02:
+    # the two-finger swipe was hard to make; there every finger must go
+    # the same way, the last one lifted must touch the edge band, all
+    # within the timeout): 100 px edge bands (-s 2), 30 degrees off
+    # straight (-r 30), 1.2 s (-m 1200).
+    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 125 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
         -g "2,DU,B,*,R,sway-quick-actions --osk toggle &" \
         -g "1,DU,B,*,P,pro1x-sov toggle &" \
