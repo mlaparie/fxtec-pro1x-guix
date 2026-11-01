@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+# pro1x-camera-app — a camera for the F(x)tec Pro¹x on libcamera
+#
+# The viewfinder streams the sensor's fast 1080p mode; a photo switches
+# libcamerasrc to the 12 MP mode (4000x3000), lets exposure and focus
+# settle, keeps one frame and saves it as JPEG in ~/Pictures/Camera, then
+# goes back to the viewfinder (moWerk's "small viewfinder, photo at full
+# resolution", jolla-camera on SailfishOS).  Tap: focus there (af-windows,
+# mapped to pixel array coordinates as moWerk's camerabin patch does).
+# ISO (manual analogue gain, or auto), exposure compensation, the white
+# LED as flash, front and rear cameras.  The frames turn with the panel.
+# SIGUSR1 takes a photo (the camera button, pro1x-camera).
+#
+# Why not Snapshot: it reads PipeWire's 1080p stream, sets no focus, ISO
+# or exposure, and takes no stills (author, 2026-11-01).  Why not moWerk's
+# Qt patches: they target SailfishOS's Qt 5.6 fork (9 of 14 do not apply
+# to Qt 5.15).  The controls come from libcamera with moWerk's patches
+# (libcamera-pro1x).
+#
+# State: written 2026-11-01; not yet run on the phone.
+
+import os
+import signal
+import threading
+import time
+
+import gi
+gi.require_version("Gst", "1.0")
+gi.require_version("GstVideo", "1.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf, GLib, Gst, GstVideo, Gtk, Gdk  # noqa: E402
+
+VIEW = (1920, 1080)             # the IMX582's fast mode (pro1x-imx582-1080p)
+STILL = (4000, 3000)            # its 12 MP binned mode
+SETTLE_FRAMES = 8               # frames for exposure and focus at 12 MP
+ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
+EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
+FLASH_LED = "/sys/class/leds/white:flash-0"
+PHOTOS = os.path.join(os.path.expanduser("~"), "Pictures", "Camera")
+
+CSS = b"""
+window { background: black; }
+button { background: rgba(0,0,0,0.45); color: #ebdbb2; border: none;
+         border-radius: 24px; font-size: 18px; min-width: 64px;
+         min-height: 48px; padding: 4px 10px; box-shadow: none; }
+button.shutter { background: #ebdbb2; border-radius: 40px;
+                 min-width: 80px; min-height: 80px; }
+button.shutter:disabled { background: #665c54; }
+label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
+               padding: 4px 10px; border-radius: 8px; font-size: 16px; }
+"""
+
+
+def cameras():
+    """[(display name, GstDevice)] from libcamera's own device provider
+    (not PipeWire's, which lists them too), rear (IMX582) first."""
+    factory = Gst.DeviceProviderFactory.find("libcameraprovider")
+    provider = factory.get() if factory else None
+    found = [(d.get_display_name(), d)
+             for d in (provider.get_devices() if provider else [])]
+    found.sort(key=lambda d: 0 if "imx582" in d[0].lower() else 1)
+    return found
+
+
+def active_area(dev):
+    """The pixel array active area (x, y, w, h), or None."""
+    props = dev.get_properties()
+    if not props:
+        return None
+    ok, value = False, None
+    try:
+        value = props.get_value("api.libcamera.PixelArrayActiveAreas")
+        ok = value is not None and len(value) >= 4
+    except TypeError:
+        ok = False
+    return tuple(int(v) for v in value[:4]) if ok else None
+
+
+class Camera(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="org.pro1x.Camera")
+        self.cams = []
+        self.cam = 0
+        self.pipeline = None
+        self.iso = 0
+        self.ev = 0
+        self.flash = False
+        self.busy = False
+        self.portrait = True
+        self.toggle = False
+        self.last_photo = None
+
+    # ── the window ─────────────────────────────────────────────────────
+    def do_activate(self):
+        Gst.init(None)
+        style = Gtk.CssProvider()
+        style.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), style,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.win = Gtk.ApplicationWindow(application=self, title="Camera")
+        self.win.set_default_size(540, 1080)
+        self.overlay = Gtk.Overlay()
+        self.win.add(self.overlay)
+        self.view = Gtk.EventBox()
+        self.view.connect("button-press-event", self.on_tap)
+        self.overlay.add(self.view)
+
+        bar = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
+                      valign=Gtk.Align.END, margin_bottom=24)
+        self.b_switch = self.button("⇆", self.on_switch)
+        self.b_flash = self.button("Flash off", self.on_flash)
+        self.b_shutter = self.button("", self.on_shutter)
+        self.b_shutter.get_style_context().add_class("shutter")
+        self.b_iso = self.button("ISO auto", self.on_iso)
+        self.b_ev = self.button("EV 0", self.on_ev)
+        for b in (self.b_switch, self.b_flash, self.b_shutter,
+                  self.b_iso, self.b_ev):
+            bar.pack_start(b, False, False, 0)
+        self.overlay.add_overlay(bar)
+
+        top = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
+                      valign=Gtk.Align.START, margin_top=16)
+        self.status = Gtk.Label(label="")
+        self.status.get_style_context().add_class("status")
+        self.b_last = self.button("Last photo", self.on_last)
+        top.pack_start(self.status, False, False, 0)
+        top.pack_start(self.b_last, False, False, 0)
+        self.overlay.add_overlay(top)
+
+        self.win.connect("size-allocate", self.on_size)
+        self.win.connect("destroy", lambda *_: self.stop())
+        self.win.show_all()
+        self.b_last.hide()
+
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
+                             self.on_signal)
+        self.cams = cameras()
+        if not self.cams:
+            self.say("No camera found")
+            return
+        self.start()
+
+    def button(self, label, handler):
+        b = Gtk.Button(label=label)
+        b.connect("clicked", handler)
+        return b
+
+    def say(self, text, seconds=0):
+        self.status.set_text(text)
+        self.status.set_visible(bool(text))
+        if seconds:
+            GLib.timeout_add_seconds(seconds, lambda: self.say("") and False)
+
+    # ── the pipeline ───────────────────────────────────────────────────
+    def start(self, size=VIEW):
+        name, dev = self.cams[self.cam]
+        self.src = dev.create_element("src")
+        self.caps = Gst.ElementFactory.make("capsfilter")
+        self.caps.set_property(
+            "caps", Gst.Caps.from_string(
+                "video/x-raw,width=%d,height=%d" % size))
+        convert = Gst.ElementFactory.make("videoconvert")
+        self.flip = Gst.ElementFactory.make("videoflip")
+        tee = Gst.ElementFactory.make("tee")
+        q1 = Gst.ElementFactory.make("queue")
+        sink = Gst.ElementFactory.make("gtksink")
+        sink.set_property("sync", False)
+        q2 = Gst.ElementFactory.make("queue")
+        q2.set_property("leaky", 2)
+        q2.set_property("max-size-buffers", 1)
+        convert2 = Gst.ElementFactory.make("videoconvert")
+        rgb = Gst.ElementFactory.make("capsfilter")
+        rgb.set_property("caps", Gst.Caps.from_string("video/x-raw,format=RGB"))
+        self.snap = Gst.ElementFactory.make("appsink")
+        for k, v in (("drop", True), ("max-buffers", 1), ("sync", False),
+                     ("emit-signals", False)):
+            self.snap.set_property(k, v)
+
+        self.pipeline = Gst.Pipeline.new("camera")
+        for e in (self.src, self.caps, convert, tee, q1, self.flip, sink,
+                  q2, convert2, rgb, self.snap):
+            self.pipeline.add(e)
+        self.src.link(self.caps)
+        self.caps.link(convert)
+        convert.link(tee)
+        tee.link(q1)
+        q1.link(self.flip)
+        self.flip.link(sink)
+        tee.link(q2)
+        q2.link(convert2)
+        convert2.link(rgb)
+        rgb.link(self.snap)
+
+        widget = sink.get_property("widget")
+        child = self.view.get_child()
+        if child:
+            self.view.remove(child)
+        self.view.add(widget)
+        widget.show()
+        self.area = active_area(dev)
+        self.size = size
+        self.orient()
+        self.apply_controls()
+        self.pipeline.set_state(Gst.State.PLAYING)
+        self.say(name.split(" ")[0], 2)
+
+    def stop(self):
+        if self.pipeline:
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline = None
+
+    def resize(self, size):
+        """The same camera at another sensor mode (a state cycle)."""
+        self.pipeline.set_state(Gst.State.NULL)
+        self.caps.set_property(
+            "caps", Gst.Caps.from_string(
+                "video/x-raw,width=%d,height=%d" % size))
+        self.size = size
+        self.apply_controls()
+        self.pipeline.set_state(Gst.State.PLAYING)
+
+    def apply_controls(self):
+        if self.iso:
+            self.src.set_property("analogue-gain-mode", 1)       # manual
+            self.src.set_property("analogue-gain", self.iso / 100.0)
+        else:
+            self.src.set_property("analogue-gain-mode", 0)       # auto
+        self.src.set_property("exposure-value", EVS[self.ev])
+
+    # ── orientation ────────────────────────────────────────────────────
+    def on_size(self, win, rect):
+        portrait = rect.height >= rect.width
+        if portrait != self.portrait:
+            self.portrait = portrait
+            self.orient()
+
+    def orient(self):
+        """The rear sensor's frames are landscape with the phone's top to
+        their right; the front one is mirrored."""
+        if not self.pipeline:
+            return
+        front = self.cam != 0
+        if self.portrait:
+            method = "counterclockwise" if front else "clockwise"
+        else:
+            method = "horizontal-flip" if front else "none"
+        self.flip.set_property("method", method)
+
+    # ── controls ───────────────────────────────────────────────────────
+    def on_switch(self, *_):
+        if self.busy or len(self.cams) < 2:
+            return
+        self.stop()
+        self.cam = (self.cam + 1) % len(self.cams)
+        self.start()
+
+    def on_flash(self, *_):
+        self.flash = not self.flash
+        self.b_flash.set_label("Flash on" if self.flash else "Flash off")
+
+    def on_iso(self, *_):
+        self.iso = ISOS[(ISOS.index(self.iso) + 1) % len(ISOS)]
+        self.b_iso.set_label("ISO %s" % (self.iso or "auto"))
+        if not self.busy:
+            self.apply_controls()
+
+    def on_ev(self, *_):
+        self.ev = (self.ev + 1) % len(EVS)
+        v = EVS[self.ev]
+        self.b_ev.set_label("EV %+.1f" % v if v else "EV 0")
+        if not self.busy:
+            self.apply_controls()
+
+    def on_tap(self, widget, event):
+        """Focus where tapped: the point in the viewfinder, in frame
+        coordinates (undoing the rotation), then in pixel array
+        coordinates, as moWerk's camerabin patch maps it."""
+        if self.busy or not self.area:
+            return False
+        alloc = widget.get_allocation()
+        x, y = event.x / alloc.width, event.y / alloc.height
+        front = self.cam != 0
+        if self.portrait:
+            x, y = (y, 1 - x) if not front else (1 - y, 1 - x)
+        elif front:
+            x = 1 - x
+        ax, ay, aw, ah = self.area
+        vw, vh = self.size
+        fw = max(vw, vh * aw / ah)
+        fh = fw * ah / aw
+        scale = aw / fw
+        half = 0.08                    # a window 16 % of the frame wide
+        wx = ax + ((fw - vw) / 2 + max(0.0, x - half) * vw) * scale
+        wy = ay + ((fh - vh) / 2 + max(0.0, y - half) * vh) * scale
+        ww = 2 * half * vw * scale + (8 if self.toggle else 0)
+        wh = 2 * half * vh * scale
+        self.toggle = not self.toggle  # the same spot again restarts it
+        Gst.util_set_object_arg(
+            self.src, "af-windows",
+            "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
+        self.say("Focusing", 1)
+        return True
+
+    # ── photos ─────────────────────────────────────────────────────────
+    def on_signal(self):
+        self.on_shutter()
+        return True
+
+    def on_shutter(self, *_):
+        if self.busy or not self.pipeline:
+            return
+        self.busy = True
+        self.b_shutter.set_sensitive(False)
+        self.say("Taking a photo")
+        if self.flash:
+            self.led(True)
+        self.resize(STILL)
+        threading.Thread(target=self.capture, daemon=True).start()
+
+    def capture(self):
+        sample = None
+        for _ in range(SETTLE_FRAMES + 1):
+            s = self.snap.try_pull_sample(3 * Gst.SECOND)
+            if s:
+                sample = s
+        GLib.idle_add(self.captured, sample)
+
+    def captured(self, sample):
+        if self.flash:
+            self.led(False)
+        path = None
+        if sample:
+            try:
+                path = self.save(sample)
+            except Exception as e:      # shown, not fatal
+                self.say("Not saved: %s" % e, 4)
+        self.resize(VIEW)
+        self.busy = False
+        self.b_shutter.set_sensitive(True)
+        if path:
+            self.last_photo = path
+            self.b_last.show()
+            self.say("Saved", 2)
+        elif not sample:
+            self.say("No frame from the camera", 4)
+        return False
+
+    def save(self, sample):
+        info = GstVideo.VideoInfo.new_from_caps(sample.get_caps())
+        buf = sample.get_buffer()
+        ok, mapping = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            raise RuntimeError("cannot read the frame")
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_bytes(
+                GLib.Bytes.new(mapping.data), GdkPixbuf.Colorspace.RGB,
+                False, 8, info.width, info.height, info.stride[0])
+            pix = pix.copy()
+        finally:
+            buf.unmap(mapping)
+        front = self.cam != 0
+        if self.portrait:
+            pix = pix.rotate_simple(
+                GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE if front
+                else GdkPixbuf.PixbufRotation.CLOCKWISE)
+        elif front:
+            pix = pix.flip(True)
+        os.makedirs(PHOTOS, exist_ok=True)
+        path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
+        pix.savev(path, "jpeg", ["quality"], ["92"])
+        return path
+
+    def led(self, on):
+        try:
+            level = "0"
+            if on:
+                with open(os.path.join(FLASH_LED, "max_brightness")) as f:
+                    level = f.read().strip()
+            with open(os.path.join(FLASH_LED, "brightness"), "w") as f:
+                f.write(level)
+            if on:
+                time.sleep(0.4)
+        except OSError:
+            pass
+
+    def on_last(self, *_):
+        if self.last_photo:
+            Gtk.show_uri_on_window(self.win, "file://" + self.last_photo,
+                                   Gdk.CURRENT_TIME)
+
+
+if __name__ == "__main__":
+    Camera().run(None)

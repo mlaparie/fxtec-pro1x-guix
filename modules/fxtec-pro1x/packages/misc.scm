@@ -346,6 +346,74 @@ to build an FDE userdata image on the host before flashing.")
 S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-camera-app — a camera on libcamera: stills, tap to focus, ISO
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-camera-app
+  (package
+    (name "pro1x-camera-app")
+    (version "0.1")
+    (source (local-file (repository-file "device/camera") "camera"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:install-plan ''(("pro1x-camera-app" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let* ((bin (string-append #$output "/bin/pro1x-camera-app"))
+                     (dirs (lambda (sub)
+                             (filter file-exists?
+                                     (map (lambda (input)
+                                            (string-append (cdr input) sub))
+                                          inputs)))))
+                (chmod bin #o755)
+                (substitute* bin
+                  (("^#!/usr/bin/env python3")
+                   (string-append "#!" (search-input-file inputs "/bin/python3"))))
+                (wrap-program bin
+                  `("GI_TYPELIB_PATH" ":" prefix
+                    ,(dirs "/lib/girepository-1.0"))
+                  ;; Only these plugins: libcamerasrc from libcamera-pro1x
+                  ;; (moWerk's controls), not another libcamera's.
+                  `("GST_PLUGIN_SYSTEM_PATH" ":" =
+                    ,(dirs "/lib/gstreamer-1.0"))
+                  `("GUIX_PYTHONPATH" ":" prefix
+                    ,(dirs #$(string-append
+                              "/lib/python"
+                              (version-major+minor (package-version python))
+                              "/site-packages")))))))
+          (add-after 'wrap 'desktop-entry
+            (lambda _
+              (let ((apps (string-append #$output "/share/applications")))
+                (mkdir-p apps)
+                (call-with-output-file
+                    (string-append apps "/org.pro1x.Camera.desktop")
+                  (lambda (port)
+                    (format port "[Desktop Entry]
+Type=Application
+Name=Camera
+Comment=Photos with tap to focus, ISO and flash (libcamera)
+Exec=~a/bin/pro1x-camera-app
+Icon=camera-photo
+Categories=AudioVideo;Video;
+StartupNotify=false
+" #$output)))))))))
+    (inputs
+     (list bash-minimal python python-pygobject gtk+ gdk-pixbuf pango
+           gstreamer gst-plugins-base gst-plugins-good
+           (list libcamera-pro1x "gst")))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Camera for the F(x)tec Pro1X on libcamera")
+    (description
+     "A camera application for the F(x)tec Pro1X: a 1080p viewfinder,
+photos at the sensor's 12 MP mode, tap to focus, ISO, exposure
+compensation and the LED as flash, through libcamera's GStreamer source and
+the port's libcamera controls.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
 ;;; cameractrl — V4L2 camera control GUI (focus, exposure)
 ;;; ---------------------------------------------------------------------------
 (define-public cameractrl
