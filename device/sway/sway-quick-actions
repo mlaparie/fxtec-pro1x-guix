@@ -278,6 +278,13 @@ choose() {
             title="feedback"
             cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
             opts=$(printf 'silent\tsilent\nquiet\tquiet (vibration, no sound)\nfull\tfull (sound and vibration)\n') ;;
+        charge)
+            title="charge limit"
+            set -- $(pro1x-charge-limit get 2>/dev/null); cur=${1:-off}
+            opts=$(for o in $CHARGE_OPTS; do
+                       if [ "$o" = off ]; then printf 'off\toff (charge to full)\n'
+                       else printf '%s\t%s%% (again at %s%%)\n' "$o" "$o" $((o - 5)); fi
+                   done) ;;
         cpu)
             title="CPU mode"
             cur=$(pro1x-cpu-mode get 2>/dev/null)
@@ -301,6 +308,7 @@ choose() {
         wwan) mobile_set "$pick" ;;
         feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
         cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        charge) charge_set "$pick" ;;
         orient) set_orientation "$pick" ;;
     esac
 }
@@ -337,16 +345,18 @@ battery_state() {               # "76% discharging", "85% held at limit"
     echo "$cap% $st"
 }
 
-charge_limit() {                # from config.scm, via /etc/pro1x/charge.conf
-    CHARGE_LIMIT= CHARGE_RESUME=
-    [ -r /etc/pro1x/charge.conf ] && . /etc/pro1x/charge.conf
+charge_limit() {                # pro1x-charge-limit: chosen here, kept
     if [ ! -e "$charge_param" ]; then
         echo "not in this kernel"
-    elif [ -z "$CHARGE_LIMIT" ]; then
-        echo "off  (charge to full; set in config.scm)"
-    else
-        echo "$CHARGE_LIMIT%, resume at $CHARGE_RESUME%  (set in config.scm)"
+        return
     fi
+    set -- $(pro1x-charge-limit get 2>/dev/null)
+    if [ "${1:-off}" = off ]; then echo off; else echo "$1% (again at $2%)"; fi
+}
+# The choices: off, then limits with charging again 5 % lower.
+CHARGE_OPTS="off 80 85 90 95"
+charge_set() {                  # charge_set off|LIMIT
+    sudo -n /run/current-system/profile/bin/pro1x-charge-limit "$1"
 }
 
 wifi_info() {                   # " · 75% SSID" for the connected network
@@ -573,6 +583,15 @@ step() {                        # Right (+) and Left (-)
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
         feedback?) feedback_step "$2" ;;
+        charge+|charge-)          # off, 80, 85, 90, 95
+            set -- "$2" $CHARGE_OPTS
+            dir=$1; shift
+            cur=$(pro1x-charge-limit get 2>/dev/null | cut -d' ' -f1); i=1; idx=1
+            for m in "$@"; do [ "$m" = "$cur" ] && idx=$i; i=$((i + 1)); done
+            n=$#
+            if [ "$dir" = + ]; then idx=$(( idx % n + 1 )); else idx=$(( (idx + n - 2) % n + 1 )); fi
+            eval "m=\${$idx}"
+            charge_set "$m" ;;
         cpu+|cpu-)                # auto, battery, balanced, performance
             set -- "$2" auto battery balanced performance
             dir=$1; shift
@@ -675,7 +694,7 @@ lines |
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
+                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
@@ -683,24 +702,23 @@ lines |
         --bind="right:transform:case {1} in
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  charge) ;;
                   *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  sim|notif|charge|lock|camera) ;;
+                  sim|notif|lock|camera) ;;
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
-                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu|charge) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
-                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu|charge) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
-                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu|charge) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="f4:transform:case {1} in
-                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu|charge) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null

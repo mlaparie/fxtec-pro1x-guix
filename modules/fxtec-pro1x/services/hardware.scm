@@ -802,26 +802,43 @@ esac
              (force-output)
              ;; Stay up (no respawn loop) and do nothing.
              (let idle () (sleep 3600) (idle)))
+           ;; The limits chosen in quick actions (pro1x-charge-limit:
+           ;; "LIMIT RESUME" or "off" in /var/lib/pro1x/charge-limit), else
+           ;; config.scm's.  Read on each pass: a change applies without a
+           ;; reconfigure (author, 2026-11-01).
            (let loop ()
-             (let ((pct (string->number (or (read-file capacity) "")))
-                   (on? (equal? "Y" (read-file param))))
+             (let* ((chosen (read-file "/var/lib/pro1x/charge-limit"))
+                    (fields (if chosen (string-split chosen #\space) '()))
+                    (limit (if chosen
+                               (and (= 2 (length fields))
+                                    (string->number (car fields)))
+                               #$limit))
+                    (resume (if (and chosen limit)
+                                (string->number (cadr fields))
+                                #$resume))
+                    (pct (string->number (or (read-file capacity) "")))
+                    (on? (equal? "Y" (read-file param))))
                (cond ((not pct) #t)
-                     ((and on? (>= pct #$limit)) (set-charging! #f))
-                     ((and (not on?) (<= pct #$resume)) (set-charging! #t))))
+                     ((not limit)               ;off: charge to full
+                      (unless on? (set-charging! #t)))
+                     ((and on? (>= pct limit)) (set-charging! #f))
+                     ((and (not on?) (<= pct resume)) (set-charging! #t))))
              (sleep 60)
              (loop))))))
 
 (define (pro1x-charge-limit-shepherd-service config)
+  ;; Always there: a limit chosen in quick actions applies even when
+  ;; config.scm sets none (#f: off until one is chosen).
   (let ((limit (pro1x-hardware-charge-limit config)))
-    (if limit
-        (list
+    (list
          (shepherd-service
           (provision '(pro1x-charge-limit))
           (requirement '(file-systems))
           (documentation "Stop charging at the charge limit, resume below it.")
           (start #~(make-forkexec-constructor
                     (list #$(pro1x-charge-limit-program
-                             limit (pro1x-hardware-charge-resume config)))
+                             limit (and limit
+                                        (pro1x-hardware-charge-resume config))))
                     #:log-file "/var/log/pro1x-charge-limit.log"))
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
@@ -831,8 +848,7 @@ esac
                          "/sys/module/pro1x_charger_icl/parameters/charge_enable"
                        (lambda (port) (display "1" port))))
                     #f))
-          (respawn? #t)))
-        '())))
+          (respawn? #t)))))
 
 (define (pro1x-clock-shepherd-service config)
   (list

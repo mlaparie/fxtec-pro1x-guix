@@ -615,7 +615,9 @@ files root may log in with."
                               "/run/current-system/profile/sbin/reboot, "
                               "/run/current-system/profile/bin/pro1x-sleep, "
                               ;; Its CPU mode line.
-                              "/run/current-system/profile/bin/pro1x-cpu-mode\n")))
+                              "/run/current-system/profile/bin/pro1x-cpu-mode, "
+                              ;; Quick actions' charge limit.
+                              "/run/current-system/profile/bin/pro1x-charge-limit\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services

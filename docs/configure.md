@@ -57,7 +57,7 @@ once, so combine changes in one expression:
 | hardware `notification-leds` | blue messages, purple missed calls, white bell | list of `(EVENT COLOUR)` or `(EVENT COLOUR PERIOD-MS)`; colours `"red"` … or `"#RRGGBB"` |
 | hardware `charging-led`, `charged-led` | `"#FFA000"`, `"#00FF00"` | breathing while charging, steady when full or held; `#f` off |
 | hardware `low-battery-led`, `low-battery-level` | `"#FF4000"`, `15` | a short blip every 4 s at or below that % |
-| hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
+| hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once; the default until a limit is chosen in quick actions (Charge limit line), which applies at once and is kept across reboots |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
 | hardware `cpu-mode` | `'auto` | the CPU's energy mode at boot until one is chosen in the power menu (then that one): `'auto` (balanced; battery while the screen is off or the battery is at 20 % or less), `'battery` (schedutil, capped at 1.31/1.40 GHz), `'balanced` (schedutil, dynamic), `'performance` (top frequency) |

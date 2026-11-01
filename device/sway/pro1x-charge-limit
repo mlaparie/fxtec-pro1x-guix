@@ -1,0 +1,50 @@
+#!/bin/sh
+# pro1x-charge-limit LIMIT [RESUME] | off | get — the charge limit, as root
+# (sudo, from sway-quick-actions)
+#
+#   LIMIT [RESUME]   stop charging at LIMIT %, charge again at or below
+#                    RESUME % (default LIMIT - 5)
+#   off              charge to full
+#   get              print "LIMIT RESUME" or "off"
+#
+# Set from quick actions, without a reconfigure, and kept across reboots
+# (author, 2026-11-01): /var/lib/pro1x/charge-limit, which the
+# pro1x-charge-limit service reads on each pass; until one is chosen, the
+# service uses charge-limit and charge-resume from config.scm.  Applied at
+# once here too (the service looks once a minute).
+
+PATH=/run/current-system/profile/bin:$PATH
+state=/var/lib/pro1x/charge-limit
+param=/sys/module/pro1x_charger_icl/parameters/charge_enable
+capacity=/sys/class/power_supply/battery/capacity
+
+get() {
+    if [ -f "$state" ]; then cat "$state"
+    elif [ -r /etc/pro1x/charge.conf ]; then
+        . /etc/pro1x/charge.conf
+        if [ -n "${CHARGE_LIMIT:-}" ]; then echo "$CHARGE_LIMIT $CHARGE_RESUME"
+        else echo off; fi
+    else echo off
+    fi
+}
+
+case "${1:-get}" in
+    get) get; exit ;;
+    off)
+        mkdir -p "${state%/*}"; echo off > "$state"
+        [ -w "$param" ] && echo 1 > "$param" ;;
+    [0-9]*)
+        limit=$1 resume=${2:-$(( $1 - 5 ))}
+        if [ "$limit" -lt 50 ] || [ "$limit" -gt 100 ] ||
+           [ "$resume" -ge "$limit" ] || [ "$resume" -lt 40 ]; then
+            echo "pro1x-charge-limit: limits out of range: $limit $resume" >&2
+            exit 1
+        fi
+        mkdir -p "${state%/*}"; echo "$limit $resume" > "$state"
+        pct=$(cat "$capacity" 2>/dev/null || echo 0)
+        if [ -w "$param" ]; then
+            if [ "$pct" -ge "$limit" ]; then echo 0 > "$param"
+            elif [ "$pct" -le "$resume" ]; then echo 1 > "$param"; fi
+        fi ;;
+    *) echo "usage: pro1x-charge-limit LIMIT [RESUME] | off | get" >&2; exit 1 ;;
+esac
