@@ -352,7 +352,7 @@
     #~(apply execl #$(file-append tuigreet "/bin/tuigreet") "tuigreet"
              #$%tuigreet-arguments)))
 
-;; The Sway greeter's config: tuigreet fullscreen in foot, stevia for it
+;; The Sway greeter's config: tuigreet in foot (the only window), stevia for it
 ;; (portrait: the keyboard is closed).  Sway quits when tuigreet does.
 (define pro1x-greeter-sway-config
   (mixed-text-file "pro1x-greeter-sway.conf" "\
@@ -360,7 +360,8 @@ output DSI-1 scale 2 transform normal bg #282a36 solid_color
 input type:touch map_to_output DSI-1
 default_border none
 seat * hide_cursor 1
-for_window [app_id=\"^greeter$\"] fullscreen enable
+# Not fullscreen: Sway hides the top layer, stevia, over a fullscreen
+# window.  The only tiled window fills the screen anyway, above stevia.
 # stevia (pro1x-greeter lets it show: screen-keyboard-enabled).
 exec " stevia "/bin/phosh-osk-stevia
 # tuigreet's exit status for pro1x-greeter: it finished (a login), or not.
