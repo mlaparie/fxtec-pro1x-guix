@@ -38,9 +38,30 @@ battery() { cat /sys/class/power_supply/battery/capacity \
 was_lit= charging=$(battery)
 redraw() {
     pro1x-lock --locked || return
+    if [ "${1:-}" = now ]; then        # battery: not over a password
+        pro1x-lock --refresh-when-idle >/dev/null 2>&1 &
+        return
+    fi
     drawn=$(cat "$rt/pro1x-lock-drawn" 2>/dev/null || echo 0)
-    [ "${1:-}" = now ] || [ $(( $(date +%s) - drawn )) -ge 30 ] || return
+    [ $(( $(date +%s) - drawn )) -ge 30 ] || return
     pro1x-lock --refresh >/dev/null 2>&1 &
+}
+
+# Typing: no key or touch in the last 20 s leaves $rt/pro1x-input-idle
+# (Sway counts input on the lock screen too, the hardware keyboard and the
+# on-screen one).  A redraw put off meanwhile ($rt/pro1x-lock-pending)
+# comes once idle.
+touch "$rt/pro1x-input-idle"
+swayidle timeout 20 "touch '$rt/pro1x-input-idle'" \
+         resume "rm -f '$rt/pro1x-input-idle'" >/dev/null 2>&1 &
+typing_watch=$!
+pending() {
+    [ -e "$rt/pro1x-lock-pending" ] || return 0
+    if ! pro1x-lock --locked; then rm -f "$rt/pro1x-lock-pending"
+    elif [ -e "$rt/pro1x-input-idle" ]; then
+        rm -f "$rt/pro1x-lock-pending"
+        pro1x-lock --refresh >/dev/null 2>&1 &
+    fi
 }
 
 check() {
@@ -50,6 +71,7 @@ check() {
     was_lit=$lit
     st=$(battery)
     if [ "$st" != "$charging" ]; then charging=$st; redraw now; fi
+    pending
     [ -n "$white" ] || return 0      # no indicator (unlocked-led #f)
     if [ "$lit" = false ] && ! pro1x-lock --locked; then
         # Dark: light it, even if we think it is ours (feedbackd's white
@@ -66,7 +88,7 @@ check() {
 }
 
 off() { [ "$mine" = 1 ] && ours && echo "0 1000 0 1000" > "$led/pattern"; }
-trap 'off; rm -f "$events"' EXIT
+trap 'off; kill "$typing_watch" 2>/dev/null; rm -f "$events"' EXIT
 trap 'exit 0' INT TERM HUP
 
 rm -f "$events"; mkfifo "$events"

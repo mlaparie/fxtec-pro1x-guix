@@ -10,6 +10,8 @@
 #                          one with the new text; Sway stays locked meanwhile
 #                          (ext-session-lock keeps the session locked when a
 #                          locker dies without unlocking)
+#   pro1x-lock --refresh-when-idle   the same, unless a key or touch came in
+#                          the last 20 s (a password being typed): then later
 #   pro1x-lock --locked    exit 0 when a lock screen is up
 #   pro1x-lock --unlock    unlock from a script (pro1x-call-watch, incoming
 #                          call): gtklock unlocks on SIGTERM
@@ -47,6 +49,17 @@ case "${1:-}" in
         pkill -TERM -u "$uid" -x gtklock
         pkill -USR1 -u "$uid" -x swaylock
         exit 0 ;;
+    --refresh-when-idle)
+        # A redraw would wipe a password being typed (author, 2026-11-01):
+        # with a key or touch in the last 20 s ($rt/pro1x-input-idle is
+        # absent: pro1x-blank-led's swayidle), it waits as
+        # $rt/pro1x-lock-pending, which pro1x-blank-led redraws once idle.
+        pgrep -u "$uid" -x gtklock >/dev/null || exit 0
+        if [ ! -e "$rt/pro1x-input-idle" ]; then
+            touch "$rt/pro1x-lock-pending"
+            exit 0
+        fi
+        exec "$0" --refresh ;;
 esac
 
 # XML text: & < > escaped.

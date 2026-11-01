@@ -22,7 +22,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 [ -n "$id" ] && sway-notifications log "$id"
 
 if pro1x-lock --locked; then
-    pro1x-lock --refresh &
+    pro1x-lock --refresh-when-idle &
 fi
 
 lit=$(swaymsg -t get_outputs -r 2>/dev/null |
