@@ -137,5 +137,10 @@ left out of the provenance~%"))
     (system "aarch64-linux")
     (user "root")
     (allow-downgrades? #t)
+    ;; PRO1X_BUILD_ON_PHONE=1: the phone builds what is missing instead of
+    ;; this host.  For a kernel CI built: imported on the phone (its root
+    ;; can authorize the CI run's key; this host's sudo is the author's),
+    ;; so it is not built again under QEMU here.
+    (build-locally? (not (getenv "PRO1X_BUILD_ON_PHONE")))
     (identity (or (getenv "PRO1X_IDENTITY")
                   (string-append (getenv "HOME") "/.ssh/pro1x-guix")))))))
