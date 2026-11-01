@@ -56,7 +56,11 @@
          ;; with the ADSP's restart); a DSP message now also wakes the
          ;; system for the answer.  The first adapted to 7.1.
          "fastrpc-resume-interrupted"
-         "fastrpc-wake")))
+         "fastrpc-wake"
+         ;; Ours: the modem's GLINK messages wake a suspended system, so
+         ;; an incoming call is not slept through (pro1x-sleep decides
+         ;; whether to stay awake).
+         "glink-modem-wake")))
 
 (define-public linux-pro1x
   (package
