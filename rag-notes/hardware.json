@@ -83,6 +83,14 @@
         "confidence": "confirmed",
         "date": "2026-11-01",
         "source": "kernel source read; patch not yet booted"
+      },
+      {
+        "title": "s2idle does not reach SoC deep sleep: qcom_stats vlow and vmin stay at 0",
+        "general": "On SM6115 mainline, a held s2idle only idles the CPUs (psci per-core power collapse); the RPM low-power modes vlow/vmin need every master (modem, ADSP, CDSP, WCN) to vote for sleep and XO to be released. Check /sys/kernel/debug/qcom_stats/{vlow,vmin} Count before trusting a suspend drain figure.",
+        "instance": "Pro1X 7.1: psci_idle driver, states WFI and cpu-sleep-0-0 / cpu-sleep-1-0 used; vlow and vmin Count 0 after suspends of 11 s and more (2026-11-01). moWerk measures 47.5 mA in suspend on SailfishOS (7.3) and suspects the same; the TB-J606L port (SM6115) reports vlow/vmin at 0 with XO votes as its next step.",
+        "confidence": "confirmed",
+        "date": "2026-11-01",
+        "source": "qcom_stats and cpuidle sysfs on the phone; moWerk (message to the author); github.com/haltia-de/device-lenovo-tb-j606l pull/12"
       }
     ],
     "modem": [
