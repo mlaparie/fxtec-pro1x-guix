@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pro1x-blank-led — a very dim white LED while the screen is blank but
-# not locked (Sway)
+# not locked (Sway); also redraws the lock screen's status (see redraw)
 #
 # Shows that the phone is idle, not locked yet (author, 2026-10-30).  It
 # writes the RGB LED only while the LED is dark or shows this white, so
@@ -17,7 +17,6 @@ led=/sys/class/leds/rgb:status
 # empty: no indicator.
 UNLOCKED_LED="255 255 255" UNLOCKED_LEVEL=6
 [ -r /etc/pro1x/led.conf ] && . /etc/pro1x/led.conf
-[ -n "$UNLOCKED_LED" ] || exit 0
 white=$UNLOCKED_LED level=$UNLOCKED_LEVEL
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 events="$rt/pro1x-blank-led.events"
@@ -30,9 +29,28 @@ dark() {
     awk '{ for (i = 1; i <= NF; i += 2) if ($i != 0) exit 1 }' "$led/pattern" 2>/dev/null
 }
 
+# The lock screen's status (battery, CPU mode) as of now (author,
+# 2026-11-01): redrawn when the screen lights while locked, unless drawn
+# less than 30 s ago, and whenever the battery's percentage or charging
+# state changes.
+battery() { cat /sys/class/power_supply/battery/capacity \
+                /sys/class/power_supply/battery/status 2>/dev/null | tr '\n' ' '; }
+was_lit= charging=$(battery)
+redraw() {
+    pro1x-lock --locked || return
+    drawn=$(cat "$rt/pro1x-lock-drawn" 2>/dev/null || echo 0)
+    [ "${1:-}" = now ] || [ $(( $(date +%s) - drawn )) -ge 30 ] || return
+    pro1x-lock --refresh >/dev/null 2>&1 &
+}
+
 check() {
     lit=$(swaymsg -t get_outputs -r 2>/dev/null |
               jq -r '[.[] | select(.active) | .power] | any')
+    [ "$lit" = true ] && [ "$was_lit" = false ] && redraw
+    was_lit=$lit
+    st=$(battery)
+    if [ "$st" != "$charging" ]; then charging=$st; redraw now; fi
+    [ -n "$white" ] || return 0      # no indicator (unlocked-led #f)
     if [ "$lit" = false ] && ! pro1x-lock --locked; then
         # Dark: light it, even if we think it is ours (feedbackd's white
         # terminal-bell pattern can end and leave it dark behind our back).

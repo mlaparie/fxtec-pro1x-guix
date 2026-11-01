@@ -385,4 +385,6 @@ else
     echo none > "$rt/pro1x-lock-osk"
 fi
 
+# When it was drawn, for pro1x-blank-led (no redraw within 30 s of one).
+date +%s > "$rt/pro1x-lock-drawn"
 exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"
