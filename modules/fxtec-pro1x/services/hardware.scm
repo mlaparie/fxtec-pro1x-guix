@@ -145,18 +145,21 @@
   ;; they lose the focus or close.  What opens them while locked: an
   ;; incoming call (Calls), the camera button, shake-action.
   (portrait-apps      pro1x-hardware-portrait-apps
-                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
   (landscape-apps     pro1x-hardware-landscape-apps     (default '()))
   (fullscreen-apps    pro1x-hardware-fullscreen-apps
-                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
   (lock-screen-apps   pro1x-hardware-lock-screen-apps
-                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
   ;; The camera button in Sway: a triple press runs this shell command
   ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
   ;; a single press elsewhere left-clicks where the pointer is (right with
   ;; Fn), held the touchscreen is a touchpad (with Super: a window drag).
   (camera-triple-press pro1x-hardware-camera-triple-press
-                       (default "snapshot"))
+                       (default "pro1x-camera-app"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
@@ -428,7 +431,7 @@ esac
 
 (define pro1x-pocket-program
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
-  ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
+  ;; near (ssccli, from the ADSP): pro1x-doubletap does
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
   ;; near for 1 s (5 s with the keyboard out), the panel goes off
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
@@ -520,25 +523,36 @@ esac
                      ((panel-on?)
                       (sway! "input type:touch events enabled"))))))
        (set-near! #f)
-       (let ((port (open-pipe* OPEN_READ
-                               #$(file-append iio-sensor-proxy-ssc
-                                              "/bin/monitor-sensor")
-                               "--proximity")))
-         ;; "=== Has proximity sensor (near: 1)" first, then
-         ;; "    Proximity value changed: 0".
-         (let loop ()
-           (let ((line (read-line port)))
-             (unless (eof-object? line)
-               (reap!)
-               (cond ((or (string-contains line "near: 1")
-                          (string-contains line "value changed: 1"))
-                      (set-near! #t))
-                     ((or (string-contains line "near: 0")
-                          (string-contains line "value changed: 0"))
-                      (set-near! #f)))
-               (loop))))
-         (set-near! #f)
-         (close-pipe port)))))
+       ;; The sensor straight from the ADSP (ssccli), not through
+       ;; iio-sensor-proxy: there changes came late, or not at all, and not
+       ;; to every client (2026-11-01: blanking after varying delays, or
+       ;; never); ssccli reported NEAR and FAR at once.  Lines:
+       ;; "Proximity sensor measurement: NEAR" (or FAR).  Each change is
+       ;; logged, to compare with what the author sees.
+       (setvbuf (current-output-port) 'line)
+       (let restart ()
+         (let ((port (open-pipe* OPEN_READ
+                                 #$(file-append libssc "/bin/ssccli")
+                                 "--sensor" "proximity" "--timeout" "864000"))
+               (near #f))
+           (let loop ()
+             (let ((line (read-line port)))
+               (unless (eof-object? line)
+                 (reap!)
+                 (cond ((and (string-contains line "NEAR") (not near))
+                        (set! near #t)
+                        (display "near\n")
+                        (set-near! #t))
+                       ((and (string-contains line "FAR") near)
+                        (set! near #f)
+                        (display "far\n")
+                        (set-near! #f)))
+                 (loop))))
+           (close-pipe port)
+           (set-near! #f)
+           (display "ssccli ended; again in 5 s\n")
+           (sleep 5)
+           (restart))))))
 
 (define (pro1x-shake-torch-program action)
   ;; Two shakes toggle the torch (author, 2026-10-31): reads the

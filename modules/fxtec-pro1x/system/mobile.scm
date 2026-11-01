@@ -914,6 +914,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; fell back to the terminal in Sway, which runs without XWayland.
      emacs-pgtk mpv nnn
      calls chatty
+     ;; The camera: stills at 12 MP, tap to focus, ISO, flash (ours, on
+     ;; libcamera with moWerk's patches); Snapshot stays.
+     pro1x-camera-app
      ;; Alarms, timers, world clocks (author).  It rings only while the
      ;; phone is awake: waking from suspend or power-off for an alarm is
      ;; not done yet.

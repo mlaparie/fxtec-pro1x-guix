@@ -492,7 +492,7 @@ act() {                         # Enter
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
-        camera) qs_hide; swaymsg exec snapshot >/dev/null ;;
+        camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape

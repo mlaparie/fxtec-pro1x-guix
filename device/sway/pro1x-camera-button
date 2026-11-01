@@ -1,9 +1,12 @@
 #!/bin/sh
 # pro1x-camera-button — the camera button in Sway (author, 2026-10-31)
 #
-#   Snapshot focused:  a press takes a picture (pro1x-camera), at once
+#   a camera focused:  a press takes a picture, at once (our
+#                      pro1x-camera-app on SIGUSR1, Snapshot through
+#                      pro1x-camera)
 #   triple press:      CAMERA_TRIPLE_PRESS (/etc/pro1x/apps.conf,
-#                      camera-triple-press in config.scm; default snapshot),
+#                      camera-triple-press in config.scm; default
+#                      pro1x-camera-app),
 #                      through pro1x-open, so it opens over the lock screen;
 #                      not while the proximity sensor reads near (a pocket)
 #   single press:      a left click where the pointer is; with Fn
@@ -31,7 +34,7 @@
 # windows; then a drag that pressed Super itself; now a touchpad while
 # held (author's design).  Not yet run.
 
-CAMERA_TRIPLE_PRESS=snapshot
+CAMERA_TRIPLE_PRESS=pro1x-camera-app
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 st="$rt/pro1x-camera-button"           # press stamp; .pending, .drag
@@ -46,10 +49,18 @@ if [ -n "${SWAYSOCK:-}" ]; then
     ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
 fi
 
-snapshot_focused() {
-    [ "$(swaymsg -t get_tree -r |
-         jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" \
-      = org.gnome.Snapshot ]
+# A camera app focused: the press takes a photo in it.  Ours
+# (pro1x-camera-app) on SIGUSR1; Snapshot through pro1x-camera.
+shoot_in_camera() {
+    case "$(swaymsg -t get_tree -r |
+            jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" in
+        org.pro1x.Camera)
+            for p in $(pgrep -u "$(id -u)" -f 'bin/\.pro1x-camera-app-real'); do
+                kill -USR1 "$p"
+            done ;;
+        org.gnome.Snapshot) pro1x-camera ;;
+        *) return 1 ;;
+    esac
 }
 
 # The pointer is pro1x-doubletap's (it reads the touchscreen): a word to
@@ -69,8 +80,8 @@ evtest "$dev" 2>/dev/null |
                     pro1x-open "$CAMERA_TRIPLE_PRESS" &
                     continue
                 fi
-                if [ "${n:-0}" = 0 ] && snapshot_focused; then
-                    pro1x-camera & continue
+                if [ "${n:-0}" = 0 ] && shoot_in_camera; then
+                    continue
                 fi
                 stamp=$(date +%s%N); echo "$stamp" > "$st"
                 ( sleep 0.4

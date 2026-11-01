@@ -36,6 +36,7 @@ allowed() { case " $LOCK_SCREEN_APPS " in *" $1 "*) return 0 ;; esac; return 1; 
 # only presents the window it has).
 case "${1##*/}" in
     snapshot|pro1x-camera) want=org.gnome.Snapshot ;;
+    pro1x-camera-app) want=org.pro1x.Camera ;;
     gnome-calls) want=org.gnome.Calls ;;
     *) want= ;;
 esac
