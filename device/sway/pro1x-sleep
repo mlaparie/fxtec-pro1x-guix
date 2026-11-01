@@ -6,7 +6,7 @@
 # event counts, /sys/class/wakeup) and
 #   - the power key, the keyboard, gpio-keys (camera, volume up), the RTC
 #     alarm, the charger: stays awake, the panel lit;
-#   - the modem (glink-modem: our kernel patch, a message from it): waits
+#   - the modem (qrtr-modem: our kernel patch, a message from it): waits
 #     up to 5 s for ModemManager; a ringing call keeps it awake, anything
 #     else (an SMS, a network update) sleeps again;
 #   - the ADSP alone (fastrpc's "adsp" wakeup source: a sensor call for
@@ -88,14 +88,25 @@ adsp_recover() {
 
 suspend_loop() {
     before=$(mktemp) after=$(mktemp)
+    tries=0
     while :; do
         counts > "$before"
-        echo mem > /sys/power/state || break
+        if ! echo mem > /sys/power/state 2>/dev/null; then
+            # Aborted (EBUSY): a wakeup event as it went down, such as a
+            # modem reply to what ModemManager was doing as it froze (seen
+            # 2026-11-01).  Again, a few times.
+            counts > "$after"
+            logger -t pro1x-sleep "suspend aborted by: $(woke_by "$before" "$after" | tr '\n' ' ')"
+            tries=$((tries + 1))
+            [ $tries -lt 5 ] || break
+            sleep 2
+            continue
+        fi
         counts > "$after"
         why=$(woke_by "$before" "$after" | tr '\n' ' ' | sed 's/ *$//')
         logger -t pro1x-sleep "woke: ${why:-unknown}"
         case " $why " in
-            *" glink-modem "*)
+            *" qrtr-modem "*)
                 # Wait for ModemManager to tell a call from the rest.
                 i=0
                 while [ $i -lt 10 ]; do
@@ -104,7 +115,7 @@ suspend_loop() {
                 done
                 # Nothing for the user: but a key pressed meanwhile counts.
                 counts > "$before"
-                [ -n "$(woke_by "$after" "$before" | grep -v -e glink-modem -e '^adsp$')" ] &&
+                [ -n "$(woke_by "$after" "$before" | grep -v -e qrtr-modem -e '^adsp$')" ] &&
                     break ;;
             " adsp ")
                 adsp_recover

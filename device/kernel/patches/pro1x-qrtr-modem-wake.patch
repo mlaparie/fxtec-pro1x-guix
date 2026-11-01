@@ -1,0 +1,104 @@
+net: qrtr: smd: Wake the system for the modem's data packets.
+
+In s2idle the modem's messages (an incoming call, an SMS) reach the
+kernel, but nothing wakes user space, so ModemManager never sees them.
+The modem's IPCRTR channel (its GLINK edge labelled "mpss") now takes a
+hard wakeup event, held 1 s, for each QRTR data packet.  Control
+packets (resume-tx, server notices) do not: a first version that woke
+for every GLINK message from the modem aborted each suspend within 2 s.
+Data packets that arrive while suspending are logged, to see what wakes.
+User space decides whether to stay awake (pro1x-sleep: a call or not).
+
+Ours (fxtec-pro1x-guix, 2026-11-01).  Untested.
+
+--- a/net/qrtr/smd.c	2026-11-01 15:13:51.855743269 +0100
++++ b/net/qrtr/smd.c	2026-11-01 15:14:26.232871831 +0100
+@@ -5,8 +5,12 @@
+  */
+ 
+ #include <linux/module.h>
++#include <linux/of.h>
++#include <linux/pm_wakeup.h>
+ #include <linux/skbuff.h>
+ #include <linux/rpmsg.h>
++#include <linux/suspend.h>
++#include <linux/unaligned.h>
+ 
+ #include "qrtr.h"
+ 
+@@ -14,8 +18,40 @@
+ 	struct qrtr_endpoint ep;
+ 	struct rpmsg_endpoint *channel;
+ 	struct device *dev;
++	/* The modem's channel: its data packets wake a suspended system. */
++	struct wakeup_source *ws;
+ };
+ 
++/*
++ * A QMI message from the modem (an incoming call, an SMS) must wake a
++ * system in s2idle, or ModemManager, frozen, never sees it.  Data packets
++ * only (QRTR_TYPE_DATA): control packets (resume-tx, server notices)
++ * also came as the system went down, and a wakeup for each aborted every
++ * suspend.  Header version 1: le32 type at byte 4; version 2: type at
++ * byte 1.
++ */
++static void qcom_smd_qrtr_wake(struct qrtr_smd_dev *qdev, const u8 *data,
++			       int len)
++{
++	u32 type;
++
++	if (!qdev->ws || len < 8)
++		return;
++	if (data[0] == 1)
++		type = get_unaligned_le32(data + 4);
++	else if (data[0] == 2)
++		type = data[1];
++	else
++		return;
++	if (type != 1)		/* QRTR_TYPE_DATA */
++		return;
++	if (pm_suspend_target_state != PM_SUSPEND_ON)
++		dev_info_ratelimited(qdev->dev,
++				     "modem data while suspending: wakeup (v%u, %d bytes)\n",
++				     data[0], len);
++	pm_wakeup_ws_event(qdev->ws, 1000, true);
++}
++
+ /* from smd to qrtr */
+ static int qcom_smd_qrtr_callback(struct rpmsg_device *rpdev,
+ 				  void *data, int len, void *priv, u32 addr)
+@@ -26,6 +62,8 @@
+ 	if (!qdev)
+ 		return -EAGAIN;
+ 
++	qcom_smd_qrtr_wake(qdev, data, len);
++
+ 	rc = qrtr_endpoint_post(&qdev->ep, data, len);
+ 	if (rc == -EINVAL) {
+ 		dev_err(qdev->dev, "invalid ipcrouter packet\n");
+@@ -75,6 +113,17 @@
+ 
+ 	dev_set_drvdata(&rpdev->dev, qdev);
+ 
++	/* The modem's edge is labelled "mpss" (its GLINK edge node). */
++	{
++		const char *label;
++
++		if (rpdev->dev.parent && rpdev->dev.parent->of_node &&
++		    !of_property_read_string(rpdev->dev.parent->of_node,
++					     "label", &label) &&
++		    !strcmp(label, "mpss"))
++			qdev->ws = wakeup_source_register(NULL, "qrtr-modem");
++	}
++
+ 	dev_dbg(&rpdev->dev, "Qualcomm SMD QRTR driver probed\n");
+ 
+ 	return 0;
+@@ -85,6 +134,7 @@
+ 	struct qrtr_smd_dev *qdev = dev_get_drvdata(&rpdev->dev);
+ 
+ 	qrtr_endpoint_unregister(&qdev->ep);
++	wakeup_source_unregister(qdev->ws);
+ 
+ 	dev_set_drvdata(&rpdev->dev, NULL);
+ }
