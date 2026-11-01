@@ -16,6 +16,19 @@
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-switcher.sock"
 self=$0
 
+# pro1x-switcher --close CON_ID: close that window; with none left, the
+# switcher goes away too (author: nothing left to switch to).
+if [ "${1:-}" = --close ]; then
+    swaymsg "[con_id=$2] kill" >/dev/null
+    sleep 0.3
+    if [ -z "$("$0" --list)" ]; then
+        curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
+             -d "clear-query+first" >/dev/null 2>&1 &
+        swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+    fi
+    exit
+fi
+
 if [ "${1:-}" = --ask ]; then
     # pro1x-switcher --ask CON_ID: Focus / Close window / Cancel, for the
     # power key (short press on a line; author, 2026-10-31).  Its own fzf
@@ -32,7 +45,7 @@ if [ "${1:-}" = --ask ]; then
                  -d "clear-query+first" >/dev/null 2>&1 &
             swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
             swaymsg "[con_id=$2] focus" >/dev/null ;;
-        "Close window") swaymsg "[con_id=$2] kill" >/dev/null ;;
+        "Close window") "$0" --close "$2" ;;
     esac
     exit
 fi
@@ -55,6 +68,6 @@ hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] mo
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --bind="enter:execute($self --ask {1})+reload($self --list)" \
         --bind="right:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
-        --bind="ctrl-k:execute-silent(swaymsg \"[con_id={1}] kill\")+reload($self --list)" \
+        --bind="ctrl-k:execute-silent($self --close {1})+reload($self --list)" \
         --bind="ctrl-o:execute($self --ask {1})+reload($self --list)" \
         --bind="esc:$hide" >/dev/null

@@ -228,6 +228,11 @@ mobile_cycle() {                # mobile_cycle + | -
     if [ "$dir" = + ]; then idx=$(( idx % n + 1 ))
     else idx=$(( (idx + n - 2) % n + 1 )); fi
     eval "opt=\${$idx}"
+    mobile_set "$opt"
+}
+mobile_set() {                  # mobile_set off|234|34|23|3
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    opt=$1
     case "$opt" in
         off) nmcli radio wwan off ;;
         234|34|23|3)
@@ -256,6 +261,48 @@ roaming() {                     # roaming: on, off or "no connection"
     c=$(gsm_conn)
     [ -n "$c" ] || { echo "no connection"; return; }
     [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
+}
+
+# choose KEY: the line's options as a list, its own fzf (socket
+# pro1x-quick-actions-ask.sock, which pro1x-menu key drives while it is
+# open); the current one marked; the pick applied (author: sub choices as
+# options, like the window switcher's, so the lines stay short enough for
+# portrait).
+choose() {
+    case "$1" in
+        wwan)
+            title="mobile data"
+            cur=$(cut -d' ' -f1 "${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile" 2>/dev/null)
+            opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done) ;;
+        feedback)
+            title="feedback"
+            cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
+            opts=$(printf 'silent\tsilent\nquiet\tquiet (vibration, no sound)\nfull\tfull (sound and vibration)\n') ;;
+        cpu)
+            title="CPU mode"
+            cur=$(pro1x-cpu-mode get 2>/dev/null)
+            opts=$(printf 'auto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n') ;;
+        orient)
+            title="orientation"
+            cur=$(orientation)
+            opts=$(printf 'portrait\tportrait\nlandscape\tlandscape\n') ;;
+        *) return ;;
+    esac
+    asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
+    pick=$(printf '%s\n' "$opts" |
+               awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }' |
+               fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
+                   --prompt="$title > " --layout=reverse-list --no-info --cycle \
+                   --margin=1,2 --color=16,gutter:-1 |
+               cut -f1)
+    rm -f "$asksock"
+    [ -n "$pick" ] || return
+    case "$1" in
+        wwan) mobile_set "$pick" ;;
+        feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
+        cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        orient) set_orientation "$pick" ;;
+    esac
 }
 
 orientation() {                 # portrait or landscape, from the panel
@@ -391,7 +438,8 @@ lines() {
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
-        "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
+        "feedback    Feedback             $(cat "$d/fb")" \
+        "cpu         CPU mode             $(pro1x-cpu-mode get 2>/dev/null || echo auto)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"
@@ -525,6 +573,14 @@ step() {                        # Right (+) and Left (-)
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
         feedback?) feedback_step "$2" ;;
+        cpu+|cpu-)                # auto, battery, balanced, performance
+            set -- "$2" auto battery balanced performance
+            dir=$1; shift
+            cur=$(pro1x-cpu-mode get 2>/dev/null); i=1; idx=1
+            for m in "$@"; do [ "$m" = "$cur" ] && idx=$i; i=$((i + 1)); done
+            if [ "$dir" = + ]; then idx=$(( idx % 4 + 1 )); else idx=$(( (idx + 2) % 4 + 1 )); fi
+            eval "m=\${$idx}"
+            sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$m" ;;
         *+) set_to "$1" on; sleep 0.3 ;;
         *-) set_to "$1" off; sleep 0.3 ;;
     esac
@@ -580,6 +636,7 @@ notif_dock() {
 case "${1:-}" in
     --lines) lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
+    --choose) choose "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
@@ -618,6 +675,7 @@ lines |
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
+                  wwan|feedback|cpu|orient) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
@@ -633,16 +691,16 @@ lines |
                   *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
-                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
-                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
-                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="f4:transform:case {1} in
-                  bright|volume|feedback|wwan|orient) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume|feedback|wwan|orient|cpu) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null

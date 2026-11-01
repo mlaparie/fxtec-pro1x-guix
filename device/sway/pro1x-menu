@@ -105,7 +105,18 @@ case "$cmd" in
         # asked (pro1x-volume-lock, at the press): saves a get_tree.
         focused=${PRO1X_MENU_FOCUSED:-$("$0" focused)} || exit 1
         case "$focused" in
-            quickactions) sock="$rt/pro1x-quick-actions.sock" ;;
+            quickactions)
+                sock="$rt/pro1x-quick-actions.sock"
+                # A line's choices (sway-quick-actions --choose), when open:
+                # a plain list, so steps and holds move in it.
+                if [ -S "$rt/pro1x-quick-actions-ask.sock" ]; then
+                    sock="$rt/pro1x-quick-actions-ask.sock"
+                    case "$id" in
+                        left|hold-down|repeat-down) id=down ;;
+                        right|hold-up|repeat-up) id=up ;;
+                    esac
+                    focused=list
+                fi ;;
             launcher) sock="$rt/pro1x-launcher.sock" ;;
             windowswitcher)
                 sock="$rt/pro1x-switcher.sock"
@@ -141,7 +152,10 @@ case "$cmd" in
                 then action="trigger(ctrl-o)"     # ask Focus / Close / Cancel
                 else action="trigger(enter)"; fi ;;
             hide)
-                if [ "$focused" = powermenu ]; then
+                if [ "$focused" = list ]; then      # close the choices
+                    curl -s --unix-socket "$sock" -X POST http://localhost \
+                         -d abort >/dev/null
+                elif [ "$focused" = powermenu ]; then
                     swaymsg '[app_id="^powermenu$"] kill' >/dev/null
                 else
                     hide_menu "$focused"
