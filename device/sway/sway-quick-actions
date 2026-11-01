@@ -298,14 +298,19 @@ choose() {
         *) return ;;
     esac
     asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
-    pick=$(printf '%s\n' "$opts" |
-               awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }' |
+    # "back" first (author: back to the main menu); the cursor starts on
+    # the current choice.
+    at=$(printf '%s\n' "$opts" | awk -F'\t' -v cur="$cur" '$1 == cur { print NR + 1; exit }')
+    pick=$({ printf 'back\t← back\n'
+             printf '%s\n' "$opts" |
+                 awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; } |
                fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
                    --prompt="$title > " --layout=reverse-list --no-info --cycle \
-                   --margin=1,2 --color=16,gutter:-1 |
+                   --margin=1,2 --color=16,gutter:-1 \
+                   --bind="load:pos(${at:-1})" |
                cut -f1)
     rm -f "$asksock"
-    [ -n "$pick" ] || return
+    case "$pick" in ""|back) return ;; esac
     case "$1" in
         wwan) mobile_set "$pick" ;;
         feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
@@ -696,7 +701,7 @@ lines |
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
+                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
@@ -712,12 +717,12 @@ lines |
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
