@@ -921,6 +921,8 @@ Dracula palette, no kernel messages over the greeter.")
      pro1x-camera-app
      ;; Image viewer (Loupe: adaptive), the camera's last photo opens in it.
      loupe
+     ;; Sway's autotiling: splits along the focused window's longer side.
+     i3-autotiling
      ;; Alarms, timers, world clocks (author).  It rings only while the
      ;; phone is awake: waking from suspend or power-off for an alarm is
      ;; not done yet.

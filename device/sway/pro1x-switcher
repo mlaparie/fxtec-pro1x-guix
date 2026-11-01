@@ -6,7 +6,8 @@
 #
 # Lists the windows, then workspaces 1-10 (author).  On a window, Enter and
 # Ctrl-o (a short power press) ask Back / Focus / Close window / Move to
-# workspace / Tile / Tab (author: Return does what the power key does);
+# workspace / Tile / Tab / Stack / Toggle fullscreen, floating, sticky
+# (author: Return does what the power key does);
 # on a workspace they switch to it.  Right (or vol+ held) focuses or
 # switches at once, Ctrl-k closes the window, Esc hides the switcher.  It
 # stays alive hidden (pro1x-menu); each show reloads the list through
@@ -59,7 +60,8 @@ if [ "${1:-}" = --ask ]; then
     }
     # Move, tile and tab too (author, 2026-11-01).
     choice=$(pick window "← back" "Focus" "Close window" \
-                 "Move to workspace…" "Tile" "Tab")
+                 "Move to workspace…" "Tile" "Tab" "Stack" \
+                 "Toggle fullscreen" "Toggle floating" "Toggle sticky")
     case "$choice" in
         "Move to workspace…")
             ws=$(pick "move to" "← back" 1 2 3 4 5 6 7 8 9 10)
@@ -68,6 +70,10 @@ if [ "${1:-}" = --ask ]; then
             esac ;;
         Tile) swaymsg "[con_id=$2] floating disable, layout splith" >/dev/null ;;
         Tab) swaymsg "[con_id=$2] floating disable, layout tabbed" >/dev/null ;;
+        Stack) swaymsg "[con_id=$2] floating disable, layout stacking" >/dev/null ;;
+        "Toggle fullscreen") swaymsg "[con_id=$2] fullscreen toggle" >/dev/null ;;
+        "Toggle floating") swaymsg "[con_id=$2] floating toggle" >/dev/null ;;
+        "Toggle sticky") swaymsg "[con_id=$2] sticky toggle" >/dev/null ;;
         Focus)
             # Away, its query cleared (after this execute ends), then focus.
             curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
