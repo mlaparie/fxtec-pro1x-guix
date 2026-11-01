@@ -1,0 +1,57 @@
+#!/bin/sh
+# pro1x-cpu-mode [battery|balanced|performance|next|apply|get] — the CPU's
+# energy mode, as root (sudo, from pro1x-power-menu; the pro1x-cpu-mode
+# service applies the saved one at boot)
+#
+#   battery      schedutil, capped: 1.31 GHz (CPUs 0-3), 1.40 GHz (4-7)
+#   balanced     schedutil over the whole range (the kernel's default)
+#   performance  the performance governor: top frequency all the time
+#   next         the next one, in that order, round
+#   apply        the saved one (/var/lib/pro1x/cpu-mode), or $1 of the
+#                service (cpu-mode in config.scm) when none is saved
+#   get          print the current one
+#
+# User-set energy management (author, 2026-11-01).  The caps are
+# frequencies the two clusters offer (scaling_available_frequencies,
+# measured 2026-11-01): policy0 300 MHz-1.80 GHz, policy4 300 MHz-2.02 GHz.
+
+PATH=/run/current-system/profile/bin:$PATH
+state=/var/lib/pro1x/cpu-mode
+cpufreq=/sys/devices/system/cpu/cpufreq
+
+set_mode() {
+    for p in "$cpufreq"/policy*; do
+        top=$(cat "$p/cpuinfo_max_freq")
+        case "$1" in
+            battery)
+                gov=schedutil
+                case "${p##*/}" in
+                    policy0) cap=1305600 ;;
+                    *) cap=1401600 ;;
+                esac ;;
+            balanced) gov=schedutil cap=$top ;;
+            performance) gov=performance cap=$top ;;
+            *) echo "pro1x-cpu-mode: unknown mode $1" >&2; return 1 ;;
+        esac
+        echo "$cap" > "$p/scaling_max_freq"
+        echo "$gov" > "$p/scaling_governor"
+    done
+    mkdir -p "${state%/*}"
+    echo "$1" > "$state"
+}
+
+current() { cat "$state" 2>/dev/null || echo balanced; }
+
+case "${1:-get}" in
+    battery|balanced|performance) set_mode "$1" ;;
+    next)
+        case "$(current)" in
+            battery) set_mode balanced ;;
+            balanced) set_mode performance ;;
+            *) set_mode battery ;;
+        esac ;;
+    apply) set_mode "$(cat "$state" 2>/dev/null || echo "${2:-balanced}")" ;;
+    get) current ;;
+    *) echo "usage: pro1x-cpu-mode battery|balanced|performance|next|apply|get" >&2
+       exit 1 ;;
+esac

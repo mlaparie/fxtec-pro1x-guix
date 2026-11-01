@@ -1543,6 +1543,7 @@ window opened by a sway key binding.")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
           ("pro1x-sleep" "bin/")
+          ("pro1x-cpu-mode" "bin/")
           ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases

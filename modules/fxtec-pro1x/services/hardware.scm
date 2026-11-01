@@ -123,6 +123,10 @@
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
+  ;; The CPU's energy mode at boot until one is chosen in the power menu
+  ;; (then that one, kept in /var/lib/pro1x/cpu-mode): 'battery (capped
+  ;; frequencies), 'balanced (schedutil) or 'performance.
+  (cpu-mode           pro1x-hardware-cpu-mode           (default 'balanced))
   ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
   ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
   ;; a string is a shell command run in the Sway session through pro1x-open
@@ -673,6 +677,21 @@ esac
         (respawn? #t)))
       '()))
 
+(define (pro1x-cpu-mode-shepherd-service config)
+  ;; The CPU mode at boot (pro1x-cpu-mode apply): the one chosen in the
+  ;; power menu, else cpu-mode.
+  (list
+   (shepherd-service
+    (provision '(pro1x-cpu-mode))
+    (documentation "Set the CPU's energy mode (battery, balanced, performance).")
+    (one-shot? #t)
+    (start #~(lambda _
+               (zero? (system* #$(file-append pro1x-sway-config
+                                              "/bin/pro1x-cpu-mode")
+                               "apply"
+                               #$(symbol->string
+                                  (pro1x-hardware-cpu-mode config)))))))))
+
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
       (list
@@ -970,6 +989,7 @@ light or dark colour scheme.")
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
                                   (pro1x-shake-torch-shepherd-service config)
+                                  (pro1x-cpu-mode-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service

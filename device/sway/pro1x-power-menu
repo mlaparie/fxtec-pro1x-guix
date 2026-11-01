@@ -1,6 +1,7 @@
 #!/bin/sh
 # pro1x-power-menu — long press on the power key: cancel, lock, blank
-# screen, suspend, hibernate, reboot, power off (fzf, floating foot window)
+# screen, CPU mode, suspend, hibernate, reboot, power off (fzf, floating
+# foot window)
 #
 #   pro1x-power-menu              open the menu
 #
@@ -17,16 +18,29 @@
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 
 case "${1:-}" in
-    --menu) ;;
+    --menu|--lines) ;;
     *)
         exec pro1x-term --app-id=powermenu -o pad=12x8 \
             -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
 esac
 
-choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
-                      "Hibernate" "Reboot" "Power off" |
+# The menu's lines; the CPU mode line shows the current mode, and Enter
+# (or a short power press) moves to the next one without leaving the menu
+# (author: user-set energy management; pro1x-cpu-mode).
+if [ "${1:-}" = --lines ]; then
+    printf '%s\n' "Cancel" "Lock screen" "Blank screen" \
+           "CPU mode: $(pro1x-cpu-mode get)  (battery → balanced → performance)" \
+           "Suspend" "Hibernate" "Reboot" "Power off"
+    exit
+fi
+cpu="sudo -n /run/current-system/profile/bin/pro1x-cpu-mode next"
+choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
-                 --no-info --cycle --margin=1,2 --color=16,gutter:-1)
+                 --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+                 --bind="enter:transform:case {1} in
+                           CPU) echo \"execute-silent($cpu)+reload($0 --lines)\" ;;
+                           *) echo accept ;;
+                         esac")
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
     "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null

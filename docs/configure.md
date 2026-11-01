@@ -59,6 +59,7 @@ once, so combine changes in one expression:
 | hardware `low-battery-led`, `low-battery-level` | `"#FF4000"`, `15` | a short blip every 4 s at or below that % |
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  `sudo herd stop pro1x-charge-limit` charges to full once |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
+| hardware `cpu-mode` | `'balanced` | the CPU's energy mode at boot until one is chosen in the power menu (then that one): `'battery` (schedutil, capped at 1.31/1.40 GHz), `'balanced` (schedutil), `'performance` (top frequency) |
 | hardware `shake-torch?` | `#t` | shaking the phone twice runs `shake-action`, locked or not |
 | hardware `shake-action` | `'torch` | `'torch` toggles the torch; a string is a shell command, run in Sway (over the lock screen for `lock-screen-apps`) |
 | hardware `portrait-apps` | Calls, Snapshot | app_ids (`swaymsg -t get_tree`) that turn the panel to portrait while focused (Sway) |

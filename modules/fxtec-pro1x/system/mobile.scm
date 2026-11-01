@@ -613,7 +613,9 @@ files root may log in with."
                               "%wheel ALL=(root) NOPASSWD: "
                               "/run/current-system/profile/sbin/halt, "
                               "/run/current-system/profile/sbin/reboot, "
-                              "/run/current-system/profile/bin/pro1x-sleep\n")))
+                              "/run/current-system/profile/bin/pro1x-sleep, "
+                              ;; Its CPU mode line.
+                              "/run/current-system/profile/bin/pro1x-cpu-mode\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
