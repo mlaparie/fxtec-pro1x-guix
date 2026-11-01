@@ -64,9 +64,11 @@ if [ "${1:-}" = --ask ]; then
                  "Toggle fullscreen" "Toggle floating" "Toggle sticky")
     case "$choice" in
         "Move to workspace…")
-            ws=$(pick "move to" "← back" 1 2 3 4 5 6 7 8 9 10)
+            ws=$(pick "move to" "← back" 1 2 3 4 5 6 7 8 9 0)
+            [ "$ws" = 0 ] && ws=10
             case "$ws" in
-                [0-9]*) swaymsg "[con_id=$2] move container to workspace number $ws" >/dev/null ;;
+                [0-9]*) swaymsg "[con_id=$2] move container to workspace number $ws" >/dev/null
+                        sleep 0.2 ;;    # the list reloads after this: let Sway settle
             esac ;;
         Tile) swaymsg "[con_id=$2] floating disable, layout splith" >/dev/null ;;
         Tab) swaymsg "[con_id=$2] floating disable, layout tabbed" >/dev/null ;;
@@ -95,10 +97,10 @@ if [ "${1:-}" = --list ]; then
                                | select((.type == "con" or .type == "floating_con")
                                         and (.pid? // 0) > 0)];
                ($ws[] | . as $w | windows[]
-                | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "") · \($w.name)"),
+                | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "") · \(if $w.num == 10 then "0" else $w.name end)"),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
-                | "ws:\($n)\tworkspace \($n)\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
+                | "ws:\($n)\t\(if $n == 10 then 0 else $n end)\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
     exit
 fi
 
@@ -107,7 +109,7 @@ hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] mo
 # On a workspace line: switch to it; on a window: its question.
 act="case {1} in
        ws:*) echo \"execute-silent($self --go {1})\" ;;
-       *) echo \"execute($self --ask {1})+reload($self --list)\" ;;
+       *) echo \"execute($self --ask {1})+reload-sync($self --list)\" ;;
      esac"
 "$self" --list |
     fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \

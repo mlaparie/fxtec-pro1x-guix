@@ -716,7 +716,7 @@ lines |
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
+                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
@@ -732,12 +732,12 @@ lines |
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
