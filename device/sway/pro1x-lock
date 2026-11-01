@@ -94,9 +94,10 @@ fi
 # clock and the notifications under the password field; the IDs it looks
 # up are kept.  At the top, so the keyboard overlay has the bottom.
 # The layout's pieces.  Portrait: banner, clock and password, status and
-# notifications, one above the other.  Landscape: no banner, and two
-# columns, so all of it stays above the keyboard (author: there the
-# keyboard hid the notifications).
+# notifications, one above the other.  Landscape: two columns, clock and
+# password left, banner, status and notifications right, so all of it
+# stays above the keyboard (author: there the keyboard hid the
+# notifications; the banner stays).
 banner_xml=$(cat <<EOF
     <child>
       <object class="GtkBox">
@@ -270,6 +271,7 @@ $info_xml
       <object class=\"GtkBox\">
         <property name=\"orientation\">vertical</property>
         <property name=\"valign\">center</property>
+$banner_xml
 $side_xml
       </object>
     </child>"
