@@ -4,9 +4,11 @@
 #   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
-# Enter and Ctrl-o (a short power press) ask Back / Focus / Close window
-# (author: Return does what the power key does), Right (or vol+ held)
-# focuses at once, Ctrl-k closes the window, Esc hides the switcher.  It
+# Lists the windows, then workspaces 1-10 (author).  On a window, Enter and
+# Ctrl-o (a short power press) ask Back / Focus / Close window / Move to
+# workspace / Tile / Tab (author: Return does what the power key does);
+# on a workspace they switch to it.  Right (or vol+ held) focuses or
+# switches at once, Ctrl-k closes the window, Esc hides the switcher.  It
 # stays alive hidden (pro1x-menu); each show reloads the list through
 # fzf's socket.  Replaces sway-window-switcher, which started a new foot,
 # bash and jq run each time (slow on the phone; author, 2026-10-30).
@@ -21,11 +23,24 @@ self=$0
 if [ "${1:-}" = --close ]; then
     swaymsg "[con_id=$2] kill" >/dev/null
     sleep 0.3
-    if [ -z "$("$0" --list)" ]; then
+    if ! "$0" --list | grep -q -v '^ws:'; then          # no window left
         curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
              -d "clear-query+first" >/dev/null 2>&1 &
         swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
     fi
+    exit
+fi
+
+# pro1x-switcher --go ID: a window (con_id): focus it; a workspace line
+# (ws:N): switch to it; then the switcher goes away, its query cleared.
+if [ "${1:-}" = --go ]; then
+    case "$2" in
+        ws:*) swaymsg "workspace number ${2#ws:}" >/dev/null ;;
+        *) swaymsg "[con_id=$2] focus" >/dev/null ;;
+    esac
+    curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
+         -d "clear-query+first" >/dev/null 2>&1 &
+    swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
     exit
 fi
 
@@ -34,12 +49,25 @@ if [ "${1:-}" = --ask ]; then
     # power key (short press on a line; author, 2026-10-31).  Its own fzf
     # socket, which pro1x-menu key drives while it is open.
     asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-switcher-ask.sock"
-    choice=$(printf '%s\n' "← back" "Focus" "Close window" |
-                 fzf --listen="$asksock" --prompt="window > " --layout=reverse-list \
-                     --bind="load:pos(2)" \
-                     --no-info --cycle --margin=1,2 --color=16,gutter:-1)
-    rm -f "$asksock"
+    pick() {                    # pick PROMPT LINES...: one of the lines
+        prompt=$1; shift
+        printf '%s\n' "$@" |
+            fzf --listen="$asksock" --prompt="$prompt > " --layout=reverse-list \
+                --bind="load:pos(2)" \
+                --no-info --cycle --margin=1,2 --color=16,gutter:-1
+        rm -f "$asksock"
+    }
+    # Move, tile and tab too (author, 2026-11-01).
+    choice=$(pick window "← back" "Focus" "Close window" \
+                 "Move to workspace…" "Tile" "Tab")
     case "$choice" in
+        "Move to workspace…")
+            ws=$(pick "move to" "← back" 1 2 3 4 5 6 7 8 9 10)
+            case "$ws" in
+                [0-9]*) swaymsg "[con_id=$2] move container to workspace number $ws" >/dev/null ;;
+            esac ;;
+        Tile) swaymsg "[con_id=$2] floating disable, layout splith" >/dev/null ;;
+        Tab) swaymsg "[con_id=$2] floating disable, layout tabbed" >/dev/null ;;
         Focus)
             # Away, its query cleared (after this execute ends), then focus.
             curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
@@ -52,23 +80,37 @@ if [ "${1:-}" = --ask ]; then
 fi
 
 if [ "${1:-}" = --list ]; then
+    # The windows (with their workspace), then workspaces 1-10 whatever
+    # the windows (author): "ws:N" lines switch to that workspace.  The
+    # menus live in the scratchpad, which is not listed.
     swaymsg -t get_tree -r |
-        jq -r '.. | objects
-               | select((.type == "con" or .type == "floating_con")
-                        and (.pid? // 0) > 0)
-               | select((.app_id // .window_properties.class // "")
-                        | test("^(quickactions|launcher|windowswitcher)$") | not)
-               | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "")"'
+        jq -r '[.. | objects | select(.type == "workspace" and .name != "__i3_scratch")] as $ws
+               | def windows: [.. | objects
+                               | select((.type == "con" or .type == "floating_con")
+                                        and (.pid? // 0) > 0)];
+               ($ws[] | . as $w | windows[]
+                | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "") · \($w.name)"),
+               (range(1; 11) as $n
+                | ([$ws[] | select(.num == $n)] | .[0]) as $w
+                | "ws:\($n)\tworkspace \($n)\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
     exit
 fi
 
 # Hidden with its query cleared, for next time (author, 2026-10-31).
 hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
+# On a workspace line: switch to it; on a window: its question.
+act="case {1} in
+       ws:*) echo \"execute-silent($self --go {1})\" ;;
+       *) echo \"execute($self --ask {1})+reload($self --list)\" ;;
+     esac"
 "$self" --list |
     fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
-        --bind="enter:execute($self --ask {1})+reload($self --list)" \
-        --bind="right:execute-silent(swaymsg \"[con_id={1}] focus\")+$hide" \
-        --bind="ctrl-k:execute-silent($self --close {1})+reload($self --list)" \
-        --bind="ctrl-o:execute($self --ask {1})+reload($self --list)" \
+        --bind="enter:transform:$act" \
+        --bind="ctrl-o:transform:$act" \
+        --bind="right:execute-silent($self --go {1})" \
+        --bind="ctrl-k:transform:case {1} in
+                  ws:*) ;;
+                  *) echo \"execute-silent($self --close {1})+reload($self --list)\" ;;
+                esac" \
         --bind="esc:$hide" >/dev/null
