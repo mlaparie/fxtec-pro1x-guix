@@ -123,7 +123,11 @@
      ;; lands in a directory named "false"), so nothing started it.  Start
      ;; it after hexagonrpcd, once the ADSP's sensor service (QRTR 400)
      ;; exists, as the NixOS port does, so that it does not start into
-     ;; nothing.
+     ;; nothing; and then once the proximity sensor gives a reading
+     ;; (ssccli): started as soon as QRTR 400 appeared, while hexagonrpcd
+     ;; was still loading the sensor registry, it had a proximity sensor
+     ;; that never changed, until restarted (2026-11-01: no blanking after
+     ;; a boot).
      (shepherd-service
       (provision '(iio-sensor-proxy))
       (requirement '(dbus-system pro1x-hexagonrpcd))
@@ -138,6 +142,13 @@
                  " 2>/dev/null | " #$(file-append grep "/bin/grep")
                  " -q '^ *400 ' && break; i=$((i + 1)); sleep 1; done; "
                  "[ $i -lt 60 ] || echo 'SSC sensor service (QRTR 400) did not appear' >&2; "
+                 "j=0; while [ $j -lt 30 ]; do "
+                 #$(file-append coreutils "/bin/timeout") " 6 "
+                 #$(file-append libssc "/bin/ssccli")
+                 " --sensor proximity --timeout 2 2>/dev/null | "
+                 #$(file-append grep "/bin/grep") " -q measurement && break; "
+                 "j=$((j + 1)); sleep 1; done; "
+                 "[ $j -lt 30 ] || echo 'proximity sensor gave no reading' >&2; "
                  "exec " #$(file-append iio-sensor-proxy-ssc "/libexec/iio-sensor-proxy")))
           #:log-file "/var/log/iio-sensor-proxy.log"))
       (stop #~(make-kill-destructor))
