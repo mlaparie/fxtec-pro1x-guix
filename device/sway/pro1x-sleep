@@ -1,21 +1,29 @@
 #!/bin/sh
 # pro1x-sleep suspend|hibernate — as root (sudo, from pro1x-power-menu).
 #
-# Suspend is s2idle (the only mem_sleep mode on the Pro¹x).  Measured
-# 2026-11-01:
+# Suspend is s2idle (the only mem_sleep mode on the Pro¹x), in a loop:
+# after each wake it looks at what woke the phone (the wakeup sources'
+# event counts, /sys/class/wakeup) and
+#   - the power key, the keyboard, gpio-keys (camera, volume up), the RTC
+#     alarm, the charger: stays awake, the panel lit;
+#   - the modem (glink-modem: our kernel patch, a message from it): waits
+#     up to 5 s for ModemManager; a ringing call keeps it awake, anything
+#     else (an SMS, a network update) sleeps again;
+#   - the ADSP alone (fastrpc's "adsp" wakeup source: a sensor call for
+#     hexagonrpcd, answered in a moment): sleeps again.
+# The panel goes off before sleeping.  Measured 2026-11-01:
 #   - the phone woke after 2.2 s: IRQ 110, 4a8c000.serial:wakeup, the
 #     Bluetooth chip's UART.  Its wakeup is off while suspended (and back
-#     on after); Bluetooth itself stays on.  Wakes: power key (seen), RTC
-#     alarm, the keyboard (marked as a wakeup source; not yet seen).
-#   - on resume the ADSP's sensor process crashes (EX:sensor_process,
-#     frpc_dsp), with or without the sensor services running (stopping
-#     them first did not help).  ADSP recovery is off (no crash loops), so
-#     after a resume that left it crashed, this restarts it once (debugfs
-#     "recover"), then hexagonrpcd and the sensor services.  Audio restarts
-#     with the ADSP.
+#     on after); Bluetooth itself stays on.
+#   - on resume the ADSP's sensor process crashed (EX:sensor_process,
+#     frpc_dsp), and its restart left no sound card.  The kernel's fastrpc
+#     patches (pro1x-fastrpc-*) are the fix; this still restarts a crashed
+#     ADSP once (debugfs "recover"), then hexagonrpcd and the sensors.
 # Hibernate needs swap and a resume device, which the port does not set up.
+#
+# State: the loop written 2026-11-01 for the patched kernel, not yet run.
 
-# sudo resets PATH: herd and coreutils from the system profile.
+# sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
@@ -27,10 +35,44 @@ for r in /sys/class/remoteproc/remoteproc*; do
     [ "$(cat "$r/name" 2>/dev/null)" = adsp ] && adsp=$r
 done
 
+# Every running Sway session, as its user (the panel, touch input).
+sway() {
+    for s in /run/user/*/sway-ipc.*.sock; do
+        [ -S "$s" ] || continue
+        u=$(stat -c %U "$s")
+        su -s /bin/sh "$u" -c "swaymsg -s '$s' '$1'" >/dev/null 2>&1
+    done
+}
+panel() {                        # panel on|off
+    if [ "$1" = on ]; then
+        sway 'output * power on'; sway 'input type:touch events enabled'
+        # The power key that woke the phone must not blank it again
+        # (pro1x-power-key skips a press just after a wake).
+        for d in /run/user/*; do
+            [ -S "$(ls "$d"/sway-ipc.*.sock 2>/dev/null | head -n 1)" ] || continue
+            date +%s%N > "$d/pro1x-woke"
+            chown "$(stat -c %U "$d")" "$d/pro1x-woke"
+        done
+    else
+        sway 'input type:touch events disabled'; sway 'output * power off'
+    fi
+}
+
+# "NAME COUNT" for every wakeup source.
+counts() {
+    for w in /sys/class/wakeup/wakeup*; do
+        echo "$(cat "$w/name") $(cat "$w/event_count")"
+    done
+}
+# The sources whose count grew between two snapshots (files).
+woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
+
+ringing() { mmcli -m any --voice-list-calls 2>/dev/null | grep -q ringing-in; }
+
 # The ADSP crashed: restart it once, then what talks to it.
 adsp_recover() {
     [ -n "$adsp" ] && [ "$(cat "$adsp/state")" = crashed ] || return 0
-    echo "pro1x-sleep: ADSP crashed on resume, restarting it" | logger -t pro1x-sleep
+    logger -t pro1x-sleep "ADSP crashed on resume, restarting it"
     [ -d /sys/kernel/debug/remoteproc ] ||
         mount -t debugfs none /sys/kernel/debug 2>/dev/null
     echo recover > "/sys/kernel/debug/remoteproc/${adsp##*/}/recovery"
@@ -44,13 +86,44 @@ adsp_recover() {
     herd restart pro1x-shake-torch >/dev/null 2>&1
 }
 
+suspend_loop() {
+    before=$(mktemp) after=$(mktemp)
+    while :; do
+        counts > "$before"
+        echo mem > /sys/power/state || break
+        counts > "$after"
+        why=$(woke_by "$before" "$after" | tr '\n' ' ' | sed 's/ *$//')
+        logger -t pro1x-sleep "woke: ${why:-unknown}"
+        case " $why " in
+            *" glink-modem "*)
+                # Wait for ModemManager to tell a call from the rest.
+                i=0
+                while [ $i -lt 10 ]; do
+                    ringing && break 2
+                    sleep 0.5; i=$((i + 1))
+                done
+                # Nothing for the user: but a key pressed meanwhile counts.
+                counts > "$before"
+                [ -n "$(woke_by "$after" "$before" | grep -v -e glink-modem -e '^adsp$')" ] &&
+                    break ;;
+            " adsp ")
+                adsp_recover
+                sleep 1 ;;               # its answer
+            *) break ;;
+        esac
+    done
+    rm -f "$before" "$after"
+}
+
 case "${1:-}" in
     suspend)
+        panel off
         [ -n "$uart" ] && echo disabled > "$uart"
-        echo mem > /sys/power/state
+        suspend_loop
         [ -n "$uart" ] && echo enabled > "$uart"
-        sleep 1                                  # the crash shows by then
-        adsp_recover ;;
+        sleep 1                                  # a crash shows by then
+        adsp_recover
+        panel on ;;
     hibernate) echo disk > /sys/power/state ;;
     *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
 esac
