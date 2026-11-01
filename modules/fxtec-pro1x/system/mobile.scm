@@ -309,6 +309,136 @@
 ;; Sway session for greetd: SWAY is swayfx (the "1 Sway" session) or sway
 ;; (plain, to compare speed; author, 2026-10-31); FLAVOUR, in PRO1X_SWAY,
 ;; picks the effects file the port's config includes.
+;; ── Greeter ─────────────────────────────────────────────────────────────
+;; tuigreet's arguments, for the console and for the Sway greeter.  A gexp:
+;; the greeting reads the running kernel when tuigreet starts.
+(define %tuigreet-arguments
+  #~(list "--time"
+          "--asterisks"
+          ;; Running kernel, read when tuigreet starts.
+          "--greeting"
+          (string-append "GNU Guix System on the F(x)tec Pro¹x"
+                         " · Linux "
+                         (utsname:release (uname))
+                         " (tty1)")
+          ;; Named colours map to the Dracula console
+          ;; palette set by pro1x-console-font.
+          "--theme"
+          (string-append
+           "border=magenta;text=cyan;prompt=green;"
+           "time=red;action=blue;button=yellow;"
+           "container=black;input=red")
+          "--remember"
+          "--remember-user-session"
+          ;; F12 power menu; sudoers allows exactly these.
+          "--power-shutdown"
+          "/run/privileged/bin/sudo /run/current-system/profile/sbin/halt"
+          "--power-reboot"
+          "/run/privileged/bin/sudo /run/current-system/profile/sbin/reboot"
+          "--sessions" "/etc/wayland-sessions"
+          ;; No logind here: without LIBSEAT_BACKEND
+          ;; libseat fails ("Unable to create seat:
+          ;; Function not implemented") and every
+          ;; session exits at once.
+          "--session-wrapper"
+          (string-append
+           #$(file-append coreutils "/bin/env")
+           " LIBSEAT_BACKEND=seatd "
+           #$(file-append bash "/bin/bash") " -lc")))
+
+;; tuigreet on the text console (VT1).
+(define tuigreet-console
+  (program-file "tuigreet-console"
+    #~(apply execl #$(file-append tuigreet "/bin/tuigreet") "tuigreet"
+             #$%tuigreet-arguments)))
+
+;; The Sway greeter's config: tuigreet fullscreen in foot, stevia for it
+;; (portrait: the keyboard is closed).  Sway quits when tuigreet does.
+(define pro1x-greeter-sway-config
+  (mixed-text-file "pro1x-greeter-sway.conf" "\
+output DSI-1 scale 2 transform normal bg #282a36 solid_color
+input type:touch map_to_output DSI-1
+default_border none
+seat * hide_cursor 1
+for_window [app_id=\"^greeter$\"] fullscreen enable
+# stevia (pro1x-greeter lets it show: screen-keyboard-enabled).
+exec " stevia "/bin/phosh-osk-stevia
+# tuigreet's exit status for pro1x-greeter: it finished (a login), or not.
+exec " foot "/bin/foot --app-id=greeter -o font='Iosevka Term:size=11' \
+-e " bash-minimal "/bin/sh -c '" tuigreet-console "; echo $? > $HOME/tuigreet.status'; \
+" sway/pro1x "/bin/swaymsg exit
+"))
+
+;; greetd's greeter: with the hardware keyboard closed, a minimal Sway with
+;; tuigreet in foot and stevia, so the password can be typed on screen
+;; (author, 2026-11-01); with it slid out, tuigreet on the console.  If
+;; that Sway fails (quits within 10 s without tuigreet having finished),
+;; tuigreet on the console all the same, so a broken greeter never locks
+;; anyone out.  Environment as Guix's Sway greeters (make-greetd-sway-greeter-
+;; command): home and runtime directory under /tmp; a session bus and a
+;; keyfile GSettings backend for stevia.  Output: /tmp/.greeter-home/sway.log.
+(define pro1x-greeter
+  (program-file "pro1x-greeter"
+    (with-imported-modules '((guix build utils))
+      #~(begin
+          (use-modules (guix build utils))
+          (define (console)
+            (execl #$tuigreet-console "tuigreet-console"))
+          ;; evtest --query exits with 10 while the keyboard is slid out.
+          (when (= 10 (status:exit-val
+                       (system* #$(file-append evtest "/bin/evtest") "--query"
+                                "/dev/input/pro1x-slider" "EV_SW"
+                                "SW_KEYPAD_SLIDE")))
+            (console))
+          (let* ((user (getpwnam (getenv "USER")))
+                 (home "/tmp/.greeter-home")
+                 (run (string-append home "/run"))
+                 (status-file (string-append home "/tuigreet.status")))
+            (for-each (lambda (d)
+                        (mkdir-p d)
+                        (chown d (passwd:uid user) (passwd:gid user))
+                        (chmod d #o700))
+                      (list home run (string-append home "/config")))
+            (false-if-exception (delete-file status-file))
+            (setenv "HOME" home)
+            (setenv "XDG_RUNTIME_DIR" run)
+            (setenv "XDG_CONFIG_HOME" (string-append home "/config"))
+            (setenv "XDG_DATA_DIRS" "/run/current-system/profile/share")
+            ;; stevia may show for text fields: screen-keyboard-enabled,
+            ;; in the keyfile backend's file (pro1x-osk-slider sets it with
+            ;; gsettings in the session).
+            (let ((dir (string-append home "/config/glib-2.0/settings")))
+              (mkdir-p dir)
+              (call-with-output-file (string-append dir "/keyfile")
+                (lambda (port)
+                  (display "[org/gnome/desktop/a11y/applications]
+screen-keyboard-enabled=true
+" port)))
+              (for-each (lambda (d) (chown d (passwd:uid user) (passwd:gid user)))
+                        (list (string-append home "/config/glib-2.0") dir
+                              (string-append dir "/keyfile"))))
+            (setenv "GSETTINGS_BACKEND" "keyfile")
+            (setenv "LIBSEAT_BACKEND" "seatd")
+            (setenv "WLR_BACKENDS" "drm,libinput")
+            (let ((start (current-time))
+                  (pid (primitive-fork)))
+              (when (zero? pid)
+                (let ((log (open-file (string-append home "/sway.log") "w")))
+                  (dup2 (fileno log) 1)
+                  (dup2 (fileno log) 2))
+                (execl #$(file-append dbus "/bin/dbus-run-session")
+                       "dbus-run-session" "--"
+                       #$(file-append sway/pro1x "/bin/sway")
+                       "-c" #$pro1x-greeter-sway-config))
+              (waitpid pid)
+              ;; tuigreet never finished, and quickly: Sway or foot is
+              ;; broken; the console.  (Otherwise greetd starts the
+              ;; session, or this greeter again.)
+              (if (and (not (file-exists? status-file))
+                       (< (- (current-time) start) 10))
+                  (console)
+                  (exit 0))))))))
+
 (define (make-sway-session name sway flavour)
   (program-file name
     #~(begin
@@ -606,6 +736,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; XDG_DATA_DIRS are populated before the session script runs.
      (service greetd-service-type
               (greetd-configuration
+               ;; The Sway greeter (pro1x-greeter): seatd's socket for the
+               ;; display and input, input for the slider's state.
+               (greeter-supplementary-groups '("seat" "input" "video"))
                (terminals
                 (list
                  (greetd-terminal-configuration
@@ -613,42 +746,7 @@ Dracula palette, no kernel messages over the greeter.")
                   (terminal-switch #t)
                   (extra-shepherd-requirement
                    '(udev dbus-system seatd pro1x-console-font))
-                  (default-session-command
-                    (program-file "tuigreet-session"
-                      #~(execl #$(file-append tuigreet "/bin/tuigreet")
-                               "tuigreet"
-                               "--time"
-                               "--asterisks"
-                               ;; Running kernel, read when tuigreet starts.
-                               "--greeting"
-                               (string-append "GNU Guix System on the F(x)tec Pro¹x"
-                                              " · Linux "
-                                              (utsname:release (uname))
-                                              " (tty1)")
-                               ;; Named colours map to the Dracula console
-                               ;; palette set by pro1x-console-font.
-                               "--theme"
-                               (string-append
-                                "border=magenta;text=cyan;prompt=green;"
-                                "time=red;action=blue;button=yellow;"
-                                "container=black;input=red")
-                               "--remember"
-                               "--remember-user-session"
-                               ;; F12 power menu; sudoers allows exactly these.
-                               "--power-shutdown"
-                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/halt"
-                               "--power-reboot"
-                               "/run/privileged/bin/sudo /run/current-system/profile/sbin/reboot"
-                               "--sessions" "/etc/wayland-sessions"
-                               ;; No logind here: without LIBSEAT_BACKEND
-                               ;; libseat fails ("Unable to create seat:
-                               ;; Function not implemented") and every
-                               ;; session exits at once.
-                               "--session-wrapper"
-                               (string-append
-                                #$(file-append coreutils "/bin/env")
-                                " LIBSEAT_BACKEND=seatd "
-                                #$(file-append bash "/bin/bash") " -lc")))))))))
+                  (default-session-command pro1x-greeter))))))
 
      ;; gtklock: Sway's lock screen (pro1x-lock), with an on-screen keyboard
      ;; when the hardware keyboard is closed.  Its PAM service, like
