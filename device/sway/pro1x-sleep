@@ -1,9 +1,44 @@
 #!/bin/sh
 # pro1x-sleep suspend|hibernate — as root (sudo, from pro1x-power-menu).
-# Untested on the Pro¹x (2026-10-31); hibernate needs swap and a resume
-# device, which the port does not set up yet.
+#
+# Suspend is s2idle (the only mem_sleep mode on the Pro¹x).  Measured
+# 2026-11-01, with an RTC alarm 30 s ahead:
+#   - the phone woke after 2.2 s: IRQ 110, 4a8c000.serial:wakeup, the
+#     Bluetooth chip's UART.  Its wakeup is turned off while suspended (and
+#     back on after); Bluetooth itself stays on.  Wakes: power key, RTC.
+#   - on resume, the ADSP's sensor process crashed (EX:sensor_process,
+#     frpc_dsp), leaving the sensors dead until a reboot (recovery is off).
+#     Assumed: its FastRPC calls to hexagonrpcd, frozen while suspended,
+#     time out.  So the sensor clients (iio-sensor-proxy and what needs it:
+#     pro1x-pocket; pro1x-shake-torch) stop first and start again after.
+#     Not yet confirmed.
+# Hibernate needs swap and a resume device, which the port does not set up.
+
+# sudo resets PATH: herd and coreutils from the system profile.
+PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+
+uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
+             /sys/devices/platform/*/*/4a8c000.serial/power/wakeup \
+             2>/dev/null | head -n 1)
+
+sensors_stop() {
+    herd stop pro1x-shake-torch >/dev/null 2>&1
+    herd stop iio-sensor-proxy >/dev/null 2>&1   # pro1x-pocket with it
+}
+sensors_start() {
+    herd start iio-sensor-proxy >/dev/null 2>&1
+    herd start pro1x-pocket >/dev/null 2>&1
+    herd start pro1x-shake-torch >/dev/null 2>&1
+}
+
 case "${1:-}" in
-    suspend) echo mem > /sys/power/state ;;
+    suspend)
+        sensors_stop
+        sleep 1                                  # the ADSP sees them go
+        [ -n "$uart" ] && echo disabled > "$uart"
+        echo mem > /sys/power/state
+        [ -n "$uart" ] && echo enabled > "$uart"
+        sensors_start ;;
     hibernate) echo disk > /sys/power/state ;;
     *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
 esac
