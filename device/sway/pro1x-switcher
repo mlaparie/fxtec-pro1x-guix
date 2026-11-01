@@ -90,14 +90,18 @@ fi
 if [ "${1:-}" = --list ]; then
     # The windows (with their workspace), then workspaces 1-10 whatever
     # the windows (author): "ws:N" lines switch to that workspace.  The
-    # menus live in the scratchpad, which is not listed.
+    # menus live in the scratchpad, which is not listed.  Short names
+    # (author, 2026-11-02): the last part of the app_id (org.pro1x.Camera:
+    # Camera), the title cut at 28.
     swaymsg -t get_tree -r |
         jq -r '[.. | objects | select(.type == "workspace" and .name != "__i3_scratch")] as $ws
                | def windows: [.. | objects
                                | select((.type == "con" or .type == "floating_con")
                                         and (.pid? // 0) > 0)];
                ($ws[] | . as $w | windows[]
-                | "\(.id)\t\(.app_id // .window_properties.class // "?")\t\(.name // "") · \(if $w.num == 10 then "0" else $w.name end)"),
+                | ((.app_id // .window_properties.class // "?") | split(".") | last) as $app
+                | ((.name // "") | if length > 28 then .[0:27] + "…" else . end) as $title
+                | "\(.id)\t\($app)\t\($title) · \(if $w.num == 10 then "0" else $w.name end)"),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
                 | "ws:\($n)\t\(if $n == 10 then 0 else $n end)\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'

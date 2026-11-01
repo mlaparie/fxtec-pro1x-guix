@@ -1617,7 +1617,8 @@ window opened by a sway key binding.")
           ("pro1x-charge-limit" "bin/")
           ("pro1x-sov" "bin/")
           ("pro1x-power-button" "bin/")
-          ("wob.ini" "share/pro1x-sway/"))
+          ("wob.ini" "share/pro1x-sway/")
+          ("sov" "share/pro1x-sway/sov"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap

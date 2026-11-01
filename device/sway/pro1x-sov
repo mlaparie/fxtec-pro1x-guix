@@ -4,8 +4,8 @@
 #
 #   daemon   sov reading $XDG_RUNTIME_DIR/pro1x-sov (started by the Sway
 #            config; ends with Sway)
-#   toggle   show it, or hide it when shown (a two-finger swipe up from the
-#            bottom edge, pro1x-gestures; author, 2026-11-01)
+#   toggle   show it, or hide it when shown (a one-finger swipe up from the
+#            bottom edge, pro1x-gestures; author, 2026-11-01, 2026-11-02)
 #
 # sov shows on "1" and hides on "0" written to its pipe, and is meant to be
 # held up by a key; with a touch there is nothing to hold, so it hides by
@@ -22,7 +22,9 @@ case "${1:-toggle}" in
     daemon)
         rm -f "$pipe" "$shown"; mkfifo "$pipe"
         # tail keeps the pipe open between writers.
-        exec sh -c "tail -f '$pipe' | sov -t 0" ;;
+        # Its style: sov's own, with smaller fonts (share/pro1x-sway/sov).
+        html="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/sov"
+        exec sh -c "tail -f '$pipe' | sov -t 0 -s '$html'" ;;
     show)
         send 1
         stamp=$(date +%s%N); echo "$stamp" > "$shown"

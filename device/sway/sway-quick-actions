@@ -169,7 +169,17 @@ sim_unlock() {
         *) return ;;
     esac
     printf 'SIM PIN (%s tries left, Enter alone to cancel): ' "${n:-?}"
-    stty -echo; read -r pin; stty echo; echo
+    # A star per digit (author, 2026-11-02); Backspace takes one back.
+    pin= old=$(stty -g)
+    stty -echo -icanon min 1
+    while c=$(dd bs=1 count=1 2>/dev/null); [ -n "$c" ]; do
+        case "$c" in
+            "$(printf '\177')"|"$(printf '\b')")
+                [ -n "$pin" ] && { pin=${pin%?}; printf '\b \b'; } ;;
+            *) pin=$pin$c; printf '*' ;;
+        esac
+    done
+    stty "$old"; echo
     [ -n "$pin" ] || return
     case "$pin" in
         *[!0-9]*) pin= ;;
@@ -300,8 +310,13 @@ choose() {
             else title=Bluetooth tool=devices; fi
             cur=$(state_of "$1")
             opts=$(printf 'on\ton\noff\toff\ntool\t%s…\n' "$tool") ;;
+        rotation)
+            # Keyboard-dependent too (author, 2026-11-02).
+            title="rotation"
+            cur=$(rotation_mode)
+            opts=$(printf 'sensor\tsensor (accelerometer)\nkeyboard\tkeyboard (portrait slid in, landscape out)\nfixed\tfixed (the orientation line)\n') ;;
         orient)
-            title="orientation"
+            title="orientation (fixes it)"
             cur=$(orientation)
             opts=$(printf 'portrait\tportrait\nlandscape\tlandscape\n') ;;
         *) return ;;
@@ -326,6 +341,12 @@ choose() {
         cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
         charge) charge_set "$pick" ;;
         orient) set_orientation "$pick" ;;
+        rotation)
+            case "$pick" in
+                sensor) sway-autorotate on ;;
+                keyboard) sway-autorotate keyboard ;;
+                fixed) sway-autorotate fixed ;;
+            esac ;;
         wifi|bluetooth)
             if [ "$pick" = tool ]; then step "$1" +
             else set_to "$1" "$pick"; fi ;;
@@ -339,11 +360,17 @@ orientation() {                 # portrait or landscape, from the panel
         *) echo landscape ;;
     esac
 }
-set_orientation() {             # portrait|landscape, unless auto-rotation
-    [ "$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)" = on ] && return
+set_orientation() {             # portrait|landscape: fixed from now on
     case "$1" in
-        portrait) swaymsg output DSI-1 transform normal >/dev/null ;;
-        landscape) swaymsg output DSI-1 transform 90 >/dev/null ;;
+        portrait) sway-autorotate normal ;;
+        landscape) sway-autorotate left ;;
+    esac
+}
+rotation_mode() {               # sensor, keyboard or fixed
+    case "$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)" in
+        on) echo sensor ;;
+        fixed) echo fixed ;;
+        *) echo keyboard ;;
     esac
 }
 
@@ -445,10 +472,10 @@ lines() {
     rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
     # Forced orientation; greyed while auto-rotation decides (author).
     orient=$(orientation)
-    if [ "$rot" = on ]; then
-        orient_shown=$(printf '\033[90m%s (auto)\033[0m' "$orient")
-    else
+    if [ "$rot" = fixed ]; then
         orient_shown=$orient
+    else
+        orient_shown=$(printf '\033[90m%s (%s)\033[0m' "$orient" "$(rotation_mode)")
     fi
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
@@ -470,7 +497,7 @@ lines() {
         "sim         SIM                  $(sim_state "$kv")" \
         "bluetooth   Bluetooth            $(dim "$bt")" \
         "airplane    Airplane mode        $(dim "$plane")" \
-        "rotation    Auto-rotation        $(dim "$rot")" \
+        "rotation    Rotation             $(rotation_mode)" \
         "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
@@ -606,10 +633,11 @@ step() {                        # Right (+) and Left (-)
         orient+) set_orientation landscape ;;
         orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
-        bright+) brightnessctl -q set +10% ;;
-        bright-) brightnessctl -q set 10%- ;;
-        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
-        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+        # With wob's bar, as from the keys (author, 2026-11-02).
+        bright+) brightnessctl -q set +10%; pro1x-osd bright show ;;
+        bright-) brightnessctl -q set 10%-; pro1x-osd bright show ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+; pro1x-osd volume show ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-; pro1x-osd volume show ;;
         feedback?) feedback_step "$2" ;;
         charge+|charge-)          # off, 80, 85, 90, 95
             set -- "$2" $CHARGE_OPTS
@@ -723,7 +751,7 @@ lines |
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="load:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
@@ -739,13 +767,13 @@ lines |
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;

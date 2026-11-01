@@ -28,8 +28,9 @@ geometry() {
         quickactions)
             # Wider, for longer lines (author, 2026-11-02); 80 px shorter in
             # portrait, 30 in landscape (author, 2026-10-31, 2026-11-02).
+            # Portrait: wider still, 100 px shorter (author, 2026-11-02).
             if portrait; then
-                echo "resize set 92 ppt 80 ppt, resize shrink height 80 px, move position 4 ppt 2 ppt"
+                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
             else
                 echo "resize set 92 ppt 80 ppt, resize shrink height 30 px, move position 4 ppt 2 ppt"
             fi ;;

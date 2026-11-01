@@ -341,8 +341,12 @@ class Camera(Gtk.Application):
         """Focus where tapped: the point in the viewfinder, in frame
         coordinates (undoing the rotation), then in pixel array
         coordinates, as moWerk's camerabin patch maps it."""
-        if self.busy or not self.area:
+        if self.busy:
             return False
+        # The square first: a tap did nothing visible while the active
+        # area was unknown (author, 2026-11-02: no focus indicator).
+        self.mark = (event.x, event.y, (1.0, 0.8, 0.0))
+        self.marker.queue_draw()
         alloc = widget.get_allocation()
         x, y = event.x / alloc.width, event.y / alloc.height
         front = self.cam != 0
@@ -352,7 +356,10 @@ class Camera(Gtk.Application):
             x, y = (1 - y, x) if not front else (y, 1 - x)
         elif front:
             x = 1 - x
-        ax, ay, aw, ah = self.area
+        # libcamerasrc may not publish the active area: the still size, a
+        # little short of the IMX582's 4000x3000 array, does for a window.
+        ax, ay, aw, ah = self.area or (0, 0) + STILL
+        print("focus: area %s, tap %.2f %.2f" % (self.area, x, y), flush=True)
         vw, vh = self.size
         fw = max(vw, vh * aw / ah)
         fh = fw * ah / aw
@@ -366,8 +373,6 @@ class Camera(Gtk.Application):
         Gst.util_set_object_arg(
             self.src, "af-windows",
             "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
-        self.mark = (event.x, event.y, (1.0, 0.8, 0.0))
-        self.marker.queue_draw()
         self.af_polls = 0
         GLib.timeout_add(150, self.poll_focus)
         return True
