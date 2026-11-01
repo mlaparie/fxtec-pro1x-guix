@@ -93,11 +93,8 @@ fi
 # gtklock's own layout (res/gtklock.ui, 4.0.0) with the banner above the
 # clock and the notifications under the password field; the IDs it looks
 # up are kept.  At the top, so the keyboard overlay has the bottom.
-# The layout's pieces.  Portrait: banner, clock and password, status and
-# notifications, one above the other.  Landscape: two columns, clock and
-# password left, banner, status and notifications right, so all of it
-# stays above the keyboard (author: there the keyboard hid the
-# notifications; the banner stays).
+# The layout's pieces: banner, clock (with the date), password, status,
+# notifications.  Portrait: one above the other.  Landscape: see below.
 banner_xml=$(cat <<EOF
     <child>
       <object class="GtkBox">
@@ -118,7 +115,7 @@ banner_xml=$(cat <<EOF
     </child>
 EOF
 )
-info_xml=$(cat <<EOF
+clock_xml=$(cat <<EOF
     <child>
       <object class="GtkBox" id="info-box">
         <property name="name">info-box</property>
@@ -143,6 +140,9 @@ info_xml=$(cat <<EOF
         </child>
       </object>
     </child>
+EOF
+)
+pass_xml=$(cat <<EOF
     <child>
       <object class="GtkRevealer" id="body-revealer">
         <property name="transition-type">none</property>
@@ -237,7 +237,7 @@ info_xml=$(cat <<EOF
     </child>
 EOF
 )
-side_xml=$(cat <<EOF
+status_xml=$(cat <<EOF
     <child>
       <object class="GtkLabel" id="pro1x-status">
         <property name="name">pro1x-status</property>
@@ -245,6 +245,9 @@ side_xml=$(cat <<EOF
         <property name="label">$status</property>
       </object>
     </child>
+EOF
+)
+notes_xml=$(cat <<EOF
     <child>
       <object class="GtkLabel" id="pro1x-notes">
         <property name="name">pro1x-notes</property>
@@ -256,34 +259,42 @@ EOF
 )
 if [ "$portrait" = yes ]; then
     body="$banner_xml
-$info_xml
-$side_xml"
-    orient=vertical
+$clock_xml
+$pass_xml
+$status_xml
+$notes_xml"
 else
+    # Landscape: banner left, clock and status right, one row across the
+    # width; the password, then the notifications, centred below
+    # (author: spread in width, not packed in the middle).
     body="    <child>
       <object class=\"GtkBox\">
-        <property name=\"orientation\">vertical</property>
-        <property name=\"valign\">center</property>
-$info_xml
-      </object>
-    </child>
+        <property name=\"orientation\">horizontal</property>
+        <property name=\"homogeneous\">1</property>
+        <property name=\"spacing\">24</property>
+$banner_xml
     <child>
       <object class=\"GtkBox\">
         <property name=\"orientation\">vertical</property>
         <property name=\"valign\">center</property>
-$banner_xml
-$side_xml
+$clock_xml
+$status_xml
       </object>
-    </child>"
-    orient=horizontal
+    </child>
+      </object>
+    </child>
+$pass_xml
+$notes_xml"
 fi
+orient=vertical
+if [ "$portrait" = yes ]; then halign=center; else halign=fill; fi
 cat > "$ui.new" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <object class="GtkBox" id="window-box">
     <property name="name">window-box</property>
     <property name="margin">16</property>
-    <property name="halign">center</property>
+    <property name="halign">$halign</property>
     <property name="valign">start</property>
     <property name="orientation">$orient</property>
     <property name="spacing">10</property>
