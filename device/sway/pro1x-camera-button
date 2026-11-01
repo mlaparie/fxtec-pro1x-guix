@@ -10,10 +10,11 @@
 #                      (the F(x) key) held, a right click
 #   double press:      a double click
 #   held 0.4 s:        the touchscreen is a touchpad until released:
-#                      finger moves move the pointer, a tap clicks, touch
-#                      reaches no app; Super (before or during) holds the
-#                      left button, a window drag, Super with Fn the right
-#                      one, a resize.  The pointer stays visible 3 s after
+#                      finger moves move the pointer, a tap clicks, tap
+#                      and touch again holds the left button (a selection),
+#                      touch reaches no app; with Super a touch holds the
+#                      left button (a window drag), with Super and Fn the
+#                      right one (a resize).  The pointer stays visible 3 s after
 #                      (hide_cursor).  Touchpad mode without holding: the
 #                      Touch input line of quick actions, Super+t
 #

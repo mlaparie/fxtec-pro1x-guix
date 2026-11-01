@@ -779,6 +779,11 @@ Dracula palette, no kernel messages over the greeter.")
      ;; foot's font (skeleton foot.ini).
      font-iosevka-term
      grim slurp wl-clipboard brightnessctl playerctl
+     ;; Screen recording (author).
+     wf-recorder
+     ;; File manager (author): Nautilus, adaptive (libadwaita), fits the
+     ;; phone in portrait.
+     nautilus
      ;; Browser, terminal, editors
      ;; Epiphany (GNOME Web): adaptive, fits the phone in Phosh; IceCat kept.
      icecat epiphany gnome-console

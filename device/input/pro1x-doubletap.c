@@ -204,9 +204,12 @@ static int open_uinput(void)
  *              touchpad mode without holding anything (quick actions,
  *              Super+t; kept in PAD_STATE across reboots; default off).
  * As a touchpad, the touchscreen is grabbed (EVIOCGRAB: no app gets the
- * touches), a tap is a click (right with Fn), and Super held, pressed
- * before or during, holds the left button (Sway's floating_modifier: a
- * window drag), Super with Fn the right one (a resize).  A lock screen
+ * touches) and moves the pointer; a tap is a click (right with Fn), once
+ * TAP_MS pass without another touch; a touch within TAP_MS of a tap holds
+ * the left button while the finger is down (tap and drag: a selection).
+ * With Super held, a touch holds the left button (Sway's
+ * floating_modifier: a window drag), with Super and Fn the right one (a
+ * resize); Super alone holds nothing (author).  A lock screen
  * always gets the touchscreen: in touchpad mode, the first touch on it
  * lets go of the grab.  Super comes from keyd's virtual keyboard, read
  * here for Esc anyway. */
@@ -215,6 +218,7 @@ static int open_uinput(void)
 #define POINTER_VENDOR 0x1234
 #define POINTER_PRODUCT 0x5678
 #define TOUCHPAD_GAIN 1.5
+#define TAP_MS 250
 #ifndef KEYD
 #define KEYD "keyd"
 #endif
@@ -292,6 +296,8 @@ static void press_power(int fd)
 /* The touchpad's state. */
 static int touch_fd = -1, pointer_fd = -1;
 static int pad, holding, grabbed, drag_button, fn, meta;
+static long tap_until;		/* a tap's click is due then; 0: none */
+static int tap_button;
 
 static void set_grab(int want)
 {
@@ -419,11 +425,24 @@ int main(int argc, char **argv)
 		};
 		struct input_event ev;
 
-		if (poll(p, 4, kbd >= 0 && layers >= 0 ? -1 : 5000) < 0) {
+		int wait = kbd >= 0 && layers >= 0 ? -1 : 5000;
+
+		if (tap_until) {
+			long left = tap_until - now_ms();
+
+			wait = left > 0 ? (int) left : 0;
+		}
+		if (poll(p, 4, wait) < 0) {
 			if (errno == EINTR)
 				continue;
 			perror("poll");
 			return 1;
+		}
+		/* A tap with no touch after it: its click. */
+		if (tap_until && now_ms() >= tap_until) {
+			tap_until = 0;
+			pointer_button(pointer, tap_button, 1);
+			pointer_button(pointer, tap_button, 0);
 		}
 		if (p[0].revents & (POLLERR | POLLHUP)) {
 			fprintf(stderr, "pro1x-doubletap: touch device gone\n");
@@ -468,12 +487,10 @@ int main(int argc, char **argv)
 				have_prev = 0;
 				set_grab(1);
 				pointer_to(pointer, px, py, xmax, ymax);	/* shows it */
-				if (meta)
-					drag_start();
 			} else if (strstr(cmd, "release") && holding) {
 				holding = 0;
 				set_grab(pad);
-				if (!pad || !meta)
+				if (!pad)
 					drag_end();
 			}
 		}
@@ -488,14 +505,8 @@ int main(int argc, char **argv)
 
 				if (ev.type == EV_KEY && (ev.code == KEY_LEFTMETA ||
 							  ev.code == KEY_RIGHTMETA) &&
-				    ev.value != 2) {
+				    ev.value != 2)
 					meta = ev.value;
-					/* As a touchpad, Super holds a button. */
-					if (meta && (holding || (pad && grabbed)))
-						drag_start();
-					else if (!meta)
-						drag_end();
-				}
 				if (ev.type == EV_KEY && ev.code == KEY_ESC &&
 				    ev.value == 1 && t >= quiet_until && panel_off() &&
 				    !pocketed()) {
@@ -525,13 +536,20 @@ int main(int argc, char **argv)
 					/* Touchpad mode: not over a lock screen. */
 					if (pad && !holding)
 						set_grab(!locker_running());
-				} else if (!down && was_down && grabbed &&
-					   !drag_button && now_ms() - start_t < 200 &&
-					   abs(x - start_x) < 60 && abs(y - start_y) < 60) {
-					int button = fn ? BTN_RIGHT : BTN_LEFT;	/* a tap */
-
-					pointer_button(pointer, button, 1);
-					pointer_button(pointer, button, 0);
+					/* Super, or a tap just before: the button held
+					 * while the finger is down. */
+					if (grabbed && (meta || tap_until)) {
+						tap_until = 0;
+						drag_start();
+					}
+				} else if (!down && was_down) {	/* it ends */
+					if (drag_button)
+						drag_end();
+					else if (grabbed && now_ms() - start_t < 200 &&
+						 abs(x - start_x) < 60 && abs(y - start_y) < 60) {
+						tap_until = now_ms() + TAP_MS;	/* a tap */
+						tap_button = fn ? BTN_RIGHT : BTN_LEFT;
+					}
 				}
 				was_down = down;
 				if (grabbed && down && have_prev) {
