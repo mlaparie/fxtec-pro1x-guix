@@ -16,8 +16,8 @@
 ;;;     lock-screen-apps; the camera button (camera-triple-press);
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
-;;;   • charge limit: stop charging at charge-limit percent, resume at or
-;;;     below charge-resume (hysteresis, as Android's charge-limit tools
+;;;   • charge limit, set in quick actions (pro1x-charge-limit; default 85,
+;;;     charging again at 80; hysteresis, as Android's charge-limit tools
 ;;;     do), through pro1x_charger_icl's charge_enable (kernel patch
 ;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
 ;;;     The percentage is estimated from voltage, which drops when charging
@@ -117,10 +117,6 @@
   (lock-keyboard      pro1x-hardware-lock-keyboard      (default 'dark))
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
-  ;; Stop charging at this battery percentage (#f: charge to full), and
-  ;; charge again at or below charge-resume.
-  (charge-limit       pro1x-hardware-charge-limit       (default 85))
-  (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode at boot until one is chosen in the power menu
@@ -783,7 +779,7 @@ esac
           (respawn? #t)))
         '())))
 
-(define (pro1x-charge-limit-program limit resume)
+(define (pro1x-charge-limit-program)
   (program-file
    "pro1x-charge-limit"
    #~(begin
@@ -808,18 +804,19 @@ esac
              (let idle () (sleep 3600) (idle)))
            ;; The limits chosen in quick actions (pro1x-charge-limit:
            ;; "LIMIT RESUME" or "off" in /var/lib/pro1x/charge-limit), else
-           ;; config.scm's.  Read on each pass: a change applies without a
-           ;; reconfigure (author, 2026-11-01).
+           ;; 85 and 80.  Read on each pass: a change applies at once, and
+           ;; only quick actions set it, not config.scm (author, 2026-11-01:
+           ;; two places would confuse).
            (let loop ()
              (let* ((chosen (read-file "/var/lib/pro1x/charge-limit"))
                     (fields (if chosen (string-split chosen #\space) '()))
                     (limit (if chosen
                                (and (= 2 (length fields))
                                     (string->number (car fields)))
-                               #$limit))
+                               85))
                     (resume (if (and chosen limit)
                                 (string->number (cadr fields))
-                                #$resume))
+                                80))
                     (pct (string->number (or (read-file capacity) "")))
                     (on? (equal? "Y" (read-file param))))
                (cond ((not pct) #t)
@@ -831,18 +828,15 @@ esac
              (loop))))))
 
 (define (pro1x-charge-limit-shepherd-service config)
-  ;; Always there: a limit chosen in quick actions applies even when
-  ;; config.scm sets none (#f: off until one is chosen).
-  (let ((limit (pro1x-hardware-charge-limit config)))
+  ;; Its limits come from quick actions (pro1x-charge-limit).
+  (let ()
     (list
          (shepherd-service
           (provision '(pro1x-charge-limit))
           (requirement '(file-systems))
           (documentation "Stop charging at the charge limit, resume below it.")
           (start #~(make-forkexec-constructor
-                    (list #$(pro1x-charge-limit-program
-                             limit (and limit
-                                        (pro1x-hardware-charge-resume config))))
+                    (list #$(pro1x-charge-limit-program))
                     #:log-file "/var/log/pro1x-charge-limit.log"))
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
@@ -884,7 +878,7 @@ esac
 
 (define (pro1x-hardware-etc config)
   ;; /etc/pro1x/dim.conf, shell variables for pro1x-idle and pro1x-dim, and
-  ;; /etc/pro1x/charge.conf.
+  ;; (the charge limit is set in quick actions, not here).
   (let ((after (pro1x-hardware-dim-after config)))
     `(("pro1x/dim.conf"
        ,(plain-file "dim.conf"
@@ -958,20 +952,7 @@ esac
                        "UNLOCKED_LED='"
                        (if led (led-intensity (car led)) "") "'\n"
                        "UNLOCKED_LEVEL="
-                       (if led (number->string (cadr led)) "0") "\n"))))
-      ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
-      ;; to show (the service itself gets the values directly).
-      ("pro1x/charge.conf"
-       ,(plain-file "charge.conf"
-                    (let ((limit (pro1x-hardware-charge-limit config)))
-                      (string-append
-                       "# Written by pro1x-hardware-service-type (config.scm).\n"
-                       "CHARGE_LIMIT=" (if limit (number->string limit) "") "\n"
-                       "CHARGE_RESUME="
-                       (if limit
-                           (number->string (pro1x-hardware-charge-resume config))
-                           "")
-                       "\n")))))))
+                       (if led (number->string (cadr led)) "0") "\n")))))))
 
 (define (pro1x-idle-gsettings config)
   ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
@@ -1031,7 +1012,7 @@ light or dark colour scheme.")
                                 (file->udev-rule
                                  "90-pro1x-feedbackd-led.rules"
                                  pro1x-feedbackd-led-rules))))
-     ;; /etc/pro1x/dim.conf, /etc/pro1x/charge.conf
+     ;; /etc/pro1x/dim.conf, lock.conf, apps.conf, sleep.conf, led.conf
      (service-extension etc-service-type pro1x-hardware-etc)
      ;; Phosh's blank and lock delays; notification LED colours
      (service-extension profile-service-type

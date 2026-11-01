@@ -14,8 +14,9 @@
 # opens the tool of Wi-Fi, Bluetooth, SIM and Notifications; Esc
 # closes.  The header shows the battery level and charging state; the
 # Wi-Fi line the network and signal, the mobile line the access technology,
-# signal and operator; the charge limit line what config.scm set
-# (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
+# signal and operator; the charge limit line the limit (set only here:
+# pro1x-charge-limit, kept across reboots).  One fzf stays open and
+# reloads its lines after each action.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications

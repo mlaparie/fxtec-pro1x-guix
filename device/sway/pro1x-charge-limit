@@ -9,23 +9,17 @@
 #
 # Set from quick actions, without a reconfigure, and kept across reboots
 # (author, 2026-11-01): /var/lib/pro1x/charge-limit, which the
-# pro1x-charge-limit service reads on each pass; until one is chosen, the
-# service uses charge-limit and charge-resume from config.scm.  Applied at
-# once here too (the service looks once a minute).
+# pro1x-charge-limit service reads on each pass; until one is chosen, 85
+# and 80.  Only here, not in config.scm (two places would confuse).
+# Applied at once here too (the service looks once a minute).
 
 PATH=/run/current-system/profile/bin:$PATH
 state=/var/lib/pro1x/charge-limit
 param=/sys/module/pro1x_charger_icl/parameters/charge_enable
 capacity=/sys/class/power_supply/battery/capacity
 
-get() {
-    if [ -f "$state" ]; then cat "$state"
-    elif [ -r /etc/pro1x/charge.conf ]; then
-        . /etc/pro1x/charge.conf
-        if [ -n "${CHARGE_LIMIT:-}" ]; then echo "$CHARGE_LIMIT $CHARGE_RESUME"
-        else echo off; fi
-    else echo off
-    fi
+get() {                         # the chosen limits, or the default
+    if [ -f "$state" ]; then cat "$state"; else echo "85 80"; fi
 }
 
 case "${1:-get}" in
