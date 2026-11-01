@@ -178,7 +178,11 @@
   (charging-led       pro1x-hardware-charging-led       (default "#FFA000"))
   (charged-led        pro1x-hardware-charged-led        (default "#00FF00"))
   (low-battery-led    pro1x-hardware-low-battery-led    (default "#FF4000"))
-  (low-battery-level  pro1x-hardware-low-battery-level  (default 15)))
+  (low-battery-level  pro1x-hardware-low-battery-level  (default 15))
+  ;; The LED while the screen is blank but not locked (Sway,
+  ;; pro1x-blank-led): (COLOUR LEVEL), COLOUR as above and LEVEL the
+  ;; pattern brightness (0-255; 6 is barely visible), or #f for none.
+  (unlocked-led       pro1x-hardware-unlocked-led       (default '("white" 6))))
 
 ;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
 (define (led-intensity colour)
@@ -945,6 +949,16 @@ esac
                      (string-join (map symbol->string
                                        (pro1x-hardware-wake-on config)))
                      "'\n")))
+      ;; /etc/pro1x/led.conf: the unlocked indicator, for pro1x-blank-led.
+      ("pro1x/led.conf"
+       ,(plain-file "led.conf"
+                    (let ((led (pro1x-hardware-unlocked-led config)))
+                      (string-append
+                       "# Written by pro1x-hardware-service-type (config.scm).\n"
+                       "UNLOCKED_LED='"
+                       (if led (led-intensity (car led)) "") "'\n"
+                       "UNLOCKED_LEVEL="
+                       (if led (number->string (cadr led)) "0") "\n"))))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"
