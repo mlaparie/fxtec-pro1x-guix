@@ -47,6 +47,13 @@ restore() {
 
 check() {
     app=$(focused_app)
+    case "$app" in
+        # No app (an empty workspace, just after unlocking): with an empty
+        # list, " $LIST " matched it, and landscape stuck for good
+        # (2026-11-01: no portrait, the power menu closed at once).  Our
+        # menus: the rotation stays as it is (a change would close them).
+        ""|quickactions|launcher|windowswitcher|powermenu) return ;;
+    esac
     case " $PORTRAIT_APPS " in *" $app "*) want=normal ;; *) want= ;; esac
     case " $LANDSCAPE_APPS " in *" $app "*) want=90 ;; esac
     if [ -n "$want" ]; then
