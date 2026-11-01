@@ -146,6 +146,12 @@ case "${1:-}" in
         [ -n "$uart" ] && echo enabled > "$uart"
         sleep 1                                  # a crash shows by then
         adsp_recover
+        # After a resume iio-sensor-proxy kept its sensors but proximity
+        # changes no longer came (no blanking, also on the lock screen;
+        # 2026-11-01): the sensor services start again.
+        herd restart iio-sensor-proxy >/dev/null 2>&1
+        herd start pro1x-pocket >/dev/null 2>&1
+        herd restart pro1x-shake-torch >/dev/null 2>&1
         panel on ;;
     hibernate) echo disk > /sys/power/state ;;
     *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
