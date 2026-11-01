@@ -1615,6 +1615,7 @@ window opened by a sway key binding.")
           ("pro1x-sleep" "bin/")
           ("pro1x-cpu-mode" "bin/")
           ("pro1x-charge-limit" "bin/")
+          ("pro1x-autotiling" "bin/")
           ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases
@@ -1687,7 +1688,8 @@ window opened by a sway key binding.")
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
-                   "pro1x-power-button" "pro1x-camera-button" "pro1x-open"))
+                   "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
+                   "pro1x-autotiling"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

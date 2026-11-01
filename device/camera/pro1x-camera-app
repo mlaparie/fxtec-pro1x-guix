@@ -21,6 +21,7 @@
 
 import os
 import signal
+import subprocess
 import threading
 import time
 
@@ -32,7 +33,10 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
-VIEW = (1920, 1080)             # the IMX582's fast mode (pro1x-imx582-1080p)
+# The viewfinder: from the IMX582's fast 1984x1080 mode
+# (pro1x-imx582-1080p), scaled down by the software ISP: smaller frames
+# cost less to process and show (author: the preview lagged).
+VIEW = (1280, 720)
 # Its 12 MP binned mode is 4000x3000, but the software ISP keeps a border
 # of one Bayer pattern left and right (moWerk's 1080p patch notes), and
 # 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
@@ -122,6 +126,14 @@ class Camera(Gtk.Application):
         self.view = Gtk.EventBox()
         self.view.connect("button-press-event", self.on_tap)
         self.overlay.add(self.view)
+        # Where the focus is measured (author): a square at the tap,
+        # yellow while scanning, green once focused, red if it failed.
+        self.marker = Gtk.DrawingArea()
+        self.marker.set_can_focus(False)
+        self.marker.connect("draw", self.on_draw_marker)
+        self.overlay.add_overlay(self.marker)
+        self.overlay.set_overlay_pass_through(self.marker, True)
+        self.mark = None                # (x, y, colour), or None
 
         bar = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
                       valign=Gtk.Align.END, margin_bottom=24)
@@ -181,6 +193,9 @@ class Camera(Gtk.Application):
         self.flip = Gst.ElementFactory.make("videoflip")
         tee = Gst.ElementFactory.make("tee")
         q1 = Gst.ElementFactory.make("queue")
+        # Only the newest frame waits: the view never falls behind.
+        q1.set_property("leaky", 2)
+        q1.set_property("max-size-buffers", 1)
         sink = Gst.ElementFactory.make("gtksink")
         sink.set_property("sync", False)
         q2 = Gst.ElementFactory.make("queue")
@@ -351,8 +366,46 @@ class Camera(Gtk.Application):
         Gst.util_set_object_arg(
             self.src, "af-windows",
             "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
-        self.say("Focusing", 1)
+        self.mark = (event.x, event.y, (1.0, 0.8, 0.0))
+        self.marker.queue_draw()
+        self.af_polls = 0
+        GLib.timeout_add(150, self.poll_focus)
         return True
+
+    def poll_focus(self):
+        """The marker's colour after libcamera's AfState (0 idle,
+        1 scanning, 2 focused, 3 failed; moWerk's patch exposes it)."""
+        if not self.mark or not self.pipeline:
+            return False
+        try:
+            state = int(self.src.get_property("af-state"))
+        except (TypeError, ValueError):
+            state = 0
+        self.af_polls += 1
+        x, y, _ = self.mark
+        colour = {2: (0.3, 0.9, 0.3), 3: (0.95, 0.3, 0.3)}.get(state, (1.0, 0.8, 0.0))
+        self.mark = (x, y, colour)
+        self.marker.queue_draw()
+        if state in (2, 3) or self.af_polls > 30:
+            GLib.timeout_add(1200, self.clear_mark)
+            return False
+        return True
+
+    def clear_mark(self):
+        self.mark = None
+        self.marker.queue_draw()
+        return False
+
+    def on_draw_marker(self, area, cr):
+        if not self.mark:
+            return False
+        x, y, (r, g, b) = self.mark
+        side = min(area.get_allocated_width(), area.get_allocated_height()) * 0.16
+        cr.set_source_rgb(r, g, b)
+        cr.set_line_width(3)
+        cr.rectangle(x - side / 2, y - side / 2, side, side)
+        cr.stroke()
+        return False
 
     # ── photos ─────────────────────────────────────────────────────────
     def on_signal(self):
@@ -448,9 +501,26 @@ class Camera(Gtk.Application):
             pass
 
     def on_last(self, *_):
-        if self.last_photo:
+        """The last photo in a tab next to the camera (author): the camera
+        leaves fullscreen, its container turns tabbed, and the viewer opens
+        as the next tab; when the viewer closes, fullscreen again."""
+        if not self.last_photo:
+            return
+        me = '[app_id="^org.pro1x.Camera$"]'
+        subprocess.run(["swaymsg", me + " fullscreen disable, layout tabbed"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            viewer = subprocess.Popen(["loupe", self.last_photo])
+        except OSError:
             Gtk.show_uri_on_window(self.win, "file://" + self.last_photo,
                                    Gdk.CURRENT_TIME)
+            return
+
+        def back():
+            viewer.wait()
+            subprocess.run(["swaymsg", me + " focus, fullscreen enable"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=back, daemon=True).start()
 
 
 if __name__ == "__main__":

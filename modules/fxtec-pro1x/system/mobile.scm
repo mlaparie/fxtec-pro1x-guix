@@ -919,6 +919,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; The camera: stills at 12 MP, tap to focus, ISO, flash (ours, on
      ;; libcamera with moWerk's patches); Snapshot stays.
      pro1x-camera-app
+     ;; Image viewer (Loupe: adaptive), the camera's last photo opens in it.
+     loupe
      ;; Alarms, timers, world clocks (author).  It rings only while the
      ;; phone is awake: waking from suspend or power-off for an alarm is
      ;; not done yet.
