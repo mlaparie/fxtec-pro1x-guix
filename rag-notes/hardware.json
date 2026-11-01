@@ -59,6 +59,30 @@
         "confidence": "inferred",
         "date": "2026-10-25",
         "source": "commits a60b1f2, d58b891; confirm with: ls $(guix build linux-firmware)/lib/firmware/qcom | head"
+      },
+      {
+        "title": "s2idle: the Bluetooth UART wakes the SoC at once",
+        "general": "On Qualcomm phones with a UART-attached Bluetooth chip, the UART RX wake IRQ can end every s2idle within seconds; disable that device's power/wakeup while suspended (Bluetooth keeps working).",
+        "instance": "Pro1X, Linux 7.1 sm6115-mainline: woke after 2.2 s on IRQ 110 4a8c000.serial:wakeup (/sys/power/pm_wakeup_irq); with /sys/devices/platform/soc@0/4ac0000.geniqup/4a8c000.serial/power/wakeup disabled it slept until the power key (IRQ pm8941_pwrkey) or the RTC alarm (pm8xxx_rtc_alarm).",
+        "confidence": "confirmed",
+        "date": "2026-11-01",
+        "source": "device/sway/pro1x-sleep; suspend tests on the phone 2026-11-01"
+      },
+      {
+        "title": "s2idle: the ADSP sensor process crashes at resume (fastrpc resends the frozen listener call)",
+        "general": "With hexagonrpcd serving the ADSP sensor PD, the freezer interrupts its listener ioctl (-ERESTARTSYS) and mainline fastrpc sends the restarted call again; the duplicate crashes sensor_process in frpc_dsp at resume. Stopping only the sensor clients does not help. Fix in the kernel: resume the interrupted context (downstream context_restore_interrupted) and take a wakeup event per DSP message.",
+        "instance": "Pro1X 7.1: PDM: service sensor_process crash EX:sensor_process:0x1:frpc_dsp:0xc0 at every resume; ADSP recovery (debugfs recover) then brought sensors back but not the sound card (wcd937x_codec ASoC error -16, snd-sm8250 failed -16; the codec cannot be unbound: Permission denied), so no sound until reboot. Same crash and cause on the Lenovo TB-J606L (SM6115); its patches 0015/0016 carried as pro1x-fastrpc-wake / pro1x-fastrpc-resume-interrupted (0016 adapted to 7.1). postmarketOS google-sargo stops hexagonrpcd before suspend instead.",
+        "confidence": "reported",
+        "date": "2026-11-01",
+        "source": "github.com/haltia-de/device-lenovo-tb-j606l issues/23, pull/12, kernel/patches; pmaports MR 5400; crash and audio loss confirmed on the Pro1X; the fix not yet booted"
+      },
+      {
+        "title": "s2idle: modem messages do not wake user space (GLINK SMEM is IRQF_NO_SUSPEND without a wakeup event)",
+        "general": "qcom_glink_smem requests its IRQ IRQF_NO_SUSPEND and reports no wakeup event, so an incoming call is received by the kernel in s2idle while ModemManager stays frozen. smp2p is wakeup-capable but off by default and carries no QMI messages.",
+        "instance": "Pro1X 7.1, drivers/rpmsg/qcom_glink_smem.c line 308; our patch pro1x-glink-modem-wake takes a wakeup event on the mpss edge; /sys/devices/platform/smp2p-mpss/power/wakeup disabled.",
+        "confidence": "confirmed",
+        "date": "2026-11-01",
+        "source": "kernel source read; patch not yet booted"
       }
     ],
     "modem": [
