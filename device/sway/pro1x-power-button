@@ -17,15 +17,21 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 menu_sock="$rt/pro1x-power-menu.sock"
 held="$rt/pro1x-power-held"
 
-devices=""
-for e in /sys/class/input/event*; do
-    case "$(cat "$e/device/name" 2>/dev/null)" in
-        # pro1x-doubletap: its virtual power key (double tap to wake).
-        pm8941_pwrkey|"keyd virtual keyboard"|pro1x-doubletap)
-            devices="$devices /dev/input/${e##*/}" ;;
-    esac
-done
-[ -n "$devices" ] || exit 0
+# reader NAME: evtest on the input device named NAME, found again whenever
+# it goes: pro1x-doubletap and keyd make theirs anew when they restart
+# (2026-11-01: double tap and Esc no longer woke the panel after a
+# restart of pro1x-doubletap).
+reader() {
+    while :; do
+        for e in /sys/class/input/event*; do
+            if [ "$(cat "$e/device/name" 2>/dev/null)" = "$1" ]; then
+                evtest "/dev/input/${e##*/}" 2>/dev/null
+                break
+            fi
+        done
+        sleep 2
+    done
+}
 
 if [ -n "${SWAYSOCK:-}" ]; then
     ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
@@ -34,7 +40,10 @@ fi
 menu_open() { [ -S "$menu_sock" ] && pgrep -u "$(id -u)" -f "fzf --listen=$menu_sock" >/dev/null; }
 
 # "Event: time …, type 1 (EV_KEY), code 116 (KEY_POWER), value 1"
-for d in $devices; do evtest "$d" 2>/dev/null & done |
+# pro1x-doubletap: its virtual power key (double tap, Esc: wake).
+for n in pm8941_pwrkey "keyd virtual keyboard" pro1x-doubletap; do
+    reader "$n" &
+done |
     while IFS= read -r line; do
         case "$line" in
             *"(KEY_POWER), value 1"*)
