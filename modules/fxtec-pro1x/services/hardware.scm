@@ -549,14 +549,15 @@ esac
   ;; State: 2026-10-31: the first detector (bursts of total force, upright
   ;; test) missed fast and slow pairs on the phone; this one calibrated on
   ;; the author's recorded shakes (12-35 readings a second): 2-3
-  ;; reversals per double shake.  Threshold 5 -> 8 m/s²: too sensitive
-  ;; (author); the recorded double shakes still reverse beyond 9.
+  ;; reversals per double shake.  Threshold 5 -> 8 -> 11 m/s²: too
+  ;; sensitive, then still too permissive (author).  The recorded double
+  ;; shakes had reversals of 5.5-31 m/s²: at 11 they need to be firmer.
   (program-file
    "pro1x-shake-torch"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format)
                     (ice-9 ftw) (srfi srfi-1))
-       (define threshold 8.0)           ;m/s² of motion (gravity removed)
+       (define threshold 11.0)          ;m/s² of motion (gravity removed)
        (define needed 3)                ;reversals …
        (define window 1.2)              ;… within this many seconds
        (define torch "/sys/class/leds/white:flash-0")
