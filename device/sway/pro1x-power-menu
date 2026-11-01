@@ -20,6 +20,7 @@ sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 case "${1:-}" in
     --menu|--lines) ;;
     *)
+        pro1x-menu hide-all          # one menu at a time (author)
         exec pro1x-term --app-id=powermenu -o pad=12x8 \
             -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
 esac

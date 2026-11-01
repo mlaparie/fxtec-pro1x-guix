@@ -161,7 +161,14 @@ case "$cmd" in
                         | select(.app_id? == $id and .visible == true)] | length')
         if [ "${shown:-0}" -gt 0 ]; then
             hide_menu "$id"
-        elif swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
+            exit 0
+        fi
+        # One menu at a time (author): the others go away first.
+        for m in quickactions launcher windowswitcher; do
+            [ "$m" = "$id" ] || hide_menu "$m"
+        done
+        swaymsg '[app_id="^powermenu$"] kill' >/dev/null 2>&1
+        if swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
                >/dev/null 2>&1; then
             # Refresh the list as it shows (cheap).
             case "$id" in
