@@ -124,9 +124,14 @@
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode at boot until one is chosen in the power menu
-  ;; (then that one, kept in /var/lib/pro1x/cpu-mode): 'battery (capped
-  ;; frequencies), 'balanced (schedutil) or 'performance.
-  (cpu-mode           pro1x-hardware-cpu-mode           (default 'balanced))
+  ;; (then that one, kept in /var/lib/pro1x/cpu-mode): 'auto (balanced,
+  ;; battery while the panel is off or the battery low), 'battery (capped
+  ;; frequencies), 'balanced (schedutil, dynamic) or 'performance.
+  (cpu-mode           pro1x-hardware-cpu-mode           (default 'auto))
+  ;; What may wake the phone from suspend (pro1x-sleep), besides its keys
+  ;; and alarms: 'calls (an incoming call), 'sms (a text message, Chatty).
+  ;; Internet chats cannot: the network is not a wakeup source.
+  (wake-on            pro1x-hardware-wake-on            (default '(calls sms)))
   ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
   ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
   ;; a string is a shell command run in the Sway session through pro1x-open
@@ -679,19 +684,19 @@ esac
       '()))
 
 (define (pro1x-cpu-mode-shepherd-service config)
-  ;; The CPU mode at boot (pro1x-cpu-mode apply): the one chosen in the
-  ;; power menu, else cpu-mode.
+  ;; The CPU mode (pro1x-cpu-mode watch): the one chosen in the power menu,
+  ;; else cpu-mode, applied at boot, and auto followed while chosen.
   (list
    (shepherd-service
     (provision '(pro1x-cpu-mode))
-    (documentation "Set the CPU's energy mode (battery, balanced, performance).")
-    (one-shot? #t)
-    (start #~(lambda _
-               (zero? (system* #$(file-append pro1x-sway-config
-                                              "/bin/pro1x-cpu-mode")
-                               "apply"
-                               #$(symbol->string
-                                  (pro1x-hardware-cpu-mode config)))))))))
+    (documentation "Set the CPU's energy mode (auto, battery, balanced, performance).")
+    (start #~(make-forkexec-constructor
+              (list #$(file-append pro1x-sway-config "/bin/pro1x-cpu-mode")
+                    "watch"
+                    #$(symbol->string (pro1x-hardware-cpu-mode config)))
+              #:log-file "/var/log/pro1x-cpu-mode.log"))
+    (stop #~(make-kill-destructor))
+    (respawn? #t))))
 
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
@@ -901,6 +906,15 @@ esac
                                             (regexp-quote app)
                                             "$\"] fullscreen enable\n"))
                            (pro1x-hardware-fullscreen-apps config))))))
+      ;; /etc/pro1x/sleep.conf: what may wake the phone, for pro1x-sleep.
+      ("pro1x/sleep.conf"
+       ,(plain-file "sleep.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "WAKE_ON='"
+                     (string-join (map symbol->string
+                                       (pro1x-hardware-wake-on config)))
+                     "'\n")))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"

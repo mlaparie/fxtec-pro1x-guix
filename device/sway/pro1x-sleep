@@ -7,8 +7,9 @@
 #   - the power key, the keyboard, gpio-keys (camera, volume up), the RTC
 #     alarm, the charger: stays awake, the panel lit;
 #   - the modem (qrtr-modem: our kernel patch, a message from it): waits
-#     up to 5 s for ModemManager; a ringing call keeps it awake, anything
-#     else (an SMS, a network update) sleeps again;
+#     up to 5 s for ModemManager; a ringing call or a new SMS keeps it
+#     awake, as allowed by WAKE_ON (/etc/pro1x/sleep.conf, wake-on in
+#     config.scm: calls, sms), anything else sleeps again;
 #   - the ADSP alone (fastrpc's "adsp" wakeup source: a sensor call for
 #     hexagonrpcd, answered in a moment): sleeps again.
 # The panel goes off before sleeping.  Measured 2026-11-01:
@@ -67,7 +68,16 @@ counts() {
 # The sources whose count grew between two snapshots (files).
 woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
 
-ringing() { mmcli -m any --voice-list-calls 2>/dev/null | grep -q ringing-in; }
+WAKE_ON='calls sms'
+[ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
+allowed() { case " $WAKE_ON " in *" $1 "*) return 0 ;; esac; return 1; }
+
+ringing() {
+    allowed calls &&
+        mmcli -m any --voice-list-calls 2>/dev/null | grep -q ringing-in
+}
+# Received SMS stored on the modem (ModemManager's list).
+sms_count() { mmcli -m any --messaging-list-sms 2>/dev/null | grep -c received; }
 
 # The ADSP crashed: restart it once, then what talks to it.
 adsp_recover() {
@@ -88,6 +98,7 @@ adsp_recover() {
 
 suspend_loop() {
     before=$(mktemp) after=$(mktemp)
+    sms=$(sms_count)
     tries=0
     while :; do
         counts > "$before"
@@ -111,6 +122,7 @@ suspend_loop() {
                 i=0
                 while [ $i -lt 10 ]; do
                     ringing && break 2
+                    allowed sms && [ "$(sms_count)" -gt "$sms" ] && break 2
                     sleep 0.5; i=$((i + 1))
                 done
                 # Nothing for the user: but a key pressed meanwhile counts.

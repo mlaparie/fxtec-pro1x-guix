@@ -1,12 +1,15 @@
 #!/bin/sh
-# pro1x-cpu-mode [battery|balanced|performance|next|apply|get] — the CPU's
-# energy mode, as root (sudo, from pro1x-power-menu; the pro1x-cpu-mode
-# service applies the saved one at boot)
+# pro1x-cpu-mode [auto|battery|balanced|performance|next|apply|watch|get]
+# — the CPU's energy mode, as root (sudo, from pro1x-power-menu; the
+# pro1x-cpu-mode service applies the saved one at boot and follows auto)
 #
+#   auto         balanced, but battery while the panel is off or the
+#                battery is at 20 % or less and not charging (the default)
 #   battery      schedutil, capped: 1.31 GHz (CPUs 0-3), 1.40 GHz (4-7)
 #   balanced     schedutil over the whole range (the kernel's default)
 #   performance  the performance governor: top frequency all the time
-#   next         the next one, in that order, round
+#   next         the next one: auto, battery, balanced, performance, round
+#   watch        follow auto (the service): every 10 s
 #   apply        the saved one (/var/lib/pro1x/cpu-mode), or $1 of the
 #                service (cpu-mode in config.scm) when none is saved
 #   get          print the current one
@@ -19,7 +22,8 @@ PATH=/run/current-system/profile/bin:$PATH
 state=/var/lib/pro1x/cpu-mode
 cpufreq=/sys/devices/system/cpu/cpufreq
 
-set_mode() {
+# The frequencies and governor of MODE (battery, balanced, performance).
+apply_mode() {
     for p in "$cpufreq"/policy*; do
         top=$(cat "$p/cpuinfo_max_freq")
         case "$1" in
@@ -36,22 +40,55 @@ set_mode() {
         echo "$cap" > "$p/scaling_max_freq"
         echo "$gov" > "$p/scaling_governor"
     done
+}
+
+# What auto stands for now.  The panel's dpms is a cached kernel value
+# (reading it does not touch the DSI link).
+auto_target() {
+    dpms=$(cat /sys/class/drm/card*-DSI-1/dpms 2>/dev/null | head -n 1)
+    cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
+    st=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
+    if [ "$dpms" = Off ] ||
+       { [ "$cap" -le 20 ] && [ "$st" != Charging ] && [ "$st" != Full ]; }; then
+        echo battery
+    else
+        echo balanced
+    fi
+}
+
+set_mode() {
+    if [ "$1" = auto ]; then apply_mode "$(auto_target)"; else apply_mode "$1"; fi || return
     mkdir -p "${state%/*}"
     echo "$1" > "$state"
 }
 
-current() { cat "$state" 2>/dev/null || echo balanced; }
+current() { cat "$state" 2>/dev/null || echo auto; }
 
 case "${1:-get}" in
-    battery|balanced|performance) set_mode "$1" ;;
+    auto|battery|balanced|performance) set_mode "$1" ;;
     next)
         case "$(current)" in
+            auto) set_mode battery ;;
             battery) set_mode balanced ;;
             balanced) set_mode performance ;;
-            *) set_mode battery ;;
+            *) set_mode auto ;;
         esac ;;
-    apply) set_mode "$(cat "$state" 2>/dev/null || echo "${2:-balanced}")" ;;
+    apply) set_mode "$(cat "$state" 2>/dev/null || echo "${2:-auto}")" ;;
+    watch)
+        # Apply the saved mode, then follow auto while it is chosen.
+        set_mode "$(cat "$state" 2>/dev/null || echo "${2:-auto}")"
+        last=
+        while :; do
+            if [ "$(current)" = auto ]; then
+                t=$(auto_target)
+                [ "$t" != "$last" ] && apply_mode "$t"
+                last=$t
+            else
+                last=
+            fi
+            sleep 10
+        done ;;
     get) current ;;
-    *) echo "usage: pro1x-cpu-mode battery|balanced|performance|next|apply|get" >&2
+    *) echo "usage: pro1x-cpu-mode auto|battery|balanced|performance|next|apply|watch|get" >&2
        exit 1 ;;
 esac

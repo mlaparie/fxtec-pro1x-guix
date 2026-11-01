@@ -29,7 +29,7 @@ esac
 # (author: user-set energy management; pro1x-cpu-mode).
 if [ "${1:-}" = --lines ]; then
     printf '%s\n' "Cancel" "Lock screen" "Blank screen" \
-           "CPU mode: $(pro1x-cpu-mode get)  (battery → balanced → performance)" \
+           "CPU mode: $(pro1x-cpu-mode get)  (auto → battery → balanced → performance)" \
            "Suspend" "Hibernate" "Reboot" "Power off"
     exit
 fi
