@@ -97,6 +97,12 @@ adsp_recover() {
 }
 
 suspend_loop() {
+    # The kernel wakes for modem data to user space (pro1x-qrtr-modem-wake)
+    # only when calls or SMS may wake the phone.
+    w=/sys/module/qrtr/parameters/wake_on_data
+    if [ -w "$w" ]; then
+        if allowed calls || allowed sms; then echo Y > "$w"; else echo N > "$w"; fi
+    fi
     before=$(mktemp) after=$(mktemp)
     sms=$(sms_count)
     tries=0
