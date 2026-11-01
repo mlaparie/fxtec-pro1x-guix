@@ -31,7 +31,7 @@ gi.require_version("GstVideo", "1.0")
 gi.require_version("GstApp", "1.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import GdkPixbuf, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
+from gi.repository import GdkPixbuf, Gio, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
 # The viewfinder: from the IMX582's fast 1984x1080 mode
 # (pro1x-imx582-1080p), scaled down by the software ISP: smaller frames
@@ -111,8 +111,30 @@ class Camera(Gtk.Application):
         self.last_photo = None
 
     # ── the window ─────────────────────────────────────────────────────
+    def claim_accelerometer(self):
+        """How the phone is held, for the photo's turn (author: a photo
+        taken in landscape was saved as portrait).  iio-sensor-proxy keeps
+        the accelerometer while the app runs; the claim ends with it."""
+        try:
+            self.accel = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
+                "net.hadess.SensorProxy", "/net/hadess/SensorProxy",
+                "net.hadess.SensorProxy", None)
+            self.accel.call_sync("ClaimAccelerometer", None,
+                                 Gio.DBusCallFlags.NONE, 2000, None)
+        except GLib.Error as e:
+            print("accelerometer: %s" % e.message, flush=True)
+            self.accel = None
+
+    def held(self):
+        """normal, left-up, right-up, bottom-up or undefined."""
+        v = self.accel.get_cached_property("AccelerometerOrientation") \
+            if self.accel else None
+        return v.unpack() if v else "undefined"
+
     def do_activate(self):
         Gst.init(None)
+        self.claim_accelerometer()
         style = Gtk.CssProvider()
         style.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(
@@ -486,6 +508,17 @@ class Camera(Gtk.Application):
                 else GdkPixbuf.PixbufRotation.CLOCKWISE)
         elif front:
             pix = pix.flip(True)
+        # Then as held.  right-up is the keyboard landscape here
+        # (sway-autorotate's naming, swapped from Phosh's).  The direction
+        # is from one landscape photo (2026-11-02), side not yet known:
+        # the log says which way the phone was held.
+        held = self.held()
+        turn = {"right-up": GdkPixbuf.PixbufRotation.CLOCKWISE,
+                "left-up": GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE,
+                "bottom-up": GdkPixbuf.PixbufRotation.UPSIDEDOWN}.get(held)
+        print("capture: held %s" % held, flush=True)
+        if self.portrait and turn is not None:
+            pix = pix.rotate_simple(turn)
         os.makedirs(PHOTOS, exist_ok=True)
         path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
         pix.savev(path, "jpeg", ["quality"], ["92"])
