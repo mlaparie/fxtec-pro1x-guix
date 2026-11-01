@@ -5,6 +5,7 @@
 #   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
+#   two fingers up from the bottom    Sway Overview, the workspaces (pro1x-sov)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
 # COMMAND...; quick actions closes itself).  Every command runs in the
@@ -56,6 +57,7 @@ start() {                       # start <transform>
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 125 \
         -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
         -g "1,DU,B,*,P,sway-quick-actions --osk toggle &" \
+        -g "2,DU,B,*,R,pro1x-sov toggle &" \
         -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
         -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &

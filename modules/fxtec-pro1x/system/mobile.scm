@@ -923,6 +923,8 @@ Dracula palette, no kernel messages over the greeter.")
      loupe
      ;; Sway's autotiling: splits along the focused window's longer side.
      i3-autotiling
+     ;; Sway Overview: workspaces as thumbnails (two-finger swipe up).
+     sov
      ;; Alarms, timers, world clocks (author).  It rings only while the
      ;; phone is awake: waking from suspend or power-off for an alarm is
      ;; not done yet.
