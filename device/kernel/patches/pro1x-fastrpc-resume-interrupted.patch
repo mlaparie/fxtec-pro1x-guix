@@ -1,0 +1,78 @@
+misc: fastrpc: Resume an interrupted invocation instead of resending it.
+
+When a signal cuts the wait of a user invocation short (-ERESTARTSYS:
+the freezer does it to every task on system suspend), the context stays
+with the DSP and the call is restarted. The restart sent the message a
+second time. For hexagonrpcd's listener the ADSP sensor process then
+crashed in its frpc_dsp thread right at resume
+(EX:sensor_process:0x1:frpc_dsp, issue #23). A restarted call of the
+same thread with the same scalars now waits for the first message's
+answer, as the downstream adsprpc driver does
+(context_restore_interrupted).
+
+
+Origin: haltia-de/device-lenovo-tb-j606l (GPL-2.0),
+kernel/patches/0016-misc-fastrpc-resume-interrupted-invoke.patch, written
+for Linux 7.3 on the Lenovo TB-J606L (SM6115, the same SoC); adapted to
+the 7.1 sm6115-mainline tree here (7.1 waits inline, not through
+fastrpc_wait_for_completion).  Reported there; to be confirmed on the Pro1X.
+
+--- a/drivers/misc/fastrpc.c	2026-11-01 12:34:52.914998462 +0100
++++ b/drivers/misc/fastrpc.c	2026-11-01 12:34:53.475016673 +0100
+@@ -248,6 +248,8 @@
+ 	struct fastrpc_invoke_args *args;
+ 	struct fastrpc_buf_overlap *olaps;
+ 	struct fastrpc_channel_ctx *cctx;
++	/* Its wait was cut short by a signal; the DSP still owns it. */
++	bool interrupted;
+ };
+ 
+ struct fastrpc_session_ctx {
+@@ -1258,6 +1260,31 @@
+ 		return -EPERM;
+ 	}
+ 
++	/*
++	 * A call interrupted by a signal (the freezer, on system suspend) is
++	 * restarted with the same arguments. The DSP still holds the first
++	 * message: wait for its answer again instead of sending it twice,
++	 * which crashed the ADSP sensor process at resume.
++	 */
++	if (!kernel) {
++		struct fastrpc_invoke_ctx *ictx;
++
++		spin_lock(&fl->lock);
++		list_for_each_entry(ictx, &fl->pending, node) {
++			if (ictx->interrupted && ictx->pid == current->pid) {
++				if (ictx->sc == sc) {
++					ictx->interrupted = false;
++					ictx->args = args;
++					ctx = ictx;
++				}
++				break;
++			}
++		}
++		spin_unlock(&fl->lock);
++		if (ctx)
++			goto wait;
++	}
++
+ 	ctx = fastrpc_context_alloc(fl, kernel, sc, args);
+ 	if (IS_ERR(ctx))
+ 		return PTR_ERR(ctx);
+@@ -1273,6 +1300,7 @@
+ 	if (err)
+ 		goto bail;
+ 
++wait:
+ 	if (kernel) {
+ 		if (!wait_for_completion_timeout(&ctx->work, 10 * HZ))
+ 			err = -ETIMEDOUT;
+@@ -1305,6 +1333,7 @@
+ 	}
+ 
+ 	if (err == -ERESTARTSYS) {
++		ctx->interrupted = true;
+ 		list_for_each_entry_safe(buf, b, &fl->mmaps, node) {
+ 			list_del(&buf->node);
+ 			list_add_tail(&buf->node, &fl->cctx->invoke_interrupted_mmaps);
