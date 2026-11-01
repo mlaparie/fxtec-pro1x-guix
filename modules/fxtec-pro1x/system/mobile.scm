@@ -352,6 +352,25 @@
     #~(apply execl #$(file-append tuigreet "/bin/tuigreet") "tuigreet"
              #$%tuigreet-arguments)))
 
+;; Inside the Sway greeter: stevia shown once foot has the focus, tuigreet
+;; in foot, then a note that tuigreet finished (pro1x-greeter: a login, not
+;; a broken greeter) and Sway told to quit.
+(define pro1x-greeter-session
+  (program-file "pro1x-greeter-session"
+    #~(begin
+        (when (zero? (primitive-fork))
+          (sleep 2)
+          (system* (string-append #$glib:bin "/bin/gdbus") "call" "--session"
+                   "--dest" "sm.puri.OSK0" "--object-path" "/sm/puri/OSK0"
+                   "--method" "sm.puri.OSK0.SetVisible" "true")
+          (primitive-_exit 0))
+        (system* #$(file-append foot "/bin/foot") "--app-id=greeter"
+                 "-o" "font=Iosevka Term:size=11"
+                 "-e" #$tuigreet-console)
+        (call-with-output-file (string-append (getenv "HOME") "/tuigreet.status")
+          (lambda (port) (display "done\n" port)))
+        (execl #$(file-append sway/pro1x "/bin/swaymsg") "swaymsg" "exit"))))
+
 ;; The Sway greeter's config: tuigreet in foot (the only window), stevia for it
 ;; (portrait: the keyboard is closed).  Sway quits when tuigreet does.
 (define pro1x-greeter-sway-config
@@ -364,10 +383,9 @@ seat * hide_cursor 1
 # window.  The only tiled window fills the screen anyway, above stevia.
 # stevia (pro1x-greeter lets it show: screen-keyboard-enabled).
 exec " stevia "/bin/phosh-osk-stevia
-# tuigreet's exit status for pro1x-greeter: it finished (a login), or not.
-exec " foot "/bin/foot --app-id=greeter -o font='Iosevka Term:size=11' \
--e " bash-minimal "/bin/sh -c '" tuigreet-console "; echo $? > $HOME/tuigreet.status'; \
-" sway/pro1x "/bin/swaymsg exit
+# tuigreet in foot, then Sway quits (a separate program: Sway splits its
+# commands at semicolons).
+exec " pro1x-greeter-session "
 "))
 
 ;; greetd's greeter: with the hardware keyboard closed, a minimal Sway with
