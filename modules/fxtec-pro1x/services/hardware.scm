@@ -119,7 +119,7 @@
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
-  ;; The CPU's energy mode at boot until one is chosen in the power menu
+  ;; The CPU's energy mode at boot until one is chosen in quick actions
   ;; (then that one, kept in /var/lib/pro1x/cpu-mode): 'auto (balanced,
   ;; battery while the panel is off or the battery low), 'battery (capped
   ;; frequencies), 'balanced (schedutil, dynamic) or 'performance.
@@ -698,7 +698,7 @@ esac
       '()))
 
 (define (pro1x-cpu-mode-shepherd-service config)
-  ;; The CPU mode (pro1x-cpu-mode watch): the one chosen in the power menu,
+  ;; The CPU mode (pro1x-cpu-mode watch): the one chosen in quick actions,
   ;; else cpu-mode, applied at boot, and auto followed while chosen.
   (list
    (shepherd-service

@@ -1,6 +1,6 @@
 #!/bin/sh
 # pro1x-cpu-mode [auto|battery|balanced|performance|next|apply|watch|get]
-# — the CPU's energy mode, as root (sudo, from pro1x-power-menu; the
+# — the CPU's energy mode, as root (sudo, from sway-quick-actions; the
 # pro1x-cpu-mode service applies the saved one at boot and follows auto)
 #
 #   auto         balanced, but battery while the panel is off or the
