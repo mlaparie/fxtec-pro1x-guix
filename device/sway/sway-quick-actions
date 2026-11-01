@@ -9,10 +9,10 @@
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
-# feedback, CPU mode, charge limit, orientation; author: a list, not
-# stepping); Right and Left step only brightness and volume, and Right
-# opens the tool of Wi-Fi, Bluetooth, SIM and Notifications; Esc
-# closes.  The header shows the battery level and charging state; the
+# feedback, CPU mode, charge limit, orientation, and for Wi-Fi and
+# Bluetooth on, off or their tool; author: a list, not stepping); Right
+# and Left step only brightness and volume, and Right opens Wi-Fi's and
+# Bluetooth's choices and the SIM and Notifications tools; Esc closes.  The header shows the battery level and charging state; the
 # Wi-Fi line the network and signal, the mobile line the access technology,
 # signal and operator; the charge limit line what config.scm set
 # (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
@@ -192,10 +192,6 @@ sim_unlock() {
     pin=
 }
 
-hint() {                        # grey "  → what Right opens" (author)
-    printf ' \033[90m → %s\033[0m' "$1"   # space first: fields stay clean
-}
-
 dim() {                         # grey for off states
     case "$1" in
         off|hidden|"not running"|*"(muted)") printf '\033[90m%s\033[0m' "$1" ;;
@@ -286,10 +282,10 @@ choose() {
             . /etc/pro1x/charge.conf 2>/dev/null
             pro1x-charge-limit temporary || cur=default
             opts=$(printf 'default\tconfig.scm: %s\n' \
-                          "$( [ -n "${CHARGE_LIMIT:-}" ] && echo "$CHARGE_LIMIT% (again at $CHARGE_RESUME%)" || echo off)"
+                          "$( [ -n "${CHARGE_LIMIT:-}" ] && echo "$CHARGE_LIMIT% (charge again at $CHARGE_RESUME%)" || echo off)"
                    for o in $CHARGE_OPTS; do
                        if [ "$o" = off ]; then printf 'off\toff (charge to full)\n'
-                       else printf '%s\t%s%% (again at %s%%)\n' "$o" "$o" $((o - 5)); fi
+                       else printf '%s\t%s%% (charge again at %s%%)\n' "$o" "$o" $((o - 5)); fi
                    done) ;;
         cpu)
             title="CPU mode (until reboot)"
@@ -297,6 +293,13 @@ choose() {
             pro1x-cpu-mode temporary || cur=default
             CPU_MODE=auto; . /etc/pro1x/cpu.conf 2>/dev/null
             opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n' "$CPU_MODE") ;;
+        wifi|bluetooth)
+            # Power, Right or Enter (author, 2026-11-02): on or off, or the
+            # list of networks (pro1x-wifi) or devices (bluetuith).
+            if [ "$1" = wifi ]; then title=Wi-Fi tool=networks
+            else title=Bluetooth tool=devices; fi
+            cur=$(state_of "$1")
+            opts=$(printf 'on\ton\noff\toff\ntool\t%s…\n' "$tool") ;;
         orient)
             title="orientation"
             cur=$(orientation)
@@ -323,6 +326,9 @@ choose() {
         cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
         charge) charge_set "$pick" ;;
         orient) set_orientation "$pick" ;;
+        wifi|bluetooth)
+            if [ "$pick" = tool ]; then step "$1" +
+            else set_to "$1" "$pick"; fi ;;
     esac
 }
 
@@ -368,7 +374,7 @@ charge_limit() {                # config.scm's, or this boot's override
         return
     fi
     set -- $(pro1x-charge-limit get 2>/dev/null)
-    if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (again at %s%%)' "$1" "$2"; fi
+    if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (charge again at %s%%)' "$1" "$2"; fi
     pro1x-charge-limit temporary && until_reboot
 }
 cpu_mode() {
@@ -455,14 +461,14 @@ lines() {
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
-        "notif       Notifications        $(cat "$d/notif")$(hint list)" \
+        "notif       Notifications        $(cat "$d/notif")" \
         "lock        Lock screen" \
         "camera      Camera" \
-        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")$(hint networks)" \
-        "wwan        Mobile data          $mobile$(hint technologies)" \
+        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
-        "sim         SIM                  $(sim_state "$kv")$(hint unlock)" \
-        "bluetooth   Bluetooth            $(dim "$bt")$(hint devices)" \
+        "sim         SIM                  $(sim_state "$kv")" \
+        "bluetooth   Bluetooth            $(dim "$bt")" \
         "airplane    Airplane mode        $(dim "$plane")" \
         "rotation    Auto-rotation        $(dim "$rot")" \
         "orient      Orientation          $orient_shown" \
@@ -715,15 +721,16 @@ lines |
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
+        --bind="load:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  wifi|bluetooth) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                 esac" \
