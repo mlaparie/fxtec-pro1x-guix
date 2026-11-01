@@ -616,8 +616,11 @@ esac
                (set! last-motion m)))))
        (setvbuf (current-output-port) 'line)
        ;; In a pocket the sensor rests (it costs about 4 % of a core,
-       ;; measured 2026-11-01): streams of 20 s, none started while the
-       ;; proximity sensor reads near; a stream under way runs out.
+       ;; measured 2026-11-01): one stream, ended (by its PID, which the
+       ;; shell prints before exec) when the proximity sensor reads near,
+       ;; started again when away.  Not a stream every 20 s: the ADSP
+       ;; crashed after some 45 of those (2026-10-31 23:50), and it had
+       ;; crashed once without this service too.
        (define (pocketed?) (file-exists? "/run/pro1x-pocket"))
        (let loop ((resting? #f))
          (if (pocketed?)
@@ -625,17 +628,23 @@ esac
                (unless resting? (format #t "pocket: sensor resting~%"))
                (sleep 1)
                (loop #t))
-         (let ((port (open-pipe* OPEN_READ
-                                 #$(file-append libssc "/bin/ssccli")
-                                 "--sensor" "accelerometer"
-                                 "--timeout" "20"))
-               (start (now)))
+         (let* ((port (open-pipe* OPEN_READ "/bin/sh" "-c"
+                                  (string-append
+                                   "echo $$; exec "
+                                   #$(file-append libssc "/bin/ssccli")
+                                   " --sensor accelerometer --timeout 864000")))
+                (pid (string->number (read-line port)))
+                (start (now)))
            (let read-loop ((n 0))
              (let ((line (read-line port)))
                (cond
                 ((eof-object? line)
-                 (when (< (- (now) start) 15)    ;ended early: a problem
+                 (when pid                       ;not ended by us
                    (format #t "ssccli ended after ~a samples~%" n)))
+                ((and pid (pocketed?))
+                 (false-if-exception (kill pid SIGTERM))
+                 (set! pid #f)
+                 (read-loop n))
                 ((regexp-exec rx line)
                  => (lambda (m)
                       (sample! (string->number (match:substring m 1))
@@ -643,8 +652,9 @@ esac
                                (string->number (match:substring m 3)))
                       (read-loop (+ n 1))))
                 (else (format #t "ssccli: ~a~%" line) (read-loop n)))))
-           (when (< (- (now) start) 15) (sleep 5))   ;failing: slow down
            (close-pipe port)
+           ;; Ended by itself (the ADSP gone?): wait before trying again.
+           (when pid (sleep 30))
            (loop #f)))))))
 
 (define (pro1x-shake-torch-shepherd-service config)

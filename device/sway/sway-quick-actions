@@ -380,7 +380,7 @@ lines() {
         "lock        Lock screen" \
         "camera      Camera" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")$(hint networks)" \
-        "wwan        Mobile data          $mobile" \
+        "wwan        Mobile data          $mobile$(hint technologies)" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "sim         SIM                  $(sim_state "$kv")$(hint unlock)" \
         "bluetooth   Bluetooth            $(dim "$bt")$(hint devices)" \

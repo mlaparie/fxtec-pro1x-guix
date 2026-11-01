@@ -239,6 +239,7 @@ static int open_pointer_fifo(void)
 	unlink(POINTER_FIFO);
 	if (mkfifo(POINTER_FIFO, 0620) < 0)
 		return -1;
+	chmod(POINTER_FIFO, 0620);	/* mkfifo's mode went through the umask */
 	if (input)
 		chown(POINTER_FIFO, 0, input->gr_gid);
 	fd = open(POINTER_FIFO, O_RDONLY | O_NONBLOCK);
