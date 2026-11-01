@@ -13,7 +13,7 @@
 ;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?,
 ;;;     shake-action;
 ;;;   • app rules for Sway: portrait-apps, landscape-apps, fullscreen-apps,
-;;;     lock-screen-apps; the camera button (camera-double-press);
+;;;     lock-screen-apps; the camera button (camera-triple-press);
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
@@ -142,11 +142,11 @@
                       (default '("org.gnome.Calls" "org.gnome.Snapshot")))
   (lock-screen-apps   pro1x-hardware-lock-screen-apps
                       (default '("org.gnome.Calls" "org.gnome.Snapshot")))
-  ;; The camera button in Sway: a double press runs this shell command
+  ;; The camera button in Sway: a triple press runs this shell command
   ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
   ;; a single press elsewhere left-clicks where the pointer is (right with
   ;; Fn), held the touchscreen is a touchpad (with Super: a window drag).
-  (camera-double-press pro1x-hardware-camera-double-press
+  (camera-triple-press pro1x-hardware-camera-triple-press
                        (default "snapshot"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
@@ -852,7 +852,7 @@ esac
                      (symbol->string (pro1x-hardware-lock-keyboard config))
                      "\n")))
       ;; /etc/pro1x/apps.conf: the app lists and the camera button's
-      ;; double press, for pro1x-portrait-apps, pro1x-open,
+      ;; triple press, for pro1x-portrait-apps, pro1x-open,
       ;; pro1x-camera-button and pro1x-call-watch.
       ("pro1x/apps.conf"
        ,(plain-file "apps.conf"
@@ -866,8 +866,8 @@ esac
                      (string-join (pro1x-hardware-fullscreen-apps config)) "'\n"
                      "LOCK_SCREEN_APPS='"
                      (string-join (pro1x-hardware-lock-screen-apps config)) "'\n"
-                     "CAMERA_DOUBLE_PRESS='"
-                     (pro1x-hardware-camera-double-press config) "'\n")))
+                     "CAMERA_TRIPLE_PRESS='"
+                     (pro1x-hardware-camera-triple-press config) "'\n")))
       ;; /etc/sway/pro1x.d/apps.conf: fullscreen-apps as Sway rules (the
       ;; Sway config includes the directory).
       ("sway/pro1x.d/apps.conf"

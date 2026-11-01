@@ -1479,7 +1479,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
-;;;   bin/pro1x-camera-button            the camera button: shoot, double press,
+;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
 ;;;                                      right click, held left drag (at the touch)
 ;;;   bin/pro1x-open                     run a command; over the lock screen
 ;;;                                      for lock-screen-apps

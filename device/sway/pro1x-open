@@ -8,7 +8,7 @@
 # panel, and
 # locks again as soon as the focus goes to another app or the app closes
 # (author, 2026-10-31: the camera, like Calls, should open while locked).
-# Used by the camera button's double press and the shake action; Calls has
+# Used by the camera button's triple press and the shake action; Calls has
 # pro1x-call-watch.  Meanwhile the phone is unlocked behind that app.
 #
 # State: written 2026-10-31, not yet run on the phone.

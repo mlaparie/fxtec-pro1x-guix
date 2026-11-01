@@ -2,12 +2,13 @@
 # pro1x-camera-button — the camera button in Sway (author, 2026-10-31)
 #
 #   Snapshot focused:  a press takes a picture (pro1x-camera), at once
-#   double press:      CAMERA_DOUBLE_PRESS (/etc/pro1x/apps.conf,
-#                      camera-double-press in config.scm; default snapshot),
+#   triple press:      CAMERA_TRIPLE_PRESS (/etc/pro1x/apps.conf,
+#                      camera-triple-press in config.scm; default snapshot),
 #                      through pro1x-open, so it opens over the lock screen;
 #                      not while the proximity sensor reads near (a pocket)
 #   single press:      a left click where the pointer is; with Fn
 #                      (the F(x) key) held, a right click
+#   double press:      a double click
 #   held 0.4 s:        the touchscreen is a touchpad until released:
 #                      finger moves move the pointer, touch reaches no app;
 #                      with Super held too, the left button is held: a
@@ -15,19 +16,19 @@
 #                      stays visible 3 s after (hide_cursor)
 #
 # Reads KEY_CAMERA from gpio-keys with evtest (Sway acts on presses only,
-# and cannot tell a double press; Sway's own XF86WebCam binding is a nop,
+# and cannot count presses; Sway's own XF86WebCam binding is a nop,
 # so apps do not get the key).  The pointer is pro1x-doubletap's virtual
 # absolute one, moved in C (no lag), which also reads Super (keyd's
 # virtual keyboard) and Fn (keyd listen); this sends it click, hold and
-# release through /run/pro1x-pointer.  A single press waits 0.35 s for a second one.
+# release through /run/pro1x-pointer.  A short press waits 0.35 s for another one.
 # Started by the Sway config; ends with Sway.
 #
-# State: 2026-11-01: double press opened Snapshot (author); the first
+# State: 2026-11-01: a double press opened Snapshot (author; now triple); the first
 # follower (this script moving Sway's cursor) lagged and could not drag
 # windows; then a drag that pressed Super itself; now a touchpad while
 # held (author's design).  Not yet run.
 
-CAMERA_DOUBLE_PRESS=snapshot
+CAMERA_TRIPLE_PRESS=snapshot
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 st="$rt/pro1x-camera-button"           # press stamp; .pending, .drag
@@ -57,16 +58,21 @@ evtest "$dev" 2>/dev/null |
     while IFS= read -r line; do
         case "$line" in
             *"(KEY_CAMERA), value 1"*)
-                if [ -f "$st.pending" ]; then        # the second press
+                # .pending: "COUNT STAMP", the short presses so far.
+                n=$(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0)
+                if [ "${n:-0}" -ge 2 ]; then          # the third press
                     rm -f "$st.pending" "$st"
                     [ -e /run/pro1x-pocket ] && continue
-                    pro1x-open "$CAMERA_DOUBLE_PRESS" &
+                    pro1x-open "$CAMERA_TRIPLE_PRESS" &
                     continue
                 fi
-                if snapshot_focused; then pro1x-camera & continue; fi
+                if [ "${n:-0}" = 0 ] && snapshot_focused; then
+                    pro1x-camera & continue
+                fi
                 stamp=$(date +%s%N); echo "$stamp" > "$st"
                 ( sleep 0.4
                   [ "$(cat "$st" 2>/dev/null)" = "$stamp" ] || exit 0
+                  rm -f "$st.pending"
                   touch "$st.drag"
                   # Touch off in Sway meanwhile: the finger moves the
                   # pointer (a touchpad), not the app under it.
@@ -79,11 +85,15 @@ evtest "$dev" 2>/dev/null |
                     swaymsg 'input type:touch events enabled' >/dev/null
                 elif [ -f "$st" ]; then              # a short press
                     rm -f "$st"
-                    stamp=$(date +%s%N); echo "$stamp" > "$st.pending"
+                    n=$(( $(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0) + 1 ))
+                    stamp=$(date +%s%N); echo "$n $stamp" > "$st.pending"
+                    # No further press within 0.35 s: one click, or two
+                    # (a double click).
                     ( sleep 0.35
-                      [ "$(cat "$st.pending" 2>/dev/null)" = "$stamp" ] || exit 0
+                      [ "$(cut -d' ' -f2 "$st.pending" 2>/dev/null)" = "$stamp" ] || exit 0
                       rm -f "$st.pending"
-                      pointer click ) &
+                      pointer click
+                      [ "$n" -ge 2 ] && { sleep 0.05; pointer click; } ) &
                 fi ;;
         esac
     done
