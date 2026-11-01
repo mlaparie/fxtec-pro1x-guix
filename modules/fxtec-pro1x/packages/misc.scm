@@ -346,6 +346,76 @@ to build an FDE userdata image on the host before flashing.")
 S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-camera-app — a camera on libcamera: stills, tap to focus, ISO
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-camera-app
+  (package
+    (name "pro1x-camera-app")
+    (version "0.1")
+    (source (local-file (repository-file "device/camera") "camera"
+                        #:recursive? #t))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:install-plan ''(("pro1x-camera-app" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let* ((bin (string-append #$output "/bin/pro1x-camera-app"))
+                     (dirs (lambda (sub)
+                             (filter file-exists?
+                                     (map (lambda (input)
+                                            (string-append (cdr input) sub))
+                                          inputs)))))
+                (chmod bin #o755)
+                (substitute* bin
+                  (("^#!/usr/bin/env python3")
+                   (string-append "#!" (search-input-file inputs "/bin/python3"))))
+                (wrap-program bin
+                  `("GI_TYPELIB_PATH" ":" prefix
+                    ,(dirs "/lib/girepository-1.0"))
+                  ;; Only these plugins: libcamerasrc from libcamera-pro1x
+                  ;; (moWerk's controls), not another libcamera's.
+                  `("GST_PLUGIN_SYSTEM_PATH" ":" =
+                    ,(dirs "/lib/gstreamer-1.0"))
+                  `("GUIX_PYTHONPATH" ":" prefix
+                    ,(dirs #$(string-append
+                              "/lib/python"
+                              (version-major+minor (package-version python))
+                              "/site-packages")))))))
+          (add-after 'wrap 'desktop-entry
+            (lambda _
+              (let ((apps (string-append #$output "/share/applications")))
+                (mkdir-p apps)
+                (call-with-output-file
+                    (string-append apps "/org.pro1x.Camera.desktop")
+                  (lambda (port)
+                    (format port "[Desktop Entry]
+Type=Application
+Name=Camera
+Comment=Photos with tap to focus, ISO and flash (libcamera)
+Exec=~a/bin/pro1x-camera-app
+Icon=camera-photo
+Categories=AudioVideo;Video;
+StartupNotify=false
+" #$output)))))))))
+    (inputs
+     ;; gobject-introspection: the cairo and xlib typelibs GTK 3 needs.
+     (list bash-minimal python python-pygobject gobject-introspection gtk+
+           gdk-pixbuf pango
+           gstreamer gst-plugins-base gst-plugins-good
+           (list libcamera-pro1x "gst")))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Camera for the F(x)tec Pro1X on libcamera")
+    (description
+     "A camera application for the F(x)tec Pro1X: a 1080p viewfinder,
+photos at the sensor's 12 MP mode, tap to focus, ISO, exposure
+compensation and the LED as flash, through libcamera's GStreamer source and
+the port's libcamera controls.")
+    (license license:gpl3+)))
+
+;;; ---------------------------------------------------------------------------
 ;;; cameractrl — V4L2 camera control GUI (focus, exposure)
 ;;; ---------------------------------------------------------------------------
 (define-public cameractrl
@@ -862,7 +932,11 @@ ModemManager, for clients such as Chatty.")
                "stevia-optional-device-state.patch")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
-               "stevia-shortcuts-bar-at-start.patch")))))
+               "stevia-shortcuts-bar-at-start.patch")
+              ;; Ours: 250 px in portrait (author: a little taller).
+              (local-file
+               (repository-file "device/phosh/stevia-portrait-height.patch")
+               "stevia-portrait-height.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
@@ -892,8 +966,9 @@ ModemManager, for clients such as Chatty.")
                 (call-with-output-file
                     (string-append dir "/90_fxtec-pro1x.gschema.override")
                   (lambda (port)
-                    ;; scaling=[]: the base height (200) in portrait too,
-                    ;; not 40 mm (352 px here), which was too tall (author).
+                    ;; scaling=[]: the base height (200), 250 in portrait
+                    ;; (our patch), not 40 mm (352 px here), which was too
+                    ;; tall (author).
                     (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
@@ -984,6 +1059,9 @@ mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
                                    "/bin"))
             (invoke "gcc" "-O2" "-Wall" "-o"
                     (string-append bin "/pro1x-doubletap") #$source
+                    ;; keyd listen: its Fn layer, for the camera button.
+                    (string-append "-DKEYD=\"" #$(file-append keyd "/bin/keyd")
+                                   "\"")
                     (string-append
                      "-I" #$(this-package-native-input "linux-libre-headers")
                      "/include"))))))
@@ -1470,7 +1548,11 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
-;;;   bin/pro1x-camera                   camera button: open, focus or shoot Snapshot
+;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
+;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
+;;;                                      right click, held left drag (at the touch)
+;;;   bin/pro1x-open                     run a command; over the lock screen
+;;;                                      for lock-screen-apps
 ;;;   bin/pro1x-bar                      the bar, with its own blocks in portrait
 ;;;   bin/pro1x-volume-lock              both volume keys together lock
 ;;;   bin/pro1x-power-key                power key: screen off or on
@@ -1523,12 +1605,16 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
+          ("pro1x-camera-button" "bin/")
+          ("pro1x-open" "bin/")
           ("pro1x-bar" "bin/")
           ("pro1x-volume-lock" "bin/")
           ("pro1x-power-key" "bin/")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
           ("pro1x-sleep" "bin/")
+          ("pro1x-cpu-mode" "bin/")
+          ("pro1x-charge-limit" "bin/")
           ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases
@@ -1601,7 +1687,7 @@ window opened by a sway key binding.")
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
-                   "pro1x-power-button"))
+                   "pro1x-power-button" "pro1x-camera-button" "pro1x-open"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

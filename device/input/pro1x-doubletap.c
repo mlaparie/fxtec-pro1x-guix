@@ -12,7 +12,9 @@
  * virtual keyboard, since keyd grabs the real one).  Nothing happens while
  * the panel is on, nor in a pocket: while /run/pro1x-pocket exists (the
  * proximity sensor sees something near, kept by pro1x-pocket; author,
- * 2026-10-30).
+ * 2026-10-30) — except on a lock screen, where a double tap away from its
+ * keyboard sends the power key too, which blanks the panel (author,
+ * 2026-10-31).
  *
  * Usage: pro1x-doubletap [interval-ms [distance]]   (defaults 400, 150)
  *
@@ -22,6 +24,9 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <glob.h>
+#include <grp.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
@@ -52,6 +57,74 @@ static long now_ms(void)
 static int pocketed(void)
 {
 	return access("/run/pro1x-pocket", F_OK) == 0;
+}
+
+/* A lock screen runs: a gtklock or swaylock process. */
+static int locker_running(void)
+{
+	DIR *d = opendir("/proc");
+	struct dirent *e;
+	int found = 0;
+
+	if (!d)
+		return 0;
+	while (!found && (e = readdir(d))) {
+		char path[300], comm[32] = "";
+		FILE *f;
+
+		if (e->d_name[0] < '0' || e->d_name[0] > '9')
+			continue;
+		snprintf(path, sizeof path, "/proc/%s/comm", e->d_name);
+		if (!(f = fopen(path, "r")))
+			continue;
+		if (fgets(comm, sizeof comm, f))
+			found = !strncmp(comm, "gtklock\n", 8) || !strncmp(comm, "swaylock\n", 9);
+		fclose(f);
+	}
+	closedir(d);
+	return found;
+}
+
+/* On a lock screen, may a double tap at touch row Y blank the panel?  Not
+ * over the lock screen's keyboard, where a doubled letter looks like a
+ * double tap: pro1x-lock writes /run/user/UID/pro1x-lock-osk, "none" (no
+ * keyboard: anywhere), "portrait" (keyboard in the lower half: upper half
+ * only), or "landscape" (not mapped: never). */
+static int lock_tap_allowed(int y, int ymax)
+{
+	glob_t g;
+	char mode[16] = "none";
+
+	if (glob("/run/user/*/pro1x-lock-osk", 0, NULL, &g) == 0) {
+		FILE *f = fopen(g.gl_pathv[0], "r");
+
+		if (f) {
+			if (!fgets(mode, sizeof mode, f))
+				strcpy(mode, "none");
+			fclose(f);
+		}
+		globfree(&g);
+	}
+	if (!strncmp(mode, "none", 4))
+		return 1;
+	if (!strncmp(mode, "portrait", 8))
+		return ymax > 0 && y < ymax / 2;
+	return 0;
+}
+
+/* The last touch, for the camera button's clicks (pro1x-camera-button,
+ * author 2026-11-01): /run/pro1x-touch holds "X Y XMAX YMAX DOWN" in
+ * touchscreen units, written at each frame with a touch and at its end.
+ * Through a temporary file, so a reader never sees half a line. */
+static void note_touch(int x, int y, int xmax, int ymax, int down)
+{
+	FILE *f = fopen("/run/pro1x-touch.new", "w");
+
+	if (!f)
+		return;
+	fprintf(f, "%d %d %d %d %d\n", x, y, xmax, ymax, down);
+	fclose(f);
+	rename("/run/pro1x-touch.new", "/run/pro1x-touch");
 }
 
 /* "On" or "Off" in /sys/class/drm/<connector>/dpms for the DSI panel.
@@ -117,6 +190,94 @@ static int open_uinput(void)
 	return fd;
 }
 
+/* The camera button's pointer (pro1x-camera-button, author 2026-11-01):
+ * an absolute pointer kept in touchscreen units, scaled to 0..65535.
+ * Mapped to DSI-1 (pro1x.conf), wlroots turns it with the output as it
+ * turns touches, so finger moves move it the same way at any rotation.
+ * Driven through the /run/pro1x-pointer fifo (the input group may write):
+ *   "hold"     while the camera button is held, the touchscreen is a
+ *              touchpad: finger moves move the pointer (TOUCHPAD_GAIN);
+ *   "release"  the button let go;
+ *   "click"    a left click where the pointer is, a right one while
+ *              keyd's Fn layer is held (keyd listen: "+fn", "-fn");
+ *   "pad on", "pad off", "pad toggle"
+ *              touchpad mode without holding anything (quick actions,
+ *              Super+t; kept in PAD_STATE until a reboot: every boot
+ *              starts as a touchscreen, author 2026-11-01).
+ * As a touchpad, the touchscreen is grabbed (EVIOCGRAB: no app gets the
+ * touches) and moves the pointer; a tap is a click (right with Fn), once
+ * TAP_MS pass without another touch; a touch within TAP_MS of a tap holds
+ * the left button while the finger is down (tap and drag: a selection).
+ * With Super held, a touch holds the left button (Sway's
+ * floating_modifier: a window drag), with Super and Fn the right one (a
+ * resize); Super alone holds nothing (author).  A lock screen
+ * always gets the touchscreen: in touchpad mode, the first touch on it
+ * lets go of the grab.  Super comes from keyd's virtual keyboard, read
+ * here for Esc anyway. */
+#define PAD_STATE "/run/pro1x-touch-mode"
+#define POINTER_FIFO "/run/pro1x-pointer"
+#define POINTER_VENDOR 0x1234
+#define POINTER_PRODUCT 0x5678
+#define TOUCHPAD_GAIN 1.5
+#define TAP_MS 250
+#ifndef KEYD
+#define KEYD "keyd"
+#endif
+
+/* keyd's layer changes, for Fn: a pipe from "keyd listen", -1 if none. */
+static FILE *keyd_listen;
+
+static int open_keyd_listen(void)
+{
+	keyd_listen = popen(KEYD " listen", "r");
+	return keyd_listen ? fileno(keyd_listen) : -1;
+}
+
+static int open_pointer(void)
+{
+	struct uinput_setup setup = { .id = { .bustype = BUS_VIRTUAL,
+		.vendor = POINTER_VENDOR, .product = POINTER_PRODUCT } };
+	struct uinput_abs_setup abs = { .absinfo = { .maximum = 65535 } };
+	int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+
+	if (fd < 0)
+		return -1;
+	ioctl(fd, UI_SET_EVBIT, EV_KEY);
+	ioctl(fd, UI_SET_KEYBIT, BTN_LEFT);
+	ioctl(fd, UI_SET_KEYBIT, BTN_RIGHT);
+	ioctl(fd, UI_SET_EVBIT, EV_ABS);
+	ioctl(fd, UI_SET_ABSBIT, ABS_X);
+	ioctl(fd, UI_SET_ABSBIT, ABS_Y);
+	abs.code = ABS_X;
+	ioctl(fd, UI_ABS_SETUP, &abs);
+	abs.code = ABS_Y;
+	ioctl(fd, UI_ABS_SETUP, &abs);
+	strcpy(setup.name, "pro1x-pointer");
+	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+/* The fifo, read end; a write end of our own so it never reads EOF. */
+static int open_pointer_fifo(void)
+{
+	struct group *input = getgrnam("input");
+	int fd;
+
+	unlink(POINTER_FIFO);
+	if (mkfifo(POINTER_FIFO, 0620) < 0)
+		return -1;
+	chmod(POINTER_FIFO, 0620);	/* mkfifo's mode went through the umask */
+	if (input)
+		chown(POINTER_FIFO, 0, input->gr_gid);
+	fd = open(POINTER_FIFO, O_RDONLY | O_NONBLOCK);
+	if (fd >= 0)
+		open(POINTER_FIFO, O_WRONLY | O_NONBLOCK);
+	return fd;
+}
+
 static void emit(int fd, int type, int code, int value)
 {
 	struct input_event ev = { .type = type, .code = code, .value = value };
@@ -133,11 +294,86 @@ static void press_power(int fd)
 	emit(fd, EV_SYN, SYN_REPORT, 0);
 }
 
+/* The touchpad's state. */
+static int touch_fd = -1, pointer_fd = -1;
+static int pad, holding, grabbed, drag_button, fn, meta;
+static long tap_until;		/* a tap's click is due then; 0: none */
+static int tap_button;
+
+static void set_grab(int want)
+{
+	if (want == grabbed || touch_fd < 0)
+		return;
+	if (ioctl(touch_fd, EVIOCGRAB, (void *) (long) want) == 0)
+		grabbed = want;
+}
+
+static void save_pad(void)
+{
+	FILE *f = fopen(PAD_STATE, "w");
+	if (f) {
+		fputs(pad ? "touchpad\n" : "touchscreen\n", f);
+		fclose(f);
+	}
+}
+
+static void load_pad(void)
+{
+	char buf[16] = "";
+	FILE *f = fopen(PAD_STATE, "r");
+
+	if (f) {
+		if (!fgets(buf, sizeof buf, f))
+			buf[0] = 0;
+		fclose(f);
+	}
+	pad = !strncmp(buf, "touchpad", 8);
+}
+
+static void pointer_to(int fd, double x, double y, int xmax, int ymax)
+{
+	if (fd < 0 || xmax <= 0 || ymax <= 0)
+		return;
+	emit(fd, EV_ABS, ABS_X, (int) (x * 65535 / xmax));
+	emit(fd, EV_ABS, ABS_Y, (int) (y * 65535 / ymax));
+	emit(fd, EV_SYN, SYN_REPORT, 0);
+}
+
+static void pointer_button(int fd, int code, int value)
+{
+	if (fd < 0)
+		return;
+	emit(fd, EV_KEY, code, value);
+	emit(fd, EV_SYN, SYN_REPORT, 0);
+}
+
+static void drag_start(void)
+{
+	if (drag_button)
+		return;
+	drag_button = fn ? BTN_RIGHT : BTN_LEFT;
+	pointer_button(pointer_fd, drag_button, 1);
+}
+
+static void drag_end(void)
+{
+	if (!drag_button)
+		return;
+	pointer_button(pointer_fd, drag_button, 0);
+	drag_button = 0;
+}
+
 int main(int argc, char **argv)
 {
 	int touch, out, x = 0, y = 0;
 	long last_down = 0, quiet_until = 0;
 	int last_x = 0, last_y = 0;
+	int ymax = 0, xmax = 0, down = 0, moved = 0;
+	int pointer, pfifo, layers, have_prev = 0, was_down = 0;
+	double px = 0, py = 0;		/* the pointer, touchscreen units */
+	int prev_x = 0, prev_y = 0;	/* the finger, for touchpad moves */
+	int start_x = 0, start_y = 0;	/* where the touch began, for taps */
+	long start_t = 0;
 
 	if (argc > 1)
 		interval_ms = atol(argv[1]);
@@ -149,32 +385,112 @@ int main(int argc, char **argv)
 		fprintf(stderr, "pro1x-doubletap: no \"%s\" device\n", TOUCH_NAME);
 		return 1;
 	}
+	{
+		struct input_absinfo abs;
+
+		if (ioctl(touch, EVIOCGABS(ABS_MT_POSITION_Y), &abs) == 0)
+			ymax = abs.maximum;
+		if (ioctl(touch, EVIOCGABS(ABS_MT_POSITION_X), &abs) == 0)
+			xmax = abs.maximum;
+	}
 	out = open_uinput();
 	if (out < 0) {
 		perror("pro1x-doubletap: /dev/uinput");
 		return 1;
 	}
+	pointer = pointer_fd = open_pointer();
+	touch_fd = touch;
+	pfifo = open_pointer_fifo();
+	load_pad();
+	set_grab(pad);
+	layers = open_keyd_listen();
+	px = xmax / 2.0;
+	py = ymax / 2.0;
+	if (pointer < 0 || pfifo < 0)
+		perror("pro1x-doubletap: camera button pointer");
 	fprintf(stderr, "pro1x-doubletap: watching, interval %ld ms, distance %ld\n",
 		interval_ms, distance);
 
 	int kbd = open_named(KEYBOARD_NAME);	/* -1 until keyd made it */
 
 	for (;;) {
-		struct pollfd p[2] = {
+		/* poll skips the entries whose fd is -1. */
+		struct pollfd p[4] = {
 			{ .fd = touch, .events = POLLIN },
 			{ .fd = kbd, .events = POLLIN },
+			{ .fd = pfifo, .events = POLLIN },
+			{ .fd = layers, .events = POLLIN },
 		};
 		struct input_event ev;
 
-		if (poll(p, kbd >= 0 ? 2 : 1, kbd >= 0 ? -1 : 5000) < 0) {
+		int wait = kbd >= 0 && layers >= 0 ? -1 : 5000;
+
+		if (tap_until) {
+			long left = tap_until - now_ms();
+
+			wait = left > 0 ? (int) left : 0;
+		}
+		if (poll(p, 4, wait) < 0) {
 			if (errno == EINTR)
 				continue;
 			perror("poll");
 			return 1;
 		}
+		/* A tap with no touch after it: its click. */
+		if (tap_until && now_ms() >= tap_until) {
+			tap_until = 0;
+			pointer_button(pointer, tap_button, 1);
+			pointer_button(pointer, tap_button, 0);
+		}
 		if (p[0].revents & (POLLERR | POLLHUP)) {
 			fprintf(stderr, "pro1x-doubletap: touch device gone\n");
 			return 1;	/* Shepherd respawns us */
+		}
+		if (layers >= 0 && (p[3].revents & (POLLIN | POLLHUP))) {
+			char line[64];
+
+			if (!fgets(line, sizeof line, keyd_listen)) {
+				pclose(keyd_listen);	/* keyd gone: again later */
+				layers = -1;
+				fn = 0;
+			} else if (!strcmp(line, "+fn\n")) {
+				fn = 1;
+			} else if (!strcmp(line, "-fn\n")) {
+				fn = 0;
+			}
+		} else if (layers < 0) {
+			layers = open_keyd_listen();
+		}
+		if (p[2].revents & POLLIN) {
+			char cmd[64];
+			ssize_t n = read(pfifo, cmd, sizeof cmd - 1);
+
+			cmd[n > 0 ? n : 0] = 0;
+			if (strstr(cmd, "pad")) {
+				pad = strstr(cmd, "toggle") ? !pad : !!strstr(cmd, "on");
+				save_pad();
+				set_grab(pad || holding);
+				if (pad)
+					pointer_to(pointer, px, py, xmax, ymax);
+				else if (!holding)
+					drag_end();
+			} else if (strstr(cmd, "click")) {
+				int button = fn ? BTN_RIGHT : BTN_LEFT;
+
+				pointer_to(pointer, px, py, xmax, ymax);
+				pointer_button(pointer, button, 1);
+				pointer_button(pointer, button, 0);
+			} else if (strstr(cmd, "hold") && !holding) {
+				holding = 1;
+				have_prev = 0;
+				set_grab(1);
+				pointer_to(pointer, px, py, xmax, ymax);	/* shows it */
+			} else if (strstr(cmd, "release") && holding) {
+				holding = 0;
+				set_grab(pad);
+				if (!pad)
+					drag_end();
+			}
 		}
 		if (kbd < 0) {
 			kbd = open_named(KEYBOARD_NAME);
@@ -185,6 +501,10 @@ int main(int argc, char **argv)
 			while (read(kbd, &ev, sizeof ev) == sizeof ev) {
 				long t = now_ms();
 
+				if (ev.type == EV_KEY && (ev.code == KEY_LEFTMETA ||
+							  ev.code == KEY_RIGHTMETA) &&
+				    ev.value != 2)
+					meta = ev.value;
 				if (ev.type == EV_KEY && ev.code == KEY_ESC &&
 				    ev.value == 1 && t >= quiet_until && panel_off() &&
 				    !pocketed()) {
@@ -200,23 +520,70 @@ int main(int argc, char **argv)
 			long t;
 
 			if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_X)
-				x = ev.value;
+				x = ev.value, moved = 1;
 			else if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_Y)
-				y = ev.value;
+				y = ev.value, moved = 1;
+			else if (ev.type == EV_KEY && ev.code == BTN_TOUCH)
+				down = ev.value, moved = 1;
+			else if (ev.type == EV_SYN && ev.code == SYN_REPORT && moved) {
+				note_touch(x, y, xmax, ymax, down);
+				if (down && !was_down) {	/* a touch begins */
+					start_t = now_ms();
+					start_x = x;
+					start_y = y;
+					/* Touchpad mode: not over a lock screen. */
+					if (pad && !holding)
+						set_grab(!locker_running());
+					/* Super, or a tap just before: the button held
+					 * while the finger is down. */
+					if (grabbed && (meta || tap_until)) {
+						tap_until = 0;
+						drag_start();
+					}
+				} else if (!down && was_down) {	/* it ends */
+					if (drag_button)
+						drag_end();
+					else if (grabbed && now_ms() - start_t < 200 &&
+						 abs(x - start_x) < 60 && abs(y - start_y) < 60) {
+						tap_until = now_ms() + TAP_MS;	/* a tap */
+						tap_button = fn ? BTN_RIGHT : BTN_LEFT;
+					}
+				}
+				was_down = down;
+				if (grabbed && down && have_prev) {
+					px += (x - prev_x) * TOUCHPAD_GAIN;
+					py += (y - prev_y) * TOUCHPAD_GAIN;
+					px = px < 0 ? 0 : px > xmax ? xmax : px;
+					py = py < 0 ? 0 : py > ymax ? ymax : py;
+					pointer_to(pointer, px, py, xmax, ymax);
+				}
+				have_prev = down;
+				prev_x = x;
+				prev_y = y;
+				moved = 0;
+			}
 			if (!(ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 1))
 				continue;
 
 			/* A touch-down.  Position events of this touch may follow in
 			 * the same frame; the previous ones are close enough. */
 			t = now_ms();
-			if (t < quiet_until || !panel_off() || pocketed()) {
+			int off = panel_off();
+			/* Panel off: a double tap wakes it.  Panel on with a lock
+			 * screen: a double tap blanks it (author, 2026-10-31). */
+			if (t < quiet_until || pocketed() || (!off && !locker_running())) {
 				last_down = 0;
 				continue;
 			}
 			if (last_down && t - last_down < interval_ms &&
 			    abs(x - last_x) < distance && abs(y - last_y) < distance) {
+				if (!off && !lock_tap_allowed(y, ymax)) {
+					last_down = 0;
+					continue;
+				}
 				press_power(out);
-				fprintf(stderr, "pro1x-doubletap: double tap, power key sent\n");
+				fprintf(stderr, "pro1x-doubletap: double tap, power key sent (%s)\n",
+					off ? "wake" : "lock screen, blank");
 				last_down = 0;
 				quiet_until = t + 1500;
 			} else {

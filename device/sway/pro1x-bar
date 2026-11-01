@@ -45,6 +45,13 @@ apply() {
     # i3status-rs itself.  (SIGUSR2, i3status-rs's restart in place, left it
     # dead once: "[error reading from status command]", 2026-10-31.)
     if [ "$(cat "$rt/pro1x-bar.orientation" 2>/dev/null)" != "$o" ]; then
+        # A rotation also hides the menus (author, 2026-10-31), and redraws
+        # a lock screen so its keyboard fits the new orientation (portrait
+        # had the landscape keys); not at the watcher's first look.
+        if [ -f "$rt/pro1x-bar.orientation" ]; then
+            pro1x-menu hide-all
+            pro1x-lock --locked && pro1x-lock --refresh >/dev/null 2>&1 &
+        fi
         echo "$o" > "$rt/pro1x-bar.orientation"
         swaymsg "bar bar-0 status_command pro1x-bar main $o" >/dev/null
     fi

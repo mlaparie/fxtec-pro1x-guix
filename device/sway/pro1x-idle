@@ -60,8 +60,10 @@ if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
     set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'pro1x-lock' "$@"
 fi
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
-    set -- timeout "$BLANK_AFTER" 'swaymsg "output * power off"' \
-        resume 'swaymsg "output * power on"; date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"' "$@"
+    # No touch while dark (the lock screen took taps; pro1x-doubletap reads
+    # the touchscreen itself).
+    set -- timeout "$BLANK_AFTER" 'pro1x-menu hide-all; swaymsg "input type:touch events disabled"; swaymsg "output * power off"' \
+        resume 'swaymsg "output * power on"; swaymsg "input type:touch events enabled"; date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"' "$@"
 fi
 if [ -n "$DIM_AFTER" ]; then
     set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"

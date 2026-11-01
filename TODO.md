@@ -484,9 +484,17 @@ and Phosh itself.  Not set up yet.
 8. **Fingerprint reader**: research first: which sensor, whether it is
    reachable on SPI or only through TrustZone (likely, on Qualcomm),
    any mainline port or libfprint driver.  Author, 2026-10-30.
-6. **Camera**: port moWerk's libcamera 0.7.2 patches (AfWindows, manual
-   gain/exposure/EV, AfState, focus held), check what Snapshot exposes;
-   kernel flash-LED link (moWerk 0027) in a later kernel batch.
+6. **Camera**: moWerk's libcamera 0.7.2 patches are in (identical to his,
+   2026-11-01), and his IMX582 1080p widening is in the kernel.  Snapshot
+   stays limited (PipeWire's 1080p stream, no focus, ISO or stills).
+   Chosen (author, 2026-11-01): a qtmultimedia@5 variant with moWerk's 13
+   camerabin patches (libcamerasrc, tap-to-focus, ISO, exposure
+   compensation, flash LED; sailfishos-pro1x-mainline patches/qtmultimedia)
+   and a small Qt Quick camera app of our own on it (viewfinder, tap to
+   focus, ISO, flash, full-resolution stills; portrait and landscape),
+   reusing BSD camera logic from sailfishos/jolla-camera where useful
+   (its Silica UI cannot be used).  Kernel flash-LED link (moWerk 0027)
+   in a later kernel batch.
 
 ## Next steps (author's order, 2026-10-29)
 

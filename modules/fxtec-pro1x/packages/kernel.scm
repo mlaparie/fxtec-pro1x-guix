@@ -48,7 +48,24 @@
          "charge-control"
          ;; Ours: the ADSP repeats its handover with every sensor batch;
          ;; log the repeats at debug level, not as errors.
-         "q6v5-handover")))
+         "q6v5-handover"
+         ;; From the Lenovo TB-J606L port (same SoC, written for 7.3):
+         ;; suspend without crashing the ADSP's sensor process.  The
+         ;; freezer interrupted hexagonrpcd's listener call and fastrpc
+         ;; sent it to the DSP again (crash at every resume, sound lost
+         ;; with the ADSP's restart); a DSP message now also wakes the
+         ;; system for the answer.  The first adapted to 7.1.
+         "fastrpc-resume-interrupted"
+         "fastrpc-wake"
+         ;; Ours: the modem's QRTR data packets wake a suspended system,
+         ;; so an incoming call is not slept through (pro1x-sleep decides
+         ;; whether to stay awake).  Not every GLINK message: those aborted
+         ;; each suspend.
+         "qrtr-modem-wake"
+         ;; From moWerk's SailfishOS port (7.3, applies to 7.1): the
+         ;; IMX582's 1080p mode 1984 wide, so a 1920x1080 stream (Snapshot)
+         ;; stays in it instead of the slow 12 MP mode.
+         "imx582-1080p")))
 
 (define-public linux-pro1x
   (package

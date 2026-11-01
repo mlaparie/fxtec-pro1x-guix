@@ -1,14 +1,14 @@
 #!/bin/sh
 # pro1x-power-menu — long press on the power key: cancel, lock, blank
-# screen, suspend, hibernate, reboot, power off (fzf, floating foot window)
+# screen, suspend, hibernate, reboot, power off (fzf, floating
+# foot window)
 #
 #   pro1x-power-menu              open the menu
-#   pro1x-power-menu --key up|down|accept   drive it (Sway's powermenu mode)
 #
-# pro1x-power-button opens it on a held power key, and turns a short
-# press into confirm while it shows; Sway's "powermenu" mode makes the
-# volume keys move the selection, so it works with the keyboard closed
-# (author, 2026-10-31); Esc leaves the mode.  Cancel is
+# pro1x-power-button opens it on a held power key.  While it has the
+# focus, the volume keys move the selection and a short power press
+# confirms (pro1x-menu key), so it works with the keyboard closed (author,
+# 2026-10-31).  Cancel is
 # first and selected.  Power off, reboot, suspend and hibernate run as root
 # through sudo rules for wheel users (no password).  Suspend and hibernate
 # are untested; hibernate needs swap, which the port does not set up.
@@ -18,29 +18,29 @@
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 
 case "${1:-}" in
-    --key)
-        case "${2:-}" in
-            up|down|accept) curl -s --unix-socket "$sock" -X POST \
-                                 http://localhost -d "$2" >/dev/null ;;
-        esac
-        exit ;;
-    --menu) ;;
+    --menu|--lines) ;;
     *)
+        pro1x-menu hide-all          # one menu at a time (author)
         exec pro1x-term --app-id=powermenu -o pad=12x8 \
             -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
 esac
 
-swaymsg mode powermenu >/dev/null
-trap 'swaymsg mode default >/dev/null' EXIT
-choice=$(printf '%s\n' "Cancel" "Lock screen" "Blank screen" "Suspend" \
-                      "Hibernate" "Reboot" "Power off" |
+# The menu's lines.  (The CPU mode is a quick actions line: author.)
+if [ "${1:-}" = --lines ]; then
+    printf '%s\n' "Cancel" "Lock screen" "Blank screen" \
+           "Suspend" "Hibernate" "Reboot" "Power off"
+    exit
+fi
+choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
                  --no-info --cycle --margin=1,2 --color=16,gutter:-1)
-swaymsg mode default >/dev/null
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
-    "Blank screen") swaymsg 'output * power off' >/dev/null ;;
-    "Suspend") sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
+    "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
+                    swaymsg 'output * power off' >/dev/null ;;
+    # Detached: after the resume it may restart the ADSP (about 20 s),
+    # which closing this window must not cut short.
+    "Suspend") setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
     "Power off") sudo -n /run/current-system/profile/sbin/halt ;;

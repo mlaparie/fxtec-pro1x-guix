@@ -8,8 +8,10 @@
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
-# Enter toggles or opens; Right turns a setting on (or steps it up, or
-# opens SIM and Notifications), Left turns it off (or steps it down); Esc
+# Enter toggles an on/off line, or opens a line's choices (mobile data,
+# feedback, CPU mode, charge limit, orientation; author: a list, not
+# stepping); Right and Left step only brightness and volume, and Right
+# opens the tool of Wi-Fi, Bluetooth, SIM and Notifications; Esc
 # closes.  The header shows the battery level and charging state; the
 # Wi-Fi line the network and signal, the mobile line the access technology,
 # signal and operator; the charge limit line what config.scm set
@@ -51,6 +53,15 @@ osk_state() {                   # shown, hidden, or "not running"
 
 # --osk toggle|show|hide (Super+i in the Sway config).
 if [ "${1:-}" = --osk ]; then
+    # A pressed swipe can fire twice when the finger goes on: one toggle
+    # per 0.6 s.
+    stamp="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-toggled"
+    now=$(date +%s%N)
+    if [ "${2:-toggle}" = toggle ] &&
+       [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ]; then
+        exit 0
+    fi
+    echo "$now" > "$stamp"
     case "${2:-toggle}" in
         show) osk true ;;
         hide) osk false ;;
@@ -76,6 +87,10 @@ qs_state() {                    # shown, hidden or none
 }
 
 qs_hide() {
+    # Its query cleared, for next time (in the background: called from
+    # inside fzf's execute, which answers only afterwards).
+    curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
+         -d "clear-query+first" >/dev/null 2>&1 &
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
@@ -89,9 +104,8 @@ qs_start() {                    # qs_start [hidden]
 qs_show() {
     case "$(qs_state)" in
         hidden)
-            # Same geometry as the Sway config's rule, for the current
-            # orientation.
-            swaymsg '[app_id="^quickactions$"] scratchpad show, resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt' >/dev/null
+            # pro1x-menu's geometry, for the current orientation.
+            swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
             curl -s --unix-socket "$sock" -X POST http://localhost \
                  -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
         none) qs_start ;;
@@ -178,6 +192,10 @@ sim_unlock() {
     pin=
 }
 
+hint() {                        # grey "  → what Right opens" (author)
+    printf ' \033[90m → %s\033[0m' "$1"   # space first: fields stay clean
+}
+
 dim() {                         # grey for off states
     case "$1" in
         off|hidden|"not running"|*"(muted)") printf '\033[90m%s\033[0m' "$1" ;;
@@ -212,6 +230,11 @@ mobile_cycle() {                # mobile_cycle + | -
     if [ "$dir" = + ]; then idx=$(( idx % n + 1 ))
     else idx=$(( (idx + n - 2) % n + 1 )); fi
     eval "opt=\${$idx}"
+    mobile_set "$opt"
+}
+mobile_set() {                  # mobile_set off|234|34|23|3
+    f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
+    opt=$1
     case "$opt" in
         off) nmcli radio wwan off ;;
         234|34|23|3)
@@ -242,6 +265,82 @@ roaming() {                     # roaming: on, off or "no connection"
     [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
 }
 
+# choose KEY: the line's options as a list, its own fzf (socket
+# pro1x-quick-actions-ask.sock, which pro1x-menu key drives while it is
+# open); the current one marked; the pick applied (author: sub choices as
+# options, like the window switcher's, so the lines stay short enough for
+# portrait).
+choose() {
+    case "$1" in
+        wwan)
+            title="mobile data"
+            cur=$(cut -d' ' -f1 "${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile" 2>/dev/null)
+            opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done) ;;
+        feedback)
+            title="feedback"
+            cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
+            opts=$(printf 'silent\tsilent\nquiet\tquiet (vibration, no sound)\nfull\tfull (sound and vibration)\n') ;;
+        charge)
+            title="charge limit (until reboot)"
+            set -- $(pro1x-charge-limit get 2>/dev/null); cur=${1:-off}
+            . /etc/pro1x/charge.conf 2>/dev/null
+            pro1x-charge-limit temporary || cur=default
+            opts=$(printf 'default\tconfig.scm: %s\n' \
+                          "$( [ -n "${CHARGE_LIMIT:-}" ] && echo "$CHARGE_LIMIT% (again at $CHARGE_RESUME%)" || echo off)"
+                   for o in $CHARGE_OPTS; do
+                       if [ "$o" = off ]; then printf 'off\toff (charge to full)\n'
+                       else printf '%s\t%s%% (again at %s%%)\n' "$o" "$o" $((o - 5)); fi
+                   done) ;;
+        cpu)
+            title="CPU mode (until reboot)"
+            cur=$(pro1x-cpu-mode get 2>/dev/null)
+            pro1x-cpu-mode temporary || cur=default
+            CPU_MODE=auto; . /etc/pro1x/cpu.conf 2>/dev/null
+            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n' "$CPU_MODE") ;;
+        orient)
+            title="orientation"
+            cur=$(orientation)
+            opts=$(printf 'portrait\tportrait\nlandscape\tlandscape\n') ;;
+        *) return ;;
+    esac
+    asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
+    # "back" first (author: back to the main menu); the cursor starts on
+    # the current choice.
+    at=$(printf '%s\n' "$opts" | awk -F'\t' -v cur="$cur" '$1 == cur { print NR + 1; exit }')
+    pick=$({ printf 'back\t← back\n'
+             printf '%s\n' "$opts" |
+                 awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; } |
+               fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
+                   --prompt="$title > " --layout=reverse-list --no-info --cycle \
+                   --margin=1,2 --color=16,gutter:-1 \
+                   --bind="load:pos(${at:-1})" |
+               cut -f1)
+    rm -f "$asksock"
+    case "$pick" in ""|back) return ;; esac
+    case "$1" in
+        wwan) mobile_set "$pick" ;;
+        feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
+        cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        charge) charge_set "$pick" ;;
+        orient) set_orientation "$pick" ;;
+    esac
+}
+
+orientation() {                 # portrait or landscape, from the panel
+    case "$(swaymsg -t get_outputs -r 2>/dev/null |
+                jq -r '.[] | select(.name == "DSI-1") | .transform')" in
+        normal|180) echo portrait ;;
+        *) echo landscape ;;
+    esac
+}
+set_orientation() {             # portrait|landscape, unless auto-rotation
+    [ "$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)" = on ] && return
+    case "$1" in
+        portrait) swaymsg output DSI-1 transform normal >/dev/null ;;
+        landscape) swaymsg output DSI-1 transform 90 >/dev/null ;;
+    esac
+}
+
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
 blocked() {                     # rfkill type -> on/off (on = not blocked)
@@ -259,16 +358,27 @@ battery_state() {               # "76% discharging", "85% held at limit"
     echo "$cap% $st"
 }
 
-charge_limit() {                # from config.scm, via /etc/pro1x/charge.conf
-    CHARGE_LIMIT= CHARGE_RESUME=
-    [ -r /etc/pro1x/charge.conf ] && . /etc/pro1x/charge.conf
+# Shown after a value overridden here: config.scm sets it for good, quick
+# actions only until reboot (author, 2026-11-01).
+until_reboot() { printf ' \033[93m(until reboot)\033[0m'; }
+
+charge_limit() {                # config.scm's, or this boot's override
     if [ ! -e "$charge_param" ]; then
         echo "not in this kernel"
-    elif [ -z "$CHARGE_LIMIT" ]; then
-        echo "off  (charge to full; set in config.scm)"
-    else
-        echo "$CHARGE_LIMIT%, resume at $CHARGE_RESUME%  (set in config.scm)"
+        return
     fi
+    set -- $(pro1x-charge-limit get 2>/dev/null)
+    if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (again at %s%%)' "$1" "$2"; fi
+    pro1x-charge-limit temporary && until_reboot
+}
+cpu_mode() {
+    printf '%s' "$(pro1x-cpu-mode get 2>/dev/null || echo auto)"
+    pro1x-cpu-mode temporary && until_reboot
+}
+# The choices: off, then limits with charging again 5 % lower.
+CHARGE_OPTS="off 80 85 90 95"
+charge_set() {                  # charge_set off|LIMIT
+    sudo -n /run/current-system/profile/bin/pro1x-charge-limit "$1"
 }
 
 wifi_info() {                   # " · 75% SSID" for the connected network
@@ -327,6 +437,13 @@ lines() {
         plane=off
     fi
     rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
+    # Forced orientation; greyed while auto-rotation decides (author).
+    orient=$(orientation)
+    if [ "$rot" = on ]; then
+        orient_shown=$(printf '\033[90m%s (auto)\033[0m' "$orient")
+    else
+        orient_shown=$orient
+    fi
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
     vol=$(cat "$d/vol")
@@ -338,27 +455,30 @@ lines() {
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
-        "notif       Notifications        $(cat "$d/notif")" \
+        "notif       Notifications        $(cat "$d/notif")$(hint list)" \
         "lock        Lock screen" \
         "camera      Camera" \
-        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
-        "wwan        Mobile data          $mobile" \
+        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")$(hint networks)" \
+        "wwan        Mobile data          $mobile$(hint technologies)" \
         "roaming     Roaming              $(dim "$(roaming)")" \
-        "sim         SIM                  $(sim_state "$kv")" \
-        "bluetooth   Bluetooth            $(dim "$bt")" \
+        "sim         SIM                  $(sim_state "$kv")$(hint unlock)" \
+        "bluetooth   Bluetooth            $(dim "$bt")$(hint devices)" \
         "airplane    Airplane mode        $(dim "$plane")" \
         "rotation    Auto-rotation        $(dim "$rot")" \
+        "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
         "torch       Torch                $(dim "$t")" \
-        "feedback    Feedback             $(cat "$d/fb")  (silent ← quiet → full)" \
+        "touchpad    Touch input          $(touch_mode)" \
+        "feedback    Feedback             $(cat "$d/fb")" \
+        "cpu         CPU mode             $(cpu_mode)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
 
-# set <setting> <on|off>: what Right (on) and Left (off) do; Enter toggles.
+# set <setting> <on|off>: what Enter toggles between (and a held volume key).
 set_to() {
     case "$1" in
         wifi|wwan) nmcli radio "$1" "$2" ;;
@@ -389,6 +509,9 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        touchpad)                 # on: the touchscreen as a touchpad
+            [ -p /run/pro1x-pointer ] && echo "pad $2" > /run/pro1x-pointer
+            sleep 0.1 ;;
         roaming)
             c=$(gsm_conn); [ -n "$c" ] || return
             [ "$(roaming)" = "$2" ] && return
@@ -399,6 +522,10 @@ set_to() {
             if [ "$2" = on ]; then wpctl set-mute @DEFAULT_AUDIO_SINK@ 1
             else wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; fi ;;
     esac
+}
+
+touch_mode() {                  # touchscreen or touchpad (pro1x-doubletap)
+    cat /run/pro1x-touch-mode 2>/dev/null || echo touchscreen
 }
 
 state_of() {                    # state_of <setting>: on or off
@@ -416,6 +543,7 @@ state_of() {                    # state_of <setting>: on or off
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
         roaming) roaming ;;
+        touchpad) [ "$(touch_mode)" = touchpad ] && echo on || echo off ;;
     esac
 }
 
@@ -444,8 +572,11 @@ act() {                         # Enter
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
-        camera) qs_hide; swaymsg exec snapshot >/dev/null ;;
+        camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
         wwan) mobile_cycle + ;;
+        orient)
+            if [ "$(orientation)" = portrait ]; then set_orientation landscape
+            else set_orientation portrait; fi ;;
         volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
@@ -466,12 +597,31 @@ step() {                        # Right (+) and Left (-)
         bluetooth+) open_tool bluetuith ;;
         wwan+) mobile_cycle + ;;
         wwan-) mobile_cycle - ;;
+        orient+) set_orientation landscape ;;
+        orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
         bright+) brightnessctl -q set +10% ;;
         bright-) brightnessctl -q set 10%- ;;
         volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
         feedback?) feedback_step "$2" ;;
+        charge+|charge-)          # off, 80, 85, 90, 95
+            set -- "$2" $CHARGE_OPTS
+            dir=$1; shift
+            cur=$(pro1x-charge-limit get 2>/dev/null | cut -d' ' -f1); i=1; idx=1
+            for m in "$@"; do [ "$m" = "$cur" ] && idx=$i; i=$((i + 1)); done
+            n=$#
+            if [ "$dir" = + ]; then idx=$(( idx % n + 1 )); else idx=$(( (idx + n - 2) % n + 1 )); fi
+            eval "m=\${$idx}"
+            charge_set "$m" ;;
+        cpu+|cpu-)                # auto, battery, balanced, performance
+            set -- "$2" auto battery balanced performance
+            dir=$1; shift
+            cur=$(pro1x-cpu-mode get 2>/dev/null); i=1; idx=1
+            for m in "$@"; do [ "$m" = "$cur" ] && idx=$i; i=$((i + 1)); done
+            if [ "$dir" = + ]; then idx=$(( idx % 4 + 1 )); else idx=$(( (idx + 2) % 4 + 1 )); fi
+            eval "m=\${$idx}"
+            sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$m" ;;
         *+) set_to "$1" on; sleep 0.3 ;;
         *-) set_to "$1" off; sleep 0.3 ;;
     esac
@@ -527,6 +677,7 @@ notif_dock() {
 case "${1:-}" in
     --lines) lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
+    --choose) choose "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
@@ -557,25 +708,41 @@ set --
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 lines |
     # Same layout and colours as the launcher and window switcher: list
-    # from the top, prompt at the bottom.  Notification preview on the right,
-    # in portrait too.
+    # from the top, prompt at the bottom.  Notification preview on the right
+    # in landscape, below in portrait (under 70 columns; author).
     fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --with-nth=2.. --header-lines=1 \
-        --ansi --preview="$self --notif-summary" --preview-window=hidden,right,45%,wrap \
+        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
-        --bind="focus:transform:[ {1} = notif ] && echo show-preview || echo hide-preview" \
+        --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
         --bind="enter:transform:case {1} in
+                  wwan|feedback|cpu|orient|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  wifi|bluetooth) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  charge) ;;
-                  *) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  sim|notif|charge|lock|camera) ;;
-                  *) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                esac" \
+        --bind="f1:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="f2:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  feedback|wwan|orient|cpu|charge) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos($(({n} + 1)))\" ;;
+                  wifi|bluetooth|airplane|rotation|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                esac" \
+        --bind="f3:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                esac" \
+        --bind="f4:transform:case {1} in
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                 esac" >/dev/null

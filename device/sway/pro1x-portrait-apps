@@ -1,5 +1,7 @@
 #!/bin/sh
-# pro1x-portrait-apps — portrait while Snapshot or Calls has the focus
+# pro1x-portrait-apps — portrait or landscape while an app has the focus
+# (portrait-apps, landscape-apps in config.scm; default: Snapshot, Calls in
+# portrait).  fullscreen-apps are Sway rules, /etc/sway/pro1x.d/apps.conf.
 #
 # Sway rotates whole outputs, not windows.  While a portrait app (the
 # camera, Calls) is the focused window, the panel is put in portrait and
@@ -13,7 +15,10 @@
 #
 # State: written 2026-10-30, not yet run on the phone.
 
-apps='org.gnome.Snapshot org.gnome.Calls'
+# The apps: portrait-apps, landscape-apps and fullscreen-apps in
+# config.scm (/etc/pro1x/apps.conf).
+PORTRAIT_APPS='org.gnome.Snapshot org.gnome.Calls' LANDSCAPE_APPS=
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 flag="$rt/pro1x-portrait-app"
 events="$rt/pro1x-portrait-apps.events"
@@ -42,16 +47,25 @@ restore() {
 
 check() {
     app=$(focused_app)
-    case " $apps " in
-        *" $app "*)
-            if [ ! -f "$flag" ]; then
-                touch "$flag"
-                swaymsg output DSI-1 transform normal >/dev/null
-            fi ;;
-        *)
-            [ -f "$flag" ] && restore ;;
+    case "$app" in
+        # No app (an empty workspace, just after unlocking): with an empty
+        # list, " $LIST " matched it, and landscape stuck for good
+        # (2026-11-01: no portrait, the power menu closed at once).  Our
+        # menus: the rotation stays as it is (a change would close them).
+        ""|quickactions|launcher|windowswitcher|powermenu) return ;;
     esac
+    case " $PORTRAIT_APPS " in *" $app "*) want=normal ;; *) want= ;; esac
+    case " $LANDSCAPE_APPS " in *" $app "*) want=90 ;; esac
+    if [ -n "$want" ]; then
+        if [ "$(cat "$flag" 2>/dev/null)" != "$want" ]; then
+            echo "$want" > "$flag"
+            swaymsg output DSI-1 transform "$want" >/dev/null
+        fi
+    elif [ -f "$flag" ]; then
+        restore
+    fi
 }
+
 
 rm -f "$flag"
 trap 'rm -f "$events"' EXIT

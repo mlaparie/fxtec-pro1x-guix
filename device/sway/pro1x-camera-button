@@ -1,0 +1,109 @@
+#!/bin/sh
+# pro1x-camera-button — the camera button in Sway (author, 2026-10-31)
+#
+#   a camera focused:  a press takes a picture, at once (our
+#                      pro1x-camera-app on SIGUSR1, Snapshot through
+#                      pro1x-camera)
+#   triple press:      CAMERA_TRIPLE_PRESS (/etc/pro1x/apps.conf,
+#                      camera-triple-press in config.scm; default
+#                      pro1x-camera-app),
+#                      through pro1x-open, so it opens over the lock screen;
+#                      not while the proximity sensor reads near (a pocket)
+#   single press:      a left click where the pointer is; with Fn
+#                      (the F(x) key) held, a right click
+#   double press:      a double click
+#   held 0.4 s:        the touchscreen is a touchpad until released:
+#                      finger moves move the pointer, a tap clicks, tap
+#                      and touch again holds the left button (a selection),
+#                      touch reaches no app; with Super a touch holds the
+#                      left button (a window drag), with Super and Fn the
+#                      right one (a resize).  The pointer stays visible 3 s after
+#                      (hide_cursor).  Touchpad mode without holding: the
+#                      Touch input line of quick actions, Super+t
+#
+# Reads KEY_CAMERA from gpio-keys with evtest (Sway acts on presses only,
+# and cannot count presses; Sway's own XF86WebCam binding is a nop,
+# so apps do not get the key).  The pointer is pro1x-doubletap's virtual
+# absolute one, moved in C (no lag), which also reads Super (keyd's
+# virtual keyboard) and Fn (keyd listen); this sends it click, hold and
+# release through /run/pro1x-pointer.  A short press waits 0.35 s for another one.
+# Started by the Sway config; ends with Sway.
+#
+# State: 2026-11-01: a double press opened Snapshot (author; now triple); the first
+# follower (this script moving Sway's cursor) lagged and could not drag
+# windows; then a drag that pressed Super itself; now a touchpad while
+# held (author's design).  Not yet run.
+
+CAMERA_TRIPLE_PRESS=pro1x-camera-app
+[ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+st="$rt/pro1x-camera-button"           # press stamp; .pending, .drag
+
+dev=
+for e in /sys/class/input/event*; do
+    [ "$(cat "$e/device/name" 2>/dev/null)" = gpio-keys ] && dev=/dev/input/${e##*/}
+done
+[ -n "$dev" ] || exit 0
+
+if [ -n "${SWAYSOCK:-}" ]; then
+    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
+fi
+
+# A camera app focused: the press takes a photo in it.  Ours
+# (pro1x-camera-app) on SIGUSR1; Snapshot through pro1x-camera.
+shoot_in_camera() {
+    case "$(swaymsg -t get_tree -r |
+            jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" in
+        org.pro1x.Camera)
+            for p in $(pgrep -u "$(id -u)" -f 'bin/\.pro1x-camera-app-real'); do
+                kill -USR1 "$p"
+            done ;;
+        org.gnome.Snapshot) pro1x-camera ;;
+        *) return 1 ;;
+    esac
+}
+
+# The pointer is pro1x-doubletap's (it reads the touchscreen): a word to
+# its fifo.
+pointer() { [ -p /run/pro1x-pointer ] && echo "$1" > /run/pro1x-pointer; }
+
+rm -f "$st" "$st.pending" "$st.drag"
+evtest "$dev" 2>/dev/null |
+    while IFS= read -r line; do
+        case "$line" in
+            *"(KEY_CAMERA), value 1"*)
+                # .pending: "COUNT STAMP", the short presses so far.
+                n=$(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0)
+                if [ "${n:-0}" -ge 2 ]; then          # the third press
+                    rm -f "$st.pending" "$st"
+                    [ -e /run/pro1x-pocket ] && continue
+                    pro1x-open "$CAMERA_TRIPLE_PRESS" &
+                    continue
+                fi
+                if [ "${n:-0}" = 0 ] && shoot_in_camera; then
+                    continue
+                fi
+                stamp=$(date +%s%N); echo "$stamp" > "$st"
+                ( sleep 0.4
+                  [ "$(cat "$st" 2>/dev/null)" = "$stamp" ] || exit 0
+                  rm -f "$st.pending"
+                  touch "$st.drag"
+                  pointer hold ) & ;;      # it grabs the touchscreen
+            *"(KEY_CAMERA), value 0"*)
+                if [ -f "$st.drag" ]; then
+                    rm -f "$st.drag" "$st"
+                    pointer release
+                elif [ -f "$st" ]; then              # a short press
+                    rm -f "$st"
+                    n=$(( $(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0) + 1 ))
+                    stamp=$(date +%s%N); echo "$n $stamp" > "$st.pending"
+                    # No further press within 0.35 s: one click, or two
+                    # (a double click).
+                    ( sleep 0.35
+                      [ "$(cut -d' ' -f2 "$st.pending" 2>/dev/null)" = "$stamp" ] || exit 0
+                      rm -f "$st.pending"
+                      pointer click
+                      [ "$n" -ge 2 ] && { sleep 0.05; pointer click; } ) &
+                fi ;;
+        esac
+    done

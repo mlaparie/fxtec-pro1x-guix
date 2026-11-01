@@ -13,7 +13,12 @@
 # lit again; once it stayed dark (relit-when-dark fix since).
 
 led=/sys/class/leds/rgb:status
-white="255 255 255" level=6
+# Colour and level: unlocked-led in config.scm (/etc/pro1x/led.conf);
+# empty: no indicator.
+UNLOCKED_LED="255 255 255" UNLOCKED_LEVEL=6
+[ -r /etc/pro1x/led.conf ] && . /etc/pro1x/led.conf
+[ -n "$UNLOCKED_LED" ] || exit 0
+white=$UNLOCKED_LED level=$UNLOCKED_LEVEL
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 events="$rt/pro1x-blank-led.events"
 mine=0

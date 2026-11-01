@@ -10,6 +10,10 @@
 ;;;   • optional USB serial getty
 ;;;   • touch calibration matrix for display gaps
 ;;;   • double tap to wake the panel (pro1x-doubletap), double-tap-wake?;
+;;;   • shake to toggle the torch (pro1x-shake-torch), shake-torch?,
+;;;     shake-action;
+;;;   • app rules for Sway: portrait-apps, landscape-apps, fullscreen-apps,
+;;;     lock-screen-apps; the camera button (camera-triple-press);
 ;;;   • torch safety: a flash LED left on is switched off after torch-timeout
 ;;;     seconds (default 60), whoever turned it on;
 ;;;   • charge limit: stop charging at charge-limit percent, resume at or
@@ -54,6 +58,7 @@
   #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
   #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
+  #:use-module ((ice-9 regex) #:select (regexp-quote))
   #:use-module (gnu packages base)          ; coreutils
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module ((gnu packages window-management) #:select (swayfx))
@@ -113,11 +118,49 @@
   ;; Wake the panel with a double tap while it is off.
   (double-tap-wake?   pro1x-hardware-double-tap-wake?   (default #t))
   ;; Stop charging at this battery percentage (#f: charge to full), and
-  ;; charge again at or below charge-resume.
+  ;; charge again at or below charge-resume.  For good; quick actions
+  ;; override it until reboot.
   (charge-limit       pro1x-hardware-charge-limit       (default 85))
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
+  ;; The CPU's energy mode (quick actions override it until reboot):
+  ;; 'auto (balanced,
+  ;; battery while the panel is off or the battery low), 'battery (capped
+  ;; frequencies), 'balanced (schedutil, dynamic) or 'performance.
+  (cpu-mode           pro1x-hardware-cpu-mode           (default 'auto))
+  ;; What may wake the phone from suspend (pro1x-sleep), besides its keys
+  ;; and alarms: 'calls (an incoming call), 'sms (a text message, Chatty).
+  ;; Internet chats cannot: the network is not a wakeup source.
+  (wake-on            pro1x-hardware-wake-on            (default '(calls sms)))
+  ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
+  ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
+  ;; a string is a shell command run in the Sway session through pro1x-open
+  ;; (so an app in lock-screen-apps opens over the lock screen).
+  (shake-torch?       pro1x-hardware-shake-torch?       (default #t))
+  (shake-action       pro1x-hardware-shake-action       (default 'torch))
+  ;; Apps, by Wayland app_id (Sway; swaymsg -t get_tree shows them).
+  ;; Portrait or landscape while focused (the panel turns; Sway rotates
+  ;; whole outputs), fullscreen when they open, and allowed to open over
+  ;; the lock screen: the session unlocks for them and locks again when
+  ;; they lose the focus or close.  What opens them while locked: an
+  ;; incoming call (Calls), the camera button, shake-action.
+  (portrait-apps      pro1x-hardware-portrait-apps
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
+  (landscape-apps     pro1x-hardware-landscape-apps     (default '()))
+  (fullscreen-apps    pro1x-hardware-fullscreen-apps
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
+  (lock-screen-apps   pro1x-hardware-lock-screen-apps
+                      (default '("org.gnome.Calls" "org.pro1x.Camera"
+                                 "org.gnome.Snapshot")))
+  ;; The camera button in Sway: a triple press runs this shell command
+  ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
+  ;; a single press elsewhere left-clicks where the pointer is (right with
+  ;; Fn), held the touchscreen is a touchpad (with Super: a window drag).
+  (camera-triple-press pro1x-hardware-camera-triple-press
+                       (default "pro1x-camera-app"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default
@@ -136,7 +179,11 @@
   (charging-led       pro1x-hardware-charging-led       (default "#FFA000"))
   (charged-led        pro1x-hardware-charged-led        (default "#00FF00"))
   (low-battery-led    pro1x-hardware-low-battery-led    (default "#FF4000"))
-  (low-battery-level  pro1x-hardware-low-battery-level  (default 15)))
+  (low-battery-level  pro1x-hardware-low-battery-level  (default 15))
+  ;; The LED while the screen is blank but not locked (Sway,
+  ;; pro1x-blank-led): (COLOUR LEVEL), COLOUR as above and LEVEL the
+  ;; pattern brightness (0-255; 6 is barely visible), or #f for none.
+  (unlocked-led       pro1x-hardware-unlocked-led       (default '("white" 6))))
 
 ;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
 (define (led-intensity colour)
@@ -250,7 +297,8 @@ white, #RRGGBB or #f")
   ;; HAPTICS?, also a short vibration for stevia's key-pressed event, which
   ;; feedbackd's default theme leaves without feedback, and a stronger one
   ;; for button-pressed (Shift, layout keys): the default's 7 ms at 0.2
-  ;; ran but could not be felt on this motor (aw86224).  In the quiet
+  ;; ran but could not be felt on this motor (aw86224).  0.6 for 20 ms
+  ;; was a little weak (author, 2026-11-01): 0.8 for 25 ms.  In the quiet
   ;; profile, so in quiet and full.
   (define (entry spec)
     (match spec
@@ -274,9 +322,9 @@ blue, white or #RRGGBB")
    (if haptics?
        ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.6], \"durations\": [20] },
+          \"magnitudes\": [0.8], \"durations\": [25] },
         { \"event-name\": \"button-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.6], \"durations\": [20] }\n      ]\n    }"
+          \"magnitudes\": [0.8], \"durations\": [25] }\n      ]\n    }"
        "")
    "\n  ]\n}\n"))
 
@@ -388,7 +436,7 @@ esac
 
 (define pro1x-pocket-program
   ;; /run/pro1x-pocket exists while the proximity sensor sees something
-  ;; near (monitor-sensor, through iio-sensor-proxy): pro1x-doubletap does
+  ;; near (ssccli, from the ADSP): pro1x-doubletap does
   ;; not wake the panel then, so a phone in a pocket stays dark.  In Sway,
   ;; near for 1 s (5 s with the keyboard out), the panel goes off
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
@@ -441,8 +489,13 @@ esac
               (sway-sockets)))
        (define (set-near! near?)
          (if near?
-             (begin
-               (close-port (open-output-file flag))
+             ;; The flag holds this near's stamp: only the timer of the
+             ;; latest near may blank.  (Without it, near, away, near
+             ;; again, as a scrolling finger does, let the first near's
+             ;; timer blank early: author, 2026-10-31.)
+             (let ((stamp (number->string (get-internal-real-time))))
+               (call-with-output-file flag
+                 (lambda (port) (display stamp port)))
                ;; A moment later, still near: off, and no touch input.  1 s
                ;; with the keyboard closed, 5 s slid out: a phone is rarely
                ;; pocketed with it out, and a finger scrolling near the
@@ -451,40 +504,218 @@ esac
                ;; again when away.
                (when (zero? (primitive-fork))
                  (sleep (if (keyboard-out?) 5 1))
-                 (when (file-exists? flag)
+                 (when (equal? stamp
+                               (false-if-exception
+                                (call-with-input-file flag get-string-all)))
                    (when (panel-on?)
                      (close-port (open-output-file blanked)))
                    (sway! "input type:touch events disabled")
+                   ;; Blanking hides the Sway menus (pro1x-menu hide-all).
+                   (sway! "[app_id=\"^(quickactions|launcher|windowswitcher)$\"] move scratchpad")
+                   (sway! "[app_id=\"^powermenu$\"] kill")
                    (sway! "output * power off"))
                  (primitive-_exit 0)))
              (begin
                (false-if-exception (delete-file flag))
-               (sway! "input type:touch events enabled")
                ;; Back as it was: on if it was on (a lock screen stays
-               ;; locked, it is only lit again).
-               (when (file-exists? blanked)
-                 (false-if-exception (delete-file blanked))
-                 (sway! "output * power on")))))
+               ;; locked, it is only lit again), with touch; a panel left
+               ;; dark keeps touch off (the lock screen took taps with the
+               ;; screen off, author, 2026-10-31).
+               (cond ((file-exists? blanked)
+                      (false-if-exception (delete-file blanked))
+                      (sway! "output * power on")
+                      (sway! "input type:touch events enabled"))
+                     ((panel-on?)
+                      (sway! "input type:touch events enabled"))))))
        (set-near! #f)
-       (let ((port (open-pipe* OPEN_READ
-                               #$(file-append iio-sensor-proxy-ssc
-                                              "/bin/monitor-sensor")
-                               "--proximity")))
-         ;; "=== Has proximity sensor (near: 1)" first, then
-         ;; "    Proximity value changed: 0".
-         (let loop ()
-           (let ((line (read-line port)))
-             (unless (eof-object? line)
-               (reap!)
-               (cond ((or (string-contains line "near: 1")
-                          (string-contains line "value changed: 1"))
-                      (set-near! #t))
-                     ((or (string-contains line "near: 0")
-                          (string-contains line "value changed: 0"))
-                      (set-near! #f)))
-               (loop))))
-         (set-near! #f)
-         (close-pipe port)))))
+       ;; The sensor straight from the ADSP (ssccli), not through
+       ;; iio-sensor-proxy: there changes came late, or not at all, and not
+       ;; to every client (2026-11-01: blanking after varying delays, or
+       ;; never); ssccli reported NEAR and FAR at once.  Lines:
+       ;; "Proximity sensor measurement: NEAR" (or FAR).  Each change is
+       ;; logged, to compare with what the author sees.
+       (setvbuf (current-output-port) 'line)
+       (let restart ()
+         (let ((port (open-pipe* OPEN_READ
+                                 #$(file-append libssc "/bin/ssccli")
+                                 "--sensor" "proximity" "--timeout" "864000"))
+               (near #f))
+           (let loop ()
+             (let ((line (read-line port)))
+               (unless (eof-object? line)
+                 (reap!)
+                 (cond ((and (string-contains line "NEAR") (not near))
+                        (set! near #t)
+                        (display "near\n")
+                        (set-near! #t))
+                       ((and (string-contains line "FAR") near)
+                        (set! near #f)
+                        (display "far\n")
+                        (set-near! #f)))
+                 (loop))))
+           (close-pipe port)
+           (set-near! #f)
+           (display "ssccli ended; again in 5 s\n")
+           (sleep 5)
+           (restart))))))
+
+(define (pro1x-shake-torch-program action)
+  ;; Two shakes toggle the torch (author, 2026-10-31): reads the
+  ;; accelerometer from the SSC (ssccli, a second client next to
+  ;; iio-sensor-proxy), "Accelerometer sensor measurement: X=… Y=… Z=…
+  ;; m/s²".  What marks a shake is a quick change of direction (author):
+  ;; NEEDED reversals of the motion (the sample minus a slow gravity
+  ;; average, beyond THRESHOLD) within WINDOW toggle white:flash-0, in any
+  ;; orientation; a single out-and-back flick gives about two, a double
+  ;; shake three or more, and jitter only adds reversals.  Not in a
+  ;; pocket (/run/pro1x-pocket); 1.5 s quiet after a toggle.  The torch
+  ;; guard turns it off after its timeout.  Every reversal is logged.
+  ;; State: 2026-10-31: the first detector (bursts of total force, upright
+  ;; test) missed fast and slow pairs on the phone; this one calibrated on
+  ;; the author's recorded shakes (12-35 readings a second): 2-3
+  ;; reversals per double shake.  Threshold 5 -> 8 -> 11 m/s²: too
+  ;; sensitive, then still too permissive (author).  The recorded double
+  ;; shakes had reversals of 5.5-31 m/s²: at 11 they need to be firmer.
+  (program-file
+   "pro1x-shake-torch"
+   #~(begin
+       (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format)
+                    (ice-9 ftw) (srfi srfi-1))
+       (define threshold 11.0)          ;m/s² of motion (gravity removed)
+       (define needed 3)                ;reversals …
+       (define window 1.2)              ;… within this many seconds
+       (define torch "/sys/class/leds/white:flash-0")
+       (define (now)
+         (/ (get-internal-real-time) 1.0 internal-time-units-per-second))
+       (define (read-number file)
+         (or (false-if-exception
+              (string->number (call-with-input-file file read-line)))
+             0))
+       ;; A command: run in each Sway session, through pro1x-open.
+       (define swaymsg #$(file-append swayfx "/bin/swaymsg"))
+       (define (sway-exec! command)
+         (for-each
+          (lambda (uid)
+            (for-each (lambda (f)
+                        (system* swaymsg "-s"
+                                 (string-append "/run/user/" uid "/" f)
+                                 (string-append "exec pro1x-open " command)))
+                      (or (scandir (string-append "/run/user/" uid)
+                                   (lambda (f) (string-prefix? "sway-ipc." f)))
+                          '())))
+          (or (scandir "/run/user" string->number) '())))
+       (define (toggle!)
+         (if (string? #$action)
+             (begin (sway-exec! #$action)
+                    (format #t "shake: ~a~%" #$action))
+             (torch!)))
+       (define (torch!)
+         (let ((on? (> (read-number (string-append torch "/brightness")) 0)))
+           (call-with-output-file (string-append torch "/brightness")
+             (lambda (port)
+               (display (if on? 0 (read-number
+                                   (string-append torch "/max_brightness")))
+                        port)))
+           (format #t "shake: torch ~a~%" (if on? "off" "on"))))
+       (define rx (make-regexp "X=([-0-9.]+) Y=([-0-9.]+) Z=([-0-9.]+)"))
+       ;; Gravity: a slow average of every sample (about 0.5 s at the
+       ;; sensor's rate), which follows the hand.  The motion is the sample
+       ;; minus gravity; a reversal is a strong motion pointing against the
+       ;; previous strong one.  REVERSALS: their times, newest first.
+       (define g #f) (define last-motion #f)
+       (define reversals '()) (define quiet-until 0.0)
+       (define (sample! x y z)
+         (let ((t (now)) (a (list x y z)))
+           (unless g (set! g a))
+           (let* ((m (map - a g))
+                  (n (sqrt (apply + (map * m m)))))
+             (set! g (map (lambda (gi ai) (+ (* 0.93 gi) (* 0.07 ai))) g a))
+             (when (> n threshold)
+               (when (and last-motion (< (apply + (map * m last-motion)) 0))
+                 (set! reversals
+                       (cons t (filter (lambda (r) (< (- t r) window))
+                                       reversals)))
+                 (format #t "reversal ~a, ~,1f m/s²~%" (length reversals) n)
+                 (when (and (>= (length reversals) needed)
+                            (>= t quiet-until)
+                            (not (file-exists? "/run/pro1x-pocket")))
+                   (set! reversals '())
+                   (set! quiet-until (+ t 1.5))
+                   (toggle!)))
+               (set! last-motion m)))))
+       (setvbuf (current-output-port) 'line)
+       ;; In a pocket the sensor rests (it costs about 4 % of a core,
+       ;; measured 2026-11-01): one stream, ended (by its PID, which the
+       ;; shell prints before exec) when the proximity sensor reads near,
+       ;; started again when away.  Not a stream every 20 s: the ADSP
+       ;; crashed after some 45 of those (2026-10-31 23:50), and it had
+       ;; crashed once without this service too.
+       (define (pocketed?) (file-exists? "/run/pro1x-pocket"))
+       (let loop ((resting? #f))
+         (if (pocketed?)
+             (begin
+               (unless resting? (format #t "pocket: sensor resting~%"))
+               (sleep 1)
+               (loop #t))
+         (let* ((port (open-pipe* OPEN_READ "/bin/sh" "-c"
+                                  (string-append
+                                   "echo $$; exec "
+                                   #$(file-append libssc "/bin/ssccli")
+                                   " --sensor accelerometer --timeout 864000")))
+                (pid (string->number (read-line port)))
+                (start (now)))
+           (let read-loop ((n 0))
+             (let ((line (read-line port)))
+               (cond
+                ((eof-object? line)
+                 (when pid                       ;not ended by us
+                   (format #t "ssccli ended after ~a samples~%" n)))
+                ((and pid (pocketed?))
+                 (false-if-exception (kill pid SIGTERM))
+                 (set! pid #f)
+                 (read-loop n))
+                ((regexp-exec rx line)
+                 => (lambda (m)
+                      (sample! (string->number (match:substring m 1))
+                               (string->number (match:substring m 2))
+                               (string->number (match:substring m 3)))
+                      (read-loop (+ n 1))))
+                (else (format #t "ssccli: ~a~%" line) (read-loop n)))))
+           (close-pipe port)
+           ;; Ended by itself (the ADSP gone?): wait before trying again.
+           (when pid (sleep 30))
+           (loop #f)))))))
+
+(define (pro1x-shake-torch-shepherd-service config)
+  (if (pro1x-hardware-shake-torch? config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-shake-torch))
+        (requirement '(iio-sensor-proxy))
+        (documentation "Toggle the torch (or run shake-action) with two shakes.")
+        (start #~(make-forkexec-constructor
+                  (list #$(pro1x-shake-torch-program
+                           (let ((a (pro1x-hardware-shake-action config)))
+                             (if (string? a) a #f))))
+                  #:log-file "/var/log/pro1x-shake-torch.log"))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
+(define (pro1x-cpu-mode-shepherd-service config)
+  ;; The CPU mode (pro1x-cpu-mode watch): the one chosen in quick actions,
+  ;; else cpu-mode, applied at boot, and auto followed while chosen.
+  (list
+   (shepherd-service
+    (provision '(pro1x-cpu-mode))
+    (documentation "Set the CPU's energy mode (auto, battery, balanced, performance).")
+    (start #~(make-forkexec-constructor
+              (list #$(file-append pro1x-sway-config "/bin/pro1x-cpu-mode")
+                    "watch"
+                    #$(symbol->string (pro1x-hardware-cpu-mode config)))
+              #:log-file "/var/log/pro1x-cpu-mode.log"))
+    (stop #~(make-kill-destructor))
+    (respawn? #t))))
 
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
@@ -576,26 +807,43 @@ esac
              (force-output)
              ;; Stay up (no respawn loop) and do nothing.
              (let idle () (sleep 3600) (idle)))
+           ;; config.scm's limits, unless quick actions override them until
+           ;; reboot (pro1x-charge-limit: "LIMIT RESUME" or "off" in
+           ;; /run/pro1x-charge-limit).  Read on each pass: an override
+           ;; applies at once (author, 2026-11-01).
            (let loop ()
-             (let ((pct (string->number (or (read-file capacity) "")))
-                   (on? (equal? "Y" (read-file param))))
+             (let* ((chosen (read-file "/run/pro1x-charge-limit"))
+                    (fields (if chosen (string-split chosen #\space) '()))
+                    (limit (if chosen
+                               (and (= 2 (length fields))
+                                    (string->number (car fields)))
+                               #$limit))
+                    (resume (if (and chosen limit)
+                                (string->number (cadr fields))
+                                #$resume))
+                    (pct (string->number (or (read-file capacity) "")))
+                    (on? (equal? "Y" (read-file param))))
                (cond ((not pct) #t)
-                     ((and on? (>= pct #$limit)) (set-charging! #f))
-                     ((and (not on?) (<= pct #$resume)) (set-charging! #t))))
+                     ((not limit)               ;off: charge to full
+                      (unless on? (set-charging! #t)))
+                     ((and on? (>= pct limit)) (set-charging! #f))
+                     ((and (not on?) (<= pct resume)) (set-charging! #t))))
              (sleep 60)
              (loop))))))
 
 (define (pro1x-charge-limit-shepherd-service config)
+  ;; Always there: a quick actions override applies even when config.scm
+  ;; sets no limit.
   (let ((limit (pro1x-hardware-charge-limit config)))
-    (if limit
-        (list
+    (list
          (shepherd-service
           (provision '(pro1x-charge-limit))
           (requirement '(file-systems))
           (documentation "Stop charging at the charge limit, resume below it.")
           (start #~(make-forkexec-constructor
                     (list #$(pro1x-charge-limit-program
-                             limit (pro1x-hardware-charge-resume config)))
+                             limit (and limit
+                                        (pro1x-hardware-charge-resume config))))
                     #:log-file "/var/log/pro1x-charge-limit.log"))
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
@@ -605,8 +853,7 @@ esac
                          "/sys/module/pro1x_charger_icl/parameters/charge_enable"
                        (lambda (port) (display "1" port))))
                     #f))
-          (respawn? #t)))
-        '())))
+          (respawn? #t)))))
 
 (define (pro1x-clock-shepherd-service config)
   (list
@@ -664,6 +911,63 @@ esac
                      "KEYBOARD="
                      (symbol->string (pro1x-hardware-lock-keyboard config))
                      "\n")))
+      ;; /etc/pro1x/apps.conf: the app lists and the camera button's
+      ;; triple press, for pro1x-portrait-apps, pro1x-open,
+      ;; pro1x-camera-button and pro1x-call-watch.
+      ("pro1x/apps.conf"
+       ,(plain-file "apps.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "PORTRAIT_APPS='"
+                     (string-join (pro1x-hardware-portrait-apps config)) "'\n"
+                     "LANDSCAPE_APPS='"
+                     (string-join (pro1x-hardware-landscape-apps config)) "'\n"
+                     "FULLSCREEN_APPS='"
+                     (string-join (pro1x-hardware-fullscreen-apps config)) "'\n"
+                     "LOCK_SCREEN_APPS='"
+                     (string-join (pro1x-hardware-lock-screen-apps config)) "'\n"
+                     "CAMERA_TRIPLE_PRESS='"
+                     (pro1x-hardware-camera-triple-press config) "'\n")))
+      ;; /etc/sway/pro1x.d/apps.conf: fullscreen-apps as Sway rules (the
+      ;; Sway config includes the directory).
+      ("sway/pro1x.d/apps.conf"
+       ,(plain-file "apps.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm):\n"
+                     "# fullscreen-apps.\n"
+                     (string-concatenate
+                      (map (lambda (app)
+                             (string-append "for_window [app_id=\"^"
+                                            (regexp-quote app)
+                                            "$\"] fullscreen enable\n"))
+                           (pro1x-hardware-fullscreen-apps config))))))
+      ;; /etc/pro1x/sleep.conf: what may wake the phone, for pro1x-sleep.
+      ("pro1x/sleep.conf"
+       ,(plain-file "sleep.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "WAKE_ON='"
+                     (string-join (map symbol->string
+                                       (pro1x-hardware-wake-on config)))
+                     "'\n")))
+      ;; /etc/pro1x/cpu.conf: the CPU mode for good, for pro1x-cpu-mode
+      ;; (quick actions override it until reboot).
+      ("pro1x/cpu.conf"
+       ,(plain-file "cpu.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "CPU_MODE="
+                     (symbol->string (pro1x-hardware-cpu-mode config)) "\n")))
+      ;; /etc/pro1x/led.conf: the unlocked indicator, for pro1x-blank-led.
+      ("pro1x/led.conf"
+       ,(plain-file "led.conf"
+                    (let ((led (pro1x-hardware-unlocked-led config)))
+                      (string-append
+                       "# Written by pro1x-hardware-service-type (config.scm).\n"
+                       "UNLOCKED_LED='"
+                       (if led (led-intensity (car led)) "") "'\n"
+                       "UNLOCKED_LEVEL="
+                       (if led (number->string (cadr led)) "0") "\n"))))
       ;; /etc/pro1x/charge.conf: the charge limit, for sway-quick-actions
       ;; to show (the service itself gets the values directly).
       ("pro1x/charge.conf"
@@ -752,6 +1056,8 @@ light or dark colour scheme.")
                           (append (pro1x-clock-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
+                                  (pro1x-shake-torch-shepherd-service config)
+                                  (pro1x-cpu-mode-shepherd-service config)
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service

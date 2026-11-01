@@ -6,14 +6,37 @@
 #   pro1x-osd bright up|down
 #
 # A bar for a second when the volume or the brightness changes from the
-# keys (author, 2026-10-31).  Muted shows the volume in grey.  The bar's
+# keys (author, 2026-10-31).  Muted shows the volume in grey, brightness
+# is yellow (wob draws no text).  The bar's
 # look: wob.ini next to the port's sway config.  Brightness only through
 # the backlight's brightness file (brightnessctl), never actual_brightness
 # (AGENTS.md: it wedges the panel).
 #
 # State: written 2026-10-31, not yet run on the phone.
 
-fifo="${XDG_RUNTIME_DIR:-/tmp}/pro1x-wob"
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+fifo="$rt/pro1x-wob"
+
+# In a menu, or about to lock: leave the volume alone.  A press already
+# seen in a menu (pro1x-volume-lock marks it) skips the lookup: Sway
+# repeats the binding while the key is held, and each lookup took CPU from
+# the menu's own steps (author: Volume held was slower than Brightness).
+in_menu() {
+    [ -f "$rt/pro1x-vol-up" ] || [ -f "$rt/pro1x-vol-down" ] && return 0
+    pro1x-menu focused >/dev/null
+}
+# The volume before a run of presses, for pro1x-volume-lock to put back
+# when both keys turn out to be a lock chord (author: the second key still
+# changed the volume).
+note_volume() {
+    before="$rt/pro1x-vol-before"
+    if [ ! -f "$before" ] ||
+       [ $(( $(date +%s) - $(stat -c %Y "$before") )) -gt 1 ]; then
+        wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{ print $2 }' > "$before"
+    else
+        touch "$before"
+    fi
+}
 show() {                        # show VALUE [STYLE]
     [ -p "$fifo" ] && printf '%s\n' "$*" > "$fifo" &
 }
@@ -24,8 +47,14 @@ case "$1 ${2:-}" in
         conf="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/wob.ini"
         # tail keeps the fifo open between writers.
         exec sh -c "tail -f '$fifo' | wob -c '$conf'" ;;
-    "volume up") wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
-    "volume down") wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+    # With a menu focused the volume keys drive it (pro1x-volume-lock reads
+    # their presses and holds); the volume stays.
+    "volume up") in_menu && exit 0
+                 note_volume
+                 wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+    "volume down") in_menu && exit 0
+                   note_volume
+                   wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
     "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
     "bright up") brightnessctl -q set 5%+ ;;
     "bright down") brightnessctl -q set 5%- ;;
@@ -40,5 +69,5 @@ case "$1" in
             awk '{ v = int($2 * 100 + 0.5); if (v > 100) v = 100
                    print v ($3 ? " muted" : "") }' | { read -r v s; show "$v" $s; } ;;
     bright)
-        show "$(brightnessctl -m | cut -d, -f4 | tr -d %)" ;;
+        show "$(brightnessctl -m | cut -d, -f4 | tr -d %)" bright ;;
 esac

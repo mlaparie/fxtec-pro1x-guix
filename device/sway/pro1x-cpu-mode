@@ -1,0 +1,105 @@
+#!/bin/sh
+# pro1x-cpu-mode [auto|battery|balanced|performance|next|default|
+#                 temporary|apply|watch|get]
+# — the CPU's energy mode, as root (sudo, from sway-quick-actions; the
+# pro1x-cpu-mode service applies it at boot and follows auto)
+#
+# config.scm's cpu-mode is the mode for good (/etc/pro1x/cpu.conf); a mode
+# chosen in quick actions overrides it until the next reboot (author,
+# 2026-11-01): /run/pro1x-cpu-mode, which /run's emptying at boot drops.
+#
+#   auto         balanced, but battery while the panel is off or the
+#                battery is at 20 % or less and not charging (the default)
+#   battery      schedutil, capped: 1.31 GHz (CPUs 0-3), 1.40 GHz (4-7)
+#   balanced     schedutil over the whole range (the kernel's default)
+#   performance  the performance governor: top frequency all the time
+#   next         the next one: auto, battery, balanced, performance, round
+#   default      back to config.scm's mode
+#   temporary    exit 0 when an override is in force
+#   watch        follow auto (the service): every 10 s
+#   apply        the mode in force
+#   get          print the current one
+#
+# User-set energy management (author, 2026-11-01).  The caps are
+# frequencies the two clusters offer (scaling_available_frequencies,
+# measured 2026-11-01): policy0 300 MHz-1.80 GHz, policy4 300 MHz-2.02 GHz.
+
+PATH=/run/current-system/profile/bin:$PATH
+state=/run/pro1x-cpu-mode
+CPU_MODE=auto
+[ -r /etc/pro1x/cpu.conf ] && . /etc/pro1x/cpu.conf     # config.scm's
+cpufreq=/sys/devices/system/cpu/cpufreq
+
+# The frequencies and governor of MODE (battery, balanced, performance).
+apply_mode() {
+    for p in "$cpufreq"/policy*; do
+        top=$(cat "$p/cpuinfo_max_freq")
+        case "$1" in
+            battery)
+                gov=schedutil
+                case "${p##*/}" in
+                    policy0) cap=1305600 ;;
+                    *) cap=1401600 ;;
+                esac ;;
+            balanced) gov=schedutil cap=$top ;;
+            performance) gov=performance cap=$top ;;
+            *) echo "pro1x-cpu-mode: unknown mode $1" >&2; return 1 ;;
+        esac
+        echo "$cap" > "$p/scaling_max_freq"
+        echo "$gov" > "$p/scaling_governor"
+    done
+}
+
+# What auto stands for now.  The panel's dpms is a cached kernel value
+# (reading it does not touch the DSI link).
+auto_target() {
+    dpms=$(cat /sys/class/drm/card*-DSI-1/dpms 2>/dev/null | head -n 1)
+    cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
+    st=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
+    if [ "$dpms" = Off ] ||
+       { [ "$cap" -le 20 ] && [ "$st" != Charging ] && [ "$st" != Full ]; }; then
+        echo battery
+    else
+        echo balanced
+    fi
+}
+
+# Apply MODE; with "override", it holds until reboot.
+set_mode() {
+    if [ "$1" = auto ]; then apply_mode "$(auto_target)"; else apply_mode "$1"; fi || return
+    [ "${2:-}" = override ] && echo "$1" > "$state"
+    return 0
+}
+
+current() { cat "$state" 2>/dev/null || echo "$CPU_MODE"; }
+
+case "${1:-get}" in
+    auto|battery|balanced|performance) set_mode "$1" override ;;
+    next)
+        case "$(current)" in
+            auto) set_mode battery override ;;
+            battery) set_mode balanced override ;;
+            balanced) set_mode performance override ;;
+            *) set_mode auto override ;;
+        esac ;;
+    default) rm -f "$state"; set_mode "$CPU_MODE" ;;
+    temporary) [ -f "$state" ]; exit ;;
+    apply) set_mode "$(current)" ;;
+    watch)
+        # Apply the mode in force, then follow auto while it is chosen.
+        set_mode "$(current)"
+        last=
+        while :; do
+            if [ "$(current)" = auto ]; then
+                t=$(auto_target)
+                [ "$t" != "$last" ] && apply_mode "$t"
+                last=$t
+            else
+                last=
+            fi
+            sleep 10
+        done ;;
+    get) current ;;
+    *) echo "usage: pro1x-cpu-mode auto|battery|balanced|performance|next|default|temporary|apply|watch|get" >&2
+       exit 1 ;;
+esac

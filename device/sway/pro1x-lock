@@ -76,19 +76,26 @@ notes=$(sway-notifications summary 2>/dev/null |
 [ -n "$notes" ] || notes='No unread notifications'
 notes=$(printf '%s' "$notes" | xml)
 
+# Battery and CPU mode (author), as of this drawing: the lock screen is
+# redrawn on new notifications and rotations, not on its own.
+bat=/sys/class/power_supply/battery
+status="Battery $(cat "$bat/capacity" 2>/dev/null)% ($(cat "$bat/status" 2>/dev/null | tr A-Z a-z)) · CPU $(cat /var/lib/pro1x/cpu-mode 2>/dev/null || echo auto)"
+
+# Portrait or landscape (the panel's transform), for the layout and keys.
+if swaymsg -t get_outputs -r 2>/dev/null |
+       jq -e '.[] | select(.name == "DSI-1")
+              | .transform == "normal" or .transform == "180"' >/dev/null; then
+    portrait=yes
+else
+    portrait=no
+fi
+
 # gtklock's own layout (res/gtklock.ui, 4.0.0) with the banner above the
 # clock and the notifications under the password field; the IDs it looks
 # up are kept.  At the top, so the keyboard overlay has the bottom.
-cat > "$ui.new" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<interface>
-  <object class="GtkBox" id="window-box">
-    <property name="name">window-box</property>
-    <property name="margin">16</property>
-    <property name="halign">center</property>
-    <property name="valign">start</property>
-    <property name="orientation">vertical</property>
-    <property name="spacing">10</property>
+# The layout's pieces: banner, clock (with the date), password, status,
+# notifications.  Portrait: one above the other.  Landscape: see below.
+banner_xml=$(cat <<EOF
     <child>
       <object class="GtkBox">
         <property name="halign">center</property>
@@ -106,6 +113,9 @@ cat > "$ui.new" <<EOF
         </child>
       </object>
     </child>
+EOF
+)
+clock_xml=$(cat <<EOF
     <child>
       <object class="GtkBox" id="info-box">
         <property name="name">info-box</property>
@@ -130,6 +140,9 @@ cat > "$ui.new" <<EOF
         </child>
       </object>
     </child>
+EOF
+)
+pass_xml=$(cat <<EOF
     <child>
       <object class="GtkRevealer" id="body-revealer">
         <property name="transition-type">none</property>
@@ -222,6 +235,19 @@ cat > "$ui.new" <<EOF
         </child>
       </object>
     </child>
+EOF
+)
+status_xml=$(cat <<EOF
+    <child>
+      <object class="GtkLabel" id="pro1x-status">
+        <property name="name">pro1x-status</property>
+        <property name="halign">center</property>
+        <property name="label">$status</property>
+      </object>
+    </child>
+EOF
+)
+notes_xml=$(cat <<EOF
     <child>
       <object class="GtkLabel" id="pro1x-notes">
         <property name="name">pro1x-notes</property>
@@ -229,6 +255,50 @@ cat > "$ui.new" <<EOF
         <property name="label">$notes</property>
       </object>
     </child>
+EOF
+)
+if [ "$portrait" = yes ]; then
+    body="$banner_xml
+$clock_xml
+$pass_xml
+$status_xml
+$notes_xml"
+else
+    # Landscape: banner left, clock and status right, one row across the
+    # width; the password, then the notifications, centred below
+    # (author: spread in width, not packed in the middle).
+    body="    <child>
+      <object class=\"GtkBox\">
+        <property name=\"orientation\">horizontal</property>
+        <property name=\"homogeneous\">1</property>
+        <property name=\"spacing\">24</property>
+$banner_xml
+    <child>
+      <object class=\"GtkBox\">
+        <property name=\"orientation\">vertical</property>
+        <property name=\"valign\">center</property>
+$clock_xml
+$status_xml
+      </object>
+    </child>
+      </object>
+    </child>
+$pass_xml
+$notes_xml"
+fi
+orient=vertical
+if [ "$portrait" = yes ]; then halign=center; else halign=fill; fi
+cat > "$ui.new" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkBox" id="window-box">
+    <property name="name">window-box</property>
+    <property name="margin">16</property>
+    <property name="halign">$halign</property>
+    <property name="valign">start</property>
+    <property name="orientation">$orient</property>
+    <property name="spacing">10</property>
+$body
   </object>
 </interface>
 EOF
@@ -239,9 +309,7 @@ mv "$ui.new" "$ui"
 # alphanumeric, ten keys wide (narrow screen; our patch,
 # GTKLOCK_VIRTKB_PORTRAIT).
 key_size=70% key_pad=0
-if swaymsg -t get_outputs -r 2>/dev/null |
-       jq -e '.[] | select(.name == "DSI-1")
-              | .transform == "normal" or .transform == "180"' >/dev/null; then
+if [ "$portrait" = yes ]; then
     export GTKLOCK_VIRTKB_PORTRAIT=1
 else
     unset GTKLOCK_VIRTKB_PORTRAIT
@@ -253,11 +321,12 @@ else
 fi
 cat > "$css" <<EOF
 window { background-color: #1d2021; color: #d5c4a1; }
-#pro1x-gnu, #pro1x-guix, #pro1x-notes { font-family: "DejaVu Sans Mono", monospace; }
+#pro1x-gnu, #pro1x-guix, #pro1x-notes, #pro1x-status { font-family: "DejaVu Sans Mono", monospace; }
 #pro1x-gnu, #pro1x-guix { font-size: 16px; }
 #pro1x-gnu { color: #d5c4a1; }
 #pro1x-guix { color: #FFCC00; }
 #pro1x-notes { color: #928374; font-size: 18px; margin-top: 8px; }
+#pro1x-status { color: #a89984; font-size: 18px; margin-top: 8px; }
 #clock-label { font-size: 64px; color: #ebdbb2; }
 #date-label { font-size: 20px; color: #a89984; }
 #input-field { background: #282828; color: #ebdbb2; border: 1px solid #458588;
@@ -277,7 +346,21 @@ if [ "${1:-}" = --refresh ]; then
     old=$(pgrep -u "$uid" -x gtklock)
     [ -n "$old" ] || exit 0
     # SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.  The session stays
-    # locked without a client until the new one takes over.
+    # locked without a client until the new one takes over, and Sway paints
+    # it red meanwhile: the backlight goes dark over the swap (author: the
+    # red flash on a slide was annoying), and comes back once the new
+    # gtklock has had time to draw.
+    level=$(brightnessctl get 2>/dev/null)
+    if [ -n "$level" ] && [ "$level" -gt 0 ]; then
+        brightnessctl -q set 0
+        ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+              sleep 0.1
+              [ "$(pgrep -u "$uid" -x gtklock)" ] &&
+                  [ "$(pgrep -u "$uid" -x gtklock)" != "$old" ] && break
+          done
+          sleep 0.6
+          brightnessctl -q set "$level" ) >/dev/null 2>&1 &
+    fi
     kill -KILL $old
     for i in 1 2 3 4 5 6 7 8 9 10; do
         pgrep -u "$uid" -x gtklock >/dev/null || break
@@ -292,6 +375,14 @@ fi
 # The keyboard only with the hardware keyboard closed: evtest --query exits
 # with 10 while the slide switch is set (keyboard out).
 evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE 2>/dev/null
-[ $? -ne 10 ] && [ -n "$module" ] && set -- -m "$module" "$@"
+if [ $? -ne 10 ] && [ -n "$module" ]; then
+    set -- -m "$module" "$@"
+    # Where the keyboard is, for pro1x-doubletap: a double tap blanks the
+    # lock screen, but not over the keys.
+    if [ -n "${GTKLOCK_VIRTKB_PORTRAIT:-}" ]; then echo portrait; else echo landscape; fi \
+        > "$rt/pro1x-lock-osk"
+else
+    echo none > "$rt/pro1x-lock-osk"
+fi
 
 exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"

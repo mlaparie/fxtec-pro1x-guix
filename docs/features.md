@@ -32,7 +32,7 @@ Tailscale.
   (config.scm).
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
 - Dark apps and shell by default (color-scheme in config.scm).
-- Charge limit (85/80 %), shown in quick actions.
+- Charge limit (85/80 %) set in config.scm; quick actions override it until reboot.
 - Notification LED: blue for messages, purple for missed calls, white
   for the terminal bell (config.scm); breathing yellow
   while charging, green when full or held, red blip on low battery.
@@ -52,6 +52,10 @@ Tailscale.
 - Status bar: the full list in landscape, the essentials in portrait;
   Super+b hides it.
 - Lock with Ctrl+Super+l or both volume keys together.
+- Power key: short press screen off/on, held a power menu (power off,
+  reboot, lock, suspend…).  In the menus (quick actions, launcher, window
+  switcher, power), the volume keys move and the power key confirms, with
+  the keyboard closed.
 - Lock screen (gtklock): clock, GNU Guix banner, unread notifications
   per app; an on-screen keyboard while the keyboard is closed (numpad in
   landscape), dark or light in config.scm.
