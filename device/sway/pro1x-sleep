@@ -2,16 +2,17 @@
 # pro1x-sleep suspend|hibernate — as root (sudo, from pro1x-power-menu).
 #
 # Suspend is s2idle (the only mem_sleep mode on the Pro¹x).  Measured
-# 2026-11-01, with an RTC alarm 30 s ahead:
+# 2026-11-01:
 #   - the phone woke after 2.2 s: IRQ 110, 4a8c000.serial:wakeup, the
-#     Bluetooth chip's UART.  Its wakeup is turned off while suspended (and
-#     back on after); Bluetooth itself stays on.  Wakes: power key, RTC.
-#   - on resume, the ADSP's sensor process crashed (EX:sensor_process,
-#     frpc_dsp), leaving the sensors dead until a reboot (recovery is off).
-#     Assumed: its FastRPC calls to hexagonrpcd, frozen while suspended,
-#     time out.  So the sensor clients (iio-sensor-proxy and what needs it:
-#     pro1x-pocket; pro1x-shake-torch) stop first and start again after.
-#     Not yet confirmed.
+#     Bluetooth chip's UART.  Its wakeup is off while suspended (and back
+#     on after); Bluetooth itself stays on.  Wakes: power key (seen), RTC
+#     alarm, the keyboard (marked as a wakeup source; not yet seen).
+#   - on resume the ADSP's sensor process crashes (EX:sensor_process,
+#     frpc_dsp), with or without the sensor services running (stopping
+#     them first did not help).  ADSP recovery is off (no crash loops), so
+#     after a resume that left it crashed, this restarts it once (debugfs
+#     "recover"), then hexagonrpcd and the sensor services.  Audio restarts
+#     with the ADSP.
 # Hibernate needs swap and a resume device, which the port does not set up.
 
 # sudo resets PATH: herd and coreutils from the system profile.
@@ -21,24 +22,35 @@ uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
              /sys/devices/platform/*/*/4a8c000.serial/power/wakeup \
              2>/dev/null | head -n 1)
 
-sensors_stop() {
-    herd stop pro1x-shake-torch >/dev/null 2>&1
-    herd stop iio-sensor-proxy >/dev/null 2>&1   # pro1x-pocket with it
-}
-sensors_start() {
+adsp=
+for r in /sys/class/remoteproc/remoteproc*; do
+    [ "$(cat "$r/name" 2>/dev/null)" = adsp ] && adsp=$r
+done
+
+# The ADSP crashed: restart it once, then what talks to it.
+adsp_recover() {
+    [ -n "$adsp" ] && [ "$(cat "$adsp/state")" = crashed ] || return 0
+    echo "pro1x-sleep: ADSP crashed on resume, restarting it" | logger -t pro1x-sleep
+    [ -d /sys/kernel/debug/remoteproc ] ||
+        mount -t debugfs none /sys/kernel/debug 2>/dev/null
+    echo recover > "/sys/kernel/debug/remoteproc/${adsp##*/}/recovery"
+    for i in $(seq 30); do
+        [ "$(cat "$adsp/state")" = running ] && break
+        sleep 1
+    done
+    herd restart pro1x-hexagonrpcd >/dev/null 2>&1   # stops its dependents
     herd start iio-sensor-proxy >/dev/null 2>&1
     herd start pro1x-pocket >/dev/null 2>&1
-    herd start pro1x-shake-torch >/dev/null 2>&1
+    herd restart pro1x-shake-torch >/dev/null 2>&1
 }
 
 case "${1:-}" in
     suspend)
-        sensors_stop
-        sleep 1                                  # the ADSP sees them go
         [ -n "$uart" ] && echo disabled > "$uart"
         echo mem > /sys/power/state
         [ -n "$uart" ] && echo enabled > "$uart"
-        sensors_start ;;
+        sleep 1                                  # the crash shows by then
+        adsp_recover ;;
     hibernate) echo disk > /sys/power/state ;;
     *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
 esac

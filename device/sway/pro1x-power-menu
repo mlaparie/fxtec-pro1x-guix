@@ -31,7 +31,9 @@ case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
     "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
                     swaymsg 'output * power off' >/dev/null ;;
-    "Suspend") sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
+    # Detached: after the resume it may restart the ADSP (about 20 s),
+    # which closing this window must not cut short.
+    "Suspend") setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
     "Power off") sudo -n /run/current-system/profile/sbin/halt ;;
