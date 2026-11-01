@@ -445,7 +445,7 @@ set_to() {
 }
 
 touch_mode() {                  # touchscreen or touchpad (pro1x-doubletap)
-    cat /var/lib/pro1x/touch-mode 2>/dev/null || echo touchscreen
+    cat /run/pro1x-touch-mode 2>/dev/null || echo touchscreen
 }
 
 state_of() {                    # state_of <setting>: on or off

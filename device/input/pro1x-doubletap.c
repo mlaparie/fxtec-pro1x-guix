@@ -202,7 +202,8 @@ static int open_uinput(void)
  *              keyd's Fn layer is held (keyd listen: "+fn", "-fn");
  *   "pad on", "pad off", "pad toggle"
  *              touchpad mode without holding anything (quick actions,
- *              Super+t; kept in PAD_STATE across reboots; default off).
+ *              Super+t; kept in PAD_STATE until a reboot: every boot
+ *              starts as a touchscreen, author 2026-11-01).
  * As a touchpad, the touchscreen is grabbed (EVIOCGRAB: no app gets the
  * touches) and moves the pointer; a tap is a click (right with Fn), once
  * TAP_MS pass without another touch; a touch within TAP_MS of a tap holds
@@ -213,7 +214,7 @@ static int open_uinput(void)
  * always gets the touchscreen: in touchpad mode, the first touch on it
  * lets go of the grab.  Super comes from keyd's virtual keyboard, read
  * here for Esc anyway. */
-#define PAD_STATE "/var/lib/pro1x/touch-mode"
+#define PAD_STATE "/run/pro1x-touch-mode"
 #define POINTER_FIFO "/run/pro1x-pointer"
 #define POINTER_VENDOR 0x1234
 #define POINTER_PRODUCT 0x5678
@@ -309,10 +310,7 @@ static void set_grab(int want)
 
 static void save_pad(void)
 {
-	FILE *f;
-
-	mkdir("/var/lib/pro1x", 0755);
-	f = fopen(PAD_STATE, "w");
+	FILE *f = fopen(PAD_STATE, "w");
 	if (f) {
 		fputs(pad ? "touchpad\n" : "touchscreen\n", f);
 		fclose(f);

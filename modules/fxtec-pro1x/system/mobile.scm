@@ -565,22 +565,23 @@ files root may log in with."
      (simple-service 'phosh-pam pam-root-service-type
        (list (unix-pam-service "phosh")))
 
-     ;; Console font for tuigreet: sun12x22 doubled (setfont -d), 24x44,
-     ;; about 90x24 cells in landscape; 16x32 left room (author).  Guix's
+     ;; Console font for tuigreet: Terminus 28 bold doubled (setfont -d),
+     ;; 28x56, about 77x19 cells in landscape (author: bigger; it was
+     ;; sun12x22 doubled, 24x44, and 16x32 before that).  Guix's
      ;; console-font-service-type needs mingetty's term-ttyN, removed here.
      (simple-service 'pro1x-console-font shepherd-root-service-type
        (list (shepherd-service
               (provision '(pro1x-console-font))
               (requirement '(virtual-terminal))
               (one-shot? #t)
-              (documentation "Console for tuigreet: 24x44 font on tty1,
+              (documentation "Console for tuigreet: 28x56 font on tty1,
 Dracula palette, no kernel messages over the greeter.")
               (start #~(lambda _
                          (system* #$(file-append kbd "/bin/setfont")
                                   "-C" "/dev/tty1" "-d"
                                   #$(file-append
-                                     kbd "/share/consolefonts/"
-                                     "sun12x22.psfu.gz"))
+                                     font-terminus "/share/consolefonts/"
+                                     "ter-v28b.psf.gz"))
                          ;; Dracula (draculatheme.com) as the 16 console
                          ;; colours, red/green/blue rows; colour 0 is the
                          ;; background #282a36.  Not vt.default_* on the
