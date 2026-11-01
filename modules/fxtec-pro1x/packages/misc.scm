@@ -401,7 +401,9 @@ Categories=AudioVideo;Video;
 StartupNotify=false
 " #$output)))))))))
     (inputs
-     (list bash-minimal python python-pygobject gtk+ gdk-pixbuf pango
+     ;; gobject-introspection: the cairo and xlib typelibs GTK 3 needs.
+     (list bash-minimal python python-pygobject gobject-introspection gtk+
+           gdk-pixbuf pango
            gstreamer gst-plugins-base gst-plugins-good
            (list libcamera-pro1x "gst")))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")

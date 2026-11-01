@@ -27,12 +27,16 @@ import time
 import gi
 gi.require_version("Gst", "1.0")
 gi.require_version("GstVideo", "1.0")
+gi.require_version("GstApp", "1.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import GdkPixbuf, GLib, Gst, GstVideo, Gtk, Gdk  # noqa: E402
+from gi.repository import GdkPixbuf, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
 VIEW = (1920, 1080)             # the IMX582's fast mode (pro1x-imx582-1080p)
-STILL = (4000, 3000)            # its 12 MP binned mode
+# Its 12 MP binned mode is 4000x3000, but the software ISP keeps a border
+# of one Bayer pattern left and right (moWerk's 1080p patch notes), and
+# 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
+STILL = (3968, 2976)
 SETTLE_FRAMES = 8               # frames for exposure and focus at 12 MP
 ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
 EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
@@ -59,7 +63,18 @@ def cameras():
     provider = factory.get() if factory else None
     found = [(d.get_display_name(), d)
              for d in (provider.get_devices() if provider else [])]
-    found.sort(key=lambda d: 0 if "imx582" in d[0].lower() else 1)
+
+    def rear_first(item):
+        name, dev = item
+        props = dev.get_properties()
+        if props:
+            print("camera %s: %s" % (name, props.to_string()), flush=True)
+            ok, location = props.get_int("api.libcamera.Location")
+            if ok:
+                return 0 if location == 1 else 1     # 1: back
+        # The IMX582 (rear) is at address 0x10, the S5K4H7 at 0x2d.
+        return 0 if name.endswith("@10") else 1
+    found.sort(key=rear_first)
     return found
 
 
@@ -239,12 +254,13 @@ class Camera(Gtk.Application):
 
     def orient(self):
         """The rear sensor's frames are landscape with the phone's top to
-        their right; the front one is mirrored."""
+        their left (seen on the phone, 2026-11-01); the front one is
+        mirrored."""
         if not self.pipeline:
             return
         front = self.cam != 0
         if self.portrait:
-            method = "counterclockwise" if front else "clockwise"
+            method = "clockwise" if front else "counterclockwise"
         else:
             method = "horizontal-flip" if front else "none"
         self.flip.set_property("method", method)
@@ -284,7 +300,9 @@ class Camera(Gtk.Application):
         x, y = event.x / alloc.width, event.y / alloc.height
         front = self.cam != 0
         if self.portrait:
-            x, y = (y, 1 - x) if not front else (1 - y, 1 - x)
+            # Undo the viewfinder's turn: counterclockwise (rear) shows
+            # frame (u, v) at (v, 1 - u); clockwise (front) at (1 - v, u).
+            x, y = (1 - y, x) if not front else (y, 1 - x)
         elif front:
             x = 1 - x
         ax, ay, aw, ah = self.area
@@ -321,11 +339,18 @@ class Camera(Gtk.Application):
         threading.Thread(target=self.capture, daemon=True).start()
 
     def capture(self):
-        sample = None
+        sample, got = None, 0
         for _ in range(SETTLE_FRAMES + 1):
             s = self.snap.try_pull_sample(3 * Gst.SECOND)
             if s:
-                sample = s
+                sample, got = s, got + 1
+        if sample:
+            caps = sample.get_caps().get_structure(0)
+            print("capture: %d frames, last %dx%d" % (
+                got, caps.get_value("width"), caps.get_value("height")),
+                flush=True)
+        else:
+            print("capture: no frame at %dx%d" % STILL, flush=True)
         GLib.idle_add(self.captured, sample)
 
     def captured(self, sample):
@@ -336,6 +361,7 @@ class Camera(Gtk.Application):
             try:
                 path = self.save(sample)
             except Exception as e:      # shown, not fatal
+                print("capture: not saved: %s" % e, flush=True)
                 self.say("Not saved: %s" % e, 4)
         self.resize(VIEW)
         self.busy = False
@@ -364,13 +390,14 @@ class Camera(Gtk.Application):
         front = self.cam != 0
         if self.portrait:
             pix = pix.rotate_simple(
-                GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE if front
-                else GdkPixbuf.PixbufRotation.CLOCKWISE)
+                GdkPixbuf.PixbufRotation.CLOCKWISE if front
+                else GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE)
         elif front:
             pix = pix.flip(True)
         os.makedirs(PHOTOS, exist_ok=True)
         path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
         pix.savev(path, "jpeg", ["quality"], ["92"])
+        print("capture: saved %s" % path, flush=True)
         return path
 
     def led(self, on):
@@ -393,4 +420,7 @@ class Camera(Gtk.Application):
 
 
 if __name__ == "__main__":
+    # The Wayland app_id GTK 3 gives: Sway's rules (fullscreen, portrait,
+    # the camera button) match org.pro1x.Camera.
+    GLib.set_prgname("org.pro1x.Camera")
     Camera().run(None)
