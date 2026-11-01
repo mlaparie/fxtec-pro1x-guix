@@ -182,7 +182,6 @@ static int open_uinput(void)
 		return -1;
 	ioctl(fd, UI_SET_EVBIT, EV_KEY);
 	ioctl(fd, UI_SET_KEYBIT, KEY_POWER);
-	ioctl(fd, UI_SET_KEYBIT, KEY_LEFTMETA);	/* Super, for window drags */
 	strcpy(setup.name, "pro1x-doubletap");
 	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
 		close(fd);
@@ -192,16 +191,34 @@ static int open_uinput(void)
 }
 
 /* The camera button's pointer (pro1x-camera-button, author 2026-11-01):
- * an absolute pointer whose position is the touch's own, in the same
- * device units scaled to 0..65535.  Mapped to DSI-1 (pro1x.conf), wlroots
- * turns it with the output exactly as it turns touches, so it lands under
- * the finger at any rotation.  Driven through the /run/pro1x-pointer fifo
- * (the input group may write): "rclick" clicks the right button at the
- * last touch; "drag" holds Super and the left button there and follows
- * the finger (Sway's floating_modifier: moves windows); "end" lets go. */
+ * an absolute pointer kept in touchscreen units, scaled to 0..65535.
+ * Mapped to DSI-1 (pro1x.conf), wlroots turns it with the output as it
+ * turns touches, so finger moves move it the same way at any rotation.
+ * Driven through the /run/pro1x-pointer fifo (the input group may write):
+ *   "hold"     the touchscreen is a touchpad: finger moves move the
+ *              pointer (TOUCHPAD_GAIN); with Super held on the keyboard,
+ *              the left button is held too (Sway's floating_modifier:
+ *              a window drag);
+ *   "release"  back to plain touch, the left button let go;
+ *   "click"    a left click where the pointer is, a right one while
+ *              keyd's Fn layer is held (keyd listen: "+fn", "-fn").
+ * Super comes from keyd's virtual keyboard, read here for Esc anyway. */
 #define POINTER_FIFO "/run/pro1x-pointer"
 #define POINTER_VENDOR 0x1234
 #define POINTER_PRODUCT 0x5678
+#define TOUCHPAD_GAIN 1.5
+#ifndef KEYD
+#define KEYD "keyd"
+#endif
+
+/* keyd's layer changes, for Fn: a pipe from "keyd listen", -1 if none. */
+static FILE *keyd_listen;
+
+static int open_keyd_listen(void)
+{
+	keyd_listen = popen(KEYD " listen", "r");
+	return keyd_listen ? fileno(keyd_listen) : -1;
+}
 
 static int open_pointer(void)
 {
@@ -264,12 +281,12 @@ static void press_power(int fd)
 	emit(fd, EV_SYN, SYN_REPORT, 0);
 }
 
-static void pointer_to(int fd, int x, int y, int xmax, int ymax)
+static void pointer_to(int fd, double x, double y, int xmax, int ymax)
 {
 	if (fd < 0 || xmax <= 0 || ymax <= 0)
 		return;
-	emit(fd, EV_ABS, ABS_X, (int) ((long) x * 65535 / xmax));
-	emit(fd, EV_ABS, ABS_Y, (int) ((long) y * 65535 / ymax));
+	emit(fd, EV_ABS, ABS_X, (int) (x * 65535 / xmax));
+	emit(fd, EV_ABS, ABS_Y, (int) (y * 65535 / ymax));
 	emit(fd, EV_SYN, SYN_REPORT, 0);
 }
 
@@ -287,7 +304,10 @@ int main(int argc, char **argv)
 	long last_down = 0, quiet_until = 0;
 	int last_x = 0, last_y = 0;
 	int ymax = 0, xmax = 0, down = 0, moved = 0;
-	int pointer, pfifo, dragging = 0;
+	int pointer, pfifo, layers;
+	int holding = 0, lmb = 0, fn = 0, meta = 0, have_prev = 0;
+	double px = 0, py = 0;		/* the pointer, touchscreen units */
+	int prev_x = 0, prev_y = 0;	/* the finger, for touchpad moves */
 
 	if (argc > 1)
 		interval_ms = atol(argv[1]);
@@ -314,6 +334,9 @@ int main(int argc, char **argv)
 	}
 	pointer = open_pointer();
 	pfifo = open_pointer_fifo();
+	layers = open_keyd_listen();
+	px = xmax / 2.0;
+	py = ymax / 2.0;
 	if (pointer < 0 || pfifo < 0)
 		perror("pro1x-doubletap: camera button pointer");
 	fprintf(stderr, "pro1x-doubletap: watching, interval %ld ms, distance %ld\n",
@@ -323,14 +346,15 @@ int main(int argc, char **argv)
 
 	for (;;) {
 		/* poll skips the entries whose fd is -1. */
-		struct pollfd p[3] = {
+		struct pollfd p[4] = {
 			{ .fd = touch, .events = POLLIN },
 			{ .fd = kbd, .events = POLLIN },
 			{ .fd = pfifo, .events = POLLIN },
+			{ .fd = layers, .events = POLLIN },
 		};
 		struct input_event ev;
 
-		if (poll(p, 3, kbd >= 0 ? -1 : 5000) < 0) {
+		if (poll(p, 4, kbd >= 0 && layers >= 0 ? -1 : 5000) < 0) {
 			if (errno == EINTR)
 				continue;
 			perror("poll");
@@ -340,26 +364,46 @@ int main(int argc, char **argv)
 			fprintf(stderr, "pro1x-doubletap: touch device gone\n");
 			return 1;	/* Shepherd respawns us */
 		}
+		if (layers >= 0 && (p[3].revents & (POLLIN | POLLHUP))) {
+			char line[64];
+
+			if (!fgets(line, sizeof line, keyd_listen)) {
+				pclose(keyd_listen);	/* keyd gone: again later */
+				layers = -1;
+				fn = 0;
+			} else if (!strcmp(line, "+fn\n")) {
+				fn = 1;
+			} else if (!strcmp(line, "-fn\n")) {
+				fn = 0;
+			}
+		} else if (layers < 0) {
+			layers = open_keyd_listen();
+		}
 		if (p[2].revents & POLLIN) {
 			char cmd[64];
 			ssize_t n = read(pfifo, cmd, sizeof cmd - 1);
 
 			cmd[n > 0 ? n : 0] = 0;
-			if (strstr(cmd, "rclick")) {
-				pointer_to(pointer, x, y, xmax, ymax);
-				pointer_button(pointer, BTN_RIGHT, 1);
-				pointer_button(pointer, BTN_RIGHT, 0);
-			} else if (strstr(cmd, "drag") && !dragging) {
-				dragging = 1;
-				emit(out, EV_KEY, KEY_LEFTMETA, 1);
-				emit(out, EV_SYN, SYN_REPORT, 0);
-				pointer_to(pointer, x, y, xmax, ymax);
-				pointer_button(pointer, BTN_LEFT, 1);
-			} else if (strstr(cmd, "end") && dragging) {
-				dragging = 0;
-				pointer_button(pointer, BTN_LEFT, 0);
-				emit(out, EV_KEY, KEY_LEFTMETA, 0);
-				emit(out, EV_SYN, SYN_REPORT, 0);
+			if (strstr(cmd, "click")) {
+				int button = fn ? BTN_RIGHT : BTN_LEFT;
+
+				pointer_to(pointer, px, py, xmax, ymax);
+				pointer_button(pointer, button, 1);
+				pointer_button(pointer, button, 0);
+			} else if (strstr(cmd, "hold") && !holding) {
+				holding = 1;
+				have_prev = 0;
+				pointer_to(pointer, px, py, xmax, ymax);	/* shows it */
+				if (meta) {
+					lmb = 1;
+					pointer_button(pointer, BTN_LEFT, 1);
+				}
+			} else if (strstr(cmd, "release") && holding) {
+				holding = 0;
+				if (lmb) {
+					lmb = 0;
+					pointer_button(pointer, BTN_LEFT, 0);
+				}
 			}
 		}
 		if (kbd < 0) {
@@ -371,6 +415,9 @@ int main(int argc, char **argv)
 			while (read(kbd, &ev, sizeof ev) == sizeof ev) {
 				long t = now_ms();
 
+				if (ev.type == EV_KEY && (ev.code == KEY_LEFTMETA ||
+							  ev.code == KEY_RIGHTMETA))
+					meta = ev.value != 0;
 				if (ev.type == EV_KEY && ev.code == KEY_ESC &&
 				    ev.value == 1 && t >= quiet_until && panel_off() &&
 				    !pocketed()) {
@@ -393,8 +440,16 @@ int main(int argc, char **argv)
 				down = ev.value, moved = 1;
 			else if (ev.type == EV_SYN && ev.code == SYN_REPORT && moved) {
 				note_touch(x, y, xmax, ymax, down);
-				if (dragging && down)
-					pointer_to(pointer, x, y, xmax, ymax);
+				if (holding && down && have_prev) {
+					px += (x - prev_x) * TOUCHPAD_GAIN;
+					py += (y - prev_y) * TOUCHPAD_GAIN;
+					px = px < 0 ? 0 : px > xmax ? xmax : px;
+					py = py < 0 ? 0 : py > ymax ? ymax : py;
+					pointer_to(pointer, px, py, xmax, ymax);
+				}
+				have_prev = down;
+				prev_x = x;
+				prev_y = y;
 				moved = 0;
 			}
 			if (!(ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 1))

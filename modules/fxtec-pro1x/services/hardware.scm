@@ -144,8 +144,8 @@
                       (default '("org.gnome.Calls" "org.gnome.Snapshot")))
   ;; The camera button in Sway: a double press runs this shell command
   ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
-  ;; a single press elsewhere right-clicks where the finger last touched,
-  ;; held it is a left-button drag following the finger.
+  ;; a single press elsewhere left-clicks where the pointer is (right with
+  ;; Fn), held the touchscreen is a touchpad (with Super: a window drag).
   (camera-double-press pro1x-hardware-camera-double-press
                        (default "snapshot"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or

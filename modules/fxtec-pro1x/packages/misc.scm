@@ -989,6 +989,9 @@ mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
                                    "/bin"))
             (invoke "gcc" "-O2" "-Wall" "-o"
                     (string-append bin "/pro1x-doubletap") #$source
+                    ;; keyd listen: its Fn layer, for the camera button.
+                    (string-append "-DKEYD=\"" #$(file-append keyd "/bin/keyd")
+                                   "\"")
                     (string-append
                      "-I" #$(this-package-native-input "linux-libre-headers")
                      "/include"))))))
