@@ -354,7 +354,10 @@ choose() {
                 fixed) sway-autorotate fixed ;;
             esac ;;
         wifi|bluetooth)
-            if [ "$pick" = tool ]; then step "$line" +
+            if [ "$pick" = tool ]; then
+                # Its networks or devices need it on (author, 2026-11-02).
+                [ "$(state_of "$line")" = on ] || set_to "$line" on
+                step "$line" +
             else set_to "$line" "$pick"; fi ;;
     esac
 }

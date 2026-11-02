@@ -27,6 +27,19 @@
 # sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 
+# The modem's data path (IPA): over mobile data, its interrupt (136,
+# "ipa") ended each suspend within seconds (2026-11-02, pm_wakeup_irq).
+# Calls and SMS come through QRTR, which wakes for them (wake_ports).
+ipa=$(ls -d /sys/devices/platform/*/5840000.ipa/power/wakeup 2>/dev/null | head -n 1)
+# Asleep: the status LED dim cyan (author, 2026-11-02), so a sleeping
+# phone is told from a dark one.  feedbackd is frozen meanwhile.
+led=/sys/class/leds/rgb:status
+led_asleep() {
+    [ -w "$led/pattern" ] || return 0
+    echo "0 255 255" > "$led/multi_intensity"
+    echo "6 1000 6 1000" > "$led/pattern"
+}
+led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
              /sys/devices/platform/*/*/4a8c000.serial/power/wakeup \
              2>/dev/null | head -n 1)
@@ -160,8 +173,12 @@ case "${1:-}" in
     suspend)
         panel off
         [ -n "$uart" ] && echo disabled > "$uart"
+        [ -n "$ipa" ] && echo disabled > "$ipa"
+        led_asleep
         suspend_loop
         [ -n "$uart" ] && echo enabled > "$uart"
+        [ -n "$ipa" ] && echo enabled > "$ipa"
+        led_awake
         sleep 1                                  # a crash shows by then
         adsp_recover
         # After a resume iio-sensor-proxy kept its sensors but proximity
