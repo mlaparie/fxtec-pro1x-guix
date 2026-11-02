@@ -18,7 +18,11 @@
 
 PATH=/run/current-system/profile/bin:$PATH
 state=/run/pro1x-charge-limit
+# The charger's switch: our kernel patch's module parameter (7.1, Y/N), or
+# the driver's charging_enabled attribute (moWerk's 7.3 series, 1/0).
 param=/sys/module/pro1x_charger_icl/parameters/charge_enable
+[ -e "$param" ] ||
+    param=/sys/class/power_supply/usb/device/charging_enabled
 capacity=/sys/class/power_supply/battery/capacity
 
 get() {

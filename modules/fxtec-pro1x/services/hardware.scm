@@ -225,7 +225,12 @@ white, #RRGGBB or #f")
          (let ((status (read-file "/sys/class/power_supply/battery/status"))
                (pct (string->number
                      (read-file "/sys/class/power_supply/battery/capacity")))
-               (held (equal? "N" (read-file "/sys/module/pro1x_charger_icl/parameters/charge_enable"))))
+               (held (member (or (read-file
+                                  (if (file-exists? "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+                                      "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                                      "/sys/class/power_supply/usb/device/charging_enabled"))
+                                 "")
+                             '("N" "0"))))
            (define (on colour pattern) (and colour (cons colour pattern)))
            (cond ((and (equal? status "Discharging") pct (<= pct #$low-level))
                   (on #$low blip))
@@ -791,8 +796,13 @@ esac
    "pro1x-charge-limit"
    #~(begin
        (use-modules (ice-9 rdelim))
+       ;; The charger's switch: our patch's module parameter (7.1, Y/N) or
+       ;; the driver's charging_enabled attribute (moWerk's 7.3 series,
+       ;; 1/0); both take 1 and 0.
        (define param
-         "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+         (if (file-exists? "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+             "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+             "/sys/class/power_supply/usb/device/charging_enabled"))
        (define capacity "/sys/class/power_supply/battery/capacity")
        (define (read-file file)
          (false-if-exception (call-with-input-file file read-line)))
@@ -824,7 +834,7 @@ esac
                                 (string->number (cadr fields))
                                 #$resume))
                     (pct (string->number (or (read-file capacity) "")))
-                    (on? (equal? "Y" (read-file param))))
+                    (on? (member (read-file param) '("Y" "1"))))
                (cond ((not pct) #t)
                      ((not limit)               ;off: charge to full
                       (unless on? (set-charging! #t)))
@@ -850,10 +860,13 @@ esac
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
                     (apply (make-kill-destructor) running args)
-                    (false-if-exception
-                     (call-with-output-file
-                         "/sys/module/pro1x_charger_icl/parameters/charge_enable"
-                       (lambda (port) (display "1" port))))
+                    (for-each
+                     (lambda (switch)
+                       (false-if-exception
+                        (call-with-output-file switch
+                          (lambda (port) (display "1" port)))))
+                     '("/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                       "/sys/class/power_supply/usb/device/charging_enabled"))
                     #f))
           (respawn? #t)))))
 

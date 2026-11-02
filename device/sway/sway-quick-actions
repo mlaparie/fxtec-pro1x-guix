@@ -136,7 +136,9 @@ fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
 battery=/sys/class/power_supply/battery
-charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable
+charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable    # 7.1
+[ -e "$charge_param" ] ||                                              # 7.3
+    charge_param=/sys/class/power_supply/usb/device/charging_enabled
 kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
 pin_tries() { grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9; }
 
@@ -390,7 +392,7 @@ blocked() {                     # rfkill type -> on/off (on = not blocked)
 battery_state() {               # "76% discharging", "85% held at limit"
     cap=$(cat "$battery/capacity" 2>/dev/null) || { echo "no battery"; return; }
     st=$(cat "$battery/status" 2>/dev/null | tr 'A-Z' 'a-z')
-    [ "$(cat "$charge_param" 2>/dev/null)" = N ] && st="held at limit"
+    case "$(cat "$charge_param" 2>/dev/null)" in N|0) st="held at limit" ;; esac
     echo "$cap% $st"
 }
 
