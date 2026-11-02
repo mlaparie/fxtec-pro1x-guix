@@ -46,7 +46,11 @@ check() {
         # list, " $LIST " matched it, and landscape stuck for good
         # (2026-11-01: no portrait, the power menu closed at once).  Our
         # menus: the rotation stays as it is (a change would close them).
-        ""|quickactions|launcher|windowswitcher|powermenu) return ;;
+        quickactions|launcher|windowswitcher|powermenu) return ;;
+        # Nothing focused (the forced app just closed, an empty workspace):
+        # its orientation goes (author: stuck in portrait after the camera
+        # until a touch, 2026-11-02); never forced from here.
+        "") [ -f "$flag" ] && restore; return ;;
     esac
     case " $PORTRAIT_APPS " in *" $app "*) want=normal ;; *) want= ;; esac
     case " $LANDSCAPE_APPS " in *" $app "*) want=90 ;; esac

@@ -402,7 +402,11 @@ StartupNotify=false
 " #$output)))))))))
     (inputs
      ;; gobject-introspection: the cairo and xlib typelibs GTK 3 needs.
-     (list bash-minimal python python-pygobject gobject-introspection gtk+
+     ;; python-pycairo: the focus square's draw handler gets a cairo
+     ;; context (without it: "Couldn't find foreign struct converter for
+     ;; 'cairo.Context'", no square; 2026-11-02).
+     (list bash-minimal python python-pygobject python-pycairo
+           gobject-introspection gtk+
            gdk-pixbuf pango
            gstreamer gst-plugins-base gst-plugins-good
            (list libcamera-pro1x "gst")))

@@ -637,10 +637,10 @@ step() {                        # Right (+) and Left (-)
         orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
-        bright+) brightnessctl -q set +10%; pro1x-osd bright show ;;
-        bright-) brightnessctl -q set 10%-; pro1x-osd bright show ;;
-        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+; pro1x-osd volume show ;;
-        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-; pro1x-osd volume show ;;
+        bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show ;;
+        bright-) brightnessctl -q -n1 set 2%-; pro1x-osd bright show ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+; pro1x-osd volume show ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-; pro1x-osd volume show ;;
         feedback?) feedback_step "$2" ;;
         charge+|charge-)          # off, 80, 85, 90, 95
             set -- "$2" $CHARGE_OPTS

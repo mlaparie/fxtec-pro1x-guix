@@ -172,6 +172,14 @@ class Camera(Gtk.Application):
             bar.pack_start(b, False, False, 0)
         self.overlay.add_overlay(bar)
 
+        # A way out: fullscreen, there was none without a keyboard (author,
+        # 2026-11-02).
+        close = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.START,
+                        margin_top=16, margin_end=16)
+        close.pack_start(self.button("✕", lambda *_: self.win.destroy()),
+                         False, False, 0)
+        self.overlay.add_overlay(close)
+
         top = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
                       valign=Gtk.Align.START, margin_top=16)
         self.status = Gtk.Label(label="")
@@ -182,7 +190,7 @@ class Camera(Gtk.Application):
         self.overlay.add_overlay(top)
 
         self.win.connect("size-allocate", self.on_size)
-        self.win.connect("destroy", lambda *_: self.stop())
+        self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
         self.win.show_all()
         self.b_last.hide()
 

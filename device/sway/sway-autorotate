@@ -76,7 +76,10 @@ poke() {                        # tell the running daemon to re-check
 # Off with the keyboard closed: back to portrait.
 portrait_unless_slid_out() { slider_out || set_transform normal; }
 fixed="$statedir/sway-orientation"
-fix() { echo fixed > "$state"; echo "$1" > "$fixed"; poke; set_transform "$1"; }
+# A chosen orientation wins over a portrait app's (pro1x-portrait-apps'
+# flag; author: quick actions had no effect while it stuck, 2026-11-02).
+fix() { rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-portrait-app"
+        echo fixed > "$state"; echo "$1" > "$fixed"; poke; set_transform "$1"; }
 
 case "${1:-}" in
     on) echo on > "$state"; poke; exit 0 ;;
