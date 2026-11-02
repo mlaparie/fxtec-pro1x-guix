@@ -106,6 +106,7 @@ class Camera(Gtk.Application):
         self.pipeline = None
         self.iso = 0
         self.ev = 0
+        self.night = False
         self.flash = False
         self.busy = False
         self.portrait = True
@@ -167,8 +168,9 @@ class Camera(Gtk.Application):
         self.b_shutter.get_style_context().add_class("shutter")
         self.b_iso = self.button("ISO auto", self.on_iso)
         self.b_ev = self.button("EV 0", self.on_ev)
+        self.b_night = self.button("Night off", self.on_night)
         for b in (self.b_switch, self.b_flash, self.b_shutter,
-                  self.b_iso, self.b_ev):
+                  self.b_iso, self.b_ev, self.b_night):
             bar.pack_start(b, False, False, 0)
         self.overlay.add_overlay(bar)
 
@@ -306,6 +308,12 @@ class Camera(Gtk.Application):
             # the mode switch the automatic exposure started from its
             # minimum, and the photo was black (seen, 2026-11-01).
             exp, gain, lens = carry
+            if self.night:
+                # Two stops more light for a dark scene: four times the
+                # viewfinder's exposure (which stops at 66 ms), at most
+                # 0.5 s, the gain unchanged.  Possible since libcamera
+                # raises the blanking (patch 0018); hold the phone still.
+                exp = min(exp * 4, 500000)
             self.src.set_property("exposure-time-mode", 1)      # manual
             self.src.set_property("exposure-time", int(exp))
             self.src.set_property("analogue-gain-mode", 1)
@@ -361,6 +369,10 @@ class Camera(Gtk.Application):
         self.b_iso.set_label("ISO %s" % (self.iso or "auto"))
         if not self.busy:
             self.apply_controls()
+
+    def on_night(self, *_):
+        self.night = not self.night
+        self.b_night.set_label("Night on" if self.night else "Night off")
 
     def on_ev(self, *_):
         self.ev = (self.ev + 1) % len(EVS)

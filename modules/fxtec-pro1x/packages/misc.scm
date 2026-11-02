@@ -339,7 +339,9 @@ to build an FDE userdata image on the host before flashing.")
                 "0014-gstreamer-Serialise-control-access-and-expose-AfStat.patch"
                 "0015-ipa-Focus-is-lost-only-when-sharpness-drops-AfModeAu.patch"
                 "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
-                "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"))))))
+                "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"
+                ;; Ours: longer exposures (vertical blanking raised).
+                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
