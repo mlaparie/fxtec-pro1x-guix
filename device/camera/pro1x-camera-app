@@ -145,6 +145,8 @@ class Camera(Gtk.Application):
         self.iso = 0
         self.ev = 0
         self.night = False
+        self.af_held, self.af_focused = False, 0
+        GLib.timeout_add(500, self.watch_af)
         self.flash = False
         self.busy = False
         self.portrait = True
@@ -243,10 +245,10 @@ class Camera(Gtk.Application):
         # window itself get?
         self.win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
                             Gdk.EventMask.TOUCH_MASK)
-        self.win.connect("button-press-event", lambda w, e: print(
-            "win: press at %.0f %.0f" % (e.x, e.y), flush=True) or False)
-        self.win.connect("touch-event", lambda w, e: print(
-            "win: touch %s" % e.type, flush=True) or False)
+        # The window gets the taps the view does not (2026-11-02: presses
+        # and touches logged on the window, none on the view, an overlay
+        # layer in between); buttons take theirs before it.
+        self.win.connect("button-press-event", self.on_win_press)
         self.win.fullscreen()
         self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
         self.win.show_all()
@@ -381,6 +383,7 @@ class Camera(Gtk.Application):
             return
         self.src.set_property("exposure-time-mode", 0)          # auto
         self.src.set_property("af-mode", 2)                     # continuous
+        self.af_held, self.af_focused = False, 0
         if self.iso:
             self.src.set_property("analogue-gain-mode", 1)       # manual
             self.src.set_property("analogue-gain", self.iso / 100.0)
@@ -444,6 +447,54 @@ class Camera(Gtk.Application):
         if not self.busy:
             self.apply_controls()
 
+    def on_win_press(self, win, event):
+        """A press on the window: a tap on the view, in its coordinates."""
+        got = win.translate_coordinates(self.view, int(event.x), int(event.y))
+        if not got:
+            return False
+        x, y = got
+        alloc = self.view.get_allocation()
+        if not (0 <= x < alloc.width and 0 <= y < alloc.height):
+            return False
+
+        class Tap:
+            pass
+        tap = Tap()
+        tap.x, tap.y, tap.type = x, y, event.type
+        return self.on_tap(self.view, tap)
+
+    def watch_af(self):
+        """Continuous autofocus scans again on its own, moving the lens
+        audibly at regular intervals even untouched (author, 2026-11-02):
+        once it reports focused twice in a row, the lens is held where it
+        is (manual mode); a tap or a restart scans again."""
+        if not self.pipeline:
+            return True
+        if self.af_held:
+            return True
+        try:
+            state = int(self.src.get_property("af-state"))
+        except (TypeError, ValueError):
+            return True
+        self.af_focused = self.af_focused + 1 if state == 2 else 0
+        if self.af_focused >= 2:
+            try:
+                lens = self.src.get_property("lens-position")
+            except TypeError:
+                lens = None
+            self.src.set_property("af-mode", 0)                 # manual
+            if lens:
+                self.src.set_property("lens-position", lens)
+            self.af_held = True
+            print("focus: held at %s" % (lens,), flush=True)
+        return True
+
+    def scan(self):
+        """Back to continuous autofocus until it settles again."""
+        self.af_held, self.af_focused = False, 0
+        if self.pipeline:
+            self.src.set_property("af-mode", 2)
+
     def on_touch(self, widget, event):
         print("tap: touch %s at %.0f %.0f" % (event.type, event.x, event.y),
               flush=True)
@@ -484,6 +535,7 @@ class Camera(Gtk.Application):
             self.src, "af-windows",
             "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
         self.af_polls = 0
+        self.scan()
         GLib.timeout_add(150, self.poll_focus)
         return True
 
