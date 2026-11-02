@@ -1,10 +1,11 @@
 /* sov 0.94's main.css (milgra/sov, GPL-3.0-or-later), with Iosevka Term
-   at smaller sizes for the Pro¹x: Terminus is not installed, and the
-   fallback filled the thumbnails (author, 2026-11-02). */
+   (Terminus is not installed) at 10-12 px for the Pro¹x, and a darker
+   #main (author, 2026-11-02; sov seems not to paint it, the gaps between
+   workspaces stay see-through: seen on the phone). */
 
 #main {
     border-radius: 10px;
-    background-color: #00000044;
+    background-color: #101010F0;
 }
 
 #base {
@@ -54,14 +55,14 @@
 
 .title {
     width: 100%;
-    height: 12px;
+    height: 16px;
     margin-top: 4px;
     margin-left: 4px;
     margin-right: 4px;
     margin-bottom: 2px;
     color: #FFFFFFFF;
-    font-size: 9px;
-    font-family: "Iosevka Term:style=Bold:size=9";
+    font-size: 12px;
+    font-family: "Iosevka Term:style=Bold:size=12";
 }
 
 .content {
@@ -71,10 +72,10 @@
     margin-right: 4px;
     color: #999999FF;
     vertical-align: top;
-    font-size: 7px;
-    font-family: "Iosevka Term:size=7";
+    font-size: 10px;
+    font-family: "Iosevka Term:size=10";
     word-wrap: break-word;
-    line-height: 8px;
+    line-height: 12px;
 }
 
 .number {
