@@ -145,9 +145,10 @@
   ;; the lock screen: the session unlocks for them and locks again when
   ;; they lose the focus or close.  What opens them while locked: an
   ;; incoming call (Calls), the camera button, shake-action.
+  ;; Not the camera any more: it turns its view with the display and
+  ;; uses the whole screen either way (author, 2026-11-02).
   (portrait-apps      pro1x-hardware-portrait-apps
-                      (default '("org.gnome.Calls" "org.pro1x.Camera"
-                                 "org.gnome.Snapshot")))
+                      (default '("org.gnome.Calls" "org.gnome.Snapshot")))
   (landscape-apps     pro1x-hardware-landscape-apps     (default '()))
   (fullscreen-apps    pro1x-hardware-fullscreen-apps
                       (default '("org.gnome.Calls" "org.pro1x.Camera"
