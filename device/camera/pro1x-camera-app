@@ -45,15 +45,16 @@ STILL = (3968, 2976)
 # The viewfinder's turn (videoflip method) for each display transform,
 # rear and front: by the display's orientation, not the window's shape (a
 # tile wider than tall counted as landscape and turned the view upside
-# down; author, 2026-11-02).  normal: seen right on 2026-11-01; 90 (the
-# keyboard landscape): none, the half turn being upside down
-# (2026-11-02); 180 and 270 follow; the front, mounted the other way
-# round, is the rear turned half way and mirrored.
+# down).  Seen on the phone by the author, 2026-11-02: the rear right with
+# none in the keyboard landscape (90) and upside down with counterclockwise
+# in portrait, so clockwise there; the front upside down in both with
+# vertical-flip and clockwise, so horizontal-flip (a mirror, as a selfie
+# view) and counterclockwise.  180 and 270 are those turned half way.
 VIEW_TURN = {
-    "normal": ("counterclockwise", "clockwise"),
-    "90": ("none", "vertical-flip"),
-    "180": ("clockwise", "counterclockwise"),
-    "270": ("rotate-180", "horizontal-flip"),
+    "normal": ("clockwise", "counterclockwise"),
+    "90": ("none", "horizontal-flip"),
+    "180": ("counterclockwise", "clockwise"),
+    "270": ("rotate-180", "vertical-flip"),
 }
 # A tap at (x, y) in the view, back to the frame's (u, v), per method.
 TAP_BACK = {
@@ -679,20 +680,17 @@ class Camera(Gtk.Application):
         return pix
 
     def write(self, pix, held, front, method):
-        """Turned as the viewfinder plus a half turn (the saved photos were
-        upside down with the viewfinder's own turn; author, 2026-11-01),
-        then as the phone was held; a JPEG."""
+        """Turned as the viewfinder, without its mirror (a photo is not a
+        mirror image), then as the phone was held; a JPEG.  (The
+        2026-11-01 finding that photos needed the opposite turn came from a
+        viewfinder that was itself upside down in portrait, unnoticed.)"""
         R = GdkPixbuf.PixbufRotation
         if method == "counterclockwise":
-            pix = pix.rotate_simple(R.CLOCKWISE)
-        elif method == "clockwise":
             pix = pix.rotate_simple(R.COUNTERCLOCKWISE)
-        elif method == "none":
+        elif method == "clockwise":
+            pix = pix.rotate_simple(R.CLOCKWISE)
+        elif method in ("rotate-180", "vertical-flip"):
             pix = pix.rotate_simple(R.UPSIDEDOWN)
-        elif method == "horizontal-flip":
-            pix = pix.flip(False)
-        elif method == "vertical-flip":
-            pix = pix.flip(True)
         portrait = method in ("counterclockwise", "clockwise")
         # Then as held.  right-up is the keyboard landscape here
         # (sway-autorotate's naming, swapped from Phosh's).  The direction
