@@ -4,7 +4,8 @@
 #   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
-# Lists the windows, then workspaces 1-10 (author).  On a window, Enter and
+# Lists Sway overview (sov, in yellow), the windows, then workspaces 1-10
+# (author).  On a window, Enter and
 # Ctrl-o (a short power press) ask Back / Focus / Close / Move to
 # workspace / Tile / Tab / Stack / Toggle fullscreen, floating, sticky
 # (author: Return does what the power key does);
@@ -24,7 +25,7 @@ self=$0
 if [ "${1:-}" = --close ]; then
     swaymsg "[con_id=$2] kill" >/dev/null
     sleep 0.3
-    if ! "$0" --list | grep -q -v '^ws:'; then          # no window left
+    if ! "$0" --list | grep -q -v -e '^ws:' -e '^sov'; then   # no window left
         curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
              -d "clear-query+first" >/dev/null 2>&1 &
         swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
@@ -36,12 +37,14 @@ fi
 # (ws:N): switch to it; then the switcher goes away, its query cleared.
 if [ "${1:-}" = --go ]; then
     case "$2" in
+        sov) ;;
         ws:*) swaymsg "workspace number ${2#ws:}" >/dev/null ;;
         *) swaymsg "[con_id=$2] focus" >/dev/null ;;
     esac
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
     swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+    [ "$2" = sov ] && pro1x-sov show
     exit
 fi
 
@@ -93,6 +96,8 @@ if [ "${1:-}" = --list ]; then
     # menus live in the scratchpad, which is not listed.  Short names
     # (author, 2026-11-02): the last part of the app_id (org.pro1x.Camera:
     # Camera), the title cut at 28.
+    # First, Sway Overview in yellow (author, 2026-11-02).
+    printf 'sov\t\033[33mSway overview\033[0m\t\n'
     swaymsg -t get_tree -r |
         jq -r '[.. | objects | select(.type == "workspace" and .name != "__i3_scratch")] as $ws
                | def windows: [.. | objects
@@ -112,7 +117,7 @@ fi
 hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
 # On a workspace line: switch to it; on a window: its question.
 act="case {1} in
-       ws:*) echo \"execute-silent($self --go {1})\" ;;
+       ws:*|sov) echo \"execute-silent($self --go {1})\" ;;
        *) echo \"execute($self --ask {1})+reload-sync($self --list)\" ;;
      esac"
 "$self" --list |
@@ -122,7 +127,7 @@ act="case {1} in
         --bind="ctrl-o:transform:$act" \
         --bind="right:execute-silent($self --go {1})" \
         --bind="ctrl-k:transform:case {1} in
-                  ws:*) ;;
+                  ws:*|sov) ;;
                   *) echo \"execute-silent($self --close {1})+reload($self --list)\" ;;
                 esac" \
         --bind="esc:$hide" >/dev/null

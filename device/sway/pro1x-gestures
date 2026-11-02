@@ -2,11 +2,10 @@
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
 #   swipe down from the top edge      quick actions (sway-quick-actions)
-#   swipe up from the bottom edge     Sway Overview, the workspaces (pro1x-sov)
+#   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
-#   two fingers up from the bottom    on-screen keyboard, shown or hidden
-#   (swapped, author 2026-11-02)
+#   (Sway Overview moved to the window switcher, author 2026-11-02)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
 # COMMAND...; quick actions closes itself).  Every command runs in the
@@ -59,11 +58,10 @@ start() {                       # start <transform>
     # the same way, the last one lifted must touch the edge band, all
     # within the timeout): 100 px edge bands (-s 2), 30 degrees off
     # straight (-r 30), 1.2 s (-m 1200).
-    # The sov swipe (pressed) acts after 80 px (author: shorter; was 125).
+    # The keyboard swipe (pressed) acts after 80 px (author, 2026-11-02).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
-        -g "2,DU,B,*,R,sway-quick-actions --osk toggle &" \
-        -g "1,DU,B,*,P,pro1x-sov toggle &" \
+        -g "1,DU,B,*,P,sway-quick-actions --osk toggle &" \
         -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
         -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &
