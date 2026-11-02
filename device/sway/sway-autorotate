@@ -178,7 +178,12 @@ reconcile
 swaymsg -m -r -t subscribe '["output"]' > "$events" 2>/dev/null &
 watcher=$!
 exec 3< "$events"
-while IFS= read -r line <&3; do
+# Also every 10 s: should monitor-sensor end (started before
+# iio-sensor-proxy is ready, say), it comes back without waiting for the
+# next output event.  (2026-11-02: suspected after a boot, but the panel
+# was off then, when the sensor is released on purpose.)
+while :; do
+    IFS= read -r -t 10 line <&3
     reconcile
     kill -0 "$watcher" 2>/dev/null || break
 done
