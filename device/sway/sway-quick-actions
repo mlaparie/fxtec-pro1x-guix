@@ -277,6 +277,9 @@ roaming() {                     # roaming: on, off or "no connection"
 # options, like the window switcher's, so the lines stay short enough for
 # portrait).
 choose() {
+    # The line, kept: the charge entry's `set --' replaces $1, and the
+    # choice was then applied to no line at all (2026-11-02).
+    line=$1
     case "$1" in
         wwan)
             title="mobile data"
@@ -335,7 +338,7 @@ choose() {
                cut -f1)
     rm -f "$asksock"
     case "$pick" in ""|back) return ;; esac
-    case "$1" in
+    case "$line" in
         wwan) mobile_set "$pick" ;;
         feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
         cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
@@ -348,8 +351,8 @@ choose() {
                 fixed) sway-autorotate fixed ;;
             esac ;;
         wifi|bluetooth)
-            if [ "$pick" = tool ]; then step "$1" +
-            else set_to "$1" "$pick"; fi ;;
+            if [ "$pick" = tool ]; then step "$line" +
+            else set_to "$line" "$pick"; fi ;;
     esac
 }
 
