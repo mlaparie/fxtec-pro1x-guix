@@ -52,6 +52,25 @@ modules`); `--repo` deploys `systems/*.scm` instead.
   overshot to 91% once (gauge jump suspected, not measured): battery
   trace running again (/root/charge-trace.sh, until reboot).
 
+## Camera exposure: libcamera never lengthens the frame (plan, 2026-11-02)
+
+Measured on the phone (rag-notes hardware/camera): the IMX582's 1080p mode
+runs at its minimum blanking (70 lines), so no exposure can exceed 10.4 ms,
+asked or automatic; the dark indoor photos follow from it.  The sensor
+driver allows blanking up to 64420 lines (~0.6 s exposures).  libcamera's
+simple pipeline takes the exposure limit at configure time and never writes
+VBLANK.  Plan:
+1. A libcamera patch (soft IPA): exposureMax from the VBLANK maximum; per
+   frame, VBLANK = max(minimum, exposure + margin - height), sent with the
+   exposure through DelayedControls (VBLANK registered with the exposure's
+   delay); FrameDurationLimits honoured.  Model: src/ipa/rpi/common and
+   rkisp1's agc handling of vblank.  Build in CI (C++ under emulation is
+   slow), test with the headless test (camtest.py in the agent's notes:
+   asked exposure vs applied, mean brightness).
+2. The camera app: a Night/long exposure button (manual exposure up to
+   ~0.5 s, gain moderate) once 1 works; the viewfinder keeps 30 fps.
+3. Check whether moWerk's camerabin work hit the same cap (his notes).
+
 ## Kernel 7.3 upgrade (planned, branch `kernel-7.3`; author, 2026-11-02)
 
 Why: deep sleep.  On 7.1 the SoC never reaches vlow/vmin (qcom_stats 0,
