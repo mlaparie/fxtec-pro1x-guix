@@ -34,6 +34,9 @@
 torch=/sys/class/leds/white:flash-0/brightness
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
+# stevia over the apps instead of pushing them up (author, 2026-11-02):
+# read by our stevia at each show (pro1x-overlay-switch in its package).
+oskover="${XDG_RUNTIME_DIR:-/tmp}/pro1x-osk-overlay"
 self=$0
 
 osk() {                         # osk true|false: stevia, if it runs
@@ -510,6 +513,7 @@ lines() {
         "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
+        "oskover     Keyboard over apps   $(dim "$(state_of oskover)")" \
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")" \
@@ -531,6 +535,7 @@ set_to() {
             if [ "$2" = on ]; then nmcli radio all off; rfkill block bluetooth
             else nmcli radio all on; rfkill unblock bluetooth; fi ;;
         rotation) sway-autorotate "$2" ;;
+        oskover) if [ "$2" = on ]; then touch "$oskover"; else rm -f "$oskover"; fi ;;
         caffeine)
             [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
             echo "$2" > "$caffeine"
@@ -581,6 +586,7 @@ state_of() {                    # state_of <setting>: on or off
                [ "$(blocked bluetooth)" = off ]; then echo on; else echo off; fi ;;
         rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
+        oskover) [ -e "$oskover" ] && echo on || echo off ;;
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
@@ -813,12 +819,12 @@ lines |
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|oskover|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|oskover|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;

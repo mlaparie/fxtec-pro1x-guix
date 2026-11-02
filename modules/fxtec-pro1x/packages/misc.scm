@@ -958,6 +958,19 @@ ModemManager, for clients such as Chatty.")
           ;; frame, ~250 ms whatever enable-animations says
           ;; (pos-input-surface.c animate_cb); now it ends on its first
           ;; frame (author: slow to show, no animation, 2026-11-02).
+          ;; Over the apps or pushing them up (author, 2026-11-02): no
+          ;; exclusive zone while $XDG_RUNTIME_DIR/pro1x-osk-overlay exists
+          ;; (quick actions' keyboard line toggles it), read at each show.
+          (add-after 'unpack 'pro1x-overlay-switch
+            (lambda _
+              (substitute* "src/pos-input-surface.c"
+                (("set_exclusive_zone \\(PHOSH_LAYER_SURFACE \\(self\\), (height|min\\.height)\\);"
+                  _ zone)
+                 (string-append
+                  "set_exclusive_zone (PHOSH_LAYER_SURFACE (self), "
+                  "g_file_test (g_build_filename (g_get_user_runtime_dir (), "
+                  "\"pro1x-osk-overlay\", NULL), G_FILE_TEST_EXISTS) ? 0 : "
+                  zone ");")))))
           (add-after 'unpack 'pro1x-no-slide
             (lambda _
               (substitute* "src/pos-input-surface.c"
