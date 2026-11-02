@@ -18,6 +18,8 @@ Left out:
 - 0012 sfos-dt: SailfishOS-only (Fn as KEY_RIGHTALT, the slide switch
   inverted for mce), which our keyd and slider helpers do not expect; and
 - 0028, which only undoes 0012's keyboard backlight inversion;
+- 0035 goodix touch scanning through suspend (double-tap wakes it from
+  sleep): not wanted (author, 2026-11-02);
 - 0050, 0051, 0056: experimental in his tree (system power domain under the
   MPM, SPMI through the MPM, UFS power-down needed with them), not in his
   daily kernel.  The deep-sleep step, after this base works.
@@ -36,6 +38,9 @@ besides compiler-capability flags (an artefact of the host compiler):
 CRYPTO_DEV_QCE*, CRYPTO_DEV_QCOM_RNG (dependencies changed in 7.3; not
 needed to boot), PROC_SYSCTL (to check: renamed or merged in 7.3).
 
-State: built in CI (run 41388196979, 2026-11-02: kernel, U-Boot and the
+On branch kernel-7.3-trial (2026-11-02): with next and main merged and
+0035 out; all 54 patches apply to v7.3 (checked).
+
+State of kernel-7.3: built in CI (run 41388196979, 2026-11-02: kernel, U-Boot and the
 mobile image; output /gnu/store/i5n6m4fc...-linux-pro1x-7.3.0); not yet
 booted.
