@@ -277,21 +277,29 @@ $pass_xml
 $status_xml
 $notes_xml"
 else
-    # Landscape: banner left, clock and status right, one row across the
-    # width; the password, then the notifications, centred below
-    # (author: spread in width, not packed in the middle).
+    # Landscape: banner with the status under it on the left, clock and
+    # date on the right, both centred on the same middle line, one row
+    # across the width; the password, then the notifications, centred
+    # below (author: spread in width, not packed in the middle; status
+    # under the banner, aligned with the clock, 2026-11-02).
     body="    <child>
       <object class=\"GtkBox\">
         <property name=\"orientation\">horizontal</property>
         <property name=\"homogeneous\">1</property>
         <property name=\"spacing\">24</property>
+    <child>
+      <object class=\"GtkBox\">
+        <property name=\"orientation\">vertical</property>
+        <property name=\"valign\">center</property>
 $banner_xml
+$status_xml
+      </object>
+    </child>
     <child>
       <object class=\"GtkBox\">
         <property name=\"orientation\">vertical</property>
         <property name=\"valign\">center</property>
 $clock_xml
-$status_xml
       </object>
     </child>
       </object>
