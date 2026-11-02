@@ -408,15 +408,30 @@ fi
 
 # When it was drawn, for pro1x-blank-led (no redraw within 30 s of one).
 date +%s > "$rt/pro1x-lock-drawn"
-# gtklock -d detaches once it holds the lock.  If it fails (an unresponsive
-# red screen after waking, 2026-11-02: Sway locked with no client, only a
-# hard reboot helped; a refresh had just killed the old one), once more,
-# then swaylock: still locked, but with a way to unlock.
-for try in 1 2; do
-    gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &&
-        sleep 1 && pgrep -u "$uid" -x gtklock >/dev/null && exit 0
-    logger -t pro1x-lock "gtklock did not take the lock (try $try)"
-    sleep 0.5
+# gtklock under a supervisor (author, 2026-11-02: an unresponsive red
+# screen, twice; Sway locked with no client after "Error 71 (Protocol
+# error) dispatching to Wayland display" in gtklock, right after the panel
+# was switched): it ends on its own when unlocked (status 0) or killed by
+# a redraw (SIGKILL, 137); any other end is a crash, and it starts again;
+# after three, swaylock (still locked, with a way to unlock).  This
+# returns once a gtklock is up, as gtklock -d did (swayidle -w waits).
+supervise() {
+    tries=0
+    while :; do
+        gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"
+        rc=$?
+        case $rc in 0|137) exit 0 ;; esac
+        tries=$((tries + 1))
+        logger -t pro1x-lock "gtklock ended with status $rc (crash $tries)"
+        [ $tries -lt 3 ] || break
+        sleep 0.3
+    done
+    logger -t pro1x-lock "falling back to swaylock"
+    exec swaylock -f -c 1d2021 --clock --indicator
+}
+supervise "$@" </dev/null >>"$rt/pro1x-gtklock.log" 2>&1 &
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    pgrep -u "$uid" -x gtklock >/dev/null && exit 0
+    sleep 0.2
 done
-logger -t pro1x-lock "falling back to swaylock"
-exec swaylock -f -c 1d2021 --clock --indicator
+logger -t pro1x-lock "gtklock not up after 3 s"
