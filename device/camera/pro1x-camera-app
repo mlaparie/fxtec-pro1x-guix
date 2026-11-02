@@ -153,7 +153,11 @@ class Camera(Gtk.Application):
         # Its input above the video widget, which took the taps for itself
         # (no tap ever reached on_tap: no square, no focus; 2026-11-02).
         self.view.set_above_child(True)
+        # Touch too: a finger may come as touch events, not a click.
+        self.view.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
+                             Gdk.EventMask.TOUCH_MASK)
         self.view.connect("button-press-event", self.on_tap)
+        self.view.connect("touch-event", self.on_touch)
         self.overlay.add(self.view)
         # Where the focus is measured (author): a square at the tap,
         # yellow while scanning, green once focused, red if it failed.
@@ -167,12 +171,14 @@ class Camera(Gtk.Application):
         bar = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
                       valign=Gtk.Align.END, margin_bottom=24)
         self.b_switch = self.button("⇆", self.on_switch)
-        self.b_flash = self.button("Flash off", self.on_flash)
+        # Short labels: the row overflowed in portrait (author); yellow
+        # shows a toggle that is on.
+        self.b_flash = self.button("Flash", self.on_flash)
         self.b_shutter = self.button("", self.on_shutter)
         self.b_shutter.get_style_context().add_class("shutter")
         self.b_iso = self.button("ISO auto", self.on_iso)
         self.b_ev = self.button("EV 0", self.on_ev)
-        self.b_night = self.button("Night off", self.on_night)
+        self.b_night = self.button("Night", self.on_night)
         for b in (self.b_switch, self.b_flash, self.b_shutter,
                   self.b_iso, self.b_ev, self.b_night):
             bar.pack_start(b, False, False, 0)
@@ -370,7 +376,6 @@ class Camera(Gtk.Application):
 
     def on_flash(self, *_):
         self.flash = not self.flash
-        self.b_flash.set_label("Flash on" if self.flash else "Flash off")
         self.lit(self.b_flash, self.flash)
 
     def on_iso(self, *_):
@@ -381,7 +386,6 @@ class Camera(Gtk.Application):
 
     def on_night(self, *_):
         self.night = not self.night
-        self.b_night.set_label("Night on" if self.night else "Night off")
         self.lit(self.b_night, self.night)
 
     def lit(self, button, on):
@@ -397,10 +401,19 @@ class Camera(Gtk.Application):
         if not self.busy:
             self.apply_controls()
 
+    def on_touch(self, widget, event):
+        print("tap: touch %s at %.0f %.0f" % (event.type, event.x, event.y),
+              flush=True)
+        if event.type == Gdk.EventType.TOUCH_BEGIN:
+            return self.on_tap(widget, event)
+        return False
+
     def on_tap(self, widget, event):
         """Focus where tapped: the point in the viewfinder, in frame
         coordinates (undoing the rotation), then in pixel array
         coordinates, as moWerk's camerabin patch maps it."""
+        print("tap: %s at %.0f %.0f, busy %s" % (event.type, event.x, event.y,
+                                                 self.busy), flush=True)
         if self.busy:
             return False
         # The square first: a tap did nothing visible while the active
