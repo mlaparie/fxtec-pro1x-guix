@@ -87,6 +87,7 @@ qs_state() {                    # shown, hidden or none
 }
 
 qs_hide() {
+    pro1x-menu close-sub quickactions
     # Its query cleared, for next time (in the background: called from
     # inside fzf's execute, which answers only afterwards).
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
@@ -700,8 +701,11 @@ notif_pick() {                  # Tab: choose one of the actions
 }
 
 notif_dock() {
+    # Its own socket, so hiding the menu closes it (pro1x-menu hide_menu;
+    # author: the menu came back on the notifications, not the root).
     notif_lines |
-        fzf --prompt="notifications > " --layout=reverse --no-sort --cycle \
+        fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
+            --prompt="notifications > " --layout=reverse --no-sort --cycle \
             --delimiter='\t' --with-nth=3 \
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
@@ -711,6 +715,7 @@ notif_dock() {
             --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
             --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
             --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+    rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock"
 }
 
 case "${1:-}" in

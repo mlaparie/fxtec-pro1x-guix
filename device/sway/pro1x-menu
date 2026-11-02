@@ -51,7 +51,22 @@ sock_of() {
 # Hide a menu, its query cleared (author, 2026-10-31: shown again, it
 # starts empty).  In the background with a time limit: an fzf busy in an
 # execute() answers only afterwards.
+# A menu's open sub-list (choices, notifications, the switcher's question)
+# closes, so the menu shows its root next time (author, 2026-11-02).
+close_sub() {
+    case "$1" in
+        quickactions) subs="pro1x-quick-actions-ask.sock pro1x-quick-actions-notif.sock" ;;
+        windowswitcher) subs="pro1x-switcher-ask.sock" ;;
+        *) subs= ;;
+    esac
+    for s in $subs; do
+        [ -S "$rt/$s" ] && curl -s -m 2 --unix-socket "$rt/$s" -X POST http://localhost \
+            -d abort >/dev/null 2>&1
+    done
+}
+
 hide_menu() {
+    close_sub "$1"
     curl -s -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
     swaymsg "[app_id=\"^$1\$\"] move scratchpad" >/dev/null 2>&1
@@ -179,6 +194,7 @@ case "$cmd" in
         curl -s --unix-socket "$sock" -X POST http://localhost -d "$action" >/dev/null
         exit 0 ;;
     start) start ;;
+    close-sub) close_sub "$id" ;;
     geometry) geometry "$id" ;;
     toggle)
         # Shown: hide it.  (A `scratchpad show' chained with the resize and
