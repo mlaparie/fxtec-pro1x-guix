@@ -408,4 +408,15 @@ fi
 
 # When it was drawn, for pro1x-blank-led (no redraw within 30 s of one).
 date +%s > "$rt/pro1x-lock-drawn"
-exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"
+# gtklock -d detaches once it holds the lock.  If it fails (an unresponsive
+# red screen after waking, 2026-11-02: Sway locked with no client, only a
+# hard reboot helped; a refresh had just killed the old one), once more,
+# then swaylock: still locked, but with a way to unlock.
+for try in 1 2; do
+    gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &&
+        sleep 1 && pgrep -u "$uid" -x gtklock >/dev/null && exit 0
+    logger -t pro1x-lock "gtklock did not take the lock (try $try)"
+    sleep 0.5
+done
+logger -t pro1x-lock "falling back to swaylock"
+exec swaylock -f -c 1d2021 --clock --indicator
