@@ -1,49 +1,33 @@
 #!/usr/bin/env bash
 # pro1x-wifi — pick a Wi-Fi network with fzf and connect, asking for the
-# password of a new one (nmcli -a).  After the author's nmcli-fzf script
-# (mlaparie's guix-config, .config/sway/scripts/nmcli-fzf), opened from the
-# Wi-Fi line of sway-quick-actions (networks…), floating.
-#
-# Columns (author, 2026-11-02): the SSID first, "*" before the one in use
-# (no in-use column), hidden ones as --, then signal, bars, band, rate in
-# Mb/s, security, coloured by signal as nmcli does; the
-# BSSID rides along hidden, so two networks of one name stay apart.  A name
-# typed with nothing selected is tried as a hidden network.
+# password of a new one (nmcli -a).  The author's nmcli-fzf script
+# (mlaparie's guix-config, .config/sway/scripts/nmcli-fzf), opened by
+# Right on the Wi-Fi line of sway-quick-actions.  Cosmetic changes only
+# (author, 2026-11-02): the SSID right after the in-use mark, the IN-USE
+# header and its padding gone (the * alone marks the active network),
+# Mbit/s shortened to Mb/s (padded, columns stay aligned).
 
-tab=$'\t'
-list() {
-    # Terse output: colons inside fields come escaped (\:); kept apart
-    # from the separators while splitting.
-    nmcli -t -f 'in-use,ssid,signal,bars,freq,rate,security,bssid' \
-          device wifi list --rescan yes |
-        sed 's/\\:/\x01/g' |
-        awk -F: -v OFS='\t' '{
-            for (i = 1; i <= NF; i++) gsub("\x01", ":", $i)
-            sub(/ Mbit\/s/, " Mb/s", $6)
-            # Coloured by signal as nmcli colours its own list; a hidden
-            # network shows as -- as nmcli shows it.
-            c = ($3 >= 67) ? "\033[32m" : ($3 >= 34) ? "\033[33m" : "\033[31m"
-            printf "%s%s %-24.24s\t%3s\t%s\t%s\t%s\t%s\033[0m\t%s\n", c,
-                   ($1 == "*" ? "*" : " "), ($2 == "" ? "--" : $2),
-                   $3, $4, $5, $6, $7, $8
-        }'
-}
+err=0
+ssid=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
+    --color yes device wifi list --rescan yes \
+    | sed -E 's/^(BSSID +)IN-USE  /\1  /;
+              s/^(\x1b\[[0-9;]*m[^\x1b]*\x1b\[0m  \x1b\[[0-9;]*m.\x1b\[0m) {6}/\1/;
+              s/ Mbit\/s/ Mb\/s  /' \
+    | fzf --ansi \
+          --with-nth=2.. \
+          --reverse \
+          --cycle \
+	  --print-query \
+          --header-lines=1 \
+	  --margin='1,2,1,2' \
+          --color='16,gutter:-1' \
+    | sed 's/^ *\*//' \
+    | awk '{print $1}')
+echo "Please wait while connecting to network $ssid…"
+nmcli device wifi connect ${ssid} 2> /dev/null || err=1
+if [[ "$err" = 1 ]]; then
+  printf "SSID "
+  nmcli -a device wifi connect ${ssid}
+fi
+printf "Press any key to close.\n" && read -n1
 
-out=$(list |
-      fzf --ansi --delimiter="$tab" --with-nth=1..6 \
-          --reverse --cycle --print-query --prompt='Wi-Fi > ' \
-          --margin='1,2,1,2' --color='16,gutter:-1')
-query=$(printf '%s\n' "$out" | sed -n 1p)
-pick=$(printf '%s\n' "$out" | sed -n 2p)
-if [ -n "$pick" ]; then
-    target=$(printf '%s\n' "$pick" | cut -f7)
-    name=$(printf '%s\n' "$pick" | cut -f1 | sed 's/\x1b\[[0-9;]*m//g; s/^. //; s/ *$//')
-else
-    target=$query name=$query
-fi
-[ -n "$target" ] || exit 0
-echo "Connecting to $name…"
-if ! nmcli device wifi connect "$target" 2>/dev/null; then
-    nmcli -a device wifi connect "$target"
-fi
-printf "Press any key to close.\n" && read -rn1
