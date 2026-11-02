@@ -43,6 +43,14 @@ modules`); `--repo` deploys `systems/*.scm` instead.
   the earlier "not running" was a wrong check).
 - If the phone reboots before the next deploy, pro1x-osk run spins
   (fixed in c1324fa): kill it by PID.
+- Later the same night (generation 150): stevia without its slide
+  animation shows "much faster" (author); the earlier tests ran the old
+  stevia, not restarted after its deploy: restart stevia after a stevia
+  deploy.  Haptics on menu swipes and the power hold work once fbcli is
+  fed from a sleep (felt by the author); menu swipes act at 80 px with the
+  finger down.  sov works with its own style only.  Charge limit
+  overshot to 91% once (gauge jump suspected, not measured): battery
+  trace running again (/root/charge-trace.sh, until reboot).
 
 ## Kernel 7.3 upgrade (planned, branch `kernel-7.3`; author, 2026-11-02)
 
