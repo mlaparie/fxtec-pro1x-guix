@@ -65,7 +65,7 @@
          ;; From moWerk's SailfishOS port (7.3, applies to 7.1): the
          ;; IMX582's 1080p mode 1984 wide, so a 1920x1080 stream (Snapshot)
          ;; stays in it instead of the slow 12 MP mode.
-         "imx582-1080p")))
+         "imx582-1080p" "dw9800-soft")))
 
 (define-public linux-pro1x
   (package
