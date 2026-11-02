@@ -34,8 +34,19 @@ geometry() {
             else
                 echo "resize set 92 ppt 80 ppt, resize shrink height 30 px, move position 4 ppt 2 ppt"
             fi ;;
-        launcher) echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt" ;;
-        windowswitcher) echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt" ;;
+        # In portrait as tall as quick actions (author, 2026-11-02).
+        launcher)
+            if portrait; then
+                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
+            else
+                echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt"
+            fi ;;
+        windowswitcher)
+            if portrait; then
+                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
+            else
+                echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt"
+            fi ;;
         powermenu) echo "resize set 50 ppt 45 ppt, move position center" ;;
     esac
 }

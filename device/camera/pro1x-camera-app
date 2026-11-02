@@ -411,6 +411,10 @@ class Camera(Gtk.Application):
         if not self.pipeline:
             return
         self.flip.set_property("method", self.method())
+        print("orient: display %s, %s camera, turn %s"
+              % (getattr(self, "transform", "?"),
+                 "front" if self.cam != 0 else "rear", self.method()),
+              flush=True)
 
     # ── controls ───────────────────────────────────────────────────────
     def on_switch(self, *_):
