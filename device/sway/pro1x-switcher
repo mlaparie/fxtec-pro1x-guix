@@ -5,7 +5,7 @@
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
 # Lists the windows, then workspaces 1-10 (author).  On a window, Enter and
-# Ctrl-o (a short power press) ask Back / Focus / Close window / Move to
+# Ctrl-o (a short power press) ask Back / Focus / Close / Move to
 # workspace / Tile / Tab / Stack / Toggle fullscreen, floating, sticky
 # (author: Return does what the power key does);
 # on a workspace they switch to it.  Right (or vol+ held) focuses or
@@ -59,7 +59,7 @@ if [ "${1:-}" = --ask ]; then
         rm -f "$asksock"
     }
     # Move, tile and tab too (author, 2026-11-01).
-    choice=$(pick window "← back" "Focus" "Close window" \
+    choice=$(pick window "← back" "Focus" "Close" \
                  "Move to workspace…" "Tile" "Tab" "Stack" \
                  "Toggle fullscreen" "Toggle floating" "Toggle sticky")
     case "$choice" in
@@ -82,7 +82,7 @@ if [ "${1:-}" = --ask ]; then
                  -d "clear-query+first" >/dev/null 2>&1 &
             swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
             swaymsg "[con_id=$2] focus" >/dev/null ;;
-        "Close window") "$0" --close "$2" ;;
+        Close) "$0" --close "$2" ;;
     esac
     exit
 fi
@@ -104,7 +104,7 @@ if [ "${1:-}" = --list ]; then
                 | "\(.id)\t\($app)\t\($title) · \(if $w.num == 10 then "0" else $w.name end)"),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
-                | "ws:\($n)\t\(if $n == 10 then 0 else $n end)\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
+                | "ws:\($n)\t\(if $n == 10 then 0 else $n end) ::\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
     exit
 fi
 

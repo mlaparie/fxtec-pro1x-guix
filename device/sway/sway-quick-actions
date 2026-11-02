@@ -717,8 +717,16 @@ case "${1:-}" in
     --notif) notif_dock; exit ;;
     --notif-lines) notif_lines; exit ;;
     --notif-summary)            # preview of the Notifications line
+        # Their full text (author, 2026-11-02; never on the lock screen,
+        # which shows counts only): sway-notifications list writes it.
+        full="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications"
         sway-notifications list 2>/dev/null |
-            awk -F'\t' '{ printf "%s %s: %s\n", ($1 == "new" ? "•" : " "), $4, $5 }'
+            while IFS="$(printf '\t')" read -r kind id urgency app summary; do
+                printf '%s %s\n' "$( [ "$kind" = new ] && echo "•" || echo " ")" "$app"
+                if [ -s "$full/$kind-$id" ]; then sed 's/^/  /' "$full/$kind-$id"
+                else printf '  %s\n' "$summary"; fi
+                echo
+            done
         exit ;;
     --notif-preview) notif_preview "$2" "$3"; exit ;;
     --notif-default) notif_default "$2" "$3" >/dev/null 2>&1; exit ;;
