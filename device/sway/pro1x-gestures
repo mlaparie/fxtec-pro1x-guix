@@ -63,7 +63,7 @@ start() {                       # start <transform>
     # author, 2026-11-02).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle quickactions &" \
-        -g "1,DU,B,*,P,sway-quick-actions --osk toggle &" \
+        -g "1,DU,B,*,P,pro1x-osk toggle &" \
         -g "1,RL,R,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle launcher &" \
         -g "1,LR,L,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &

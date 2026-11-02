@@ -6,6 +6,10 @@
 #            itself (text-input) and comes up at once on a D-Bus call.
 #            (The 2026-11-02 claim that it had died was a wrong check: it
 #            ran all along, so slowness and text fields need another look.)
+#   toggle   shown or hidden, for the bottom swipe: sway-quick-actions
+#            --osk took 110-120 ms to start, the D-Bus calls 15-30 ms, stevia
+#            answers in 2-4 ms (measured 2026-11-02); one toggle per 0.6 s,
+#            as a pressed swipe can fire twice
 #   follow   in portrait with the keyboard slid in, show it while a
 #            terminal has the focus (terminals have no text-input), hide it
 #            when the focus leaves one (author, 2026-11-02)
@@ -54,6 +58,17 @@ case "${1:-}" in
                 sleep 1
             fi
         done ;;
+    toggle)
+        stamp="$rt/pro1x-osk-toggled"
+        now=$(date +%s%N)
+        [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0
+        echo "$now" > "$stamp"
+        case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+                    --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
+                    2>/dev/null)" in
+            *true*) osk false ;;
+            *) osk true ;;
+        esac ;;
     follow)
         shown="$rt/pro1x-osk-terminal"     # we showed it for a terminal
         rm -f "$shown"
@@ -66,5 +81,5 @@ case "${1:-}" in
                     osk false; rm -f "$shown"
                 fi
             done ;;
-    *) echo "usage: pro1x-osk run|follow" >&2; exit 1 ;;
+    *) echo "usage: pro1x-osk run|toggle|follow" >&2; exit 1 ;;
 esac
