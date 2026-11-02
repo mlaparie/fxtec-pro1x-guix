@@ -104,7 +104,7 @@ if [ "${1:-}" = --list ]; then
                 | "\(.id)\t\($app)\t\($title) · \(if $w.num == 10 then "0" else $w.name end)"),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
-                | "ws:\($n)\t\(if $n == 10 then 0 else $n end) ::\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)")'
+                | "ws:\($n)\t\u001b[34m\(if $n == 10 then 0 else $n end) ::\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)\u001b[0m")'
     exit
 fi
 
@@ -116,7 +116,7 @@ act="case {1} in
        *) echo \"execute($self --ask {1})+reload-sync($self --list)\" ;;
      esac"
 "$self" --list |
-    fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort \
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort --ansi \
         --prompt="windows > " --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
         --bind="enter:transform:$act" \
         --bind="ctrl-o:transform:$act" \

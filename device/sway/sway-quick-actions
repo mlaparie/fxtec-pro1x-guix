@@ -748,6 +748,15 @@ fi
 set --
 [ -n "${QS_RESIDENT:-}" ] &&
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
+# The notification preview, on the Notifications line only: right in
+# landscape, below in portrait (author), from the window's shape in
+# characters (a fixed column threshold put it below in landscape too).
+preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
+         if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
+             echo "change-preview-window(right,45%,wrap)+show-preview"
+         else
+             echo "change-preview-window(down,50%,wrap)+show-preview"
+         fi'
 lines |
     # Same layout and colours as the launcher and window switcher: list
     # from the top, prompt at the bottom.  Notification preview on the right
@@ -756,8 +765,8 @@ lines |
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
-        --bind="focus:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
-        --bind="load:transform:[ {1} = notif ] && [ {3} != 0 ] && echo show-preview || echo hide-preview" \
+        --bind="focus:transform:$preview" \
+        --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
                   wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;

@@ -59,7 +59,8 @@ start() {                       # start <transform>
     # the same way, the last one lifted must touch the edge band, all
     # within the timeout): 100 px edge bands (-s 2), 30 degrees off
     # straight (-r 30), 1.2 s (-m 1200).
-    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 125 -s 2 -r 30 -m 1200 \
+    # The sov swipe (pressed) acts after 80 px (author: shorter; was 125).
+    lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
         -g "2,DU,B,*,R,sway-quick-actions --osk toggle &" \
         -g "1,DU,B,*,P,pro1x-sov toggle &" \

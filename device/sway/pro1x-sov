@@ -30,7 +30,9 @@ case "${1:-toggle}" in
         # html folder itself, sov found no style and crashed (SIGSEGV) as
         # it showed (2026-11-02).
         html="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/sov"
-        exec sh -c "tail -f '$pipe' | sov -t 0 -s '$html'" ;;
+        # Thumbnails a quarter of the screen, two columns (author: the
+        # previews showed too little; sov's default is an eighth, five).
+        exec sh -c "tail -f '$pipe' | sov -t 0 -r 4 -c 2 -s '$html'" ;;
     show)
         send 1
         stamp=$(date +%s%N); echo "$stamp" > "$shown"
