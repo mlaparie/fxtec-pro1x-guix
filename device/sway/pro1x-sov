@@ -11,19 +11,24 @@
 # held up by a key; with a touch there is nothing to hold, so it hides by
 # itself after 5 s, or on the next toggle.
 #
-# State: written 2026-11-01; not yet run on the phone.
+# State: sov shows on the phone (2026-11-01); its style folder needs the
+# trailing slash (2026-11-02).
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 pipe="$rt/pro1x-sov" shown="$rt/pro1x-sov.shown"
 
-send() { [ -p "$pipe" ] && echo "$1" > "$pipe"; }
+# Never blocks: with no sov reading, opening the pipe would wait forever
+# (one stuck process per swipe while sov was down, 2026-11-02).
+send() { [ -p "$pipe" ] && timeout 1 sh -c 'echo "$1" > "$2"' sh "$1" "$pipe"; }
 
 case "${1:-toggle}" in
     daemon)
         rm -f "$pipe" "$shown"; mkfifo "$pipe"
         # tail keeps the pipe open between writers.
         # Its style: sov's own, with smaller fonts (share/pro1x-sway/sov).
-        html="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/sov"
+        # The trailing slash matters: sov appends the file names to it, and
+        # crashed (SIGSEGV) without one.
+        html="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/sov/"
         exec sh -c "tail -f '$pipe' | sov -t 0 -s '$html'" ;;
     show)
         send 1
