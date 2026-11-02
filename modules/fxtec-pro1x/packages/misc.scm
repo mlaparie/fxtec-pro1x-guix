@@ -948,6 +948,15 @@ ModemManager, for clients such as Chatty.")
                              "/lib/systemd/user"))
       #:phases
       #~(modify-phases %standard-phases
+          ;; No slide in or out: the animation advanced 0.0667 per 16.7 ms
+          ;; frame, ~250 ms whatever enable-animations says
+          ;; (pos-input-surface.c animate_cb); now it ends on its first
+          ;; frame (author: slow to show, no animation, 2026-11-02).
+          (add-after 'unpack 'pro1x-no-slide
+            (lambda _
+              (substitute* "src/pos-input-surface.c"
+                (("self->animation\\.progress \\+= 0\\.06666 \\* time / 16666\\.00")
+                 "self->animation.progress = 1.0"))))
           ;; Super in the terminal layout's key bar, before stevia's own
           ;; defaults (Sway needs it; author, 2026-10-30).
           ;; Ignore hardware keyboards: the Pro1X keyboard is always
