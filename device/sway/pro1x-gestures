@@ -59,11 +59,13 @@ start() {                       # start <transform>
     # within the timeout): 100 px edge bands (-s 2), 30 degrees off
     # straight (-r 30), 1.2 s (-m 1200).
     # The keyboard swipe (pressed) acts after 80 px (author, 2026-11-02).
+    # The menu swipes buzz as stevia's keys do (feedbackd button-pressed;
+    # author, 2026-11-02).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
-        -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
+        -g "1,UD,T,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle quickactions &" \
         -g "1,DU,B,*,P,sway-quick-actions --osk toggle &" \
-        -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
-        -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
+        -g "1,RL,R,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle launcher &" \
+        -g "1,LR,L,*,R,fbcli -E button-pressed >/dev/null 2>&1 & pro1x-menu toggle windowswitcher &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }

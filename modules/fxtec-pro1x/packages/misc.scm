@@ -1618,8 +1618,7 @@ window opened by a sway key binding.")
           ("pro1x-sov" "bin/")
           ("pro1x-osk" "bin/")
           ("pro1x-power-button" "bin/")
-          ("wob.ini" "share/pro1x-sway/")
-          ("sov" "share/pro1x-sway/sov"))
+          ("wob.ini" "share/pro1x-sway/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
