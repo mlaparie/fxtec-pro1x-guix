@@ -1,0 +1,35 @@
+#!/bin/sh
+# pro1x-alarm-watch — a ringing Clocks alarm over the Sway lock screen
+#
+# Nothing shows above Sway's lock screen, so a Clocks alarm could ring
+# unseen while locked (author, 2026-11-02: Clocks, like Calls, should get
+# past the lock; Chats should not).  When a Clocks window (app_id
+# org.gnome.clocks) appears while locked, this unlocks (pro1x-lock
+# --unlock), lights the panel and focuses it; when that window closes (the
+# alarm stopped or snoozed), it locks again.  Calls has pro1x-call-watch.
+# Started by the Sway config; ends with Sway.
+#
+# State: written 2026-11-02; not yet seen with a real alarm.  A Clocks
+# window already open before the lock does not count as appearing.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+flag="$rt/pro1x-alarm-unlocked"       # con_id of the window we unlocked for
+rm -f "$flag"
+
+swaymsg -t subscribe -m '["window"]' 2>/dev/null |
+    jq --unbuffered -r 'select(.container.app_id == "org.gnome.clocks")
+                        | "\(.change) \(.container.id)"' |
+    while read -r change id; do
+        case "$change" in
+            new)
+                pro1x-lock --locked || continue
+                echo "$id" > "$flag"
+                pro1x-lock --unlock
+                swaymsg 'output * power on' >/dev/null
+                swaymsg "[con_id=$id] focus" >/dev/null ;;
+            close)
+                [ "$(cat "$flag" 2>/dev/null)" = "$id" ] || continue
+                rm -f "$flag"
+                pro1x-lock ;;
+        esac
+    done

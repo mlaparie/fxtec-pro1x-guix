@@ -26,7 +26,7 @@ esac
 
 # The menu's lines.  (The CPU mode is a quick actions line: author.)
 if [ "${1:-}" = --lines ]; then
-    printf '%s\n' "Cancel" "Lock screen" "Blank screen" \
+    printf '%s\n' "Cancel" "Lock screen" "Lock and suspend" "Blank screen" \
            "Suspend" "Hibernate" "Reboot" "Power off"
     exit
 fi
@@ -39,6 +39,12 @@ choice=$("$0" --lines |
 hide
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
+    # Locked first, then asleep (author, 2026-11-02); Calls and Clocks get
+    # past the lock (pro1x-call-watch, pro1x-alarm-watch), Chats does not.
+    "Lock and suspend")
+        swaymsg exec pro1x-lock >/dev/null
+        sleep 1.5
+        setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
                     swaymsg 'output * power off' >/dev/null ;;
     # Detached: after the resume it may restart the ADSP (about 20 s),

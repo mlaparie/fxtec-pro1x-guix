@@ -45,8 +45,8 @@ led_asleep() {
     echo "6 1000 6 1000" > "$led/pattern"
 }
 # The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
-# rang only once something else woke it): the RTC's wake alarm, 20 s
-# before the earliest ring_time Clocks keeps (dconf reads the user's
+# rang only once something else woke it): the RTC's wake alarm, 5 s
+# (author: 20 was too long, waking is quick) before the earliest ring_time Clocks keeps (dconf reads the user's
 # settings without a session bus).  The RTC restarts from 0 at each boot,
 # so the alarm is set relative ("+seconds").  A wake by the RTC keeps the
 # phone up (suspend_loop), and Clocks rings.
@@ -64,7 +64,7 @@ alarm_wake() {
         if [ -z "$next" ] || [ "$at" -lt "$next" ]; then next=$at; fi
     done
     [ -n "$next" ] || return 0
-    echo "+$((next - now - 20))" > "$rtcwake" &&
+    echo "+$((next - now - 5))" > "$rtcwake" &&
         logger -t pro1x-sleep "Clocks alarm at $(date -d "@$next" +%H:%M): RTC wake set"
 }
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
