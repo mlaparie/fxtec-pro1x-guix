@@ -41,6 +41,10 @@ VIEW = (1280, 720)
 # of one Bayer pattern left and right (moWerk's 1080p patch notes), and
 # 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
 STILL = (3968, 2976)
+# The front S5K4H7 gives at most 3264x2448: at the rear's size no frame
+# came ("No frame from the camera", no photo; author, 2026-11-02).  4:3,
+# inside its array and the software ISP's border.
+STILL_FRONT = (3200, 2400)
 
 # The viewfinder's turn (videoflip method) for each display transform,
 # rear and front: by the display's orientation, not the window's shape (a
@@ -524,7 +528,7 @@ class Camera(Gtk.Application):
         x, y = TAP_BACK[self.method()](x, y)
         # libcamerasrc may not publish the active area: the still size, a
         # little short of the IMX582's 4000x3000 array, does for a window.
-        ax, ay, aw, ah = self.area or (0, 0) + STILL
+        ax, ay, aw, ah = self.area or (0, 0) + self.still()
         print("focus: area %s, tap %.2f %.2f" % (self.area, x, y), flush=True)
         vw, vh = self.size
         fw = max(vw, vh * aw / ah)
@@ -600,11 +604,14 @@ class Camera(Gtk.Application):
             self.to_still()
 
     def to_still(self):
-        self.resize(STILL, self.current())
+        self.resize(self.still(), self.current())
         held, front, portrait = self.held(), self.cam != 0, self.method()
         threading.Thread(target=self.capture, args=(held, front, portrait),
                          daemon=True).start()
         return False
+
+    def still(self):
+        return STILL_FRONT if self.cam != 0 else STILL
 
     def since(self):
         return "%.2f s" % (time.monotonic() - self.t0)
@@ -623,7 +630,7 @@ class Camera(Gtk.Application):
                 got, caps.get_value("width"), caps.get_value("height")),
                 flush=True)
         else:
-            print("capture: no frame at %dx%d" % STILL, flush=True)
+            print("capture: no frame at %dx%d" % self.still(), flush=True)
         pix, error = None, None
         if sample:
             try:
