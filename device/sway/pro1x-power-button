@@ -53,7 +53,8 @@ done |
                   [ "$(cat "$held" 2>/dev/null)" = "$stamp" ] || exit 0
                   rm -f "$held"
                   # Held long enough: a buzz, the key can go (author).
-                  fbcli -E button-pressed >/dev/null 2>&1 &
+                  # (fbcli stops at the end of its input: a sleep feeds it.)
+                  { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
                   # Locked: nothing shows over the lock screen, so the
                   # menu would wait behind it (author saw it after
                   # unlocking): a long press is a short one then.
