@@ -29,6 +29,21 @@ modules`); `--repo` deploys `systems/*.scm` instead.
 
 ---
 
+## State, 2026-11-02 night
+
+- Phone: generation 142 (userspace of c1324fa minus the last pro1x-osk
+  fix; kernel 3nfp9v97, modem wake v3).  CI run 41368293086 (main,
+  550d477) builds the kernel with dw9800-soft and modem wake v4: import
+  it, deploy, reboot, then suspend with the SIM registered.
+- Confirmed by the author tonight: calls wake the phone from suspend
+  (v3); the camera flash works (0.6 s pre-flash).
+- Open: suspend held only while unregistered (v4 is the fix); camera
+  colours (no CCM), slow exposure; one landscape photo to check the
+  accelerometer turn; stevia slowness and text fields (it was running:
+  the earlier "not running" was a wrong check).
+- If the phone reboots before the next deploy, pro1x-osk run spins
+  (fixed in c1324fa): kill it by PID.
+
 ## Kernel 7.3 upgrade (planned, branch `kernel-7.3`; author, 2026-11-02)
 
 Why: deep sleep.  On 7.1 the SoC never reaches vlow/vmin (qcom_stats 0,
