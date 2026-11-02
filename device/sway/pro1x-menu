@@ -36,6 +36,7 @@ geometry() {
             fi ;;
         launcher) echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt" ;;
         windowswitcher) echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt" ;;
+        powermenu) echo "resize set 50 ppt 45 ppt, move position center" ;;
     esac
 }
 
@@ -100,6 +101,12 @@ start() {
                     sleep 0.5        # never a busy loop, if it fails at once
                 done' >/dev/null 2>&1 < /dev/null &
             ;;
+        powermenu)
+            # Resident too (author: it showed ~1 s after the power key's
+            # buzz, a new terminal and fzf each time).
+            setsid pro1x-term --app-id=powermenu -o pad=12x8 -o "font=Iosevka Term:size=13" \
+                -e pro1x-power-menu --resident >/dev/null 2>&1 < /dev/null &
+            ;;
         windowswitcher)
             setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e pro1x-switcher \
                 >/dev/null 2>&1 < /dev/null &
@@ -118,10 +125,9 @@ case "$cmd" in
         esac ;;
     hide-all)
         # Blanking or rotation hides them (author, 2026-10-31).
-        for m in quickactions launcher windowswitcher; do
+        for m in quickactions launcher windowswitcher powermenu; do
             hide_menu "$m"
         done
-        swaymsg '[app_id="^powermenu$"] kill' >/dev/null 2>&1
         exit 0 ;;
     key)
         # pro1x-menu key up|down|left|right|accept|hide: to the focused menu
@@ -183,8 +189,6 @@ case "$cmd" in
                 if [ "$focused" = list ]; then      # close the choices
                     curl -s --unix-socket "$sock" -X POST http://localhost \
                          -d abort >/dev/null
-                elif [ "$focused" = powermenu ]; then
-                    swaymsg '[app_id="^powermenu$"] kill' >/dev/null
                 else
                     hide_menu "$focused"
                 fi
@@ -207,10 +211,9 @@ case "$cmd" in
             exit 0
         fi
         # One menu at a time (author): the others go away first.
-        for m in quickactions launcher windowswitcher; do
+        for m in quickactions launcher windowswitcher powermenu; do
             [ "$m" = "$id" ] || hide_menu "$m"
         done
-        swaymsg '[app_id="^powermenu$"] kill' >/dev/null 2>&1
         # Extra windows of this menu (from before the check in start) go.
         set -- $(windows "$id")
         first=${1:-}
