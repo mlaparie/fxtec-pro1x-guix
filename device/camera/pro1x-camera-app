@@ -41,6 +41,29 @@ VIEW = (1280, 720)
 # of one Bayer pattern left and right (moWerk's 1080p patch notes), and
 # 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
 STILL = (3968, 2976)
+
+# The viewfinder's turn (videoflip method) for each display transform,
+# rear and front: by the display's orientation, not the window's shape (a
+# tile wider than tall counted as landscape and turned the view upside
+# down; author, 2026-11-02).  normal: seen right on 2026-11-01; 90 (the
+# keyboard landscape): none, the half turn being upside down
+# (2026-11-02); 180 and 270 follow; the front, mounted the other way
+# round, is the rear turned half way and mirrored.
+VIEW_TURN = {
+    "normal": ("counterclockwise", "clockwise"),
+    "90": ("none", "vertical-flip"),
+    "180": ("clockwise", "counterclockwise"),
+    "270": ("rotate-180", "horizontal-flip"),
+}
+# A tap at (x, y) in the view, back to the frame's (u, v), per method.
+TAP_BACK = {
+    "counterclockwise": lambda x, y: (1 - y, x),
+    "clockwise": lambda x, y: (y, 1 - x),
+    "none": lambda x, y: (x, y),
+    "rotate-180": lambda x, y: (1 - x, 1 - y),
+    "horizontal-flip": lambda x, y: (1 - x, y),
+    "vertical-flip": lambda x, y: (x, 1 - y),
+}
 # Frames at 12 MP before the one kept: exposure and focus are carried over
 # from the viewfinder, so one is enough (author: saving was slow; was 3).
 SETTLE_FRAMES = 1
@@ -83,6 +106,20 @@ def cameras():
         return 0 if name.endswith("@10") else 1
     found.sort(key=rear_first)
     return found
+
+
+def display_transform():
+    """The panel's transform in Sway: normal, 90, 180 or 270."""
+    try:
+        out = subprocess.run(["swaymsg", "-t", "get_outputs", "-r"],
+                             capture_output=True, text=True, timeout=2).stdout
+        import json
+        for o in json.loads(out):
+            if o.get("name") == "DSI-1":
+                return o.get("transform", "normal")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return "normal"
 
 
 def active_area(dev):
@@ -202,6 +239,15 @@ class Camera(Gtk.Application):
         self.overlay.add_overlay(top)
 
         self.win.connect("size-allocate", self.on_size)
+        # Diagnosis (2026-11-02): no tap reached the view; what does the
+        # window itself get?
+        self.win.add_events(Gdk.EventMask.BUTTON_PRESS_MASK |
+                            Gdk.EventMask.TOUCH_MASK)
+        self.win.connect("button-press-event", lambda w, e: print(
+            "win: press at %.0f %.0f" % (e.x, e.y), flush=True) or False)
+        self.win.connect("touch-event", lambda w, e: print(
+            "win: touch %s" % e.type, flush=True) or False)
+        self.win.fullscreen()
         self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
         self.win.show_all()
         self.b_last.hide()
@@ -344,10 +390,16 @@ class Camera(Gtk.Application):
 
     # ── orientation ────────────────────────────────────────────────────
     def on_size(self, win, rect):
-        portrait = rect.height >= rect.width
-        if portrait != self.portrait:
-            self.portrait = portrait
+        transform = display_transform()
+        if transform != getattr(self, "transform", None):
+            self.transform = transform
+            self.portrait = transform in ("normal", "180")
             self.orient()
+
+    def method(self):
+        rear, front = VIEW_TURN.get(getattr(self, "transform", "normal"),
+                                    VIEW_TURN["normal"])
+        return front if self.cam != 0 else rear
 
     def orient(self):
         """The rear sensor's frames are landscape with the phone's top to
@@ -355,16 +407,7 @@ class Camera(Gtk.Application):
         mirrored."""
         if not self.pipeline:
             return
-        front = self.cam != 0
-        # libcamera reports the sensors mounted at 270 (rear) and 90
-        # (front); in landscape the rear frames were upside down (author,
-        # 2026-11-02), so turned half way; the front, mounted the other way
-        # round, only mirrored.
-        if self.portrait:
-            method = "clockwise" if front else "counterclockwise"
-        else:
-            method = "horizontal-flip" if front else "rotate-180"
-        self.flip.set_property("method", method)
+        self.flip.set_property("method", self.method())
 
     # ── controls ───────────────────────────────────────────────────────
     def on_switch(self, *_):
@@ -422,15 +465,7 @@ class Camera(Gtk.Application):
         self.marker.queue_draw()
         alloc = widget.get_allocation()
         x, y = event.x / alloc.width, event.y / alloc.height
-        front = self.cam != 0
-        if self.portrait:
-            # Undo the viewfinder's turn: counterclockwise (rear) shows
-            # frame (u, v) at (v, 1 - u); clockwise (front) at (1 - v, u).
-            x, y = (1 - y, x) if not front else (y, 1 - x)
-        elif front:
-            x = 1 - x
-        else:                           # rear in landscape: turned half way
-            x, y = 1 - x, 1 - y
+        x, y = TAP_BACK[self.method()](x, y)
         # libcamerasrc may not publish the active area: the still size, a
         # little short of the IMX582's 4000x3000 array, does for a window.
         ax, ay, aw, ah = self.area or (0, 0) + STILL
@@ -509,7 +544,7 @@ class Camera(Gtk.Application):
 
     def to_still(self):
         self.resize(STILL, self.current())
-        held, front, portrait = self.held(), self.cam != 0, self.portrait
+        held, front, portrait = self.held(), self.cam != 0, self.method()
         threading.Thread(target=self.capture, args=(held, front, portrait),
                          daemon=True).start()
         return False
@@ -587,18 +622,22 @@ class Camera(Gtk.Application):
             buf.unmap(mapping)
         return pix
 
-    def write(self, pix, held, front, portrait):
-        """Turned as the viewfinder, then as the phone was held; a JPEG."""
-        if portrait:
-            # The opposite of the viewfinder's names: the saved photos were
-            # upside down with the same turn (author, 2026-11-01).
-            pix = pix.rotate_simple(
-                GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE if front
-                else GdkPixbuf.PixbufRotation.CLOCKWISE)
-        elif front:
+    def write(self, pix, held, front, method):
+        """Turned as the viewfinder plus a half turn (the saved photos were
+        upside down with the viewfinder's own turn; author, 2026-11-01),
+        then as the phone was held; a JPEG."""
+        R = GdkPixbuf.PixbufRotation
+        if method == "counterclockwise":
+            pix = pix.rotate_simple(R.CLOCKWISE)
+        elif method == "clockwise":
+            pix = pix.rotate_simple(R.COUNTERCLOCKWISE)
+        elif method == "none":
+            pix = pix.rotate_simple(R.UPSIDEDOWN)
+        elif method == "horizontal-flip":
+            pix = pix.flip(False)
+        elif method == "vertical-flip":
             pix = pix.flip(True)
-        else:                           # rear in landscape, as the viewfinder
-            pix = pix.rotate_simple(GdkPixbuf.PixbufRotation.UPSIDEDOWN)
+        portrait = method in ("counterclockwise", "clockwise")
         # Then as held.  right-up is the keyboard landscape here
         # (sway-autorotate's naming, swapped from Phosh's).  The direction
         # is from one landscape photo (2026-11-02), side not yet known:
