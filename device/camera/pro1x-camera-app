@@ -150,6 +150,9 @@ class Camera(Gtk.Application):
         self.overlay = Gtk.Overlay()
         self.win.add(self.overlay)
         self.view = Gtk.EventBox()
+        # Its input above the video widget, which took the taps for itself
+        # (no tap ever reached on_tap: no square, no focus; 2026-11-02).
+        self.view.set_above_child(True)
         self.view.connect("button-press-event", self.on_tap)
         self.overlay.add(self.view)
         # Where the focus is measured (author): a square at the tap,
