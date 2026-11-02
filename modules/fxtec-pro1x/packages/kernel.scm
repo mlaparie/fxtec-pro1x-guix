@@ -15,6 +15,7 @@
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix utils)
+  #:use-module (ice-9 ftw)
   #:use-module ((guix licenses) #:prefix license:)
   #:export (linux-pro1x))
 
@@ -22,64 +23,39 @@
 (define %pro1x-patch-dir
   (repository-file "device/kernel/patches/"))
 
+(define %pro1x-7.3-patch-dir
+  (repository-file "device/kernel/patches-7.3/"))
+
 (define %pro1x-patches
-  (map (lambda (n)
-         (local-file (string-append %pro1x-patch-dir "pro1x-" n ".patch")
-                     (string-append "pro1x-" n ".patch")))
-       '("touch"
-         "egpio"
-         "dsi"
-         "panelgap"
-         "dpugap"
-         "audio"
-         "q6voice"
-         "camera"
-         "keyboard"
-         "leds"
-         "power"
-         "haptics"
-         "bluetooth"
-         "ipa"
-         ;; From moWerk's SailfishOS port (written for 7.3, applies to 7.1):
-         ;; send display off while video still runs, so a blank no longer
-         ;; ends in one corrupted full-brightness frame.
-         "panel-display-off"
-         ;; Ours, on top of "power": charge_enable for a charge limit.
-         "charge-control"
-         ;; Ours: the ADSP repeats its handover with every sensor batch;
-         ;; log the repeats at debug level, not as errors.
-         "q6v5-handover"
-         ;; From the Lenovo TB-J606L port (same SoC, written for 7.3):
-         ;; suspend without crashing the ADSP's sensor process.  The
-         ;; freezer interrupted hexagonrpcd's listener call and fastrpc
-         ;; sent it to the DSP again (crash at every resume, sound lost
-         ;; with the ADSP's restart); a DSP message now also wakes the
-         ;; system for the answer.  The first adapted to 7.1.
-         "fastrpc-resume-interrupted"
-         "fastrpc-wake"
-         ;; Ours: the modem's QRTR data packets wake a suspended system,
-         ;; so an incoming call is not slept through (pro1x-sleep decides
-         ;; whether to stay awake).  Not every GLINK message: those aborted
-         ;; each suspend.
-         "qrtr-modem-wake"
-         ;; From moWerk's SailfishOS port (7.3, applies to 7.1): the
-         ;; IMX582's 1080p mode 1984 wide, so a 1920x1080 stream (Snapshot)
-         ;; stays in it instead of the slow 12 MP mode.
-         "imx582-1080p" "dw9800-soft")))
+  ;; Kernel 7.3 (branch kernel-7.3): moWerk's series, in file-name order
+  ;; (device/kernel/patches-7.3/README.md: origin, what is left out), then
+  ;; ours.
+  (append
+   (map (lambda (f)
+          (local-file (string-append %pro1x-7.3-patch-dir f) f))
+        (scandir %pro1x-7.3-patch-dir
+                 (lambda (f) (string-suffix? ".patch" f))))
+   (map (lambda (n)
+          (local-file (string-append %pro1x-patch-dir "pro1x-" n ".patch")
+                      (string-append "pro1x-" n ".patch")))
+        ;; Ours: panel and DPU gaps (NixOS port, module parameters, off by
+        ;; default); the modem's QRTR data for user space wakes a suspended
+        ;; system, only from the listed ports (v4; pro1x-sleep lists voice
+        ;; and SMS).
+        '("panelgap" "dpugap" "qrtr-modem-wake"))))
 
 (define-public linux-pro1x
   (package
     (inherit linux)                           ; nonguix `linux`, no deblob
     (name "linux-pro1x")
-    (version "7.1.0")
+    (version "7.3.0")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append
-             "https://github.com/sm6115-mainline/linux/archive/"
-             "8cd9520d35a6c38db6567e97dd93b1f11f185dc6.tar.gz"))
+       ;; Mainline v7.3, as moWerk's series expects.
+       (uri "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.tar.xz")
        (sha256
-        (base32 "0m8fffprbm32y28h878hdvwfi8y0v5xm5vylz9zmmxlclqp9b29v"))
+        (base32 "0ls902gz6h1ydcnwx2zzdcglg52f14hmaxk2ncg341hfy4j3qdl7"))
        (patches %pro1x-patches)))
     (supported-systems '("aarch64-linux"))
     (arguments
@@ -100,10 +76,18 @@
                  #$(local-file (repository-file "device/kernel/config.aarch64")
                                "pro1x.config")
                  ".config")
+                ;; What the 7.3 series needs on top (pro1x-7.3.fragment).
+                (invoke "sh" "-c"
+                        (string-append
+                         "cat "
+                         #$(local-file (repository-file
+                                        "device/kernel/pro1x-7.3.fragment")
+                                       "pro1x-7.3.fragment")
+                         " >> .config"))
                 (invoke "make" "ARCH=arm64" "olddefconfig")))))))
     (synopsis "Linux kernel for the F(x)tec Pro1X (QX1050 / SM6115)")
     (description
-     "Mainline Linux 7.1 from the sm6115-mainline tree, with device patches
+     "Mainline Linux 7.3 with moWerk's Pro1-X series, with device patches
 for the F(x)tec Pro1X: AW9523B keyboard matrix, BOE DSI panel (60 Hz),
 Goodix GT9286 touch, WCN3950 Bluetooth, AW86224 haptics, q6voice DSP bridge,
 IMX582/DW9800 rear camera, S5K4H7 front camera, LED controllers, PM and more.")

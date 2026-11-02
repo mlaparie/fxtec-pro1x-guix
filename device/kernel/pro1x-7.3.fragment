@@ -1,0 +1,5 @@
+# Options the 7.3 series needs beyond config.aarch64 (appended before
+# olddefconfig): the SMP2P sleep state driver (0032), RPM master stats
+# (0037: which master blocks XO shutdown, debugfs).
+CONFIG_QCOM_SMP2P_SLEEPSTATE=m
+CONFIG_QCOM_RPM_MASTER_STATS=m
