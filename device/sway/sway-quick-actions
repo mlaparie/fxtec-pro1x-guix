@@ -685,13 +685,28 @@ notif_preview() {               # notif_preview <kind> <id>
     [ "$1" = old ] && printf '\n(history: no actions)\n'
 }
 
-notif_default() {               # Enter: the default action, else dismiss
-    [ "$1" = new ] || return
-    if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
+notif_default() {               # Enter: the default action, else the app
+    # Its app, from the list (kind, id, urgency, app, summary).
+    app=$(sway-notifications list 2>/dev/null |
+              awk -F'\t' -v k="$1" -v i="$2" '$1 == k && $2 == i { print $4; exit }')
+    case "$app" in
+        Chats|chatty|sm.puri.Chatty) cmd=chatty ;;
+        Calls|gnome-calls|org.gnome.Calls) cmd=gnome-calls ;;
+        Clocks|org.gnome.clocks) cmd=gnome-clocks ;;
+        *) cmd= ;;
+    esac
+    if [ "$1" = new ] &&
+       sway-notifications actions "$2" | cut -f1 | grep -qx default; then
         makoctl invoke -n "$2" default
+    elif [ -n "$cmd" ]; then
+        # No action to invoke (a notification from mako's history, or
+        # none offered): open its app (author, 2026-11-02: Enter on an SMS
+        # or a missed call opened nothing).
+        swaymsg exec "pro1x-open $cmd" >/dev/null
+        qs_hide
     fi
     # mako keeps it after an invoke: clear it as Phosh does.
-    makoctl dismiss -n "$2"
+    [ "$1" = new ] && makoctl dismiss -n "$2"
 }
 
 notif_pick() {                  # Tab: choose one of the actions

@@ -19,5 +19,12 @@ conf="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mako.config"
     for f in "$HOME/.mako/config" "${XDG_CONFIG_HOME:-$HOME/.config}/mako/config"; do
         if [ -r "$f" ]; then cat "$f"; break; fi
     done
+    # Messages, calls and alarms stay until dismissed or opened (author,
+    # 2026-11-02: an SMS received asleep was gone from the count after
+    # its pop-up timed out into mako's history).  Last: sections take
+    # every option after them.
+    for app in Chats gnome-calls Calls Clocks; do
+        printf '\n[app-name="%s"]\ndefault-timeout=0\nignore-timeout=1\n' "$app"
+    done
 } > "$conf"
 exec mako -c "$conf" "$@"
