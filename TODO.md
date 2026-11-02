@@ -60,6 +60,8 @@ asked or automatic; the dark indoor photos follow from it.  The sensor
 driver allows blanking up to 64420 lines (~0.6 s exposures).  libcamera's
 simple pipeline takes the exposure limit at configure time and never writes
 VBLANK.  Plan:
+Step 1 done (2026-11-02, device/libcamera/af/0018): exposures up to 619 ms
+applied on the phone, auto up to 66 ms.  Steps 2-3 open.
 1. A libcamera patch (soft IPA): exposureMax from the VBLANK maximum; per
    frame, VBLANK = max(minimum, exposure + margin - height), sent with the
    exposure through DelayedControls (VBLANK registered with the exposure's
