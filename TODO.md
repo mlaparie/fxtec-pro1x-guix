@@ -29,6 +29,52 @@ modules`); `--repo` deploys `systems/*.scm` instead.
 
 ---
 
+## Kernel 7.3 upgrade (planned, branch `kernel-7.3`; author, 2026-11-02)
+
+Why: deep sleep.  On 7.1 the SoC never reaches vlow/vmin (qcom_stats 0,
+rag-notes hardware).  moWerk's SailfishOS port runs 7.3 with 57 patches
+(github.com/moWerk/sailfishos-pro1x-mainline, `kernel/patches-7.3/`),
+several aimed at exactly that, with sleep currents measured on the
+device (73-79 mA, then 49 mA with 0053; reported, not verified here).
+
+Where we are: 7.1.0 from the sm6115-mainline tree, the NixOS port's
+patches (`device/kernel/patches/`) plus ours (fastrpc wake/resume,
+q6v5 handover, qrtr modem wake v4, imx582 1080p, dw9800 soft).  Their
+0001-0011 are the same NixOS series rebased; 0014/0015 we already
+carry; 0033/0034 are the fastrpc patches we took from haltia.
+
+Plan:
+1. Branch `kernel-7.3` off `next`; the kernel only, userspace unchanged.
+2. Base: the sm6115-mainline 7.3 tree moWerk builds on (find the commit
+   in his kernel/HANDOVER.md); a `linux-pro1x-7.3` package next to
+   `linux-pro1x`, so `next` keeps building 7.1.
+3. Series: moWerk's 0001-0011 instead of ours (same origin), then ours
+   rebased (qrtr modem wake, q6v5 handover; drop what 7.3 or his series
+   already has), then his fixes by group, one CI build each:
+   a. hardware fixes: 0016-0031 (charger, amplifier, GPU bandwidth,
+      panel, UFS QoS, flash LED link, keyboard backlight, qrtr HELLO,
+      ath10k);
+   b. sleep: 0032 (SMP2P sleep state), 0035-0041, 0044-0057 (MPM,
+      cluster idle states, USB GDSC retention, panel enable, LPASS vote,
+      UFS power-down, dispcc), in his order, skipping his reverts (0043).
+   Each patch keeps its origin and licence in its header (AGENTS.md §6).
+4. Config: diff his sfos.fragment against `device/kernel/config.aarch64`;
+   take only what a patch needs (V4L2_FLASH_LED_CLASS for 0027 only if
+   the camera app moves to the V4L2 flash).
+5. Test on the phone, one generation per group, the 7.1 generation kept
+   as fallback in the boot menu: boot, modem and calls, audio (speaker,
+   earpiece, call audio), camera, Wi-Fi/Bluetooth, then suspend:
+   qcom_stats vlow/vmin counts and the drain over a night (QG FIFO, as
+   moWerk measures).
+6. Merge into `next` when suspend reaches vmin and nothing above
+   regressed.
+
+Open questions: whether nonguix's linux-firmware matches what 7.3's
+drivers ask for; whether his DT changes (sfos-dt, 0012) are
+SailfishOS-specific.
+
+
+
 ## Working (confirmed on the device, 2026-10-28/29)
 
 - **Boot**: U-Boot + extlinux, deployed generations boot (root mounted
