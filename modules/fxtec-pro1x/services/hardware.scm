@@ -406,19 +406,31 @@ rtc=/sys/class/rtc/rtc0/since_epoch
 state=/var/lib/pro1x-clock/offset
 real=1735689600   # 2025-01-01: anything earlier is not a real time
 [ -r \"$rtc\" ] || { echo \"pro1x-clock: no $rtc\"; exit 0; }
+# The PMIC RTC starts again from 0 at each boot here (2026-11-02: it read
+# 7 min at 7 min of uptime), so an offset alone gave the previous boot's
+# time (after a hard reboot: the 29 Oct one).  Saved: the time and the RTC
+# reading together (every 10 min, and at shutdown); at boot, an RTC behind
+# its saved reading has been reset, and the time is the saved one plus
+# the RTC since this boot (late by the time the phone was off, until ntpd).
 case \"$1\" in
   restore)
-    [ -r \"$state\" ] || { echo 'pro1x-clock: no saved offset yet'; exit 0; }
+    [ -r \"$state\" ] || { echo 'pro1x-clock: nothing saved yet'; exit 0; }
     now=$(date +%s)
     [ \"$now\" -ge \"$real\" ] && { echo 'pro1x-clock: clock already set'; exit 0; }
-    t=$(( $(cat \"$rtc\") + $(cat \"$state\") ))
-    date -u -s \"@$t\" >/dev/null && echo \"pro1x-clock: clock set from the RTC: $(date -u)\" ;;
+    set -- $(cat \"$state\"); n=$(cat \"$rtc\")
+    if [ $# -lt 2 ]; then t=$(( n + $1 ))          # old format: an offset
+    elif [ \"$n\" -ge \"$2\" ]; then t=$(( $1 + n - $2 ))   # RTC kept counting
+    else t=$(( $1 + n )); fi                    # RTC reset at boot
+    date -u -s \"@$t\" >/dev/null && echo \"pro1x-clock: clock set: $(date -u)\" ;;
   save)
     now=$(date +%s)
-    [ \"$now\" -ge \"$real\" ] || { echo 'pro1x-clock: clock not set, offset not saved'; exit 0; }
+    [ \"$now\" -ge \"$real\" ] || { echo 'pro1x-clock: clock not set, not saved'; exit 0; }
     mkdir -p \"${state%/*}\"
-    echo $(( now - $(cat \"$rtc\") )) > \"$state.new\" && mv \"$state.new\" \"$state\"
-    echo \"pro1x-clock: offset saved ($(cat \"$state\") s)\" ;;
+    echo \"$now $(cat \"$rtc\")\" > \"$state.new\" && sync \"$state.new\" &&
+        mv \"$state.new\" \"$state\" && sync \"${state%/*}\" ;;
+  run)
+    # The service, once the clock is set: save every 10 minutes.
+    while sleep 600; do \"$0\" save; done ;;
 esac
 "))
 
@@ -875,11 +887,16 @@ esac
    (shepherd-service
     (provision '(pro1x-clock))
     (requirement '(file-systems))
-    (documentation "Set the clock from the RTC at boot, save its offset at shutdown")
-    (start #~(lambda _
+    (documentation "Set the clock at boot from the last saved time and the
+RTC; save them every 10 minutes and at shutdown")
+    (start #~(lambda args
                (system* "/bin/sh" #$pro1x-clock-script "restore")
-               #t))
-    (stop #~(lambda _
+               (apply (make-forkexec-constructor
+                       (list "/bin/sh" #$pro1x-clock-script "run")
+                       #:log-file "/var/log/pro1x-clock.log")
+                      args)))
+    (stop #~(lambda (running . args)
+              (apply (make-kill-destructor) running args)
               (system* "/bin/sh" #$pro1x-clock-script "save")
               #f)))))
 
