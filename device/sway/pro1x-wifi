@@ -5,7 +5,8 @@
 # Wi-Fi line of sway-quick-actions (networks…), floating.
 #
 # Columns (author, 2026-11-02): the SSID first, "*" before the one in use
-# (no in-use column), then signal, bars, band, rate in Mb/s, security; the
+# (no in-use column), hidden ones as --, then signal, bars, band, rate in
+# Mb/s, security, coloured by signal as nmcli does; the
 # BSSID rides along hidden, so two networks of one name stay apart.  A name
 # typed with nothing selected is tried as a hidden network.
 
@@ -19,21 +20,24 @@ list() {
         awk -F: -v OFS='\t' '{
             for (i = 1; i <= NF; i++) gsub("\x01", ":", $i)
             sub(/ Mbit\/s/, " Mb/s", $6)
-            printf "%s %-24.24s\t%3s\t%s\t%s\t%s\t%s\t%s\n",
-                   ($1 == "*" ? "*" : " "), ($2 == "" ? "(hidden)" : $2),
+            # Coloured by signal as nmcli colours its own list; a hidden
+            # network shows as -- as nmcli shows it.
+            c = ($3 >= 67) ? "\033[32m" : ($3 >= 34) ? "\033[33m" : "\033[31m"
+            printf "%s%s %-24.24s\t%3s\t%s\t%s\t%s\t%s\033[0m\t%s\n", c,
+                   ($1 == "*" ? "*" : " "), ($2 == "" ? "--" : $2),
                    $3, $4, $5, $6, $7, $8
         }'
 }
 
 out=$(list |
-      fzf --delimiter="$tab" --with-nth=1..6 \
+      fzf --ansi --delimiter="$tab" --with-nth=1..6 \
           --reverse --cycle --print-query --prompt='Wi-Fi > ' \
           --margin='1,2,1,2' --color='16,gutter:-1')
 query=$(printf '%s\n' "$out" | sed -n 1p)
 pick=$(printf '%s\n' "$out" | sed -n 2p)
 if [ -n "$pick" ]; then
     target=$(printf '%s\n' "$pick" | cut -f7)
-    name=$(printf '%s\n' "$pick" | cut -f1 | sed 's/^. //; s/ *$//')
+    name=$(printf '%s\n' "$pick" | cut -f1 | sed 's/\x1b\[[0-9;]*m//g; s/^. //; s/ *$//')
 else
     target=$query name=$query
 fi
