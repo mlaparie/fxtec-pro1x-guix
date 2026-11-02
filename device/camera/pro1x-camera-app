@@ -57,6 +57,7 @@ button { background: rgba(0,0,0,0.45); color: #ebdbb2; border: none;
 button.shutter { background: #ebdbb2; border-radius: 40px;
                  min-width: 80px; min-height: 80px; }
 button.shutter:disabled { background: #665c54; }
+button.on { background: #d79921; color: #1d2021; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 """
@@ -346,10 +347,14 @@ class Camera(Gtk.Application):
         if not self.pipeline:
             return
         front = self.cam != 0
+        # libcamera reports the sensors mounted at 270 (rear) and 90
+        # (front); in landscape the rear frames were upside down (author,
+        # 2026-11-02), so turned half way; the front, mounted the other way
+        # round, only mirrored.
         if self.portrait:
             method = "clockwise" if front else "counterclockwise"
         else:
-            method = "horizontal-flip" if front else "none"
+            method = "horizontal-flip" if front else "rotate-180"
         self.flip.set_property("method", method)
 
     # ── controls ───────────────────────────────────────────────────────
@@ -363,6 +368,7 @@ class Camera(Gtk.Application):
     def on_flash(self, *_):
         self.flash = not self.flash
         self.b_flash.set_label("Flash on" if self.flash else "Flash off")
+        self.lit(self.b_flash, self.flash)
 
     def on_iso(self, *_):
         self.iso = ISOS[(ISOS.index(self.iso) + 1) % len(ISOS)]
@@ -373,6 +379,13 @@ class Camera(Gtk.Application):
     def on_night(self, *_):
         self.night = not self.night
         self.b_night.set_label("Night on" if self.night else "Night off")
+        self.lit(self.b_night, self.night)
+
+    def lit(self, button, on):
+        """A toggle that is on stands out (author: Night on and off looked
+        the same)."""
+        ctx = button.get_style_context()
+        (ctx.add_class if on else ctx.remove_class)("on")
 
     def on_ev(self, *_):
         self.ev = (self.ev + 1) % len(EVS)
@@ -400,6 +413,8 @@ class Camera(Gtk.Application):
             x, y = (1 - y, x) if not front else (y, 1 - x)
         elif front:
             x = 1 - x
+        else:                           # rear in landscape: turned half way
+            x, y = 1 - x, 1 - y
         # libcamerasrc may not publish the active area: the still size, a
         # little short of the IMX582's 4000x3000 array, does for a window.
         ax, ay, aw, ah = self.area or (0, 0) + STILL
@@ -566,6 +581,8 @@ class Camera(Gtk.Application):
                 else GdkPixbuf.PixbufRotation.CLOCKWISE)
         elif front:
             pix = pix.flip(True)
+        else:                           # rear in landscape, as the viewfinder
+            pix = pix.rotate_simple(GdkPixbuf.PixbufRotation.UPSIDEDOWN)
         # Then as held.  right-up is the keyboard landscape here
         # (sway-autorotate's naming, swapped from Phosh's).  The direction
         # is from one landscape photo (2026-11-02), side not yet known:
