@@ -103,6 +103,18 @@ suspend_loop() {
     if [ -w "$w" ]; then
         if allowed calls || allowed sms; then echo Y > "$w"; else echo N > "$w"; fi
     fi
+    # Only the voice (9) and messaging (5) services' data wakes it: the
+    # network and data services' indications woke it every ~10 s while
+    # registered (2026-11-02).  Their modem ports from the name service.
+    p=/sys/module/qrtr/parameters/wake_ports
+    if [ -w "$p" ]; then
+        ports=$(qrtr-lookup 2>/dev/null | awk -v c="$(allowed calls && echo 1)" \
+                    -v s="$(allowed sms && echo 1)" '
+                    $4 == 0 && (($1 == 9 && c) || ($1 == 5 && s)) { printf "%s%s", sep, $5; sep = "," }')
+        # None found: leave the filter empty (any port), rather than none.
+        [ -n "$ports" ] && echo "$ports" > "$p"
+        logger -t pro1x-sleep "modem wake ports: ${ports:-any}"
+    fi
     before=$(mktemp) after=$(mktemp)
     sms=$(sms_count)
     tries=0

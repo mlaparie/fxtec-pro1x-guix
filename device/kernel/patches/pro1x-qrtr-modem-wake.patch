@@ -11,10 +11,17 @@ most likely answers to kernel clients (IPA's QMI).  Off at run time:
 /sys/module/qrtr/parameters/wake_on_data.  Data arriving while
 suspending is logged with its source and destination port.
 
-Ours (fxtec-pro1x-guix, 2026-11-01).  Compiled; untested.
+v4: /sys/module/qrtr/parameters/wake_ports limits the wake to data from
+the listed source ports.  With v3 an incoming call woke the phone, but
+indications from the network (NAS, port 39) and data (WDS, port 42)
+services woke it every ~10 s while registered (2026-11-02); user space
+lists the voice and messaging services' ports.
 
---- a/net/qrtr/af_qrtr.c	2026-11-01 21:12:15.072643381 +0100
-+++ b/net/qrtr/af_qrtr.c	2026-11-01 21:12:15.125753295 +0100
+Ours (fxtec-pro1x-guix, 2026-11-01, v4 2026-11-02).  v3 tested on the
+device (suspend holds unregistered, a call wakes it); v4 compiled only.
+
+--- a/net/qrtr/af_qrtr.c	2026-11-02 01:35:37.567359444 +0100
++++ b/net/qrtr/af_qrtr.c	2026-11-02 01:36:01.893209469 +0100
 @@ -3,6 +3,8 @@
   * Copyright (c) 2015, Sony Mobile Communications Inc.
   * Copyright (c) 2013, The Linux Foundation. All rights reserved.
@@ -24,7 +31,7 @@ Ours (fxtec-pro1x-guix, 2026-11-01).  Compiled; untested.
  #include <linux/module.h>
  #include <linux/netlink.h>
  #include <linux/qrtr.h>
-@@ -160,6 +162,17 @@
+@@ -160,6 +162,40 @@
  static struct qrtr_sock *qrtr_port_lookup(int port);
  static void qrtr_port_put(struct qrtr_sock *ipc);
  
@@ -39,30 +46,55 @@ Ours (fxtec-pro1x-guix, 2026-11-01).  Compiled; untested.
 +module_param(wake_on_data, bool, 0644);
 +MODULE_PARM_DESC(wake_on_data, "Data for user space from a wakeup endpoint wakes the system");
 +
++/*
++ * When set, only data from these source ports wakes the system: the modem's
++ * network and data services send indications every few seconds (signal,
++ * registration) and kept a suspend from holding; user space lists the ports
++ * of the voice and messaging services (qrtr-lookup).  Empty: any port.
++ */
++static int wake_ports[8];
++static int n_wake_ports;
++module_param_array(wake_ports, int, &n_wake_ports, 0644);
++MODULE_PARM_DESC(wake_ports, "Source ports whose data wakes the system (empty: all)");
++
++static bool qrtr_wake_port(u32 port)
++{
++	int i, n = READ_ONCE(n_wake_ports);
++
++	if (!n)
++		return true;
++	for (i = 0; i < n && i < ARRAY_SIZE(wake_ports); i++)
++		if (READ_ONCE(wake_ports[i]) == port)
++			return true;
++	return false;
++}
++
  /* Release node resources and free the node.
   *
   * Do not call directly, use qrtr_node_release.  To be used with
-@@ -527,6 +540,18 @@
+@@ -527,6 +563,20 @@
  		if (!ipc)
  			goto err;
  
 +		if (ep->ws && cb->type == QRTR_TYPE_DATA) {
 +			bool user = !ipc->sk.sk_kern_sock;
++			bool wake = user && READ_ONCE(wake_on_data) &&
++				    qrtr_wake_port(cb->src_port);
 +
 +			if (pm_suspend_target_state != PM_SUSPEND_ON)
 +				pr_info_ratelimited("qrtr: data %u:%u -> %s port %u while suspending%s\n",
 +						    cb->src_node, cb->src_port,
 +						    user ? "user" : "kernel", cb->dst_port,
-+						    user && READ_ONCE(wake_on_data) ? ": wakeup" : "");
-+			if (user && READ_ONCE(wake_on_data))
++						    wake ? ": wakeup" : "");
++			if (wake)
 +				pm_wakeup_ws_event(ep->ws, 1000, true);
 +		}
 +
  		if (sock_queue_rcv_skb(&ipc->sk, skb)) {
  			qrtr_port_put(ipc);
  			goto err;
---- a/net/qrtr/qrtr.h	2026-11-01 21:12:15.072643381 +0100
-+++ b/net/qrtr/qrtr.h	2026-11-01 21:12:15.093486878 +0100
+--- a/net/qrtr/qrtr.h	2026-11-02 01:35:37.591360221 +0100
++++ b/net/qrtr/qrtr.h	2026-11-02 01:35:48.746936265 +0100
 @@ -19,6 +19,8 @@
   */
  struct qrtr_endpoint {
@@ -72,8 +104,8 @@ Ours (fxtec-pro1x-guix, 2026-11-01).  Compiled; untested.
  	/* private: not for endpoint use */
  	struct qrtr_node *node;
  };
---- a/net/qrtr/smd.c	2026-11-01 21:12:15.072643381 +0100
-+++ b/net/qrtr/smd.c	2026-11-01 21:12:15.126463631 +0100
+--- a/net/qrtr/smd.c	2026-11-02 01:35:37.591360221 +0100
++++ b/net/qrtr/smd.c	2026-11-02 01:35:48.747170712 +0100
 @@ -4,7 +4,9 @@
   * Copyright (c) 2013, The Linux Foundation. All rights reserved.
   */
