@@ -3,7 +3,14 @@
 #
 #   sway-autorotate              follow the sensor (started by the Sway config)
 #   sway-autorotate on|off|toggle
-#   sway-autorotate normal|left|right|inverted   force an orientation (auto off)
+#   sway-autorotate keyboard|fixed
+#   sway-autorotate normal|left|right|inverted   fix an orientation
+#   sway-autorotate restore     the orientation the mode wants, now
+#
+# Three modes (author, 2026-11-02): on, the sensor (landscape while the
+# keyboard is out); off, also called keyboard, the slider's (portrait slid
+# in, landscape slid out: the default); fixed, nothing turns the panel but
+# a chosen orientation (normal|left|..., kept in sway-orientation).
 #
 # rot8 reads raw IIO sysfs, which the SSC accelerometer is not; this follows
 # iio-sensor-proxy (monitor-sensor).  While the keyboard is slid out the
@@ -68,6 +75,8 @@ poke() {                        # tell the running daemon to re-check
 
 # Off with the keyboard closed: back to portrait.
 portrait_unless_slid_out() { slider_out || set_transform normal; }
+fixed="$statedir/sway-orientation"
+fix() { echo fixed > "$state"; echo "$1" > "$fixed"; poke; set_transform "$1"; }
 
 case "${1:-}" in
     on) echo on > "$state"; poke; exit 0 ;;
@@ -79,12 +88,25 @@ case "${1:-}" in
             echo off > "$state"; poke; portrait_unless_slid_out
         fi
         exit 0 ;;
-    normal) echo off > "$state"; poke; set_transform normal; exit 0 ;;
-    left) echo off > "$state"; poke; set_transform 90; exit 0 ;;
-    right) echo off > "$state"; poke; set_transform 270; exit 0 ;;
-    inverted) echo off > "$state"; poke; set_transform 180; exit 0 ;;
+    keyboard) "$0" off; exit ;;
+    fixed)
+        cur=$(swaymsg -t get_outputs -r |
+                  jq -r '.[] | select(.name == "DSI-1") | .transform')
+        fix "${cur:-normal}"; exit 0 ;;
+    normal) fix normal; exit 0 ;;
+    left) fix 90; exit 0 ;;
+    right) fix 270; exit 0 ;;
+    inverted) fix 180; exit 0 ;;
+    restore)
+        case "$(cat "$state" 2>/dev/null || echo off)" in
+            fixed) set_transform "$(cat "$fixed" 2>/dev/null || echo normal)" ;;
+            on) if slider_out; then set_transform 90
+                else echo off > "$state"; poke; echo on > "$state"; poke; fi ;;
+            *) if slider_out; then set_transform 90; else set_transform normal; fi ;;
+        esac
+        exit 0 ;;
     "") ;;
-    *) echo "usage: sway-autorotate [on|off|toggle|normal|left|right|inverted]" >&2
+    *) echo "usage: sway-autorotate [on|off|toggle|keyboard|fixed|normal|left|right|inverted|restore]" >&2
        exit 2 ;;
 esac
 
@@ -132,7 +154,7 @@ release() {
 }
 
 reconcile() {
-    if [ "$(cat "$state" 2>/dev/null)" != off ] && lit; then
+    if [ "$(cat "$state" 2>/dev/null)" = on ] && lit; then
         if [ -z "$sensor" ] || ! kill -0 "$sensor" 2>/dev/null; then
             follow &
             monitor-sensor --accel > "$fifo" 2>/dev/null &

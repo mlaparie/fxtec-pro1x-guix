@@ -21,6 +21,7 @@
 
 import os
 import signal
+import subprocess
 import threading
 import time
 
@@ -30,14 +31,19 @@ gi.require_version("GstVideo", "1.0")
 gi.require_version("GstApp", "1.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import GdkPixbuf, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
+from gi.repository import GdkPixbuf, Gio, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
-VIEW = (1920, 1080)             # the IMX582's fast mode (pro1x-imx582-1080p)
+# The viewfinder: from the IMX582's fast 1984x1080 mode
+# (pro1x-imx582-1080p), scaled down by the software ISP: smaller frames
+# cost less to process and show (author: the preview lagged).
+VIEW = (1280, 720)
 # Its 12 MP binned mode is 4000x3000, but the software ISP keeps a border
 # of one Bayer pattern left and right (moWerk's 1080p patch notes), and
 # 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
 STILL = (3968, 2976)
-SETTLE_FRAMES = 3               # frames at 12 MP (exposure, focus carried)
+# Frames at 12 MP before the one kept: exposure and focus are carried over
+# from the viewfinder, so one is enough (author: saving was slow; was 3).
+SETTLE_FRAMES = 1
 ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
 EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
 FLASH_LED = "/sys/class/leds/white:flash-0"
@@ -107,8 +113,30 @@ class Camera(Gtk.Application):
         self.last_photo = None
 
     # ── the window ─────────────────────────────────────────────────────
+    def claim_accelerometer(self):
+        """How the phone is held, for the photo's turn (author: a photo
+        taken in landscape was saved as portrait).  iio-sensor-proxy keeps
+        the accelerometer while the app runs; the claim ends with it."""
+        try:
+            self.accel = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
+                "net.hadess.SensorProxy", "/net/hadess/SensorProxy",
+                "net.hadess.SensorProxy", None)
+            self.accel.call_sync("ClaimAccelerometer", None,
+                                 Gio.DBusCallFlags.NONE, 2000, None)
+        except GLib.Error as e:
+            print("accelerometer: %s" % e.message, flush=True)
+            self.accel = None
+
+    def held(self):
+        """normal, left-up, right-up, bottom-up or undefined."""
+        v = self.accel.get_cached_property("AccelerometerOrientation") \
+            if self.accel else None
+        return v.unpack() if v else "undefined"
+
     def do_activate(self):
         Gst.init(None)
+        self.claim_accelerometer()
         style = Gtk.CssProvider()
         style.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(
@@ -122,6 +150,14 @@ class Camera(Gtk.Application):
         self.view = Gtk.EventBox()
         self.view.connect("button-press-event", self.on_tap)
         self.overlay.add(self.view)
+        # Where the focus is measured (author): a square at the tap,
+        # yellow while scanning, green once focused, red if it failed.
+        self.marker = Gtk.DrawingArea()
+        self.marker.set_can_focus(False)
+        self.marker.connect("draw", self.on_draw_marker)
+        self.overlay.add_overlay(self.marker)
+        self.overlay.set_overlay_pass_through(self.marker, True)
+        self.mark = None                # (x, y, colour), or None
 
         bar = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER,
                       valign=Gtk.Align.END, margin_bottom=24)
@@ -181,6 +217,9 @@ class Camera(Gtk.Application):
         self.flip = Gst.ElementFactory.make("videoflip")
         tee = Gst.ElementFactory.make("tee")
         q1 = Gst.ElementFactory.make("queue")
+        # Only the newest frame waits: the view never falls behind.
+        q1.set_property("leaky", 2)
+        q1.set_property("max-size-buffers", 1)
         sink = Gst.ElementFactory.make("gtksink")
         sink.set_property("sync", False)
         q2 = Gst.ElementFactory.make("queue")
@@ -326,8 +365,12 @@ class Camera(Gtk.Application):
         """Focus where tapped: the point in the viewfinder, in frame
         coordinates (undoing the rotation), then in pixel array
         coordinates, as moWerk's camerabin patch maps it."""
-        if self.busy or not self.area:
+        if self.busy:
             return False
+        # The square first: a tap did nothing visible while the active
+        # area was unknown (author, 2026-11-02: no focus indicator).
+        self.mark = (event.x, event.y, (1.0, 0.8, 0.0))
+        self.marker.queue_draw()
         alloc = widget.get_allocation()
         x, y = event.x / alloc.width, event.y / alloc.height
         front = self.cam != 0
@@ -337,7 +380,10 @@ class Camera(Gtk.Application):
             x, y = (1 - y, x) if not front else (y, 1 - x)
         elif front:
             x = 1 - x
-        ax, ay, aw, ah = self.area
+        # libcamerasrc may not publish the active area: the still size, a
+        # little short of the IMX582's 4000x3000 array, does for a window.
+        ax, ay, aw, ah = self.area or (0, 0) + STILL
+        print("focus: area %s, tap %.2f %.2f" % (self.area, x, y), flush=True)
         vw, vh = self.size
         fw = max(vw, vh * aw / ah)
         fh = fw * ah / aw
@@ -351,8 +397,44 @@ class Camera(Gtk.Application):
         Gst.util_set_object_arg(
             self.src, "af-windows",
             "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
-        self.say("Focusing", 1)
+        self.af_polls = 0
+        GLib.timeout_add(150, self.poll_focus)
         return True
+
+    def poll_focus(self):
+        """The marker's colour after libcamera's AfState (0 idle,
+        1 scanning, 2 focused, 3 failed; moWerk's patch exposes it)."""
+        if not self.mark or not self.pipeline:
+            return False
+        try:
+            state = int(self.src.get_property("af-state"))
+        except (TypeError, ValueError):
+            state = 0
+        self.af_polls += 1
+        x, y, _ = self.mark
+        colour = {2: (0.3, 0.9, 0.3), 3: (0.95, 0.3, 0.3)}.get(state, (1.0, 0.8, 0.0))
+        self.mark = (x, y, colour)
+        self.marker.queue_draw()
+        if state in (2, 3) or self.af_polls > 30:
+            GLib.timeout_add(1200, self.clear_mark)
+            return False
+        return True
+
+    def clear_mark(self):
+        self.mark = None
+        self.marker.queue_draw()
+        return False
+
+    def on_draw_marker(self, area, cr):
+        if not self.mark:
+            return False
+        x, y, (r, g, b) = self.mark
+        side = min(area.get_allocated_width(), area.get_allocated_height()) * 0.16
+        cr.set_source_rgb(r, g, b)
+        cr.set_line_width(3)
+        cr.rectangle(x - side / 2, y - side / 2, side, side)
+        cr.stroke()
+        return False
 
     # ── photos ─────────────────────────────────────────────────────────
     def on_signal(self):
@@ -365,12 +447,28 @@ class Camera(Gtk.Application):
         self.busy = True
         self.b_shutter.set_sensitive(False)
         self.say("Taking a photo")
+        self.t0 = time.monotonic()
         if self.flash:
+            # A pre-flash, without blocking the window: the exposure then
+            # settles on the lit scene before it is carried over.
             self.led(True)
-        self.resize(STILL, self.current())
-        threading.Thread(target=self.capture, daemon=True).start()
+            GLib.timeout_add(600, self.to_still)
+        else:
+            self.to_still()
 
-    def capture(self):
+    def to_still(self):
+        self.resize(STILL, self.current())
+        held, front, portrait = self.held(), self.cam != 0, self.portrait
+        threading.Thread(target=self.capture, args=(held, front, portrait),
+                         daemon=True).start()
+        return False
+
+    def since(self):
+        return "%.2f s" % (time.monotonic() - self.t0)
+
+    def capture(self, held, front, portrait):
+        """Frames at 12 MP, then the viewfinder back at once, and the photo
+        turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
         for _ in range(SETTLE_FRAMES + 1):
             s = self.snap.try_pull_sample(3 * Gst.SECOND)
@@ -383,30 +481,47 @@ class Camera(Gtk.Application):
                 flush=True)
         else:
             print("capture: no frame at %dx%d" % STILL, flush=True)
-        GLib.idle_add(self.captured, sample)
-
-    def captured(self, sample):
-        if self.flash:
-            self.led(False)
-        path = None
+        pix, error = None, None
         if sample:
             try:
-                path = self.save(sample)
+                pix = self.frame(sample)
             except Exception as e:      # shown, not fatal
-                print("capture: not saved: %s" % e, flush=True)
-                self.say("Not saved: %s" % e, 4)
+                error = e
+        print("capture: frame at %s" % self.since(), flush=True)
+        GLib.idle_add(self.resume)
+        path = None
+        if pix:
+            try:
+                path = self.write(pix, held, front, portrait)
+            except Exception as e:
+                error = e
+        GLib.idle_add(self.saved, path, error, sample is not None)
+
+    def resume(self):
+        if self.flash:
+            self.led(False)
         self.resize(VIEW)
+        self.say("Saving")
+        return False
+
+    def saved(self, path, error, had_frame):
         self.busy = False
         self.b_shutter.set_sensitive(True)
         if path:
+            print("capture: saved at %s" % self.since(), flush=True)
             self.last_photo = path
             self.b_last.show()
             self.say("Saved", 2)
-        elif not sample:
+        elif error:
+            print("capture: not saved: %s" % error, flush=True)
+            self.say("Not saved: %s" % error, 4)
+        elif not had_frame:
             self.say("No frame from the camera", 4)
         return False
 
-    def save(self, sample):
+    def frame(self, sample):
+        """The 12 MP frame as a pixbuf of its own (before the pipeline
+        lets the buffer go)."""
         info = GstVideo.VideoInfo.new_from_caps(sample.get_caps())
         buf = sample.get_buffer()
         ok, mapping = buf.map(Gst.MapFlags.READ)
@@ -419,8 +534,11 @@ class Camera(Gtk.Application):
             pix = pix.copy()
         finally:
             buf.unmap(mapping)
-        front = self.cam != 0
-        if self.portrait:
+        return pix
+
+    def write(self, pix, held, front, portrait):
+        """Turned as the viewfinder, then as the phone was held; a JPEG."""
+        if portrait:
             # The opposite of the viewfinder's names: the saved photos were
             # upside down with the same turn (author, 2026-11-01).
             pix = pix.rotate_simple(
@@ -428,6 +546,16 @@ class Camera(Gtk.Application):
                 else GdkPixbuf.PixbufRotation.CLOCKWISE)
         elif front:
             pix = pix.flip(True)
+        # Then as held.  right-up is the keyboard landscape here
+        # (sway-autorotate's naming, swapped from Phosh's).  The direction
+        # is from one landscape photo (2026-11-02), side not yet known:
+        # the log says which way the phone was held.
+        turn = {"right-up": GdkPixbuf.PixbufRotation.CLOCKWISE,
+                "left-up": GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE,
+                "bottom-up": GdkPixbuf.PixbufRotation.UPSIDEDOWN}.get(held)
+        print("capture: held %s" % held, flush=True)
+        if portrait and turn is not None:
+            pix = pix.rotate_simple(turn)
         os.makedirs(PHOTOS, exist_ok=True)
         path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
         pix.savev(path, "jpeg", ["quality"], ["92"])
@@ -442,15 +570,30 @@ class Camera(Gtk.Application):
                     level = f.read().strip()
             with open(os.path.join(FLASH_LED, "brightness"), "w") as f:
                 f.write(level)
-            if on:
-                time.sleep(0.4)
-        except OSError:
-            pass
+        except OSError as e:
+            print("flash: %s" % e, flush=True)
 
     def on_last(self, *_):
-        if self.last_photo:
+        """The last photo in a tab next to the camera (author): the camera
+        leaves fullscreen, its container turns tabbed, and the viewer opens
+        as the next tab; when the viewer closes, fullscreen again."""
+        if not self.last_photo:
+            return
+        me = '[app_id="^org.pro1x.Camera$"]'
+        subprocess.run(["swaymsg", me + " fullscreen disable, layout tabbed"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            viewer = subprocess.Popen(["loupe", self.last_photo])
+        except OSError:
             Gtk.show_uri_on_window(self.win, "file://" + self.last_photo,
                                    Gdk.CURRENT_TIME)
+            return
+
+        def back():
+            viewer.wait()
+            subprocess.run(["swaymsg", me + " focus, fullscreen enable"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=back, daemon=True).start()
 
 
 if __name__ == "__main__":

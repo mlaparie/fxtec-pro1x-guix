@@ -4,6 +4,7 @@
 #   pro1x-osd daemon                  wob reading $XDG_RUNTIME_DIR/pro1x-wob
 #   pro1x-osd volume up|down|mute     change, then show the level
 #   pro1x-osd bright up|down
+#   pro1x-osd volume|bright show      only show the level (quick actions)
 #
 # A bar for a second when the volume or the brightness changes from the
 # keys (author, 2026-10-31).  Muted shows the volume in grey, brightness
@@ -58,6 +59,8 @@ case "$1 ${2:-}" in
     "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
     "bright up") brightnessctl -q set 5%+ ;;
     "bright down") brightnessctl -q set 5%- ;;
+    # Changed elsewhere (quick actions): only the bar.
+    "volume show"|"bright show") ;;
     *) echo "usage: pro1x-osd daemon | volume up|down|mute | bright up|down" >&2
        exit 1 ;;
 esac

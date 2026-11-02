@@ -1,0 +1,61 @@
+#!/bin/sh
+# pro1x-osk run | follow — the on-screen keyboard (stevia) kept ready in Sway
+#
+#   run      stevia, started again whenever it ends (it was found not
+#            running, 2026-11-02: quick actions then had to start it, and
+#            text fields brought up nothing).  Running, it shows for a
+#            focused text field by itself (text-input) and comes up at
+#            once on a D-Bus call.
+#   follow   in portrait with the keyboard slid in, show it while a
+#            terminal has the focus (terminals have no text-input), hide it
+#            when the focus leaves one (author, 2026-11-02)
+#
+# Both started by the Sway config; they end with the session.
+#
+# State: written 2026-11-02; not yet run on the phone.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+
+osk() {                         # osk true|false
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
+}
+
+portrait() {
+    swaymsg -t get_outputs -r 2>/dev/null |
+        jq -e '.[] | select(.name == "DSI-1")
+               | .transform == "normal" or .transform == "180"' >/dev/null
+}
+
+slid_out() {                    # SW_KEYPAD_SLIDE set: evtest exits 10
+    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+    [ $? = 10 ]
+}
+
+terminal() {                    # an app_id of a terminal
+    case "$1" in
+        foot|footclient|*[Tt]erminal*|*[Cc]onsole*|kitty|Alacritty) return 0 ;;
+    esac
+    return 1
+}
+
+case "${1:-}" in
+    run)
+        while swaymsg -t get_version >/dev/null 2>&1; do
+            phosh-osk-stevia
+            sleep 1
+        done ;;
+    follow)
+        shown="$rt/pro1x-osk-terminal"     # we showed it for a terminal
+        rm -f "$shown"
+        swaymsg -t subscribe -m '["window"]' 2>/dev/null |
+            jq --unbuffered -r 'select(.change == "focus") | .container.app_id // ""' |
+            while read -r app; do
+                if terminal "$app" && portrait && ! slid_out; then
+                    osk true; touch "$shown"
+                elif [ -f "$shown" ]; then
+                    osk false; rm -f "$shown"
+                fi
+            done ;;
+    *) echo "usage: pro1x-osk run|follow" >&2; exit 1 ;;
+esac

@@ -26,11 +26,13 @@ portrait() {
 geometry() {
     case "$1" in
         quickactions)
-            # 50 px shorter in portrait (author, 2026-10-31).
+            # Wider, for longer lines (author, 2026-11-02); 80 px shorter in
+            # portrait, 30 in landscape (author, 2026-10-31, 2026-11-02).
+            # Portrait: wider still, 100 px shorter (author, 2026-11-02).
             if portrait; then
-                echo "resize set 80 ppt 80 ppt, resize shrink height 50 px, move position 10 ppt 2 ppt"
+                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
             else
-                echo "resize set 80 ppt 80 ppt, move position 10 ppt 2 ppt"
+                echo "resize set 92 ppt 80 ppt, resize shrink height 30 px, move position 4 ppt 2 ppt"
             fi ;;
         launcher) echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt" ;;
         windowswitcher) echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt" ;;
@@ -55,7 +57,17 @@ hide_menu() {
     swaymsg "[app_id=\"^$1\$\"] move scratchpad" >/dev/null 2>&1
 }
 
+# The con ids of menu $1's windows.
+windows() {
+    swaymsg -t get_tree -r |
+        jq -r --arg id "$1" '.. | objects | select(.app_id? == $id) | .id'
+}
+
 start() {
+    # One window per menu: a second launcher loop shared the first one's fzf
+    # socket, whose fzf then failed at once, and its loop spun (69 shells,
+    # load 19, the phone too slow to suspend; 2026-11-02).
+    [ -n "$(windows "$id")" ] && return 0
     case "$id" in
         quickactions) sway-quick-actions --resident ;;   # always hidden
         launcher)
@@ -70,6 +82,7 @@ start() {
                         FZF_DEFAULT_OPTS="--layout=reverse-list --listen='"$rt"'/pro1x-launcher.sock" \
                         GLYPH_PROMPT="apps > " sway-launcher-desktop
                     swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+                    sleep 0.5        # never a busy loop, if it fails at once
                 done' >/dev/null 2>&1 < /dev/null &
             ;;
         windowswitcher)
@@ -182,7 +195,13 @@ case "$cmd" in
             [ "$m" = "$id" ] || hide_menu "$m"
         done
         swaymsg '[app_id="^powermenu$"] kill' >/dev/null 2>&1
-        if swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
+        # Extra windows of this menu (from before the check in start) go.
+        set -- $(windows "$id")
+        first=${1:-}
+        [ $# -gt 0 ] && shift
+        for extra in "$@"; do swaymsg "[con_id=$extra] kill" >/dev/null 2>&1; done
+        if [ -n "$first" ] &&
+           swaymsg "[con_id=$first] scratchpad show, $(geometry "$id")" \
                >/dev/null 2>&1; then
             # Refresh the list as it shows (cheap).
             case "$id" in

@@ -79,7 +79,7 @@
       {
         "title": "s2idle: modem messages do not wake user space (GLINK SMEM is IRQF_NO_SUSPEND without a wakeup event)",
         "general": "qcom_glink_smem requests its IRQ IRQF_NO_SUSPEND and reports no wakeup event, so an incoming call is received by the kernel in s2idle while ModemManager stays frozen. smp2p is wakeup-capable but off by default and carries no QMI messages.",
-        "instance": "Pro1X 7.1, drivers/rpmsg/qcom_glink_smem.c line 308; our patch pro1x-glink-modem-wake takes a wakeup event on the mpss edge; /sys/devices/platform/smp2p-mpss/power/wakeup disabled.",
+        "instance": "Pro1X 7.1, drivers/rpmsg/qcom_glink_smem.c line 308; our patch pro1x-glink-modem-wake takes a wakeup event on the mpss edge; /sys/devices/platform/smp2p-mpss/power/wakeup disabled. Kernel v3 (2026-11-01): wakeup only for QRTR data to user-space sockets (af_qrtr, sk_kern_sock false), switch /sys/module/qrtr/parameters/wake_on_data; v1 (every GLINK message) and v2 (every QRTR data packet) aborted each suspend: 2-4 packets of 48 bytes 0.2-0.4 s after each entry. With v3 an RTC-woken suspend held 45 s, woken by the RTC only, ADSP and sound intact. Wake on an incoming call not yet tested.",
         "confidence": "confirmed",
         "date": "2026-11-01",
         "source": "kernel source read; patch not yet booted"

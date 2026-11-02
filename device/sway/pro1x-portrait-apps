@@ -36,13 +36,7 @@ slider_out() {
 
 restore() {
     rm -f "$flag"
-    if slider_out; then
-        swaymsg output DSI-1 transform 90 >/dev/null
-    elif [ "$(cat "$rotation" 2>/dev/null || echo off)" = on ]; then
-        sway-autorotate off; sway-autorotate on   # re-read the sensor
-    else
-        swaymsg output DSI-1 transform normal >/dev/null
-    fi
+    sway-autorotate restore         # sensor, keyboard or fixed
 }
 
 check() {

@@ -1,0 +1,44 @@
+#!/bin/sh
+# pro1x-sov daemon | toggle | show | hide — Sway Overview (sov: the
+# workspaces and their windows as thumbnails) for a touchscreen
+#
+#   daemon   sov reading $XDG_RUNTIME_DIR/pro1x-sov (started by the Sway
+#            config; ends with Sway)
+#   toggle   show it, or hide it when shown (a one-finger swipe up from the
+#            bottom edge, pro1x-gestures; author, 2026-11-01, 2026-11-02)
+#
+# sov shows on "1" and hides on "0" written to its pipe, and is meant to be
+# held up by a key; with a touch there is nothing to hold, so it hides by
+# itself after 5 s, or on the next toggle.
+#
+# State: sov with this style shows and hides when run by hand on the
+# phone (2026-11-02); through the swipe not yet seen.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+pipe="$rt/pro1x-sov" shown="$rt/pro1x-sov.shown"
+
+# Never blocks: with no sov reading, opening the pipe would wait forever
+# (one stuck process per swipe while sov was down, 2026-11-02).
+send() { [ -p "$pipe" ] && timeout 1 sh -c 'echo "$1" > "$2"' sh "$1" "$pipe"; }
+
+case "${1:-toggle}" in
+    daemon)
+        rm -f "$pipe" "$shown"; mkfifo "$pipe"
+        # tail keeps the pipe open between writers.
+        # Its style: sov's own, with smaller fonts.  -s names the folder
+        # that holds html/main.css and html/main.html (sov.c); given the
+        # html folder itself, sov found no style and crashed (SIGSEGV) as
+        # it showed (2026-11-02).
+        html="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/sov"
+        # Thumbnails a quarter of the screen, two columns (author: the
+        # previews showed too little; sov's default is an eighth, five).
+        exec sh -c "tail -f '$pipe' | sov -t 0 -r 4 -c 2 -s '$html'" ;;
+    show)
+        send 1
+        stamp=$(date +%s%N); echo "$stamp" > "$shown"
+        ( sleep 5; [ "$(cat "$shown" 2>/dev/null)" = "$stamp" ] && "$0" hide ) \
+            >/dev/null 2>&1 & ;;
+    hide) send 0; rm -f "$shown" ;;
+    toggle) if [ -f "$shown" ]; then "$0" hide; else "$0" show; fi ;;
+    *) echo "usage: pro1x-sov daemon|toggle|show|hide" >&2; exit 1 ;;
+esac
