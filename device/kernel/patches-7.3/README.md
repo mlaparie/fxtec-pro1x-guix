@@ -36,5 +36,6 @@ besides compiler-capability flags (an artefact of the host compiler):
 CRYPTO_DEV_QCE*, CRYPTO_DEV_QCOM_RNG (dependencies changed in 7.3; not
 needed to boot), PROC_SYSCTL (to check: renamed or merged in 7.3).
 
-State: the patched source builds (guix build -S, 2026-11-02); the kernel
-not yet built (CI on this branch).
+State: built in CI (run 41388196979, 2026-11-02: kernel, U-Boot and the
+mobile image; output /gnu/store/i5n6m4fc...-linux-pro1x-7.3.0); not yet
+booted.
