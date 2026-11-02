@@ -8,8 +8,8 @@
 #            bottom edge, pro1x-gestures; author, 2026-11-01, 2026-11-02)
 #
 # sov shows on "1" and hides on "0" written to its pipe, and is meant to be
-# held up by a key; with a touch there is nothing to hold, so it hides by
-# itself after 5 s, or on the next toggle.
+# held up by a key; with a touch there is nothing to hold, so it hides
+# once a workspace is picked in it, after 10 s, or on the next toggle.
 #
 # State: shows the overview from the window switcher (2026-11-02).
 
@@ -33,7 +33,10 @@ case "${1:-toggle}" in
     show)
         send 1
         stamp=$(date +%s%N); echo "$stamp" > "$shown"
-        ( sleep 5; [ "$(cat "$shown" 2>/dev/null)" = "$stamp" ] && "$0" hide ) \
+        # Gone once a workspace was picked in it (author: not needed after
+        # the tap; Sway's next workspace event), else after 10 s.
+        ( timeout 10 swaymsg -t subscribe '["workspace"]'
+          [ "$(cat "$shown" 2>/dev/null)" = "$stamp" ] && "$0" hide ) \
             >/dev/null 2>&1 & ;;
     hide) send 0; rm -f "$shown" ;;
     toggle) if [ -f "$shown" ]; then "$0" hide; else "$0" show; fi ;;
