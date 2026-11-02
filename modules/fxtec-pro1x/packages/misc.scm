@@ -341,7 +341,9 @@ to build an FDE userdata image on the host before flashing.")
                 "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
                 "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"
                 ;; Ours: longer exposures (vertical blanking raised).
-                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"))))))
+                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"
+                ;; Ours: auto exposure settles about three times as fast.
+                "0019-ipa-simple-agc-settle-the-exposure-faster.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
@@ -1646,6 +1648,7 @@ window opened by a sway key binding.")
           ("pro1x-sov" "bin/")
           ("pro1x-osk" "bin/")
           ("pro1x-alarm-watch" "bin/")
+          ("pro1x-kbd-light" "bin/")
           ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases

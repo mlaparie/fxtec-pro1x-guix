@@ -195,7 +195,18 @@
                               active))
                   (recent? (or (not timeout)
                                (< (- (current-time) active) timeout)))
-                  (value (if (and open? panel-now? recent?) "1" "0")))
+                  ;; Off by hand (Fn+Space, pro1x-kbd-light): a flag in a
+                  ;; user's runtime directory keeps it off.
+                  (by-hand-off?
+                   (any (lambda (uid)
+                          (file-exists?
+                           (string-append "/run/user/" uid
+                                          "/pro1x-kbd-light-off")))
+                        (or (scandir "/run/user"
+                                     (lambda (f) (not (string-prefix? "." f))))
+                            '())))
+                  (value (if (and open? panel-now? recent? (not by-hand-off?))
+                             "1" "0")))
              (unless (equal? value last)
                (set-led! value))
              ;; Poll dpms and the timeout once a second meanwhile.
