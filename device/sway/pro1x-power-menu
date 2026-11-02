@@ -18,24 +18,33 @@
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 
 case "${1:-}" in
-    --menu|--lines) ;;
-    *)
-        pro1x-menu hide-all          # one menu at a time (author)
-        exec pro1x-term --app-id=powermenu -o pad=12x8 \
-            -o "font=Iosevka Term:size=13" -e "$0" --menu ;;
+    --menu|--lines|--resident) ;;
+    # Resident in the scratchpad (pro1x-menu start powermenu, at login):
+    # shown and hidden like the other menus.
+    *) exec pro1x-menu toggle powermenu ;;
 esac
 
 # The menu's lines.  (The CPU mode is a quick actions line: author.)
 if [ "${1:-}" = --lines ]; then
-    printf '%s\n' "Cancel" "Lock screen" "Blank screen" \
+    printf '%s\n' "Cancel" "Lock screen" "Lock and suspend" "Blank screen" \
            "Suspend" "Hibernate" "Reboot" "Power off"
     exit
 fi
+hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null; }
+while :; do
 choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
                  --no-info --cycle --margin=1,2 --color=16,gutter:-1)
+# Away first, then the choice; a fresh list (on Cancel) waits hidden.
+hide
 case "$choice" in
     "Lock screen") swaymsg exec pro1x-lock >/dev/null ;;
+    # Locked first, then asleep (author, 2026-11-02); Calls and Clocks get
+    # past the lock (pro1x-call-watch, pro1x-alarm-watch), Chats does not.
+    "Lock and suspend")
+        swaymsg exec pro1x-lock >/dev/null
+        sleep 1.5
+        setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
                     swaymsg 'output * power off' >/dev/null ;;
     # Detached: after the resume it may restart the ADSP (about 20 s),
@@ -45,3 +54,6 @@ case "$choice" in
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
     "Power off") sudo -n /run/current-system/profile/sbin/halt ;;
 esac
+[ "${1:-}" = --resident ] || break
+sleep 0.3                       # never a busy loop
+done

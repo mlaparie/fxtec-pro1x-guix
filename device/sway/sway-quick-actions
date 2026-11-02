@@ -87,6 +87,7 @@ qs_state() {                    # shown, hidden or none
 }
 
 qs_hide() {
+    pro1x-menu close-sub quickactions
     # Its query cleared, for next time (in the background: called from
     # inside fzf's execute, which answers only afterwards).
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
@@ -353,7 +354,10 @@ choose() {
                 fixed) sway-autorotate fixed ;;
             esac ;;
         wifi|bluetooth)
-            if [ "$pick" = tool ]; then step "$line" +
+            if [ "$pick" = tool ]; then
+                # Its networks or devices need it on (author, 2026-11-02).
+                [ "$(state_of "$line")" = on ] || set_to "$line" on
+                step "$line" +
             else set_to "$line" "$pick"; fi ;;
     esac
 }
@@ -681,13 +685,55 @@ notif_preview() {               # notif_preview <kind> <id>
     [ "$1" = old ] && printf '\n(history: no actions)\n'
 }
 
-notif_default() {               # Enter: the default action, else dismiss
-    [ "$1" = new ] || return
-    if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
+# The command of the app a notification names (author, 2026-11-02:
+# Telegram and the browser should open too): the desktop entry whose Name
+# or StartupWMClass is the app name, else whose file name contains it.
+app_command() {
+    [ -n "$1" ] || return
+    want=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+    word=$(printf '%s' "$want" | cut -d' ' -f1)
+    dirs="$HOME/.local/share/applications $HOME/.local/share/flatpak/exports/share/applications
+          /var/lib/flatpak/exports/share/applications /run/current-system/profile/share/applications
+          $HOME/.guix-profile/share/applications"
+    file=
+    for d in $dirs; do
+        [ -d "$d" ] || continue
+        file=$(grep -l -i -x -E "(Name|StartupWMClass)=$1" "$d"/*.desktop 2>/dev/null | head -n 1)
+        [ -n "$file" ] && break
+    done
+    if [ -z "$file" ]; then
+        for d in $dirs; do
+            file=$(ls "$d"/*.desktop 2>/dev/null | grep -i -F "$word" | head -n 1)
+            [ -n "$file" ] && break
+        done
+    fi
+    [ -n "$file" ] || return
+    sed -n 's/^Exec=//p' "$file" | head -n 1 |
+        sed 's/ *%[fFuUdDnNickvm]//g; s/ *@@[a-zA-Z]*//g'
+}
+
+notif_default() {               # Enter: the default action, else the app
+    # Its app, from the list (kind, id, urgency, app, summary).
+    app=$(sway-notifications list 2>/dev/null |
+              awk -F'\t' -v k="$1" -v i="$2" '$1 == k && $2 == i { print $4; exit }')
+    case "$app" in
+        Chats|chatty|sm.puri.Chatty) cmd=chatty ;;
+        Calls|gnome-calls|org.gnome.Calls) cmd=gnome-calls ;;
+        Clocks|org.gnome.clocks) cmd=gnome-clocks ;;
+        *) cmd=$(app_command "$app") ;;
+    esac
+    if [ "$1" = new ] &&
+       sway-notifications actions "$2" | cut -f1 | grep -qx default; then
         makoctl invoke -n "$2" default
+    elif [ -n "$cmd" ]; then
+        # No action to invoke (a notification from mako's history, or
+        # none offered): open its app (author, 2026-11-02: Enter on an SMS
+        # or a missed call opened nothing).
+        swaymsg exec "pro1x-open $cmd" >/dev/null
+        qs_hide
     fi
     # mako keeps it after an invoke: clear it as Phosh does.
-    makoctl dismiss -n "$2"
+    [ "$1" = new ] && makoctl dismiss -n "$2"
 }
 
 notif_pick() {                  # Tab: choose one of the actions
@@ -700,8 +746,11 @@ notif_pick() {                  # Tab: choose one of the actions
 }
 
 notif_dock() {
+    # Its own socket, so hiding the menu closes it (pro1x-menu hide_menu;
+    # author: the menu came back on the notifications, not the root).
     notif_lines |
-        fzf --prompt="notifications > " --layout=reverse --no-sort --cycle \
+        fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
+            --prompt="notifications > " --layout=reverse --no-sort --cycle \
             --delimiter='\t' --with-nth=3 \
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
@@ -711,6 +760,7 @@ notif_dock() {
             --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
             --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
             --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+    rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock"
 }
 
 case "${1:-}" in

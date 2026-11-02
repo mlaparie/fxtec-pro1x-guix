@@ -1,0 +1,26 @@
+#!/bin/sh
+# pro1x-kbd-light toggle — the keyboard backlight on or off by hand
+# (Fn+Space, author 2026-11-02; keyd sends KEY_KBDILLUMTOGGLE, Sway runs
+# this on XF86KbdLightOnOff).
+#
+# Off leaves $XDG_RUNTIME_DIR/pro1x-kbd-light-off, which the
+# pro1x-kbd-backlight service honours: it no longer lights the keyboard on
+# a key press or a slide while the flag exists.  On removes it.  The LED is
+# writable by group input.
+#
+# State: written 2026-11-02; not yet run on the phone.
+
+led=/sys/class/leds/white:kbd_backlight/brightness
+flag="${XDG_RUNTIME_DIR:-/tmp}/pro1x-kbd-light-off"
+
+case "${1:-toggle}" in
+    toggle)
+        if [ "$(cat "$led" 2>/dev/null)" = 0 ]; then
+            rm -f "$flag"
+            echo 1 > "$led"
+        else
+            touch "$flag"
+            echo 0 > "$led"
+        fi ;;
+    *) echo "usage: pro1x-kbd-light toggle" >&2; exit 1 ;;
+esac

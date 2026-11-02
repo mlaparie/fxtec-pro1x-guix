@@ -63,6 +63,9 @@ case "${1:-}" in
         now=$(date +%s%N)
         [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0
         echo "$now" > "$stamp"
+        # A buzz as the menu swipes do (author, 2026-11-02); fbcli reads
+        # from a sleep, or it ends the feedback at once.
+        { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
         case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
                     --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
                     2>/dev/null)" in

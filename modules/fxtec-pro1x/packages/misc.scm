@@ -341,7 +341,9 @@ to build an FDE userdata image on the host before flashing.")
                 "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
                 "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"
                 ;; Ours: longer exposures (vertical blanking raised).
-                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"))))))
+                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"
+                ;; Ours: auto exposure settles about three times as fast.
+                "0019-ipa-simple-agc-settle-the-exposure-faster.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
@@ -958,6 +960,19 @@ ModemManager, for clients such as Chatty.")
           ;; frame, ~250 ms whatever enable-animations says
           ;; (pos-input-surface.c animate_cb); now it ends on its first
           ;; frame (author: slow to show, no animation, 2026-11-02).
+          ;; Over the apps or pushing them up (author, 2026-11-02): no
+          ;; exclusive zone while $XDG_RUNTIME_DIR/pro1x-osk-overlay exists
+          ;; (quick actions' keyboard line toggles it), read at each show.
+          (add-after 'unpack 'pro1x-overlay-switch
+            (lambda _
+              (substitute* "src/pos-input-surface.c"
+                (("set_exclusive_zone \\(PHOSH_LAYER_SURFACE \\(self\\), (height|min\\.height)\\);"
+                  _ zone)
+                 (string-append
+                  "set_exclusive_zone (PHOSH_LAYER_SURFACE (self), "
+                  "g_file_test (g_build_filename (g_get_user_runtime_dir (), "
+                  "\"pro1x-osk-overlay\", NULL), G_FILE_TEST_EXISTS) ? 0 : "
+                  zone ");")))))
           (add-after 'unpack 'pro1x-no-slide
             (lambda _
               (substitute* "src/pos-input-surface.c"
@@ -1632,6 +1647,8 @@ window opened by a sway key binding.")
           ("pro1x-charge-limit" "bin/")
           ("pro1x-sov" "bin/")
           ("pro1x-osk" "bin/")
+          ("pro1x-alarm-watch" "bin/")
+          ("pro1x-kbd-light" "bin/")
           ("pro1x-power-button" "bin/")
           ("wob.ini" "share/pro1x-sway/"))
       #:phases
@@ -1705,7 +1722,7 @@ window opened by a sway key binding.")
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
-                   "pro1x-osk"))
+                   "pro1x-osk" "pro1x-alarm-watch"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa

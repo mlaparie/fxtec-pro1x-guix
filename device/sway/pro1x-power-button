@@ -37,7 +37,6 @@ if [ -n "${SWAYSOCK:-}" ]; then
     ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
 fi
 
-menu_open() { [ -S "$menu_sock" ] && pgrep -u "$(id -u)" -f "fzf --listen=$menu_sock" >/dev/null; }
 
 # "Event: time …, type 1 (EV_KEY), code 116 (KEY_POWER), value 1"
 # pro1x-doubletap: its virtual power key (double tap, Esc: wake).
@@ -60,7 +59,7 @@ done |
                   # unlocking): a long press is a short one then.
                   if pro1x-lock --locked; then pro1x-power-key; exit 0; fi
                   # A menu focused: put it away; else the power menu.
-                  pro1x-menu key hide || menu_open || pro1x-power-menu ) & ;;
+                  pro1x-menu key hide || pro1x-menu toggle powermenu ) & ;;
             *"(KEY_POWER), value 0"*)
                 # Released early: a short press.
                 if [ -f "$held" ]; then

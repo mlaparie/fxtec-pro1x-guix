@@ -52,6 +52,15 @@ modules`); `--repo` deploys `systems/*.scm` instead.
   overshot to 91% once (gauge jump suspected, not measured): battery
   trace running again (/root/charge-trace.sh, until reboot).
 
+## State, 2026-11-02 morning
+
+- Phone: generation 153 (next 2d2ac45: libcamera 0018, Night button),
+  kernel still 3nfp9v97 (7.1, modem wake v3).
+- To import (author's sudo): 7.1 kernel wiqj3i9r (CI 41378484852, modem
+  wake v4 + dw9800-soft) in /tmp/cik; 7.3 kernel i5n6m4fc (CI 41388196979,
+  branch kernel-7.3 with next merged) in /tmp/cik73.  Neither booted.
+- Debrief for the author: DEBRIEF-2026-11-02.md (untracked).
+
 ## Camera exposure: libcamera never lengthens the frame (plan, 2026-11-02)
 
 Measured on the phone (rag-notes hardware/camera): the IMX582's 1080p mode
