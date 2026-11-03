@@ -951,6 +951,10 @@ ModemManager, for clients such as Chatty.")
               (local-file
                (repository-file "device/phosh/stevia-chosen-dictionaries.patch")
                "stevia-chosen-dictionaries.patch")
+              ;; Ours: in Sway, completion without the application's hint.
+              (local-file
+               (repository-file "device/phosh/stevia-completion-without-hint.patch")
+               "stevia-completion-without-hint.patch")
               ;; Ours: only shown and hidden by hand in Sway (pro1x-osk).
               (local-file
                (repository-file "device/phosh/stevia-manual-toggle.patch")

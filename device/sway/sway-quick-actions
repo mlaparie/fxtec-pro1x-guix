@@ -9,7 +9,8 @@
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
-# feedback, CPU mode, charge limit, orientation, keyboard layout, and for
+# feedback, CPU mode, charge limit, orientation, keyboard layout, word
+# completion (several at once), and for
 # Wi-Fi and
 # Bluetooth on, off or their tool; author: a list, not stepping); Right
 # and Left step only brightness and volume, and Right opens Wi-Fi's and
@@ -399,10 +400,10 @@ layout_to() {                   # first in the list: stevia switches to it
     [ "$(layout_now)" = "$1" ]
 }
 
-# Word completion dictionaries: those installed (keyboard-languages), any of
-# them combined (our stevia patch; author, 2026-11-03).  Enter on a line turns
-# it on or off at once; back leaves.  The last one stays: Word completion
-# turns completion off.
+# Word completion: off, or any of the installed dictionaries combined
+# (keyboard-languages; our stevia patch; author, 2026-11-03).  Enter on a line
+# acts at once; back leaves.  Off, or unticking the last one, keeps the choice
+# for later: an empty list would make stevia follow the layout.
 dict_label() {
     case "$1" in
         en_*) echo English ;; fr_*) echo French ;; de_*) echo German ;;
@@ -418,29 +419,51 @@ dict_chosen() {                 # one per line
     gsettings get mobi.phosh.osk.Completers dictionaries 2>/dev/null |
         grep -o "'[^']*'" | tr -d "'"
 }
-dict_shown() {                  # "English, French"
+completion_on() {
+    case "$(gsettings get mobi.phosh.osk completion-mode 2>/dev/null)" in
+        *manual*|*hint*) return 0 ;;
+    esac
+    return 1
+}
+completion_set() {              # on or off
+    if [ "$1" = on ]; then
+        gsettings set mobi.phosh.osk completion-mode "['manual', 'hint']"
+    else
+        gsettings set mobi.phosh.osk completion-mode "[]"
+    fi
+}
+dict_shown() {                  # "English, French", or off
+    completion_on || { dim off; return; }
     dict_chosen | while read -r d; do dict_label "$d"; done | paste -sd, | sed 's/,/, /g'
 }
 dict_lines() {
     printf 'back\t← back\n'
+    if completion_on; then on=yes mark=" "; else on= mark="●"; fi
+    printf 'off\t%s off\n' "$mark"
     chosen=$(dict_chosen)
     for d in $(dict_installed); do
-        case " $(echo $chosen) " in
-            *" $d "*) mark="●" ;;
-            *) mark=" " ;;
-        esac
+        mark=" "
+        if [ -n "$on" ]; then
+            case " $(echo $chosen) " in *" $d "*) mark="●" ;; esac
+        fi
         printf '%s\t%s %s\n' "$d" "$mark" "$(dict_label "$d")"
     done
 }
 dict_toggle() {
+    [ "$1" = off ] && { completion_set off; return; }
     chosen=$(dict_chosen) new=
-    case " $(echo $chosen) " in
-        *" $1 "*)
-            for d in $chosen; do [ "$d" = "$1" ] || new="$new${new:+, }'$d'"; done
-            [ -n "$new" ] || return 0 ;;
-        *)
-            for d in $chosen "$1"; do new="$new${new:+, }'$d'"; done ;;
-    esac
+    if completion_on; then
+        case " $(echo $chosen) " in
+            *" $1 "*)
+                for d in $chosen; do [ "$d" = "$1" ] || new="$new${new:+, }'$d'"; done
+                [ -n "$new" ] || { completion_set off; return; } ;;
+            *) for d in $chosen "$1"; do new="$new${new:+, }'$d'"; done ;;
+        esac
+    else
+        # Back on, with this one alone.
+        new="'$1'"
+        completion_set on
+    fi
     gsettings set mobi.phosh.osk.Completers dictionaries "[$new]"
 }
 dict_choose() {
@@ -669,7 +692,6 @@ lines() {
     volume > "$d/vol" &
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
     osk_state > "$d/osk" &
-    state_of completion > "$d/completion" &
     layout_now > "$d/layout" &
     dict_shown > "$d/dicts" &
     wait
@@ -710,8 +732,7 @@ lines() {
         "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
-        "completion  Word completion      $(dim "$(cat "$d/completion")")" \
-        "dicts       Dictionaries         $(cat "$d/dicts")" \
+        "dicts       Word completion      $(cat "$d/dicts")" \
         "layout      Keyboard layout      $(cat "$d/layout")" \
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
@@ -754,12 +775,6 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
-        completion)               # stevia's; off: an empty list of modes
-            if [ "$2" = on ]; then
-                gsettings set mobi.phosh.osk completion-mode "['manual', 'hint']"
-            else
-                gsettings set mobi.phosh.osk completion-mode "[]"
-            fi ;;
         touchpad)                 # on: the touchscreen as a touchpad
             [ -p /run/pro1x-pointer ] && echo "pad $2" > /run/pro1x-pointer
             sleep 0.1 ;;
@@ -793,11 +808,6 @@ state_of() {                    # state_of <setting>: on or off
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
-        completion)
-            case "$(gsettings get mobi.phosh.osk completion-mode 2>/dev/null)" in
-                *manual*|*hint*) echo on ;;
-                *) echo off ;;
-            esac ;;
         roaming) roaming ;;
         touchpad) [ "$(touch_mode)" = touchpad ] && echo on || echo off ;;
     esac
@@ -1083,12 +1093,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|completion|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|completion|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
