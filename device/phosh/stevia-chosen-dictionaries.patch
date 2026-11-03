@@ -1,0 +1,195 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] Word completion from the chosen dictionaries, whatever the layout
+
+The Hunspell completer used one dictionary, the layout's.  mobi.phosh.osk.Completers
+dictionaries (quick actions) names several: their suggestions are merged, in
+turns, each word once; the layout no longer chooses (author, 2026-11-03).
+Empty: as before.
+---
+--- a/data/mobi.phosh.osk.gschema.xml
++++ b/data/mobi.phosh.osk.gschema.xml
+@@ -106,6 +106,15 @@
+       </description>
+     </key>
+ 
++    <key name='dictionaries' type='as'>
++      <default>[]</default>
++      <summary>Hunspell dictionaries to combine, as lang_REGION</summary>
++      <description>
++        Their suggestions are merged, whatever the layout.  Empty: the
++        dictionary follows the layout.
++      </description>
++    </key>
++
+     <key name='auto-space' type='b'>
+       <default>true</default>
+       <summary>Automatic space handling around punctuation</summary>
+--- a/src/completers/pos-completer-hunspell.c
++++ b/src/completers/pos-completer-hunspell.c
+@@ -51,6 +51,11 @@
+   GIConv                iconv_in;
+ 
+   Hunhandle            *handle;
++
++  /* Pro¹x: the dictionaries chosen in quick actions, after the first */
++  GSettings            *settings;
++  GPtrArray            *extra_handles;
++  gboolean              loading;
+ };
+ 
+ 
+@@ -194,6 +199,8 @@
+ {
+   PosCompleterHunspell *self = POS_COMPLETER_HUNSPELL(object);
+ 
++  g_clear_object (&self->settings);
++  g_clear_pointer (&self->extra_handles, g_ptr_array_unref);
+   g_clear_pointer (&self->handle, Hunspell_destroy);
+   g_clear_pointer (&self->completions, g_strfreev);
+   g_string_free (self->preedit, TRUE);
+@@ -238,6 +245,14 @@
+   Hunhandle *handle = NULL;
+   const char *encoding;
+ 
++  /* Pro¹x: chosen dictionaries do not follow the layout */
++  if (!self->loading && self->settings) {
++    g_auto (GStrv) chosen = g_settings_get_strv (self->settings, "dictionaries");
++
++    if (chosen[0])
++      return TRUE;
++  }
++
+   pos_completer_hunspell_close_iconv (self);
+ 
+   if (pos_completer_hunspell_find_dict (lang, region, &aff_path, &dict_path) == FALSE) {
+@@ -287,6 +302,55 @@
+ }
+ 
+ 
++/* Pro¹x: the first chosen dictionary through set_language, the others beside
++ * it; they have to be UTF-8, as the preedit is passed to them as it is. */
++static void
++pos_completer_hunspell_load_chosen (PosCompleterHunspell *self)
++{
++  g_auto (GStrv) chosen = g_settings_get_strv (self->settings, "dictionaries");
++  gboolean first = TRUE;
++
++  g_ptr_array_set_size (self->extra_handles, 0);
++  self->loading = TRUE;
++
++  for (int i = 0; chosen[i] != NULL; i++) {
++    g_auto (GStrv) parts = g_strsplit (chosen[i], "_", 2);
++    g_autofree char *aff = NULL;
++    g_autofree char *dic = NULL;
++    Hunhandle *handle;
++
++    if (!parts[0] || !parts[1])
++      continue;
++
++    if (first) {
++      g_autoptr (GError) err = NULL;
++
++      if (pos_completer_hunspell_set_language (POS_COMPLETER (self), parts[0], parts[1], &err))
++        first = FALSE;
++      else
++        g_warning ("Dictionary %s: %s", chosen[i], err->message);
++      continue;
++    }
++
++    if (!pos_completer_hunspell_find_dict (parts[0], parts[1], &aff, &dic)) {
++      g_warning ("No dictionary %s", chosen[i]);
++      continue;
++    }
++    handle = Hunspell_create (aff, dic);
++    if (handle == NULL)
++      continue;
++    if (g_strcmp0 (Hunspell_get_dic_encoding (handle), "UTF-8")) {
++      g_warning ("Dictionary %s is not UTF-8", chosen[i]);
++      Hunspell_destroy (handle);
++      continue;
++    }
++    g_ptr_array_add (self->extra_handles, handle);
++  }
++
++  self->loading = FALSE;
++}
++
++
+ static gboolean
+ pos_completer_hunspell_initable_init (GInitable    *initable,
+                                       GCancellable *cancelable,
+@@ -303,6 +367,12 @@
+     return FALSE;
+   }
+ 
++  self->settings = g_settings_new ("mobi.phosh.osk.Completers");
++  self->extra_handles = g_ptr_array_new_with_free_func ((GDestroyNotify) Hunspell_destroy);
++  g_signal_connect_swapped (self->settings, "changed::dictionaries",
++                            G_CALLBACK (pos_completer_hunspell_load_chosen), self);
++  pos_completer_hunspell_load_chosen (self);
++
+   return TRUE;
+ }
+ 
+@@ -406,18 +476,52 @@
+   g_debug ("Looking up string '%s'", self->preedit->str);
+ 
+   input = convert_from_utf8 (self, self->preedit->str);
+-  if (Hunspell_spell (self->handle, input))
+-    g_strv_builder_add (builder, self->preedit->str);
++  {
++    /* Pro¹x: every chosen dictionary, in turns, each word once */
++    g_autoptr (GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++    g_autoptr (GPtrArray) lists = g_ptr_array_new_with_free_func ((GDestroyNotify) g_strfreev);
++    guint extra = self->extra_handles ? self->extra_handles->len : 0;
++    guint count = 0;
++    gboolean more = TRUE;
++    gboolean known = Hunspell_spell (self->handle, input);
++
++    for (guint h = 0; h < extra; h++)
++      known = known || Hunspell_spell (g_ptr_array_index (self->extra_handles, h), self->preedit->str);
++    if (known) {
++      g_strv_builder_add (builder, self->preedit->str);
++      g_hash_table_add (seen, g_strdup (self->preedit->str));
++    }
+ 
+-  ret = Hunspell_suggest (self->handle, &suggestions, input);
+-  if (ret > 0) {
+-    for (int i = 0; i < ret && i < self->max_completions; i++) {
+-      char *utf8 = convert_to_utf8 (self, suggestions[i]);
++    for (guint h = 0; h <= extra; h++) {
++      Hunhandle *handle = h == 0 ? self->handle : g_ptr_array_index (self->extra_handles, h - 1);
++      g_autoptr (GStrvBuilder) words = g_strv_builder_new ();
++
++      ret = Hunspell_suggest (handle, &suggestions, h == 0 ? input : self->preedit->str);
++      for (int i = 0; i < ret; i++) {
++        char *utf8 = h == 0 ? convert_to_utf8 (self, suggestions[i]) : g_strdup (suggestions[i]);
++
++        if (utf8)
++          g_strv_builder_take (words, utf8);
++      }
++      if (ret > 0)
++        Hunspell_free_list (handle, &suggestions, ret);
++      g_ptr_array_add (lists, g_strv_builder_end (words));
++    }
+ 
+-      if (utf8)
+-        g_strv_builder_take (builder, utf8);
++    for (guint i = 0; more && count < self->max_completions; i++) {
++      more = FALSE;
++      for (guint h = 0; h < lists->len && count < self->max_completions; h++) {
++        GStrv list = g_ptr_array_index (lists, h);
++
++        if (i >= g_strv_length (list))
++          continue;
++        more = TRUE;
++        if (g_hash_table_add (seen, g_strdup (list[i]))) {
++          g_strv_builder_add (builder, list[i]);
++          count++;
++        }
++      }
+     }
+-    Hunspell_free_list (self->handle, &suggestions, ret);
+   }
+ 
+   completions = g_strv_builder_end (builder);

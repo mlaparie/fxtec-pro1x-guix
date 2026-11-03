@@ -946,6 +946,11 @@ ModemManager, for clients such as Chatty.")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-always.patch")
                "stevia-shortcuts-bar-always.patch")
+              ;; Ours: word completion from the dictionaries chosen in quick
+              ;; actions, merged, whatever the layout.
+              (local-file
+               (repository-file "device/phosh/stevia-chosen-dictionaries.patch")
+               "stevia-chosen-dictionaries.patch")
               ;; Ours: only shown and hidden by hand in Sway (pro1x-osk).
               (local-file
                (repository-file "device/phosh/stevia-manual-toggle.patch")

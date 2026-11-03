@@ -24,8 +24,8 @@
 ;;;     stops: keep the gap wider than that drop (not measured yet);
 ;;;   • light or dark apps (color-scheme, default 'prefer-dark): GSettings;
 ;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
-;;;   • on-screen keyboard languages (keyboard-languages): layouts and word
-;;;     completion, English always;
+;;;   • on-screen keyboard: word completion dictionaries (keyboard-languages),
+;;;     English always, and layouts (keyboard-layouts), independent of them;
 ;;;   • on-screen keyboard haptics (keyboard-haptics?, default #t): feedbackd theme;
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
@@ -116,11 +116,14 @@
   ;; A short vibration on each on-screen keyboard key (stevia), in
   ;; feedbackd's quiet and full profiles (author).
   (keyboard-haptics?  pro1x-hardware-keyboard-haptics?  (default #t))
-  ;; Languages of the on-screen keyboard besides English, which is always
-  ;; there: its layouts and word completion dictionaries, '("fr"), any of
-  ;; "fr" "de" "it" (%pro1x-keyboard-languages).  Spanish has no dictionary in
-  ;; Guix.
+  ;; Word completion dictionaries to install besides English, which is
+  ;; always there: '("fr"), any of "fr" "de" "it" (%pro1x-keyboard-languages).
+  ;; Spanish has no dictionary in Guix.  Which of them are combined is chosen
+  ;; in quick actions; all at first.
   (keyboard-languages pro1x-hardware-keyboard-languages (default '()))
+  ;; The on-screen keyboard's layouts (xkb names), independent of the
+  ;; dictionaries: '("us" "fr").  The first shows at first.
+  (keyboard-layouts   pro1x-hardware-keyboard-layouts   (default '("us")))
   ;; The lock screen's on-screen keyboard (Sway, gtklock): 'dark or 'light.
   (lock-keyboard      pro1x-hardware-lock-keyboard      (default 'dark))
   ;; Wake the panel with a double tap while it is off.
@@ -940,12 +943,12 @@ RTC; save them every 10 minutes and at shutdown")
    feedbackd-0.8 "/libexec/fbd-ledctrl -p %S%p -t pattern -G feedbackd\"\n"))
 
 (define %pro1x-keyboard-languages
-  ;; Language, xkb layout, Guix's dictionary and its file name, and the name
-  ;; stevia looks for (lang_REGION).
-  `(("en" "us" ,hunspell-dict-en-us "en_US" "en_US")
-    ("fr" "fr" ,hunspell-dict-fr-classique "fr-classique" "fr_FR")
-    ("de" "de" ,hunspell-dict-de "de_DE" "de_DE")
-    ("it" "it" ,hunspell-dict-it-it "it_IT" "it_IT")))
+  ;; Language, Guix's dictionary and its file name, and the name stevia looks
+  ;; for (lang_REGION).
+  `(("en" ,hunspell-dict-en-us "en_US" "en_US")
+    ("fr" ,hunspell-dict-fr-classique "fr-classique" "fr_FR")
+    ("de" ,hunspell-dict-de "de_DE" "de_DE")
+    ("it" ,hunspell-dict-it-it "it_IT" "it_IT")))
 
 (define (pro1x-keyboard-language-entries config)
   (map (lambda (language)
@@ -977,9 +980,9 @@ RTC; save them every 10 minutes and at shutdown")
                            (string-append dir "/" (caddr entry) ext)))
                 '(".aff" ".dic")))
              (list #$@(map (lambda (entry)
-                             #~(list #$(list-ref entry 2)
-                                     #$(list-ref entry 3)
-                                     #$(list-ref entry 4)))
+                             #~(list #$(list-ref entry 1)
+                                     #$(list-ref entry 2)
+                                     #$(list-ref entry 3)))
                            (pro1x-keyboard-language-entries config))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Word completion dictionaries for the on-screen keyboard")
@@ -1010,14 +1013,16 @@ under the file names stevia looks for.")
                      (let ((s (pro1x-hardware-auto-suspend config)))
                        (if s (number->string s) ""))
                      "\n")))
-      ;; /etc/pro1x/keyboard.conf: the on-screen keyboard's layouts, for
-      ;; pro1x-osk.
+      ;; /etc/pro1x/keyboard.conf: the on-screen keyboard's layouts and
+      ;; dictionaries, for pro1x-osk.
       ("pro1x/keyboard.conf"
        ,(plain-file "keyboard.conf"
                     (string-append
                      "# Written by pro1x-hardware-service-type (config.scm).\n"
                      "KEYBOARD_LAYOUTS=\""
-                     (string-join (map cadr (pro1x-keyboard-language-entries config)))
+                     (string-join (pro1x-hardware-keyboard-layouts config))
+                     "\"\nKEYBOARD_DICTIONARIES=\""
+                     (string-join (map cadddr (pro1x-keyboard-language-entries config)))
                      "\"\n")))
       ;; /etc/pro1x/lock.conf: the lock screen keyboard's colours, for
       ;; pro1x-lock.

@@ -29,24 +29,27 @@ geometry() {
             # Wider, for longer lines (author, 2026-11-02); 80 px shorter in
             # portrait, 30 in landscape (author, 2026-10-31, 2026-11-02).
             # Portrait: wider still, 100 px shorter (author, 2026-11-02).
-            # In ppt alone: a relative shrink, and foot's rounding to whole
-            # cells (resize-by-cells=no below), gave another size on the
-            # first show than on the next (2026-11-03).
+            # No relative shrink, and no rounding to whole cells
+            # (resize-by-cells=no below): they gave another size on the first
+            # show than on the next (2026-11-03).  Portrait: in px, as ppt
+            # follows what the on-screen keyboard leaves, and 736 px fits above
+            # it (author: the same height with it or without).  Landscape:
+            # space is scarcer, so ppt, smaller with the keyboard.
             if portrait; then
-                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 736 px, move position 1 ppt 20 px"
             else
                 echo "resize set 92 ppt 74 ppt, move position 4 ppt 2 ppt"
             fi ;;
         # In portrait as tall as quick actions (author, 2026-11-02).
         launcher)
             if portrait; then
-                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 736 px, move position 1 ppt 20 px"
             else
                 echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt"
             fi ;;
         windowswitcher)
             if portrait; then
-                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 736 px, move position 1 ppt 20 px"
             else
                 echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt"
             fi ;;
