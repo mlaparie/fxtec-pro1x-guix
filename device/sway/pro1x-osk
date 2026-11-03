@@ -12,7 +12,8 @@
 #            as a pressed swipe can fire twice
 #   follow   in portrait with the keyboard slid in, show it while a
 #            terminal has the focus (terminals have no text-input), hide it
-#            when the focus leaves one (author, 2026-11-02)
+#            when the focus leaves one (author, 2026-11-02); a menu's window
+#            changes nothing: its list can be typed in (author, 2026-11-03)
 #
 # Both started by the Sway config; they end with the session.
 #
@@ -78,6 +79,9 @@ case "${1:-}" in
         swaymsg -t subscribe -m '["window"]' 2>/dev/null |
             jq --unbuffered -r 'select(.change == "focus") | .container.app_id // ""' |
             while read -r app; do
+                case "$app" in
+                    quickactions|launcher|windowswitcher|powermenu) continue ;;
+                esac
                 if terminal "$app" && portrait && ! slid_out; then
                     osk true; touch "$shown"
                 elif [ -f "$shown" ]; then
