@@ -476,7 +476,7 @@ dict_choose() {
             --bind="esc:$sync_begin+abort" \
             --bind="enter:transform:case {1} in
                       back) echo \"$sync_begin+accept\" ;;
-                      *) echo \"execute-silent($self --dict-toggle {1})+reload-sync($self --dict-lines)+pos({n})\" ;;
+                      *) echo \"execute-silent($self --dict-toggle {1})+reload-sync($self --dict-lines)\" ;;
                     esac" >/dev/null
     rm -f "$asksock"
     cache_put dicts "$(dict_shown)"
@@ -1069,21 +1069,21 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
     # Same layout and colours as the launcher and window switcher: list
     # from the top, prompt at the bottom.  Notification preview on the right
     # in landscape, below in portrait (under 70 columns; author).
-    fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1,fg+:0 \
+    fzf "$@" --prompt="quick actions > " --no-sort --track --id-nth=1 --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1,fg+:0 \
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
-                  wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
+                  wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                 esac" \
@@ -1092,12 +1092,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
