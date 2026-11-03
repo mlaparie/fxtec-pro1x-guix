@@ -1,0 +1,28 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] Show the shortcuts bar on every layout
+
+The bar was only shown on the terminal layout.  A text field (LibreWolf,
+GTK) moves the keyboard to a language layout and hides the bar; terminals
+have no text-input here, so going back to foot never selects the terminal
+layout again and the bar stays hidden.  Author: wanted all the time
+(2026-11-03).
+---
+--- a/src/pos-input-surface.c
++++ b/src/pos-input-surface.c
+@@ -378,13 +378,9 @@
+ pos_input_surface_toggle_shortcuts_bar (PosInputSurface *self)
+ {
+-  GtkWidget *child;
+-  gboolean shortcuts_visible = FALSE;
++  gboolean shortcuts_visible;
+ 
+-  child = hdy_deck_get_visible_child (self->deck);
+-
+-  /* shortcuts bar is only for terminal and when we have shortcuts defined */
+-  if (POS_INPUT_SURFACE_IS_TERMINAL_LAYOUT (child))
+-    shortcuts_visible = !!pos_shortcuts_bar_get_num_shortcuts (self->shortcuts_bar);
++  /* Pro¹x: on every layout, when we have shortcuts defined */
++  shortcuts_visible = !!pos_shortcuts_bar_get_num_shortcuts (self->shortcuts_bar);
+ 
+   gtk_widget_set_visible (GTK_WIDGET (self->shortcuts_bar), shortcuts_visible);
+ }

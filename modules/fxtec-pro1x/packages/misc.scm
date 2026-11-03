@@ -941,6 +941,11 @@ ModemManager, for clients such as Chatty.")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
                "stevia-shortcuts-bar-at-start.patch")
+              ;; Ours: that bar on every layout, not only the terminal's
+              ;; (author: wanted all the time, 2026-11-03).
+              (local-file
+               (repository-file "device/phosh/stevia-shortcuts-bar-always.patch")
+               "stevia-shortcuts-bar-always.patch")
               ;; Ours: 250 px in portrait (author: a little taller).
               (local-file
                (repository-file "device/phosh/stevia-portrait-height.patch")
