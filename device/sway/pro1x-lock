@@ -42,6 +42,14 @@ keyboard=dark
 
 case "${1:-}" in
     --locked)
+        # The lock client the supervisor runs, by its PID: two pgreps took
+        # 600 ms on the phone (400 processes), most of the power menu's
+        # delay after the buzz (2026-11-03).  Without the file (a lock
+        # started some other way), as before.
+        if [ -r "$rt/pro1x-lock.pid" ]; then
+            kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null
+            exit
+        fi
         pgrep -u "$uid" -x gtklock >/dev/null ||
             pgrep -u "$uid" -x swaylock >/dev/null
         exit ;;
@@ -418,20 +426,28 @@ date +%s > "$rt/pro1x-lock-drawn"
 supervise() {
     tries=0
     while :; do
-        gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"
+        gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &
+        echo $! > "$rt/pro1x-lock.pid"
+        wait $!
         rc=$?
-        case $rc in 0|137) exit 0 ;; esac
+        case $rc in
+            0) rm -f "$rt/pro1x-lock.pid"; exit 0 ;;   # unlocked
+            137) exit 0 ;;              # a redraw: its new gtklock takes over
+        esac
         tries=$((tries + 1))
         logger -t pro1x-lock "gtklock ended with status $rc (crash $tries)"
         [ $tries -lt 3 ] || break
         sleep 0.3
     done
     logger -t pro1x-lock "falling back to swaylock"
-    exec swaylock -f -c 1d2021 --clock --indicator
+    swaylock -c 1d2021 --clock --indicator &
+    echo $! > "$rt/pro1x-lock.pid"
+    wait $!
+    rm -f "$rt/pro1x-lock.pid"
 }
 supervise "$@" </dev/null >>"$rt/pro1x-gtklock.log" 2>&1 &
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    pgrep -u "$uid" -x gtklock >/dev/null && exit 0
+    [ -r "$rt/pro1x-lock.pid" ] && kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null && exit 0
     sleep 0.2
 done
 logger -t pro1x-lock "gtklock not up after 3 s"
