@@ -152,10 +152,18 @@ case "$cmd" in
         case "$focused" in
             quickactions)
                 sock="$rt/pro1x-quick-actions.sock"
-                # A line's choices (sway-quick-actions --choose), when open:
-                # a plain list, so steps and holds move in it.
-                if [ -S "$rt/pro1x-quick-actions-ask.sock" ]; then
-                    sock="$rt/pro1x-quick-actions-ask.sock"
+                # A line's choices (sway-quick-actions --choose) or the
+                # notifications list, when open: a plain list, so steps and
+                # holds move in it.  (Sent to the main list, the keys waited
+                # behind the notifications and replayed there once they
+                # closed: the menu came back on them; 2026-11-03.)
+                sub=
+                [ -S "$rt/pro1x-quick-actions-notif.sock" ] &&
+                    sub="$rt/pro1x-quick-actions-notif.sock"
+                [ -S "$rt/pro1x-quick-actions-ask.sock" ] &&
+                    sub="$rt/pro1x-quick-actions-ask.sock"
+                if [ -n "$sub" ]; then
+                    sock=$sub
                     case "$id" in
                         left|hold-down|repeat-down) id=down ;;
                         right|hold-up|repeat-up) id=up ;;
