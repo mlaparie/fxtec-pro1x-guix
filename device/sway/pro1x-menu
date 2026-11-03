@@ -253,8 +253,20 @@ case "$cmd" in
             case "$id" in
                 quickactions) sock="$rt/pro1x-quick-actions.sock"
                                action="reload(sway-quick-actions --lines)+first" ;;
-                windowswitcher) sock="$rt/pro1x-switcher.sock"
-                                action="reload-sync(pro1x-switcher --list)+first" ;;
+                # The list built first, off screen; shown only if it changed,
+                # in one frame, without a clear (author: flicker, and no delay
+                # to the window showing, 2026-11-03).
+                windowswitcher)
+                    (
+                        f="$rt/pro1x-switcher.list"
+                        pro1x-switcher --list > "$f.new"
+                        cmp -s "$f.new" "$f" && exit 0
+                        mv "$f.new" "$f"
+                        curl -s --unix-socket "$rt/pro1x-switcher.sock" -X POST http://localhost -d \
+                             "execute-silent[printf '\\033[?2026h' >/dev/tty]+reload-sync(cat $f)+first+execute-silent[(sleep 0.03; printf '\\033[?2026l' >/dev/tty) &]" \
+                             >/dev/null 2>&1
+                    ) &
+                    sock= ;;
                 *) sock= ;;
             esac
             [ -n "$sock" ] && curl -s --unix-socket "$sock" -X POST \

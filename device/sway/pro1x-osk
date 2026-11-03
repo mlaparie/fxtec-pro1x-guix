@@ -40,6 +40,12 @@ case "${1:-}" in
         now=$(date +%s%N)
         [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0
         echo "$now" > "$stamp"
+        # The swipe starts on the empty gap at the panel's edge, and a touch
+        # there gives the focus to the workspace (author, 2026-11-03): back
+        # to its last window.
+        ( swaymsg -t get_tree -r 2>/dev/null |
+              jq -e '.. | objects | select(.focused? == true and .type == "workspace")' \
+                 >/dev/null && swaymsg 'focus child' >/dev/null ) 2>/dev/null &
         # A buzz as the menu swipes do (author, 2026-11-02); fbcli reads
         # from a sleep, or it ends the feedback at once.
         { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &

@@ -4,17 +4,21 @@
 # Their window asks for more width than the panel has in portrait (LibreWolf
 # 158: 638 px of 540), so Sway cuts it off.  In each profile, once: a
 # userChrome.css block that lowers the minimum window and URL bar widths, and
-# the pref that makes these browsers read that file.  The rest of those files
-# is left alone; a browser reads them when it starts.  Run at each login, so
-# a new profile has it from the next one.
+# in user.js the pref that makes these browsers read that file, and two for
+# the pages: they follow their <meta name="viewport"> as on a phone, instead of
+# a desktop layout that scrolls sideways, and can be pinched (author,
+# 2026-11-03).  The rest of those files is left alone; a browser reads them
+# when it starts.  Run at each login, so a new profile has it from the next
+# one.
 #
 # The two rules are from postmarketOS's mobile-config-firefox
 # (src/themes/shared/chrome/root.css, urlbar.css; Oliver Smith, Jesús Higueras,
 # Peter Mack; MPL-2.0).  Only these: not its toolbar at the bottom or its tab
 # menu.
 #
-# To undo in a profile: remove the block from chrome/userChrome.css; this
-# script adds it again unless it is taken out of the Sway config.
+# To undo in a profile: remove the block from chrome/userChrome.css and the
+# lines from user.js; this script adds them again unless it is taken out of
+# the Sway config.
 #
 # State: written 2026-11-03.
 
@@ -31,8 +35,11 @@ $mark
 #urlbar-container { min-width: 150px !important; flex-shrink: 1 !important; }
 CSS
         fi
-        pref='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
-        grep -qF "$pref" "$profile/user.js" 2>/dev/null ||
-            echo "$pref" >> "$profile/user.js"
+        for pref in 'toolkit.legacyUserProfileCustomizations.stylesheets' \
+                    'dom.meta_viewport.enabled' 'apz.allow_zooming'; do
+            line="user_pref(\"$pref\", true);"
+            grep -qF "$line" "$profile/user.js" 2>/dev/null ||
+                echo "$line" >> "$profile/user.js"
+        done
     done
 done
