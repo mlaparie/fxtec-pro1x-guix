@@ -22,6 +22,14 @@ osk() {                         # osk true|false
 
 case "${1:-}" in
     run)
+        # Its layouts from keyboard-languages in config.scm (word completion
+        # follows the layout): set here, as stevia's wrapper puts its own
+        # schemas before a system-wide default (see the stevia package).
+        KEYBOARD_LAYOUTS=us
+        [ -r /etc/pro1x/keyboard.conf ] && . /etc/pro1x/keyboard.conf
+        sources=
+        for l in $KEYBOARD_LAYOUTS; do sources="$sources${sources:+, }('xkb', '$l')"; done
+        gsettings set org.gnome.desktop.input-sources sources "[$sources]" 2>/dev/null
         # Only when no stevia owns its name: a second one exits at once,
         # and the loop then spun once a second (2026-11-02).
         while swaymsg -t get_version >/dev/null 2>&1; do

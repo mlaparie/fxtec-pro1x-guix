@@ -53,6 +53,7 @@ once, so combine changes in one expression:
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
 | hardware `color-scheme` | `'prefer-dark` | `'default` for light apps and shell |
 | hardware `keyboard-haptics?` | `#t` | a short vibration per on-screen key |
+| hardware `keyboard-languages` | `'()` | on-screen keyboard languages besides English, with word completion: `'("fr")`, any of `"fr"` `"de"` `"it"`; switch with the keyboard's layout key; on or off in quick actions |
 | hardware `lock-keyboard` | `'dark` | the Sway lock screen's keyboard, `'dark` or `'light` |
 | hardware `notification-leds` | blue messages, purple missed calls, white bell | list of `(EVENT COLOUR)` or `(EVENT COLOUR PERIOD-MS)`; colours `"red"` … or `"#RRGGBB"` |
 | hardware `charging-led`, `charged-led` | `"#FFA000"`, `"#00FF00"` | breathing while charging, steady when full or held; `#f` off |

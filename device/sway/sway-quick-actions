@@ -588,6 +588,7 @@ lines() {
     volume > "$d/vol" &
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
     osk_state > "$d/osk" &
+    state_of completion > "$d/completion" &
     wait
     radio=$(cat "$d/radio")           # enabled:enabled
     wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
@@ -626,6 +627,7 @@ lines() {
         "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
+        "completion  Word completion      $(dim "$(cat "$d/completion")")" \
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")" \
@@ -667,6 +669,12 @@ set_to() {
             fi ;;
         osk)
             if [ "$2" = on ]; then osk true; else osk false; fi ;;
+        completion)               # stevia's; off: an empty list of modes
+            if [ "$2" = on ]; then
+                gsettings set mobi.phosh.osk completion-mode "['manual', 'hint']"
+            else
+                gsettings set mobi.phosh.osk completion-mode "[]"
+            fi ;;
         touchpad)                 # on: the touchscreen as a touchpad
             [ -p /run/pro1x-pointer ] && echo "pad $2" > /run/pro1x-pointer
             sleep 0.1 ;;
@@ -700,6 +708,11 @@ state_of() {                    # state_of <setting>: on or off
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
+        completion)
+            case "$(gsettings get mobi.phosh.osk completion-mode 2>/dev/null)" in
+                *manual*|*hint*) echo on ;;
+                *) echo off ;;
+            esac ;;
         roaming) roaming ;;
         touchpad) [ "$(touch_mode)" = touchpad ] && echo on || echo off ;;
     esac
@@ -981,12 +994,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|completion|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                   feedback|wwan|orient|cpu|charge|rotation) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+pos({n})+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|completion|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;

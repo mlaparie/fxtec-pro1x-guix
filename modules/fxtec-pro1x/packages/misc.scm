@@ -982,6 +982,14 @@ ModemManager, for clients such as Chatty.")
                   "g_file_test (g_build_filename (g_get_user_runtime_dir (), "
                   "\"pro1x-osk-overlay\", NULL), G_FILE_TEST_EXISTS) ? 0 : "
                   zone ");")))))
+          ;; Word completion: dictionaries from the system profile (the
+          ;; compiled-in path is this package's own, which has none);
+          ;; keyboard-languages in config.scm chooses them.
+          (add-after 'unpack 'pro1x-dictionary-path
+            (lambda _
+              (substitute* "src/completers/pos-completer-hunspell.c"
+                (("g_strsplit \\(POS_HUNSPELL_DICT_PATH,")
+                 "g_strsplit (\"/run/current-system/profile/share/hunspell\","))))
           (add-after 'unpack 'pro1x-no-slide
             (lambda _
               (substitute* "src/pos-input-surface.c"
@@ -1008,7 +1016,7 @@ ModemManager, for clients such as Chatty.")
                     ;; scaling=[]: the base height (200), 250 in portrait
                     ;; (our patch), not 40 mm (352 px here), which was too
                     ;; tall (author).
-                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\ncompletion-mode=['manual','hint']\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
 "
