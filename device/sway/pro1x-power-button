@@ -58,8 +58,18 @@ done |
                   # menu would wait behind it (author saw it after
                   # unlocking): a long press is a short one then.
                   if pro1x-lock --locked; then pro1x-power-key; exit 0; fi
-                  # A menu focused: put it away; else the power menu.
-                  pro1x-menu key hide || pro1x-menu toggle powermenu ) & ;;
+                  # A menu focused: put it away; else the power menu,
+                  # shown straight from the scratchpad in one Sway command
+                  # (author: ~1.2 s after the buzz through pro1x-menu's
+                  # key and toggle, several tree reads each; 2026-11-03),
+                  # started only when it is not there.
+                  case "$(pro1x-menu focused)" in
+                      quickactions|launcher|windowswitcher|powermenu)
+                          pro1x-menu key hide ;;
+                      *)
+                          swaymsg '[app_id="^powermenu$"] scratchpad show, resize set 50 ppt 45 ppt, move position center' \
+                              >/dev/null 2>&1 || pro1x-menu toggle powermenu ;;
+                  esac ) & ;;
             *"(KEY_POWER), value 0"*)
                 # Released early: a short press.
                 if [ -f "$held" ]; then
