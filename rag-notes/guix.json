@@ -547,6 +547,14 @@
         "confidence": "confirmed for files and settings; suggestions not yet seen",
         "date": "2026-11-03",
         "source": "commit: On-screen keyboard: word completion"
+      },
+      {
+        "title": "A mobile user agent, not the viewport pref, gives Firefox-family browsers mobile layouts",
+        "general": "dom.meta_viewport.enabled had no visible effect on a desktop build: a page wider than the window was not shrunk to fit. Sites that choose their layout by user agent need the agent changed; a pref cannot follow orientation, a WebExtension can, checking the window's shape per request.",
+        "instance": "LibreWolf 158: DuckDuckGo overflowed at 477 CSS px in portrait with the desktop agent; fits with Android 14 Mobile, per the author, and landscape keeps the desktop agent. resistFingerprinting did not inflate screen.width. User-Agent Switcher and Manager has no orientation setting that could be found.",
+        "confidence": "confirmed by the author with a temporary add-on; signed install not done",
+        "date": "2026-11-03",
+        "source": "device/browser/portrait-ua; screenshots of file test pages"
       }
     ]
   }

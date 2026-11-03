@@ -4,15 +4,17 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-11-03):** generation 197, kernel 7.3.0, from branch
+**On the phone (2026-11-03):** generation 201, kernel 7.3.0, from branch
 `kernel-7.3-trial` over Tailscale (deploys not yet pushed: the phone's own
 `guix system reconfigure` needs the channel to have keyboard-languages, its
 config.scm now uses it; backup `config.scm.bak-keyboard-languages`).  Fallback:
 7.1, generation 182.  Works, by the author: rotation while locked, app menu
 workspaces, sub-lists without a flash, Stevia by hand only, LibreWolf's UI in
-portrait, instant quick actions.  To confirm: bottom swipe keeps the focus,
-pages fit in LibreWolf, switcher flicker, CPU mode on the lock screen, word
-completion suggestions.  Haptics: bursts from the chip's memory ready to try
+portrait, instant quick actions, bottom swipe focus, CPU mode on the lock
+screen.  Minor: switcher flicker.  To confirm: portrait menu height, word
+completion suggestions (confirmed: works, disabling a dictionary too).  Portrait
+user agent: works as a temporary add-on (device/browser/portrait-ua), needs the
+author's Mozilla keys to sign and install.  Haptics: bursts from the chip's memory ready to try
 (not run), on the author's go.  7.3 checklist still to do: calls, audio,
 camera, suspend and wake, deep sleep, charging.
 
