@@ -823,14 +823,14 @@ lines |
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                 esac" \
@@ -839,12 +839,12 @@ lines |
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
