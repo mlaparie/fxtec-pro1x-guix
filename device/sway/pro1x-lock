@@ -161,7 +161,7 @@ notes=$(printf '%s' "$notes" | xml)
 # Battery and CPU mode (author), as of this drawing: the lock screen is
 # redrawn on new notifications and rotations, not on its own.
 bat=/sys/class/power_supply/battery
-status="Battery $(cat "$bat/capacity" 2>/dev/null)% ($(cat "$bat/status" 2>/dev/null | tr A-Z a-z)) · CPU $(cat /var/lib/pro1x/cpu-mode 2>/dev/null || echo auto)"
+status="Battery $(cat "$bat/capacity" 2>/dev/null)% ($(cat "$bat/status" 2>/dev/null | tr A-Z a-z)) · CPU $(pro1x-cpu-mode get 2>/dev/null || echo auto)"
 
 # Portrait or landscape (the panel's transform), for the layout and keys.
 if portrait_now; then
