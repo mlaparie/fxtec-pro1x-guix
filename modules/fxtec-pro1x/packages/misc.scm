@@ -946,6 +946,10 @@ ModemManager, for clients such as Chatty.")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-always.patch")
                "stevia-shortcuts-bar-always.patch")
+              ;; Ours: only shown and hidden by hand in Sway (pro1x-osk).
+              (local-file
+               (repository-file "device/phosh/stevia-manual-toggle.patch")
+               "stevia-manual-toggle.patch")
               ;; Ours: 250 px in portrait (author: a little taller).
               (local-file
                (repository-file "device/phosh/stevia-portrait-height.patch")
@@ -1594,6 +1598,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
 ;;;   bin/pro1x-launcher                 app menu: the app, then its workspace
+;;;   bin/pro1x-browser-fit              Firefox-based browsers fit portrait
 ;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
 ;;;   bin/pro1x-power-button             power key: short off/on, held the menu
 ;;; ---------------------------------------------------------------------------
@@ -1649,6 +1654,7 @@ window opened by a sway key binding.")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
           ("pro1x-launcher" "bin/")
+          ("pro1x-browser-fit" "bin/")
           ("pro1x-sleep" "bin/")
           ("pro1x-cpu-mode" "bin/")
           ("pro1x-charge-limit" "bin/")

@@ -29,21 +29,24 @@ geometry() {
             # Wider, for longer lines (author, 2026-11-02); 80 px shorter in
             # portrait, 30 in landscape (author, 2026-10-31, 2026-11-02).
             # Portrait: wider still, 100 px shorter (author, 2026-11-02).
+            # In ppt alone: a relative shrink, and foot's rounding to whole
+            # cells (resize-by-cells=no below), gave another size on the
+            # first show than on the next (2026-11-03).
             if portrait; then
-                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
             else
-                echo "resize set 92 ppt 80 ppt, resize shrink height 30 px, move position 4 ppt 2 ppt"
+                echo "resize set 92 ppt 74 ppt, move position 4 ppt 2 ppt"
             fi ;;
         # In portrait as tall as quick actions (author, 2026-11-02).
         launcher)
             if portrait; then
-                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
             else
                 echo "resize set 70 ppt 85 ppt, move position 28 ppt 7 ppt"
             fi ;;
         windowswitcher)
             if portrait; then
-                echo "resize set 97 ppt 80 ppt, resize shrink height 100 px, move position 1 ppt 2 ppt"
+                echo "resize set 97 ppt 71 ppt, move position 1 ppt 2 ppt"
             else
                 echo "resize set 55 ppt 70 ppt, move position 2 ppt 15 ppt"
             fi ;;
@@ -101,17 +104,17 @@ start() {
         launcher)
             # pro1x-launcher: the apps, then which workspace.  The layout
             # and prompt of its fzf are the ones the other menus copy.
-            setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=13" \
+            setsid pro1x-term --app-id=launcher -o resize-by-cells=no -o pad=12x8 -o "font=Iosevka Term:size=13" \
                 -e pro1x-launcher >/dev/null 2>&1 < /dev/null &
             ;;
         powermenu)
             # Resident too (author: it showed ~1 s after the power key's
             # buzz, a new terminal and fzf each time).
-            setsid pro1x-term --app-id=powermenu -o pad=12x8 -o "font=Iosevka Term:size=13" \
+            setsid pro1x-term --app-id=powermenu -o resize-by-cells=no -o pad=12x8 -o "font=Iosevka Term:size=13" \
                 -e pro1x-power-menu --resident >/dev/null 2>&1 < /dev/null &
             ;;
         windowswitcher)
-            setsid pro1x-term --app-id=windowswitcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e pro1x-switcher \
+            setsid pro1x-term --app-id=windowswitcher -o resize-by-cells=no -o pad=12x8 -o "font=Iosevka Term:size=13" -e pro1x-switcher \
                 >/dev/null 2>&1 < /dev/null &
             ;;
     esac
@@ -251,7 +254,7 @@ case "$cmd" in
                 quickactions) sock="$rt/pro1x-quick-actions.sock"
                                action="reload(sway-quick-actions --lines)+first" ;;
                 windowswitcher) sock="$rt/pro1x-switcher.sock"
-                                action="reload(pro1x-switcher --list)+first" ;;
+                                action="reload-sync(pro1x-switcher --list)+first" ;;
                 *) sock= ;;
             esac
             [ -n "$sock" ] && curl -s --unix-socket "$sock" -X POST \

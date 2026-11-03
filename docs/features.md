@@ -27,8 +27,9 @@ Tailscale.
 - Screen off and touch disabled near the face during calls (Sway).
 - Portrait with the keyboard closed, landscape with it out; optional
   auto-rotation that ignores quick tilts.
-- On-screen keyboard (stevia) when the keyboard is closed, never when it
-  is out; Super key in its terminal layout; a short vibration per key
+- On-screen keyboard (stevia): in Sway by hand (bottom swipe, quick actions),
+  hidden when the keyboard slides out; in Phosh when a text field needs it
+  with the keyboard closed; Super key in its terminal layout; a short vibration per key
   (config.scm).
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
 - Dark apps and shell by default (color-scheme in config.scm).

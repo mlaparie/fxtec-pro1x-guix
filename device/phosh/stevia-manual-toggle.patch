@@ -1,0 +1,22 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] With $PRO1X_OSK_MANUAL, text fields neither show nor hide it
+
+The surface follows the input method's active state: every change of focus
+showed or hid the keyboard, and resized the windows with it.  In Sway it is
+now only shown and hidden by hand, through SetVisible (author, 2026-11-03).
+Phosh and the greeter run it without the variable, and keep the default.
+---
+--- a/src/phosh-osk-stevia.c
++++ b/src/phosh-osk-stevia.c
+@@ -203,6 +203,11 @@
+     return TRUE;
+   }
+ 
++  if (g_getenv ("PRO1X_OSK_MANUAL")) {
++    g_value_set_boolean (to_value, pos_input_surface_get_visible (self->input_surface));
++    return TRUE;
++  }
++
+   enabled = pos_input_surface_get_screen_keyboard_enabled (self->input_surface);
+ 
+   if (self->activation_filter && !pos_activation_filter_allow_active (self->activation_filter))
