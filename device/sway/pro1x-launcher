@@ -3,10 +3,10 @@
 # open the app
 #
 # Enter on an app asks for a workspace: the current one first, under the
-# cursor, so Enter or the power key twice opens it here; then the others
-# with what runs on them, and a new one (author, 2026-11-03).  Sway goes to
-# the chosen workspace and the app opens there.  Esc on that list goes back
-# to the apps.  Esc on the apps, or a launch, hides the window and starts
+# cursor, so Enter or the power key twice opens it here; then all the others
+# (1 to 10, as Super+1..0), with what runs on them, and back at the bottom
+# (author, 2026-11-03).  Sway goes to the chosen workspace and the app opens
+# there.  Esc or back goes back to the apps.  Esc on the apps, or a launch, hides the window and starts
 # again, hidden, its list ready.  The list has its own fzf socket, which
 # pro1x-menu key drives while it is open.
 #
@@ -16,38 +16,47 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 asksock="$rt/pro1x-launcher-ask.sock"
 export TERMINAL_COMMAND="foot -e"
 
-workspaces() {                  # number TAB label: current, others, a new one
+# No blank frame between a list and its sub-list (author, 2026-11-03): the
+# terminal holds its drawing (synchronized output) from just before fzf
+# leaves the screen until the next list has drawn.
+sync_begin="execute-silent[printf '\\033[?2026h' >/dev/tty]"
+sync_end="execute-silent[(sleep 0.03; printf '\\033[?2026l' >/dev/tty) &]"
+
+workspaces() {                  # number TAB label: current, the others, back
     here=$(swaymsg -t get_workspaces -r 2>/dev/null |
                jq -r '.[] | select(.focused) | .name')
     swaymsg -t get_tree -r 2>/dev/null |
         jq -r --arg here "$here" '
-            [.. | objects | select(.type? == "workspace" and .name != "__i3_scratch")
-             | { name,
-                 apps: ([.. | objects | select(.pid? != null and .app_id? != "launcher")
-                         | .app_id // .window_properties.class // .name]
-                        | unique | join(", ")) }]
-            | (map(.name)) as $names
-            | (first(range(1; 100) | tostring
-                     | select(. as $n | $names | index($n) | not))) as $new
-            | (map(select(.name == $here)) + map(select(.name != $here)))
-            | map(.name + "\t" + .name
-                  + (if .name == $here then " (here)" else "" end)
-                  + (if .apps != "" then " · " + .apps else "" end))
-              + [$new + "\t" + $new + " (new)"]
+            ([.. | objects | select(.type? == "workspace" and .name != "__i3_scratch")
+              | { key: .name,
+                  value: ([.. | objects | select(.pid? != null and .app_id? != "launcher")
+                           | .app_id // .window_properties.class // .name]
+                          | unique | join(", ")) }] | from_entries) as $apps
+            | ([$here] + ([range(1; 11) | tostring] - [$here]))
+            | map(. + "\t" + .
+                  + (if . == $here then " (here)" else "" end)
+                  + (if ($apps[.] // "") != "" then " · " + $apps[.] else "" end))
             | .[]'
+    printf 'back\t← back\n'
 }
 
 while :; do
+    # The sequences by name: fzf's parsing of these options eats backslashes.
     if cmd=$(env PREVIEW_WINDOW=up:5:noborder \
-                 FZF_DEFAULT_OPTS="--layout=reverse-list --listen=$rt/pro1x-launcher.sock" \
+                 PRO1X_SYNC_ON="$(printf '\033[?2026h')" \
+                 PRO1X_SYNC_OFF="$(printf '\033[?2026l')" \
+                 FZF_DEFAULT_OPTS="--layout=reverse-list --listen=$rt/pro1x-launcher.sock --bind='load:execute-silent[(sleep 0.03; printf %s \"\$PRO1X_SYNC_OFF\" >/dev/tty) &]' --bind='enter:execute-silent[printf %s \"\$PRO1X_SYNC_ON\" >/dev/tty]+accept'" \
                  GLYPH_PROMPT="apps > " sway-launcher-desktop) && [ -n "$cmd" ]; then
         pick=$(workspaces |
                    fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
                        --prompt="open on > " --layout=reverse-list --no-info \
-                       --no-sort --cycle --margin=1,2 --color=16,gutter:-1 |
+                       --no-sort --cycle --margin=1,2 --color=16,gutter:-1 \
+                       --bind="load:$sync_end" \
+                       --bind="enter:$sync_begin+accept" \
+                       --bind="esc:$sync_begin+abort" |
                    cut -f1)
         rm -f "$asksock"
-        [ -n "$pick" ] || continue      # back to the apps
+        case "$pick" in ""|back) continue ;; esac   # back to the apps
         swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
         swaymsg "workspace number $pick" >/dev/null
         setsid /bin/sh -c "$cmd" >/dev/null 2>&1 </dev/null &
