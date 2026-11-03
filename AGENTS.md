@@ -65,7 +65,7 @@ Standing permissions, set by the author:
 - **Quiet hours**: none set; when the author is away, follow §1 (log, no sound, no wake-ups).
 
 The device password goes in the agent's private local config, never in this file and never in
-git. The `123456` in the README is the documented first-boot default, not the live password.
+git. The `123456` in the README is the documented first-boot default.
 The agent uses the password itself (sudo over ssh) instead of handing commands back.
 
 ---
