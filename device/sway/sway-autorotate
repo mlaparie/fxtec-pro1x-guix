@@ -61,7 +61,10 @@ slider_out() {                  # SW_KEYPAD_SLIDE set: evtest exits 10
 # While a portrait app has the focus (pro1x-portrait-apps), leave it.
 set_transform() {
     [ -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-portrait-app" ] && return
-    swaymsg output "$output" transform "$1" >/dev/null
+    # A lock screen turns through pro1x-lock: gtklock cannot follow.
+    { [ -e "${XDG_RUNTIME_DIR:-/tmp}/pro1x-lock.pid" ] &&
+          pro1x-lock --rotate "$output" "$1"; } ||
+        swaymsg output "$output" transform "$1" >/dev/null
 }
 
 poke() {                        # tell the running daemon to re-check
