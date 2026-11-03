@@ -312,6 +312,16 @@
     "date": "2026-11-02",
     "source": "headless libcamerasrc test (agent's camtest.py through the camera app's environment), v4l2-ctl on the subdev; libcamera src/ipa/simple/soft_simple.cpp configure() takes exposureMax from configInfo.sensorControls"
    }
-  ]
+    ],
+    "haptics": [
+      {
+        "title": "AW86224: the stock waveform file holds plain sine bursts",
+        "general": "Before seeking a vendor's haptic blob, decode it: this one is a table of start and end addresses and full-amplitude sines, which a free driver can generate. The vendor's sharper feel likely comes from playing from chip memory rather than continuous drive.",
+        "instance": "aw8622x_haptic.bin (1222 bytes, TheMuppets vendor repo): 2-byte checksum, base address 0, version 0x55, waves of 330, 809 and 59 samples, 60 samples per cycle (200 Hz at the driver's 12 kHz). LineageOS aw8622x.c uses wave 2 for short effects, a looped long wave otherwise. Not tried on the phone yet.",
+        "confidence": "confirmed for the file and driver source; the feel is inferred",
+        "date": "2026-11-03",
+        "source": "github.com/TheMuppets/proprietary_vendor_fxtec_pro1x; github.com/LineageOS/android_kernel_fxtec_sm6115"
+      }
+    ]
  }
 }
