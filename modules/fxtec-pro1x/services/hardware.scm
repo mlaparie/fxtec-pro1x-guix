@@ -404,7 +404,7 @@ colours from the system configuration.")
 ;;; boot without network never saves a 1970 offset.  The first boot after a
 ;;; flash has no offset yet.
 ;;;
-;;; State: not yet run on the phone.
+;;; State: on the phone 2026-11-03: the 10-minute save and the save on stop.
 (define pro1x-clock-script
   (mixed-text-file
    "pro1x-clock"
@@ -438,7 +438,7 @@ case \"$1\" in
         mv \"$state.new\" \"$state\" && sync \"${state%/*}\" ;;
   run)
     # The service, once the clock is set: save every 10 minutes.
-    while sleep 600; do \"$0\" save; done ;;
+    while sleep 600; do /bin/sh \"$0\" save; done ;;
 esac
 "))
 
