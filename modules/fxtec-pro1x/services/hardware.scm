@@ -122,6 +122,13 @@
   ;; override it until reboot.
   (charge-limit       pro1x-hardware-charge-limit       (default 85))
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
+  ;; Stay awake while charging, so a charge limit is seen in time even in
+  ;; suspend (kernels with the awake_charging switch: 7.3 with moWerk's
+  ;; charger patches); #f lets the phone sleep while it charges.
+  (charging-awake?    pro1x-hardware-charging-awake?    (default #t))
+  ;; Suspend this many seconds after the screen blanked (locking first if
+  ;; not locked yet); #f: never on its own (Sway).
+  (auto-suspend       pro1x-hardware-auto-suspend       (default #f))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -804,7 +811,7 @@ esac
           (respawn? #t)))
         '())))
 
-(define (pro1x-charge-limit-program limit resume)
+(define* (pro1x-charge-limit-program limit resume #:optional (awake? #t))
   (program-file
    "pro1x-charge-limit"
    #~(begin
@@ -825,6 +832,13 @@ esac
          (format #t "~a%: charging ~a~%" (read-file capacity)
                  (if on? "allowed" "held off"))
          (force-output))
+       ;; config.scm's charging-awake?, where the kernel has the switch
+       ;; (pro1x-charger-awake-switch on moWerk's 7.3 charger patches).
+       (let ((switch "/sys/module/pro1x_charger_icl/parameters/awake_charging"))
+         (when (file-exists? switch)
+           (false-if-exception
+            (call-with-output-file switch
+              (lambda (port) (display #$(if awake? "Y" "N") port))))))
        (if (not (file-exists? param))
            (begin
              (format #t "~a missing: this kernel has no charge control~%"
@@ -868,7 +882,8 @@ esac
           (start #~(make-forkexec-constructor
                     (list #$(pro1x-charge-limit-program
                              limit (and limit
-                                        (pro1x-hardware-charge-resume config))))
+                                        (pro1x-hardware-charge-resume config))
+                             (pro1x-hardware-charging-awake? config)))
                     #:log-file "/var/log/pro1x-charge-limit.log"))
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
@@ -934,6 +949,10 @@ RTC; save them every 10 minutes and at shutdown")
                      "LOCK_AFTER="
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
+                     "\n"
+                     "AUTO_SUSPEND="
+                     (let ((s (pro1x-hardware-auto-suspend config)))
+                       (if s (number->string s) ""))
                      "\n")))
       ;; /etc/pro1x/lock.conf: the lock screen keyboard's colours, for
       ;; pro1x-lock.

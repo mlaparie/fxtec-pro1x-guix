@@ -56,6 +56,13 @@ if [ -z "$sway" ] && [ -n "$BLANK_AFTER" ]; then
         'gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.SetActive true' \
         "$@"
 fi
+# AUTO_SUSPEND seconds after blanking (config.scm auto-suspend; empty for
+# never): locked if not yet, then suspended (author, 2026-11-03).
+if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "${AUTO_SUSPEND:-}" ]; then
+    set -- timeout $((BLANK_AFTER + AUTO_SUSPEND)) \
+        'pro1x-lock --locked || pro1x-lock; sleep 1; sudo -n /run/current-system/profile/bin/pro1x-sleep suspend' \
+        "$@"
+fi
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
     set -- timeout $((BLANK_AFTER + LOCK_AFTER)) 'pro1x-lock' "$@"
 fi
