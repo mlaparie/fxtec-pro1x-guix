@@ -42,7 +42,9 @@
         ;; default); the modem's QRTR data for user space wakes a suspended
         ;; system, only from the listed ports (v4; pro1x-sleep lists voice
         ;; and SMS).
-        '("panelgap" "dpugap" "qrtr-modem-wake"))))
+        ;; Ours on his charger: staying awake while charging (0040) as a
+        ;; switch, awake_charging (config.scm charging-awake?).
+        '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"))))
 
 (define-public linux-pro1x
   (package
