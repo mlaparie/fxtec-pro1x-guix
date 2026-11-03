@@ -23,6 +23,10 @@
 # default action, Tab picks another, Del dismisses, Ctrl-X dismisses all,
 # PgUp/PgDn scroll the preview, Esc goes back.
 #
+# A change shows on its line at once and applies in the background
+# (--cached, confirm): if it did not work, the line says "failed" in red for
+# 2 s, then the real state (author, 2026-11-03: a full reload takes 1.4 s).
+#
 # Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl, makoctl (system
 # profile); gsettings, gdbus, fzf, sway-autorotate, sway-notifications (in
 # this package's PATH).  The user is in netdev (NetworkManager,
@@ -255,6 +259,8 @@ mobile_set() {                  # mobile_set off|234|34|23|3
                 3) mmcli -m any --set-allowed-modes='3g' ;;
             esac >/dev/null 2>&1 ;;
     esac
+    rc=$?
+    [ "$rc" = 0 ] || return "$rc"
     echo "$opt $(date +%s)" > "$f"
     # The status again once the 2 s are over.
     ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
@@ -342,24 +348,50 @@ choose() {
     rm -f "$asksock"
     case "$pick" in ""|back) return ;; esac
     case "$line" in
-        wwan) mobile_set "$pick" ;;
-        feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
-        cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
-        charge) charge_set "$pick" ;;
-        orient) set_orientation "$pick" ;;
-        rotation)
+        wwan) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
+        feedback) confirm feedback "$pick" feedback_to "$pick" ;;
+        cpu) confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        charge)
             case "$pick" in
-                sensor) sway-autorotate on ;;
-                keyboard) sway-autorotate keyboard ;;
-                fixed) sway-autorotate fixed ;;
-            esac ;;
+                default|off) shown=$pick ;;
+                *) shown="$pick% (charge again at $((pick - 5))%)" ;;
+            esac
+            confirm charge "$shown" charge_set "$pick" ;;
+        orient) confirm orient "$pick" orientation_to "$pick" ;;
+        rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
             if [ "$pick" = tool ]; then
                 # Its networks or devices need it on (author, 2026-11-02).
                 [ "$(state_of "$line")" = on ] || set_to "$line" on
                 step "$line" +
-            else set_to "$line" "$pick"; fi ;;
+            else confirm "$line" "$(dim "$pick")" toggle_to "$line" "$pick"; fi ;;
     esac
+}
+
+feedback_to() {
+    gsettings set org.sigxcpu.feedbackd profile "$1"
+    [ "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" = "$1" ]
+}
+orientation_to() {              # the panel turns a moment later
+    set_orientation "$1"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ "$(orientation)" = "$1" ] && return 0
+        sleep 0.2
+    done
+    return 1
+}
+rotation_to() {
+    case "$1" in
+        sensor) sway-autorotate on ;;
+        keyboard) sway-autorotate keyboard ;;
+        fixed) sway-autorotate fixed ;;
+    esac
+    [ "$(rotation_mode)" = "$1" ]
+}
+toggle_to() {                   # toggle_to <setting> <on|off>
+    set_to "$1" "$2"
+    sleep 0.3                   # let NetworkManager and rfkill settle
+    [ "$(state_of "$1")" = "$2" ]
 }
 
 orientation() {                 # portrait or landscape, from the panel
@@ -451,9 +483,87 @@ mobile_info() {                 # " · 59% Operator 4G", from modem key-values
     printf ' · %s%% %s %s' "$sig" "$op" "$(gen "$tech")"
 }
 
+# The lines as last read, each change shown over them until it is confirmed.
+# Up to column 33 a line is its key and label, then its value.
+cache="$rt/pro1x-qs-lines"
+pending="$rt/pro1x-qs-pending"
+
+overlay() {
+    while IFS= read -r l; do
+        k=${l%% *}
+        if [ -f "$pending/$k" ]; then
+            printf '%.33s%s\n' "$l" "$(cat "$pending/$k")"
+        else
+            printf '%s\n' "$l"
+        fi
+    done
+}
+refresh_lines() {
+    lines > "$cache.$$" && mv "$cache.$$" "$cache"
+}
+cached_lines() {                # at once, unless nothing was read yet
+    [ -r "$cache" ] || refresh_lines
+    overlay < "$cache"
+}
+cache_put() {                   # cache_put KEY VALUE: a value just read
+    [ -r "$cache" ] || return
+    while IFS= read -r l; do
+        if [ "${l%% *}" = "$1" ]; then printf '%.33s%s\n' "$l" "$2"
+        else printf '%s\n' "$l"; fi
+    done < "$cache" > "$cache.$$" && mv "$cache.$$" "$cache"
+}
+shown_value() {                 # what KEY's line says, without colours
+    if [ -f "$pending/$1" ]; then cat "$pending/$1"
+    else grep "^$1 " "$cache" 2>/dev/null | cut -c34-
+    fi | sed 's/\x1b\[[0-9;]*m//g'
+}
+qs_reload() {
+    curl -s -m 5 --unix-socket "$sock" -X POST http://localhost \
+         -d "reload($self --cached)" >/dev/null 2>&1
+}
+
+# confirm KEY SHOWN COMMAND...: SHOWN on KEY's line now, COMMAND in the
+# background, one at a time per line; then the real lines, or "failed" in
+# red for 2 s first.  QS_ALSO: other keys shown with their own values, gone
+# together.
+confirm() {
+    key=$1 shown=$2; shift 2
+    mkdir -p "$pending"
+    printf '%s' "$shown" > "$pending/$key"
+    (
+        i=0
+        until mkdir "$pending/.lock-$key" 2>/dev/null; do
+            sleep 0.1; i=$((i + 1))
+            [ "$i" -lt 100 ] || break
+        done
+        if "$@"; then ok=yes; else ok=; fi
+        refresh_lines
+        for k in $QS_ALSO; do rm -f "$pending/$k"; done
+        # A later press on this line keeps its own value.
+        if [ "$(cat "$pending/$key" 2>/dev/null)" = "$shown" ]; then
+            rm -f "$pending/$key"
+            if [ -z "$ok" ]; then
+                printf '\033[91mfailed\033[0m' > "$pending/$key"
+                qs_reload
+                sleep 2
+                rm -f "$pending/$key"
+            fi
+        fi
+        rmdir "$pending/.lock-$key" 2>/dev/null
+        qs_reload
+    ) >/dev/null 2>&1 </dev/null &
+}
+
 volume() {                      # "60%" or "60% muted"
     wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
         awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }'
+}
+
+volume_shown() {                # its line's value
+    case "$1" in
+        *muted) dim "${1%% *} (muted)" ;;
+        *) printf '%s' "$1" ;;
+    esac
 }
 
 # The slow queries (nmcli, mmcli, wpctl) run in parallel, each into its
@@ -488,10 +598,7 @@ lines() {
     fi
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
-    vol=$(cat "$d/vol")
-    case "$vol" in
-        *muted) vol=$(dim "${vol%% *} (muted)") ;;
-    esac
+    vol=$(volume_shown "$(cat "$d/vol")")
     mobile="$(dim "$wwan")$(mobile_info "$kv")"
     flash=$(mobile_flash) && mobile="→ $flash"
     # First line: the header (fzf --header-lines=1), battery state.
@@ -619,7 +726,9 @@ act() {                         # Enter
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
             else set_orientation portrait; fi ;;
-        volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+        volume)
+            wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+            cache_put volume "$(volume_shown "$(volume)")" ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -627,10 +736,26 @@ act() {                         # Enter
                 *) gsettings set org.sigxcpu.feedbackd profile full ;;
             esac ;;
         *)
-            if [ "$(state_of "$1")" = on ]; then set_to "$1" off
-            else set_to "$1" on; fi ;;
+            case "$(shown_value "$1")" in
+                on*|shown*|touchpad*) want=off ;;
+                *) want=on ;;
+            esac
+            case "$1:$want" in
+                touchpad:on) shown=touchpad ;;
+                touchpad:off) shown=touchscreen ;;
+                osk:on) shown=shown ;;
+                osk:off) shown=$(dim hidden) ;;
+                *) shown=$(dim "$want") ;;
+            esac
+            QS_ALSO=
+            if [ "$1" = airplane ]; then  # every radio with it
+                if [ "$want" = on ]; then radios=off; else radios=on; fi
+                QS_ALSO="wifi wwan bluetooth"
+                mkdir -p "$pending"
+                for k in $QS_ALSO; do dim "$radios" > "$pending/$k"; done
+            fi
+            confirm "$1" "$shown" toggle_to "$1" "$want" ;;
     esac
-    sleep 0.3                   # let NetworkManager and rfkill settle
 }
 
 step() {                        # Right (+) and Left (-)
@@ -643,10 +768,14 @@ step() {                        # Right (+) and Left (-)
         orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
-        bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show ;;
-        bright-) brightnessctl -q -n1 set 2%-; pro1x-osd bright show ;;
-        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+; pro1x-osd volume show ;;
-        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-; pro1x-osd volume show ;;
+        bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
+                 cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
+        bright-) brightnessctl -q -n1 set 2%-; pro1x-osd bright show
+                 cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+; pro1x-osd volume show
+                 cache_put volume "$(volume_shown "$(volume)")" ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-; pro1x-osd volume show
+                 cache_put volume "$(volume_shown "$(volume)")" ;;
         feedback?) feedback_step "$2" ;;
         charge+|charge-)          # off, 80, 85, 90, 95
             set -- "$2" $CHARGE_OPTS
@@ -764,7 +893,8 @@ notif_dock() {
 }
 
 case "${1:-}" in
-    --lines) lines; exit ;;
+    --lines) refresh_lines; overlay < "$cache"; exit ;;
+    --cached) cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
     --choose) choose "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
@@ -812,7 +942,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
          else
              echo "change-preview-window(down,50%,wrap)+show-preview"
          fi'
-lines |
+{ refresh_lines; overlay < "$cache"; } |
     # Same layout and colours as the launcher and window switcher: list
     # from the top, prompt at the bottom.  Notification preview on the right
     # in landscape, below in portrait (under 70 columns; author).
@@ -823,33 +953,33 @@ lines |
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --cached)+pos({n})\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --cached)+pos({n})\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --cached)+pos({n})\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos({n})\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --cached)+pos({n})\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
                 esac" \
         --bind="f4:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                 esac" >/dev/null
