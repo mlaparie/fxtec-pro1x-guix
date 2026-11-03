@@ -1593,6 +1593,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-power-key                power key: screen off or on
 ;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
+;;;   bin/pro1x-launcher                 app menu: the app, then its workspace
 ;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
 ;;;   bin/pro1x-power-button             power key: short off/on, held the menu
 ;;; ---------------------------------------------------------------------------
@@ -1647,6 +1648,7 @@ window opened by a sway key binding.")
           ("pro1x-power-key" "bin/")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
+          ("pro1x-launcher" "bin/")
           ("pro1x-sleep" "bin/")
           ("pro1x-cpu-mode" "bin/")
           ("pro1x-charge-limit" "bin/")
@@ -1726,6 +1728,7 @@ window opened by a sway key binding.")
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
+                   "pro1x-launcher"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
                    "pro1x-osk" "pro1x-alarm-watch"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))

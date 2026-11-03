@@ -1,0 +1,58 @@
+#!/bin/sh
+# pro1x-launcher — the app menu's loop: sway-launcher-desktop, then where to
+# open the app
+#
+# Enter on an app asks for a workspace: the current one first, under the
+# cursor, so Enter or the power key twice opens it here; then the others
+# with what runs on them, and a new one (author, 2026-11-03).  Sway goes to
+# the chosen workspace and the app opens there.  Esc on that list goes back
+# to the apps.  Esc on the apps, or a launch, hides the window and starts
+# again, hidden, its list ready.  The list has its own fzf socket, which
+# pro1x-menu key drives while it is open.
+#
+# Started by pro1x-menu start launcher.
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+asksock="$rt/pro1x-launcher-ask.sock"
+export TERMINAL_COMMAND="foot -e"
+
+workspaces() {                  # number TAB label: current, others, a new one
+    here=$(swaymsg -t get_workspaces -r 2>/dev/null |
+               jq -r '.[] | select(.focused) | .name')
+    swaymsg -t get_tree -r 2>/dev/null |
+        jq -r --arg here "$here" '
+            [.. | objects | select(.type? == "workspace" and .name != "__i3_scratch")
+             | { name,
+                 apps: ([.. | objects | select(.pid? != null and .app_id? != "launcher")
+                         | .app_id // .window_properties.class // .name]
+                        | unique | join(", ")) }]
+            | (map(.name)) as $names
+            | (first(range(1; 100) | tostring
+                     | select(. as $n | $names | index($n) | not))) as $new
+            | (map(select(.name == $here)) + map(select(.name != $here)))
+            | map(.name + "\t" + .name
+                  + (if .name == $here then " (here)" else "" end)
+                  + (if .apps != "" then " · " + .apps else "" end))
+              + [$new + "\t" + $new + " (new)"]
+            | .[]'
+}
+
+while :; do
+    if cmd=$(env PREVIEW_WINDOW=up:5:noborder \
+                 FZF_DEFAULT_OPTS="--layout=reverse-list --listen=$rt/pro1x-launcher.sock" \
+                 GLYPH_PROMPT="apps > " sway-launcher-desktop) && [ -n "$cmd" ]; then
+        pick=$(workspaces |
+                   fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
+                       --prompt="open on > " --layout=reverse-list --no-info \
+                       --no-sort --cycle --margin=1,2 --color=16,gutter:-1 |
+                   cut -f1)
+        rm -f "$asksock"
+        [ -n "$pick" ] || continue      # back to the apps
+        swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+        swaymsg "workspace number $pick" >/dev/null
+        setsid /bin/sh -c "$cmd" >/dev/null 2>&1 </dev/null &
+    else
+        swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+    fi
+    sleep 0.5                   # never a busy loop, if it fails at once
+done

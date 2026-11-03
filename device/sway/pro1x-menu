@@ -69,6 +69,7 @@ close_sub() {
     case "$1" in
         quickactions) subs="pro1x-quick-actions-ask.sock pro1x-quick-actions-notif.sock" ;;
         windowswitcher) subs="pro1x-switcher-ask.sock" ;;
+        launcher) subs="pro1x-launcher-ask.sock" ;;
         *) subs= ;;
     esac
     for s in $subs; do
@@ -98,19 +99,10 @@ start() {
     case "$id" in
         quickactions) sway-quick-actions --resident ;;   # always hidden
         launcher)
-            # Esc or a launch ends sway-launcher-desktop; the loop hides the
-            # window and starts it again, hidden, its list ready.
-            # Its own fzf options (margin, colours, no info, cycling) are the
-            # ones the other two menus copy; the layout and prompt come from
-            # here.
-            setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=13" -e sh -c '
-                while :; do
-                    env TERMINAL_COMMAND="foot -e" PREVIEW_WINDOW=up:5:noborder \
-                        FZF_DEFAULT_OPTS="--layout=reverse-list --listen='"$rt"'/pro1x-launcher.sock" \
-                        GLYPH_PROMPT="apps > " sway-launcher-desktop
-                    swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
-                    sleep 0.5        # never a busy loop, if it fails at once
-                done' >/dev/null 2>&1 < /dev/null &
+            # pro1x-launcher: the apps, then which workspace.  The layout
+            # and prompt of its fzf are the ones the other menus copy.
+            setsid pro1x-term --app-id=launcher -o pad=12x8 -o "font=Iosevka Term:size=13" \
+                -e pro1x-launcher >/dev/null 2>&1 < /dev/null &
             ;;
         powermenu)
             # Resident too (author: it showed ~1 s after the power key's
@@ -170,7 +162,10 @@ case "$cmd" in
                     esac
                     focused=list
                 fi ;;
-            launcher) sock="$rt/pro1x-launcher.sock" ;;
+            launcher)
+                sock="$rt/pro1x-launcher.sock"
+                # Its workspace list, when open.
+                [ -S "$rt/pro1x-launcher-ask.sock" ] && sock="$rt/pro1x-launcher-ask.sock" ;;
             windowswitcher)
                 sock="$rt/pro1x-switcher.sock"
                 # Its Focus / Close / Cancel question, when open.
@@ -214,7 +209,17 @@ case "$cmd" in
                 exit 0 ;;
             *) exit 1 ;;
         esac
-        curl -s --unix-socket "$sock" -X POST http://localhost -d "$action" >/dev/null
+        curl -s --unix-socket "$sock" -X POST http://localhost -d "$action" >/dev/null ||
+            # A second press as the launcher's apps give way to the
+            # workspace list, not listening yet.
+            if [ "$focused" = launcher ]; then
+                for i in 1 2 3 4 5 6 7 8 9 10; do
+                    sleep 0.1
+                    [ -S "$rt/pro1x-launcher-ask.sock" ] || continue
+                    curl -s --unix-socket "$rt/pro1x-launcher-ask.sock" \
+                         -X POST http://localhost -d "$action" >/dev/null && break
+                done
+            fi
         exit 0 ;;
     start) start ;;
     close-sub) close_sub "$id" ;;
