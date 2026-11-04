@@ -52,6 +52,15 @@ entry does not move the system profile: `guix system list-generations` still say
 with three: a system with four must not reach the phone before the new U-Boot, or its
 fourth label replaces U-Boot's own next menu entry.
 
+**Incoming calls on 7.3 (2026-11-04, #215, Free on Orange's network):** on 4G the caller gets
+voicemail at once and ModemManager logs no call; outgoing works, about 20 s to ringing.  On
+3G (`qmicli --nas-set-system-selection-preference=umts`; `mmcli --set-allowed-modes=3g`
+fails, DeviceUnsupported) it rings: ringing-in in 1 s, then "unlocked for one app" 1 s later,
+but the author still saw the lock screen.  Last incoming call logged before this:
+2026-11-03 17:18, boot of 09:17, probably 7.1 (author's memory; kernel not confirmed).  Not
+tested: incoming on 4G with 7.1 (#182).  Restore after a test, order matters:
+`lte|umts|gsm|cdma-1x|cdma-1xevdo|td-scdma` gives acquisition order lte, umts, gsm, ...
+
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.
 
