@@ -42,6 +42,7 @@ start_keepers() {
   sink=$(pick sinks 'platform.sound.*Voice_Call')
   src=$(pick sources 'platform.sound.*Voice_Call')
   cur="$sink $src"
+  vol="" # each sink has its own volume
   [ -n "$sink" ] || return 1
   echo "keep-alive on $sink / $src"
   paplay --raw --device="$sink" --rate=48000 --format=s16le --channels=2 /dev/zero &
@@ -102,6 +103,27 @@ follow_speaker() {
   start_keepers && start_pcm
 }
 
+# Volume: call audio runs in the DSP and passes no PipeWire stream, so the volume
+# keys, which set the sink's volume, change nothing.  Follow that volume with the
+# RX macro's digital gain, in dB steps; 84 is 0 dB, the level outside calls.  The
+# codec's EAR_PA and HPHL gains made no audible difference in SailfishOS' test.
+vol=""
+set_gain() {
+  amixer -c0 -q cset name='RX_RX0 Digital Volume' "$1"
+  amixer -c0 -q cset name='RX_RX1 Digital Volume' "$1"
+}
+follow_volume() {
+  [ -n "$sink" ] || return 0
+  v=$(pactl get-sink-volume "$sink" 2>/dev/null | awk 'NR == 1 { sub(/%/, "", $5); print $5 }')
+  [ -n "$v" ] && [ "$v" != "$vol" ] || return 0
+  vol=$v
+  g=$(awk -v v="$v" 'BEGIN {
+    g = v > 0 ? 84 + 20 * log(v / 100) / log(10) : 0
+    print int((g < 0 ? 0 : g > 124 ? 124 : g) + 0.5) }')
+  set_gain "$g"
+  echo "volume $v%: gain $g"
+}
+
 stop_keepers() {
   [ -z "$kp" ] || kill $kp 2>/dev/null
   kp=""
@@ -150,7 +172,7 @@ stop_pcm() {
   vp=""
 }
 
-trap 'stop_keepers; stop_pcm; rm -f "$pidfile"; exit 0' TERM INT
+trap 'stop_keepers; stop_pcm; set_gain 84; rm -f "$pidfile"; exit 0' TERM INT
 
 always=0
 if [ "${PRO1X_VOICE_ALWAYS:-0}" = 1 ] || ! command -v mmcli >/dev/null 2>&1; then
@@ -163,6 +185,7 @@ fi
 finish() {
   stop_keepers
   stop_pcm
+  set_gain 84
   card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
   [ -n "$card" ] && pactl set-card-profile "$card" "HiFi (Mic, Speaker)" 2>/dev/null &&
     echo "card back on HiFi"
@@ -214,6 +237,7 @@ while :; do
   if [ -n "$vp" ]; then
     follow_speaker
     follow_mute
+    follow_volume
   fi
 
   if [ -n "$vp" ] && ! kill -0 "$vp" 2>/dev/null; then
