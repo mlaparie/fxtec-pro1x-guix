@@ -15,21 +15,28 @@ works"; improvements later.  A backup for a reflash exists off the phone.  `main
 audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main` on
 7.1, the point to go back to.
 
-**Full-disk encryption: works in QEMU, never on the phone (2026-11-04).**
-`tools/fde-qemu-test.py` boots what `flash-encrypted.sh` writes: unlock, wrong
-passphrase asked again, root resized to the disk, deploy, the plain area following it,
-reboot into the new and into an older entry.  Not proven: the panel and slide-out
-keyboard at the prompt, UFS timing, the unlock time on this CPU (Argon2 256 MiB,
-4 passes), U-Boot on this layout.  Next: the phone test without wiping (a generation
-that opens a LUKS test file, then boots as usual).  Flash after that, by the author;
-a reflash drops every generation, the 7.1 fallback (182) included.
+**Full-disk encryption: works in QEMU; prompt confirmed on the phone (2026-11-04),
+never flashed.**  `tools/fde-qemu-test.py` boots what `flash-encrypted.sh` writes:
+unlock, wrong passphrase asked again, root resized to the disk, deploy, the plain area
+following it, reboot into the new and an older entry.  On the phone (generations 212,
+213, `PRO1X_FDE_PROMPT_TEST=1 scripts/deploy.sh`): readable in landscape, all letters
+and digits typed correctly without Fn, partition found at 2.4 s, unlock with Argon2
+256 MiB 4 passes: 8 s including typing 10 digits.  Not proven until the flash: U-Boot
+reading the encrypted layout, the helper's loop on UFS, the resize on 225 GB.  A reflash
+drops every generation, the 7.1 fallback (182) included.
 
 **Suspend on 7.3 (2026-11-04):** smp2p-sleepstate aborted suspends, about 2 events a
 second from shake-to-torch's accelerometer stream.  `pro1x-sleep` stops that service
 first (generation 211).  Author: "Lock and suspend" works.
 
 **U-Boot menu:** `bootmenu` with a countdown at each boot and generation numbers from
-`/boot/extlinux/menu.env` (environment only).  Not flashed yet: `flash.sh --boot-only`.
+`/boot/extlinux/menu.env` (environment only).  Built by CI 41840039106 (in
+`~/pro1x-uboot-2026-11-04`), old boot_a in `~/pro1x-boot_a-2026-11-04.img.gz`; not flashed
+yet: `flash.sh --boot-only`.  Author's idea for later: no autoboot (delay -1 in the service,
+no reflash); every reboot then waits for a key, crashes and remote reboots too.
+
+**Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
+212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.
 
 **On the phone (2026-11-03):** generation 203, kernel 7.3.0, from `next` (which
 has 7.3 since 02218e5), over Tailscale.  `main` is behind: the phone's channel
