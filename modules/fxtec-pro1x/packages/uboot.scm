@@ -7,6 +7,14 @@
 ;;;
 ;;; `previous-generations` (default 3) must match what systems/minimal.scm
 ;;; requests; it is compiled into U-Boot so reflash after changing it.
+;;;
+;;; U-Boot's bootmenu opens at every boot and counts down to the current system
+;;; (`menu_delay' seconds, any key stops it; volume keys and power work), since
+;;; the extlinux menu cannot serve: it wants a typed choice, and the phone
+;;; config's bootretry=1 ends it at once (bootretry_tstc_timeout, its timer not
+;;; started before bootcmd; read in the source, 2026-11-04).  Labels and delay can
+;;; be replaced at boot from /boot/extlinux/menu.env, written on the phone by
+;;; services/boot.scm: all this is environment text, no change to U-Boot's C.
 
 (define-module (fxtec-pro1x packages uboot)
   #:use-module (gnu packages base)
@@ -134,8 +142,14 @@
                 ;; Do NOT patch default.env — qcom-phone.env IS the DEFAULT_ENV_FILE
                 ;; for phones (CONFIG_PHONE_QCOM) and overrides bootcmd there.
                 (substitute* "board/qualcomm/qcom-phone.env"
+                  (("^preboot=scsi scan")
+                   (string-append
+                    "menu_delay=3\n"
+                    "preboot=scsi scan; if load scsi 0#userdata ${scriptaddr}"
+                    " /boot/extlinux/menu.env; then"
+                    " env import -t ${scriptaddr} ${filesize}; fi"))
                   (("bootcmd=bootefi bootmgr; pause; run menucmd")
-                   "bootcmd=sysboot scsi 0#userdata any ${scriptaddr} /boot/extlinux/extlinux.conf; pause; run menucmd")
+                   "bootcmd=bootmenu ${menu_delay}; pause; run menucmd")
                   (("bootmenu_0=Boot=bootefi bootmgr; pause")
                    "bootmenu_0=Boot=sysboot scsi 0#userdata any ${scriptaddr} /boot/extlinux/extlinux.conf; pause"))
 

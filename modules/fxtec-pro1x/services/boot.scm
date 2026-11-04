@@ -3,6 +3,8 @@
 
 (define-module (fxtec-pro1x services boot)
   #:use-module (fxtec-pro1x packages misc)   ; qbootctl
+  #:use-module (fxtec-pro1x files)           ; repository-file
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages linux)          ; e2fsprogs, inotify-tools
@@ -28,49 +30,31 @@
   pro1x-boot-menu-configuration?
   ;; How many "Boot previous generation N" entries to write.
   ;; Must equal the value compiled into U-Boot (make-u-boot-pro1x).
-  (generations pro1x-boot-menu-generations (default 3)))
+  (generations pro1x-boot-menu-generations (default 3))
+  ;; Seconds U-Boot's menu counts down at each boot before the current system
+  ;; (0: none).  Takes effect at the next boot, no reflash: it is in menu.env.
+  (delay pro1x-boot-menu-delay (default 3))
+  ;; The root is encrypted: keep the plain area up to date (services/fde.scm).
+  (encrypted? pro1x-boot-menu-encrypted? (default #f)))
 
-;;; The split script: mirrors modules/boot-menu.nix's `split`, with one
-;;; difference.  NixOS's extlinux.conf starts with a "Default" entry, so its
-;;; previous generation N is entry N+2.  Guix's has no such entry: the
-;;; current system is entry 1, then older generations newest first
-;;; (gnu/bootloader/extlinux.scm), so previous generation N is entry N+1.
+;;; device/boot/pro1x-boot-menu.  Guix's extlinux.conf has no "Default" entry,
+;;; unlike NixOS's in modules/boot-menu.nix: the current system is entry 1, then
+;;; older generations newest first (gnu/bootloader/extlinux.scm), so previous
+;;; generation N is entry N+1.
 (define (pro1x-boot-menu-split-script config)
-  (let ((n (pro1x-boot-menu-generations config)))
-    (computed-file "pro1x-boot-menu-split"
-      #~(call-with-output-file #$output
-          (lambda (port)
-            (display "#!/bin/sh\nset -eu\n" port)
-            (display "dir=/boot/extlinux\n" port)
-            (display "src=$dir/extlinux.conf\n" port)
-            (display "[ -f \"$src\" ] || exit 0\n" port)
-            (display (string-append "for n in $(seq 1 " #$(number->string n) "); do\n") port)
-            (display (string-append
-                      "  " #$gawk "/bin/awk -v want=$((n + 1)) '\n"
-                      "    /^[[:space:]]*LABEL[[:space:]]/ {\n"
-                      "      entry++\n"
-                      "      # Guix labels contain spaces: keep the rest of the line.\n"
-                      "      if (entry == want) { label = $0; sub(/^[[:space:]]*LABEL[[:space:]]+/, \"\", label) }\n"
-                      "    }\n"
-                      "    entry == want { body = body $0 \"\\n\" }\n"
-                      "    END {\n"
-                      "      if (body == \"\") exit 1\n"
-                      "      print \"TIMEOUT 0\"\n"
-                      "      print \"PROMPT 0\"\n"
-                      "      print \"DEFAULT \" label\n"
-                      "      printf \"%s\", body\n"
-                      "    }\n"
-                      "  ' \"$src\" > \"$dir/.prev$n.tmp\" \\\n"
-                      "    || { rm -f \"$dir/.prev$n.tmp\" \"$dir/prev$n.conf\"; continue; }\n"
-                      "  mv -f \"$dir/.prev$n.tmp\" \"$dir/prev$n.conf\"\n"
-                      "done\n")
-                     port)
-            (display "for f in $dir/prev*.conf; do\n" port)
-            (display "  [ -e \"$f\" ] || continue\n" port)
-            (display "  nn=${f##*/prev}; nn=${nn%.conf}\n" port)
-            (display (string-append "  [ \"$nn\" -le " #$(number->string n) " ] || rm -f \"$f\"\n") port)
-            (display "done\n" port)
-            (chmod #$output #o755))))))
+  (let ((n (number->string (pro1x-boot-menu-generations config)))
+        (delay (number->string (pro1x-boot-menu-delay config))))
+    (program-file "pro1x-boot-menu-split"
+      #~(begin
+          (setenv "PATH" (string-append #$coreutils "/bin:" #$gawk "/bin:"
+                                        #$sed "/bin"))
+          (execl #$(file-append bash-minimal "/bin/sh") "sh"
+                 #$(local-file (repository-file "device/boot/pro1x-boot-menu"))
+                 #$@(if (pro1x-boot-menu-encrypted? config)
+                        '("--plain-area" "/boot" "/boot/extlinux/extlinux.conf"
+                          "/boot/boot/extlinux")
+                        '("/boot/extlinux/extlinux.conf" "/boot/extlinux"))
+                 #$n #$delay)))))
 
 (define (pro1x-boot-menu-shepherd-services config)
   (if (> (pro1x-boot-menu-generations config) 0)
@@ -82,7 +66,7 @@
          (shepherd-service
           (provision '(pro1x-boot-menu))
           (requirement '(file-systems))
-          (documentation "Write /boot/extlinux/prev*.conf for the U-Boot menu
+          (documentation "Write the U-Boot menu's files under /boot
 at start and whenever extlinux.conf changes.")
           (start
            #~(make-forkexec-constructor
@@ -99,6 +83,8 @@ at start and whenever extlinux.conf changes.")
    "pro1x-boot-menu-watch"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim))
+       ;; A new plain area has no extlinux/ until Guix first writes there.
+       (false-if-exception (mkdir "/boot/extlinux"))
        (system* #$split)
        (let ((events (open-pipe* OPEN_READ
                                  #$(file-append inotify-tools
@@ -179,6 +165,8 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
               (string-append
                ;; Locate root device.
                "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) || exit 1; "
+               ;; /dev/mapper/pro1x-crypt is dm-0 in /proc/partitions.
+               "dev=$(readlink -f \"$dev\"); "
                ;; Partition size in 1 KiB blocks (from /proc/partitions).
                "devname=${dev##*/}; "
                "pblocks=$(awk -v d=\"$devname\" '$4==d {print $3}' /proc/partitions); "
