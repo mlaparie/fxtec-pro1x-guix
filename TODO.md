@@ -67,7 +67,7 @@ was silent).  Fixes: `callaudiod` patch, session restarted around the speaker bu
 waits for the keep-alive streams.  Generation 218 shortens the silence at the button (217: a
 few seconds): needs a reboot and a call.  Earpiece profile shows `Spk0 SPK PA` on; the
 author heard the earpiece, not looked into.  Uplink has no DSP noise or echo processing (TX
-topology NONE); speaker calls may echo, ECNS topology not tried.  Still open: incoming on 4G,
+topology NONE); speaker calls may echo.  ECNS topology silences the uplink (two calls, author), no calibration data to send: left off.  Still open: incoming on 4G,
 ~2 s of lock screen on an incoming call, `Unbalanced enable for IRQ 199` once per boot at the
 first call (no effect seen); Calls' mute button has no effect (author, generation 218, later).
 

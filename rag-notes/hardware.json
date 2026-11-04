@@ -311,7 +311,7 @@
    {
     "title": "Calls have no microphone processing on the phone: TX topology is NONE",
     "general": "The q6voice driver's voice TX topology control decides whether the DSP runs echo and noise reduction on the uplink. VSS_IVOCPROC_TOPOLOGY_ID_NONE means none. Noise or echo behaviour heard on the far end then comes from outside the phone's DSP chain.",
-    "instance": "Pro1x, 7.3.0: 'VoiceMMode1 TX Topology' = 69488 (0x10F70, NONE), RX = 69495 (0x10F77, default). TX_SM_ECNS is 0x10F71, not tried; it may need calibration. Whether the modem processes the uplink further is not known.",
+    "instance": "Pro1x, 7.3.0: 'VoiceMMode1 TX Topology' = 69488 (0x10F70, NONE), RX = 69495 (0x10F77, default). TX_SM_ECNS is 0x10F71, not tried; it may need calibration. Whether the modem processes the uplink further is not known. Tried on 2026-11-04, generation 218: TX topology set to TX_SM_ECNS (69489) by mixer before a call: no error, downlink fine, the far end heard nothing, in two calls; back on NONE the far end hears the phone. No calibration data exists in this port, the NixOS port or the SailfishOS port, and the driver has no way to send any; that this is why is inferred.",
     "confidence": "confirmed (mixer value, patch's defines)",
     "date": "2026-11-04",
     "source": "amixer contents; device/kernel/patches-7.3/0004-pro1x-q6voice.patch"
