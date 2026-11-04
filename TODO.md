@@ -15,24 +15,21 @@ works"; improvements later.  A backup for a reflash exists off the phone.  `main
 audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main` on
 7.1, the point to go back to.
 
-**Full-disk encryption: not ready (read in the code 2026-11-04; nothing run).**
-`README.md` still says Untested.  What stands in the way:
-- `guix system image` replaces the root file system without its dependencies
-  (`operating-system-for-image`), so the image's initrd has no unlock step.
-- `(fxtec-pro1x system mobile-encrypted)` is an old Phosh copy of `mobile`.
-- The initrd has no `losetup`, no `/dev/disk/by-partlabel`, no wait for the UFS
-  partition, and a failed passphrase ends in a Guile prompt.
-- U-Boot reads `/boot/extlinux/extlinux.conf` in the plain area's own root, but that
-  area is mounted at `/boot`: Guix, the boot menu service and
-  `update-encrypted-boot.sh` all write `extlinux/` one level off, so U-Boot keeps the
-  conf from the flash.  That conf has no `FDTDIR` and `update-encrypted-boot.sh`
-  misreads the kernel arguments.
-- One kernel only in the plain area, so no older generation to fall back on.
-- The resize service looks up `pro1x-crypt` in `/proc/partitions`, which lists `dm-0`:
-  the root would stay at the image's size.
-- `flash-encrypted.sh` leaves old plaintext behind the image's end (no erase first),
-  and takes the Argon2 time from the PC, not the phone.
-- A reflash drops every generation, the 7.1 fallback (182) included.
+**Full-disk encryption: works in QEMU, never on the phone (2026-11-04).**
+`tools/fde-qemu-test.py` boots what `flash-encrypted.sh` writes: unlock, wrong
+passphrase asked again, root resized to the disk, deploy, the plain area following it,
+reboot into the new and into an older entry.  Not proven: the panel and slide-out
+keyboard at the prompt, UFS timing, the unlock time on this CPU (Argon2 256 MiB,
+4 passes), U-Boot on this layout.  Next: the phone test without wiping (a generation
+that opens a LUKS test file, then boots as usual).  Flash after that, by the author;
+a reflash drops every generation, the 7.1 fallback (182) included.
+
+**Suspend on 7.3 (2026-11-04):** smp2p-sleepstate aborted suspends, about 2 events a
+second from shake-to-torch's accelerometer stream.  `pro1x-sleep` stops that service
+first (generation 211); awaiting the author's test.
+
+**U-Boot menu:** `bootmenu` with a countdown at each boot and generation numbers from
+`/boot/extlinux/menu.env` (environment only).  Built by no CI yet, not flashed.
 
 **On the phone (2026-11-03):** generation 203, kernel 7.3.0, from `next` (which
 has 7.3 since 02218e5), over Tailscale.  `main` is behind: the phone's channel
@@ -736,7 +733,6 @@ does not start before rmtfs on a cold boot.
   failed boots, cleared by `pro1x-boot-success`.
 - To check: `prev*.conf` are rewritten at boot (and by `herd start
   pro1x-boot-menu`), not by a deploy; `want=n+2` in `services/boot.scm`;
-  encrypted system still needs `update-encrypted-boot.sh` after a deploy.
 - After a deploy that changes sessions, tuigreet shows the old session
   list until it restarts (log in and out once).
 - Since 2026-10-30 deploys build the phone's own config.scm; check

@@ -38,9 +38,11 @@
 ;;;                 the phone's channels: keep them all in the provenance
 ;;;   PRO1X_HOST    phone address (default 172.16.42.1)
 ;;;   PRO1X_IDENTITY  private key (default ~/.ssh/pro1x-guix)
+;;;   PRO1X_PORT, PRO1X_HOST_KEY  SSH port (default 22) and host key (default
+;;;                 the known_hosts entry), for a test machine (tools/fde-qemu-test.py)
 ;;;
-;;; State: first used 2026-10-28.  Encrypted systems also need
-;;; scripts/update-encrypted-boot.sh afterwards (plain boot area).
+;;; State: first used 2026-10-28.  On encrypted systems the phone's
+;;; pro1x-boot-menu service keeps the plain boot area up to date.
 
 (use-modules (gnu machine)
              (gnu machine ssh)
@@ -134,6 +136,8 @@ left out of the provenance~%"))
   (configuration
    (machine-ssh-configuration
     (host-name (or (getenv "PRO1X_HOST") "172.16.42.1"))
+    (port (string->number (or (getenv "PRO1X_PORT") "22")))
+    (host-key (getenv "PRO1X_HOST_KEY"))
     (system "aarch64-linux")
     (user "root")
     (allow-downgrades? #t)

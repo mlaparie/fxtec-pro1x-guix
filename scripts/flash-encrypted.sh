@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# scripts/flash-encrypted.sh — LUKS2 assembly and flash for mobile-encrypted.scm
+# scripts/flash-encrypted.sh — LUKS2 assembly and flash for an encrypted system
+#
+# Writes: dtbo (erase), boot_a, boot_b, vbmeta_a, vbmeta_b, userdata (erase, then
+# flash), active slot A.  With --output in flash.sh: nothing, it stops before.
+#
+# The passphrase is typed at the phone's slide-out keyboard, in the initrd: plain
+# US layout, no keyd.  Use letters and digits.
+#
+# State: tested in QEMU, not yet flashed.
 #
 # Called by flash.sh after it has handled guix shell, U-Boot, and system image
 # discovery.  Not intended to be run directly.
@@ -9,8 +17,7 @@
 #   _UBOOT_BIN     — u-boot-nodtb.bin path in the Guix store
 #   _UBOOT_DTB     — sm6115-fxtec-pro1x.dtb path in the Guix store
 #   _DISK_IMAGE    — guix system image output (efi-raw disk image)
-#
-# After guix system reconfigure: bash scripts/update-encrypted-boot.sh
+#   _OUTPUT_DIR    — optional: write the images there and stop
 
 set -euo pipefail
 
@@ -42,12 +49,21 @@ RAMDISK_OFFSET=0x01000000
 TAGS_OFFSET=0x00000100
 
 # ── FDE layout constants ──────────────────────────────────────────────────────
-BOOT_MIB=256
+BOOT_MIB=512                    # %pro1x-boot-area-mib in services/fde.scm
 LUKS_PAYLOAD_MIB=16
-BOOT_SECTORS=$(( BOOT_MIB * 2048 ))
+DTB=qcom/sm6115-fxtec-pro1x.dtb
+# Fixed, not --pbkdf-force-time: that would be measured on this PC and take far
+# longer on the phone, at every boot.
+PBKDF_ITERATIONS=4
+PBKDF_MEMORY_KIB=262144
 
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+cleanup() {
+    [[ -f "$TMPDIR/volkey.bin" ]] && shred -u "$TMPDIR/volkey.bin"
+    [[ -f "$TMPDIR/passphrase.bin" ]] && shred -u "$TMPDIR/passphrase.bin"
+    rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
 
 # ── Wrap U-Boot as boot.img ───────────────────────────────────────────────────
 echo "==> Wrapping U-Boot as boot.img…"
@@ -79,68 +95,44 @@ echo "    root.ext4: ${ROOT_MIB} MiB"
 ACTUAL=$(e2label "$TMPDIR/root.ext4" 2>/dev/null || true)
 [[ "$ACTUAL" == "guix" ]] || e2label "$TMPDIR/root.ext4" guix
 
-# ── Extract boot files ────────────────────────────────────────────────────────
+# ── Boot files ────────────────────────────────────────────────────────────
+# The plain area as device/boot/pro1x-boot-menu keeps it on the phone: the image's
+# own entry, with its store paths under /files, at /boot/extlinux/extlinux.conf,
+# where U-Boot reads it.  From the first deploy on, the phone keeps it up to date.
 echo "==> Extracting boot files…"
 EXTLINUX_CONF=$(debugfs -R "cat /boot/extlinux/extlinux.conf" \
     "$TMPDIR/root.ext4" 2>/dev/null || true)
+[[ -n "$EXTLINUX_CONF" ]] || die "no /boot/extlinux/extlinux.conf in the image"
 
-if [[ -z "$EXTLINUX_CONF" ]]; then
-    echo "    (no extlinux.conf in image — using default kernel arguments)"
-    APPEND_LINE="console=tty1 loglevel=4 \
-g_cdc.host_addr=02:50:31:e8:00:01 g_cdc.dev_addr=02:50:31:e8:00:02"
-else
-    APPEND_LINE=$(echo "$EXTLINUX_CONF" | grep -i '^\s*APPEND' | head -1 | \
-        sed 's/^\s*APPEND\s*//')
+field() { echo "$EXTLINUX_CONF" | awk -v f="$1" '$1 == f { print $2; exit }'; }
+KERNEL_PATH=$(field KERNEL)
+INITRD_PATH=$(field INITRD)
+FDT_DIR=$(field FDTDIR)
+[[ -n "$KERNEL_PATH" && -n "$INITRD_PATH" && -n "$FDT_DIR" ]] \
+    || die "extlinux.conf lacks KERNEL, INITRD or FDTDIR"
+
+plain_path() { echo "$1" | sed 's|^/gnu/store/|/files/|; s|/lib/dtbs$|/dtbs|'; }
+BOOT_DIR="$TMPDIR/boot-area"
+extract() {                     # extract IMAGE-PATH TARGET
+    mkdir -p "$(dirname "$2")"
+    debugfs -R "dump $1 $2" "$TMPDIR/root.ext4" 2>/dev/null
+    [[ -s "$2" ]] || die "cannot read $1 from the image"
+}
+extract "$KERNEL_PATH" "$BOOT_DIR$(plain_path "$KERNEL_PATH")"
+extract "$INITRD_PATH" "$BOOT_DIR$(plain_path "$INITRD_PATH")"
+extract "$FDT_DIR/$DTB" "$BOOT_DIR$(plain_path "$FDT_DIR")/$DTB"
+mkdir -p "$BOOT_DIR/boot/extlinux"
+# First entry only: the image has one generation.
+echo "$EXTLINUX_CONF" |
+    sed 's#\(KERNEL\|INITRD\|FDTDIR\) */gnu/store/#\1 /files/#; s#/lib/dtbs$#/dtbs#' \
+    > "$BOOT_DIR/boot/extlinux/extlinux.conf"
+if grep -Eq '^ *(KERNEL|INITRD|FDTDIR) +/gnu/store/' "$BOOT_DIR/boot/extlinux/extlinux.conf"; then
+    die "extlinux.conf still points into the store, out of U-Boot's reach"
 fi
 
-KERNEL_PATH=$(echo "$EXTLINUX_CONF" | grep -i '^\s*KERNEL\s' | head -1 | awk '{print $2}') || true
-[[ -n "$KERNEL_PATH" ]] && \
-    debugfs -R "dump $KERNEL_PATH $TMPDIR/vmlinuz" "$TMPDIR/root.ext4" 2>/dev/null || true
-
-if [[ ! -s "$TMPDIR/vmlinuz" ]]; then
-    SYS=$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/../modules" \
-        systems/mobile-encrypted.scm 2>/dev/null | grep '^/gnu/store' | tail -1)
-    for name in Image Image.gz bzImage; do
-        [[ -f "$SYS/kernel/$name" ]] && cp "$SYS/kernel/$name" "$TMPDIR/vmlinuz" && break
-    done
-    [[ -s "$TMPDIR/vmlinuz" ]] || die "cannot locate kernel binary"
-fi
-
-INITRD_PATH=$(echo "$EXTLINUX_CONF" | grep -i '^\s*INITRD\s' | head -1 | awk '{print $2}') || true
-[[ -n "$INITRD_PATH" ]] && \
-    debugfs -R "dump $INITRD_PATH $TMPDIR/initrd.img" "$TMPDIR/root.ext4" 2>/dev/null || true
-if [[ ! -s "$TMPDIR/initrd.img" ]]; then
-    SYS=${SYS:-$(guix system build --system="$ARCH" -L "$SCRIPT_DIR/../modules" \
-        systems/mobile-encrypted.scm 2>/dev/null | grep '^/gnu/store' | tail -1)}
-    cp "$(readlink -f "$SYS/initrd")" "$TMPDIR/initrd.img"
-fi
-
-echo "    kernel: $(( $(wc -c < "$TMPDIR/vmlinuz")   / 1024 / 1024 + 1 )) MiB" \
-     "  initrd: $(( $(wc -c < "$TMPDIR/initrd.img") / 1024 / 1024 + 1 )) MiB"
-
-# ── Plain boot ext4 ───────────────────────────────────────────────────────────
 echo "==> Creating plain boot ext4 (${BOOT_MIB} MiB)…"
-dd if=/dev/zero of="$TMPDIR/boot.ext4" bs=1M count="$BOOT_MIB" 2>/dev/null
-mke2fs -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
-    "$TMPDIR/boot.ext4" 2>/dev/null
-for cmd in "mkdir /boot" "mkdir /boot/extlinux" \
-           "write $TMPDIR/vmlinuz /vmlinuz" \
-           "write $TMPDIR/initrd.img /initrd.img"; do
-    debugfs -w "$TMPDIR/boot.ext4" -R "$cmd" 2>/dev/null
-done
-cat > "$TMPDIR/extlinux.conf" <<EOF
-TIMEOUT 30
-PROMPT 1
-DEFAULT guix
-
-LABEL guix
-  MENU LABEL GNU Guix
-  KERNEL /vmlinuz
-  INITRD /initrd.img
-  APPEND $APPEND_LINE
-EOF
-debugfs -w "$TMPDIR/boot.ext4" \
-    -R "write $TMPDIR/extlinux.conf /boot/extlinux/extlinux.conf" 2>/dev/null
+mke2fs -q -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
+    -d "$BOOT_DIR" "$TMPDIR/boot.ext4" "${BOOT_MIB}M"
 
 # ── Passphrase ────────────────────────────────────────────────────────────────
 echo ""
@@ -160,41 +152,44 @@ XTS_PKG=$(guix build pro1x-xts-encrypt -L "$SCRIPT_DIR/../modules" --fallback \
 XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 [[ -x "$XTS_ENC" ]] || die "pro1x-xts-encrypt not found at $XTS_ENC"
 
-# ── LUKS2 container ───────────────────────────────────────────────────────────
-echo "==> Creating LUKS2 container…"
+# ── LUKS2 container, in place in userdata.img ─────────────────────────────
+# The header alone goes through a small file; the encrypted root is written straight
+# into the image, so the build needs room for root.ext4 and the image, not more.
+echo "==> Creating LUKS2 header…"
 ROOT_SIZE=$(wc -c < "$TMPDIR/root.ext4")
-LUKS_MIB=$(( LUKS_PAYLOAD_MIB + (ROOT_SIZE + 1024*1024 - 1) / (1024*1024) ))
-dd if=/dev/zero    of="$TMPDIR/luks-container.bin" bs=1M count="$LUKS_MIB" 2>/dev/null
+truncate -s "$(( LUKS_PAYLOAD_MIB + 1 ))M" "$TMPDIR/luks-header.bin"
 dd if=/dev/urandom of="$TMPDIR/volkey.bin"          bs=64  count=1          2>/dev/null
 printf '%s' "$PASSPHRASE" > "$TMPDIR/passphrase.bin"
 unset PASSPHRASE
 cryptsetup luksFormat \
     --type luks2 --cipher aes-xts-plain64 --key-size 512 \
     --hash sha256 --pbkdf argon2id \
-    --pbkdf-memory 65536 --pbkdf-parallel 1 --pbkdf-time-ms 2000 \
+    --pbkdf-memory "$PBKDF_MEMORY_KIB" --pbkdf-parallel 1 \
+    --pbkdf-force-iterations "$PBKDF_ITERATIONS" \
     --sector-size 512 --align-payload 32768 \
     --volume-key-file "$TMPDIR/volkey.bin" \
     --key-file        "$TMPDIR/passphrase.bin" \
-    --batch-mode "$TMPDIR/luks-container.bin"
+    --batch-mode "$TMPDIR/luks-header.bin"
 shred -u "$TMPDIR/passphrase.bin"
 
-PAYLOAD_BYTES=$(cryptsetup luksDump "$TMPDIR/luks-container.bin" 2>/dev/null | \
+PAYLOAD_BYTES=$(cryptsetup luksDump "$TMPDIR/luks-header.bin" 2>/dev/null | \
     awk '/Data segments:/{f=1} f && /offset:/{gsub(/[^0-9]/,"",$2); print $2; exit}')
-[[ -n "$PAYLOAD_BYTES" ]] || PAYLOAD_BYTES=$(( LUKS_PAYLOAD_MIB * 1024 * 1024 ))
+[[ -n "$PAYLOAD_BYTES" ]] || die "cannot read the LUKS2 payload offset"
 echo "    LUKS2 payload offset: $(( PAYLOAD_BYTES / 1024 / 1024 )) MiB"
 
-echo "==> Encrypting root partition…"
-"$XTS_ENC" "$TMPDIR/volkey.bin" "$TMPDIR/luks-container.bin" \
-    "$PAYLOAD_BYTES" < "$TMPDIR/root.ext4"
-shred -u "$TMPDIR/volkey.bin"
-
-# ── Assemble userdata.img ─────────────────────────────────────────────────────
 echo "==> Assembling userdata image…"
-LUKS_SIZE=$(wc -c < "$TMPDIR/luks-container.bin")
-TOTAL_MIB=$(( BOOT_MIB + (LUKS_SIZE + 1024*1024 - 1) / (1024*1024) ))
-dd if=/dev/zero of="$TMPDIR/userdata.img" bs=1M count="$TOTAL_MIB" 2>/dev/null
-dd if="$TMPDIR/boot.ext4"          of="$TMPDIR/userdata.img" bs=512 seek=0             conv=notrunc 2>/dev/null
-dd if="$TMPDIR/luks-container.bin" of="$TMPDIR/userdata.img" bs=512 seek="$BOOT_SECTORS" conv=notrunc 2>/dev/null
+BOOT_BYTES=$(( BOOT_MIB * 1024 * 1024 ))
+TOTAL_MIB=$(( BOOT_MIB + PAYLOAD_BYTES / (1024*1024) + (ROOT_SIZE + 1024*1024 - 1) / (1024*1024) ))
+truncate -s "${TOTAL_MIB}M" "$TMPDIR/userdata.img"
+dd if="$TMPDIR/boot.ext4"       of="$TMPDIR/userdata.img" bs=1M conv=notrunc 2>/dev/null
+dd if="$TMPDIR/luks-header.bin" of="$TMPDIR/userdata.img" bs=1M seek="$BOOT_MIB" \
+    count="$(( PAYLOAD_BYTES / (1024*1024) ))" conv=notrunc 2>/dev/null
+
+echo "==> Encrypting root partition…"
+"$XTS_ENC" "$TMPDIR/volkey.bin" "$TMPDIR/userdata.img" \
+    "$(( BOOT_BYTES + PAYLOAD_BYTES ))" < "$TMPDIR/root.ext4"
+shred -u "$TMPDIR/volkey.bin"
+rm -f "$TMPDIR/root.ext4"
 echo "    ${TOTAL_MIB} MiB  (${BOOT_MIB} MiB plain boot + $(( TOTAL_MIB - BOOT_MIB )) MiB LUKS)"
 
 # ── vbmeta ────────────────────────────────────────────────────────────────────
@@ -207,6 +202,12 @@ sys.stdout.buffer.write(hdr.ljust(4096,b'\x00'))
 " > "$TMPDIR/vbmeta.img"
 
 # ── Confirm & flash ───────────────────────────────────────────────────────────
+if [[ -n "${_OUTPUT_DIR:-}" ]]; then
+    mkdir -p "$_OUTPUT_DIR"
+    mv "$TMPDIR/boot.img" "$TMPDIR/vbmeta.img" "$TMPDIR/userdata.img" "$_OUTPUT_DIR/"
+    echo "==> Wrote $_OUTPUT_DIR; nothing flashed."
+    exit 0
+fi
 echo ""
 echo "==> All artifacts ready — device must be in fastboot mode."
 echo "    boot.img:     $TMPDIR/boot.img"
@@ -227,6 +228,11 @@ echo "==> Disabling vbmeta verification…"
 fastboot flash vbmeta_a "$TMPDIR/vbmeta.img"
 fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 
+# The image ends long before the partition: without this, the old system's
+# unencrypted data stays on the flash behind it.
+echo "==> Erasing userdata…"
+fastboot erase userdata
+
 echo "==> Flashing userdata…"
 fastboot flash userdata "$TMPDIR/userdata.img"
 
@@ -237,5 +243,5 @@ echo "==> Rebooting…"
 fastboot reboot
 
 echo ""
-echo "Done.  Enter the encryption passphrase when prompted by the initrd."
+echo "Done.  Open the keyboard and type the passphrase when the screen asks."
 echo "SSH (after boot): ssh user@172.16.42.1  (password: 123456 — change it!)"

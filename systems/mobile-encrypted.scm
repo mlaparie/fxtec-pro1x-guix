@@ -1,11 +1,13 @@
-;;; systems/mobile-encrypted.scm — the Pro¹x mobile-encrypted system, as shipped
+;;; systems/mobile-encrypted.scm — the Pro¹x mobile system, as shipped, on an
+;;; encrypted root (scripts/flash-encrypted.sh, services/fde.scm)
 ;;;
-;;; The system itself is (fxtec-pro1x system mobile-encrypted) in the channel.
+;;; The system itself is (fxtec-pro1x system mobile) in the channel; this
+;;; file adds root's SSH key for scripts/deploy.sh.
 
 (use-modules (gnu)
              (guix gexp)
              (srfi srfi-1)
-             (fxtec-pro1x system mobile-encrypted))
+             (fxtec-pro1x system mobile))
 
 ;; Root SSH by key for scripts/deploy.sh: the PC key that scripts/flash.sh
 ;; makes (~/.ssh/pro1x-guix.pub), or, when this file is reconfigured on the
@@ -21,4 +23,5 @@
         (list (local-file file "pro1x-guix.pub"))
         '())))
 
-(pro1x-mobile-encrypted-operating-system #:root-ssh-keys %root-ssh-keys)
+(pro1x-mobile-operating-system #:root-ssh-keys %root-ssh-keys
+                               #:encrypted? #t)

@@ -13,6 +13,8 @@ SYSTEM="systems/mobile.scm"
 OPT_UBOOT=""
 OPT_DTB=""
 OPT_ROOTFS=""
+OPT_BOOT_ONLY=false
+OPT_OUTPUT=""
 VERBOSE=false
 
 # ── Boot image parameters (Qualcomm SM6115) ──────────────────────────────────
@@ -127,18 +129,20 @@ Options:
   --dtb FILE       Path to sm6115-fxtec-pro1x.dtb (default: same dir as --uboot)
   --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
   --system FILE    Guix system .scm (prompted interactively if omitted)
+  --boot-only      Flash U-Boot alone (boot_a, boot_b): userdata is kept
+  --output DIR     Write the images to DIR and stop: nothing is flashed
   -v, --verbose    Show all dd progress and suppress no stderr output
   -h, --help       Show this help
 
 Systems in systems/:
-  mobile.scm           Phosh desktop, unencrypted userdata  [default]
+  mobile.scm           The phone system, unencrypted userdata  [default]
   minimal.scm          Headless, SSH only (fast build, good for testing)
-  mobile-encrypted.scm Phosh desktop, LUKS2 full-disk encryption
+  mobile-encrypted.scm The phone system, LUKS2 full-disk encryption
                        (delegates to flash-encrypted.sh automatically)
 
 Artifact discovery (tried in order for both U-Boot and rootfs):
   1. Explicit flag (--uboot / --rootfs)
-  2. Local files: u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb, rootfs.img
+  2. Local files, U-Boot only: u-boot-nodtb.bin + sm6115-fxtec-pro1x.dtb
   3. Guix store — checked via "guix build --dry-run"; prints path + date if cached
   4. Guix build — offered interactively if not cached (U-Boot: ~2 h; rootfs: ~30 min)
 
@@ -162,6 +166,8 @@ while [[ $# -gt 0 ]]; do
         --dtb)          OPT_DTB="$2";    shift 2 ;;
         --rootfs)       OPT_ROOTFS="$2"; shift 2 ;;
         --system)       SYSTEM="$2";     shift 2 ;;
+        --boot-only)    OPT_BOOT_ONLY=true; shift ;;
+        --output)       OPT_OUTPUT="$2"; shift 2 ;;
         -v|--verbose)   VERBOSE=true;    shift ;;
         -h|--help)      show_help; exit 0 ;;
         *.scm)          SYSTEM="$1"; shift ;;
@@ -192,7 +198,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 # ── Select system (when we'll need to build one) ──────────────────────────────
 # Prompt only if no --system flag, no --rootfs flag, and no local rootfs.img.
-if [[ -z "$OPT_ROOTFS" && ! -f "rootfs.img" && "$SYSTEM" == "systems/mobile.scm" ]]; then
+if [[ -z "$OPT_ROOTFS" && "$OPT_BOOT_ONLY" == false && "$SYSTEM" == "systems/mobile.scm" ]]; then
     mapfile -t SCMS < <(ls systems/*.scm 2>/dev/null | sort)
     if [[ ${#SCMS[@]} -gt 1 ]]; then
         echo "Available systems:"
@@ -222,7 +228,7 @@ echo ""
 # without a passphrase (guix deploy cannot ask for one).  A ready-made rootfs
 # (--rootfs, rootfs.img, CI images) carries no key.
 DEPLOY_KEY="$HOME/.ssh/pro1x-guix"
-if [[ -z "$OPT_ROOTFS" && ! -f "rootfs.img" ]]; then
+if [[ -z "$OPT_ROOTFS" && "$OPT_BOOT_ONLY" == false ]]; then
     if [[ -f "$DEPLOY_KEY.pub" ]]; then
         echo "==> Deploy key: $DEPLOY_KEY.pub"
     else
@@ -258,13 +264,55 @@ fi
 [[ -f "$UBOOT_BIN" ]] || die "not found: $UBOOT_BIN"
 [[ -f "$UBOOT_DTB" ]] || die "not found: $UBOOT_DTB"
 
+wrap_uboot() {
+    echo "==> Wrapping U-Boot as boot.img…"
+    # U-Boot's ARM64 Image header has text_offset = -0x80000000 (bytes 8-15).
+    # The Qualcomm ABL rejects that and falls straight back to fastboot.
+    # Zero the field so ABL sees offset=0 (same as Linux) and accepts the image.
+    # Gzip-compress and append the DTB so ABL extracts it and passes it in x0.
+    cp "$UBOOT_BIN" "$TMPDIR/u-boot.bin"
+    chmod +w "$TMPDIR/u-boot.bin"
+    printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
+        | quiet dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc
+    gzip --no-name -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
+    cat "$TMPDIR/u-boot.bin.gz" "$UBOOT_DTB" > "$TMPDIR/u-boot.bin.gz-dtb"
+    mkbootimg \
+        --kernel  "$TMPDIR/u-boot.bin.gz-dtb" \
+        --pagesize  $PAGESIZE \
+        --base      $BASE \
+        --kernel_offset  $KERNEL_OFFSET \
+        --ramdisk_offset $RAMDISK_OFFSET \
+        --tags_offset    $TAGS_OFFSET \
+        --output "$TMPDIR/boot.img"
+}
+
+# U-Boot alone: the menu's environment changes, say.  Userdata is not touched.
+if [[ "$OPT_BOOT_ONLY" == true ]]; then
+    wrap_uboot
+    if [[ -n "$OPT_OUTPUT" ]]; then
+        mkdir -p "$OPT_OUTPUT"
+        cp "$TMPDIR/boot.img" "$OPT_OUTPUT/"
+        echo "==> Wrote $OPT_OUTPUT/boot.img; nothing flashed."
+        exit 0
+    fi
+    echo ""
+    echo "==> boot.img ready, device must be in fastboot mode: writes boot_a, boot_b only."
+    read -r -p "Flash now? [y/N] " CONFIRM
+    CONFIRM="${CONFIRM//$'\r'/}"
+    [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+    fastboot flash boot_a "$TMPDIR/boot.img"
+    fastboot flash boot_b "$TMPDIR/boot.img"
+    fastboot reboot
+    exit 0
+fi
+
 # Encrypted path: find the disk image here, export everything, delegate assembly.
 if [[ "$SYSTEM" == "systems/mobile-encrypted.scm" ]]; then
     echo "==> System image ($SYSTEM)"
     DISK_IMAGE=$(guix_select_or_build "system image" \
         guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
     [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
-    export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE"
+    export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE" _OUTPUT_DIR="$OPT_OUTPUT"
     exec bash "$SCRIPT_DIR/flash-encrypted.sh"
 fi
 
@@ -276,9 +324,6 @@ DISK_IMAGE=""
 
 if [[ -n "$OPT_ROOTFS" ]]; then
     ROOTFS_FLASH="$OPT_ROOTFS"
-elif [[ -f "rootfs.img" ]]; then
-    ROOTFS_FLASH="rootfs.img"
-    echo "    local file: rootfs.img"
 elif command -v guix >/dev/null 2>&1; then
     DISK_IMAGE=$(guix_select_or_build "system image" \
         guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
@@ -289,25 +334,7 @@ else
 fi
 
 # ── Prepare artifacts ─────────────────────────────────────────────────────────
-echo "==> Wrapping U-Boot as boot.img…"
-# U-Boot's ARM64 Image header has text_offset = -0x80000000 (bytes 8-15).
-# The Qualcomm ABL rejects that and falls straight back to fastboot.
-# Zero the field so ABL sees offset=0 (same as Linux) and accepts the image.
-# Gzip-compress and append the DTB so ABL extracts it and passes it in x0.
-cp "$UBOOT_BIN" "$TMPDIR/u-boot.bin"
-chmod +w "$TMPDIR/u-boot.bin"
-printf '\x00\x00\x00\x00\x00\x00\x00\x00' \
-    | quiet dd of="$TMPDIR/u-boot.bin" bs=1 seek=8 count=8 conv=notrunc
-gzip --no-name -9 -c "$TMPDIR/u-boot.bin" > "$TMPDIR/u-boot.bin.gz"
-cat "$TMPDIR/u-boot.bin.gz" "$UBOOT_DTB" > "$TMPDIR/u-boot.bin.gz-dtb"
-mkbootimg \
-    --kernel  "$TMPDIR/u-boot.bin.gz-dtb" \
-    --pagesize  $PAGESIZE \
-    --base      $BASE \
-    --kernel_offset  $KERNEL_OFFSET \
-    --ramdisk_offset $RAMDISK_OFFSET \
-    --tags_offset    $TAGS_OFFSET \
-    --output "$TMPDIR/boot.img"
+wrap_uboot
 
 if [[ "$NEED_EXTRACT" == true ]]; then
     echo "==> Extracting root partition from disk image…"
@@ -371,6 +398,13 @@ echo "    boot.img : $TMPDIR/boot.img  ($(( BOOT_SIZE / 1024 )) KiB)"
 echo "    rootfs   : $ROOTFS_FLASH  ($ROOTFS_MIB MiB)"
 echo "    vbmeta   : $TMPDIR/vbmeta.img"
 echo ""
+if [[ -n "$OPT_OUTPUT" ]]; then
+    mkdir -p "$OPT_OUTPUT"
+    cp "$TMPDIR/boot.img" "$TMPDIR/vbmeta.img" "$OPT_OUTPUT/"
+    cp "$ROOTFS_FLASH" "$OPT_OUTPUT/rootfs.img"
+    echo "==> Wrote $OPT_OUTPUT; nothing flashed."
+    exit 0
+fi
 echo "    Flashing will erase userdata and replace the bootloader on slot A."
 echo ""
 read -r -p "Flash now? [y/N] " CONFIRM

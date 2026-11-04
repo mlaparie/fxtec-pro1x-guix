@@ -64,7 +64,7 @@ Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested
-Full-disk encryption             Untested   systems/mobile-encrypted.scm + flash-encrypted.sh
+Full-disk encryption             QEMU only  systems/mobile-encrypted.scm + flash-encrypted.sh
 ```
 
 ## Layout
@@ -76,14 +76,13 @@ modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels,
                              fde, hardware, keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
 systems/mobile.scm           Sway, Phosh and Sxmo sessions (greetd/tuigreet)
-systems/mobile-encrypted.scm Phosh with LUKS2 full-disk encryption
+systems/mobile-encrypted.scm mobile.scm with LUKS2 full-disk encryption
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
                              FDE helpers (xts-encrypt.c)
 scripts/backup-stock.sh      Back up modem EFS and boot partitions before flashing
 scripts/flash.sh             Initial flash (plain)
-scripts/flash-encrypted.sh   Initial flash with LUKS2
-scripts/update-encrypted-boot.sh  Copy new kernel/initrd to plain boot after reconfigure
+scripts/flash-encrypted.sh   Initial flash with LUKS2 (through flash.sh)
 tools/                       On-device diagnostics (haptics-tune, cam-focus, sensors-check)
 channels.scm                 Channel descriptor (unpinned)
 channels-lock.scm            Pinned channel commits for reproducible local builds
@@ -281,26 +280,31 @@ there).
 
 ## Full-disk encryption (LUKS2)
 
-`systems/mobile-encrypted.scm` adds LUKS2 to the same config as `mobile.scm`.
-Userdata layout:
+Tested in QEMU only so far (`tools/fde-qemu-test.py`), not on a phone.  The screen,
+the slide-out keyboard at the prompt, and U-Boot on this layout are unproven.
+
+`#:encrypted? #t` in `pro1x-mobile-operating-system` (`systems/mobile-encrypted.scm`
+has it).  It has to match how the phone was flashed.  Userdata layout:
 
 ```
-[0, 256 MiB)  plain ext4 "guixboot"  — kernel, initrd, extlinux.conf
-[256 MiB, end)  LUKS2 header + encrypted ext4 root
+[0, 512 MiB)    plain ext4 "guixboot": kernels, initrds, extlinux.conf for U-Boot
+[512 MiB, end)  LUKS2 header + encrypted ext4 root
 ```
 
-Encryption is applied on the host during flash using `device/fde/xts-encrypt.c`
-(AES-256-XTS-plain64); no root or device-mapper needed on the build machine.
+The encryption is applied on the PC during the flash (`device/fde/xts-encrypt.c`,
+AES-256-XTS-plain64; no root or device-mapper needed there).  The kernel and initrd
+stay unencrypted, and the bootloader unlocked: this protects data while the phone is
+off, not against someone tampering with it.
 
-**First flash:**
+**First flash** (erases userdata; asks for the passphrase, which you then type on
+the slide-out keyboard at each boot, so letters and digits only: plain US layout):
 ```sh
-guix shell -m manifest.scm -- bash scripts/flash-encrypted.sh systems/mobile-encrypted.scm
+bash scripts/flash.sh systems/mobile-encrypted.scm
 ```
 
-**After `guix system reconfigure`** (on device):
-```sh
-bash scripts/update-encrypted-boot.sh
-```
+**Updates:** `scripts/deploy.sh` or `guix system reconfigure` as usual.  The
+`pro1x-boot-menu` service copies the current system and three previous ones to the
+plain area when Guix writes its boot configuration.
 
 ## Keyboard
 

@@ -73,6 +73,7 @@
             tqftpserv
             rmtfs
             hexagonrpcd
+            pro1x-loop-offset
             pro1x-xts-encrypt
             libcamera-pro1x
             cameractrl
@@ -243,6 +244,41 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
     (license license:bsd-3)))
 
 ;;; ---------------------------------------------------------------------------
+;;; pro1x-loop-offset — for an encrypted system's initrd (services/fde.scm)
+
+(define-public pro1x-loop-offset
+  (package
+    (name "pro1x-loop-offset")
+    (version "0.1")
+    (source (local-file (repository-file "device/fde/loop-offset.c")
+                        "loop-offset.c"))
+    (build-system trivial-build-system)
+    (arguments
+     (let ((toolchain (@ (gnu packages commencement) gcc-toolchain)))
+       (list
+        #:modules '((guix build utils))
+        #:builder
+        #~(begin
+            (use-modules (guix build utils))
+            (let ((bin (string-append #$output "/bin")))
+              (mkdir-p bin)
+              (setenv "PATH" (string-append #$toolchain "/bin"))
+              ;; Static and stripped: the initrd gets this file alone.
+              (invoke "gcc" "-O2" "-static" "-s"
+                      "-o" (string-append bin "/pro1x-loop-offset")
+                      #$source
+                      (string-append "-I" #$linux-libre-headers "/include")
+                      (string-append "-L" #$toolchain:static "/lib"))
+              ;; Paths in strings of the static libc, never opened here.
+              (remove-store-references
+               (string-append bin "/pro1x-loop-offset")))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Attach a loop device at an offset, for the initrd")
+    (description
+     "pro1x-loop-offset attaches a loop device to a block device from a byte
+offset.  It is static, for an initrd without losetup.")
+    (license license:gpl3+)))
+
 ;;; pro1x-xts-encrypt — host tool: offline AES-XTS-plain64 for FDE image creation
 ;;; Encrypts a disk image the same way dm-crypt does for a LUKS2 volume, without
 ;;; needing root or device-mapper.  Used by scripts/flash-encrypted.sh.

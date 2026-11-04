@@ -72,6 +72,7 @@
              (fxtec-pro1x packages sxmo)
              (fxtec-pro1x services audio)
              (fxtec-pro1x services boot)
+             (fxtec-pro1x services fde)
              (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services hardware)
@@ -507,9 +508,12 @@ screen-keyboard-enabled=true
 (define sway-plain-session
   (make-sway-session "start-sway-plain" sway/pro1x "plain"))
 
-(define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
+(define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()) encrypted?)
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
-files root may log in with."
+files root may log in with.  ENCRYPTED? is for a phone flashed with
+scripts/flash-encrypted.sh: the root is on LUKS2 (services/fde.scm).  It has to
+match how the phone was flashed: the wrong value makes a generation that does
+not boot."
 (operating-system
   (host-name "pro1x")
   (timezone "UTC")
@@ -536,6 +540,9 @@ files root may log in with."
 
   (initrd-modules
    '("goodix_ts" "hid-multitouch"))
+  (initrd (if encrypted?
+              (pro1x-fde-initrd %pro1x-fde-mapped-devices)
+              base-initrd))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   (firmware (list linux-firmware firmware-fxtec-qx1050))
@@ -551,12 +558,14 @@ files root may log in with."
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
-   (cons*
-    (file-system
-      (device (file-system-label "guix"))
-      (mount-point "/")
-      (type "ext4")
-      (flags '(no-atime)))
+   (append
+    (if encrypted?
+        %pro1x-fde-file-systems
+        (list (file-system
+                (device (file-system-label "guix"))
+                (mount-point "/")
+                (type "ext4")
+                (flags '(no-atime)))))
     %base-file-systems))
 
   ;; ── Home skeleton for new accounts ────────────────────────────────────
@@ -640,7 +649,9 @@ files root may log in with."
      (service pro1x-rootfs-resize-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
-              (pro1x-boot-menu-configuration (generations 3)))
+              (pro1x-boot-menu-configuration
+               (generations 3)
+               (encrypted? encrypted?)))
 
      ;; seatd: minimal seat manager; libseat uses its socket to open a DRM
      ;; session without needing a PAM login.  Provides the 'elogind symbol so
@@ -858,7 +869,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; /etc/guix/config.scm: the owner's starting configuration.
      pro1x-reload-bus-service
      (pro1x-user-config-service '(fxtec-pro1x system mobile)
-                                'pro1x-mobile-operating-system))
+                                'pro1x-mobile-operating-system
+                                #:arguments
+                                (if encrypted? "#:encrypted? #t" "")))
 
     ;; Base services — delete mingetty/login/console-font (greetd owns VT1;
     ;; console-font depends on term-ttyN provided by mingetty so must go too).

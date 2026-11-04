@@ -35,8 +35,9 @@
 #   ssh-keyscan -t ed25519 172.16.42.1 >> ~/.ssh/known_hosts
 #
 # State: --repo used since 2026-10-28.  The phone-configuration mode is
-# new (2026-10-30), not yet run.  For systems/mobile-encrypted.scm, also
-# run scripts/update-encrypted-boot.sh on the phone afterwards.
+# new (2026-10-30), not yet run.  On an encrypted system, the phone's
+# pro1x-boot-menu service copies the new kernel and initrd to the plain area
+# once Guix has written extlinux.conf: give it some seconds before a reboot.
 
 set -euo pipefail
 

@@ -42,9 +42,10 @@ of public key files."
       '()
       `((".ssh/pro1x-guix.pub" ,(car keys)))))
 
-(define (pro1x-user-config module procedure)
+(define* (pro1x-user-config module procedure #:key (arguments ""))
   "Return the text of /etc/guix/config.scm for the system that PROCEDURE, a
-symbol exported by MODULE, a list of symbols, returns."
+symbol exported by MODULE, a list of symbols, returns when given ARGUMENTS, the
+text of its arguments that this phone cannot do without."
   (string-append
    ";;; /etc/guix/config.scm — starting point for your own configuration of
 ;;; this phone, written by the fxtec-pro1x channel.  To use it:
@@ -60,7 +61,9 @@ symbol exported by MODULE, a list of symbols, returns."
              " (with-output-to-string (lambda () (write module))) ")
 
 (define base
-  (" (symbol->string procedure) "
+  (" (symbol->string procedure) (if (string-null? arguments)
+                                    ""
+                                    (string-append "\n   " arguments)) "
    ;; Root SSH login by key lets `guix deploy` from a PC update this phone
    ;; (scripts/deploy.sh in the fxtec-pro1x-guix repository).  It is off
    ;; until you uncomment the line below.  ~/.ssh/pro1x-guix.pub is the
@@ -181,9 +184,9 @@ symbol exported by MODULE, a list of symbols, returns."
   )
 "))
 
-(define (pro1x-user-config-service module procedure)
+(define* (pro1x-user-config-service module procedure #:key (arguments ""))
   "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE,
-and /etc/guix/channels.scm.
+called with ARGUMENTS (see pro1x-user-config), and /etc/guix/channels.scm.
 
 Not through etc-service-type: an /etc entry under guix/ would turn the whole
 of /etc/guix into a read-only store link and hide the acl and signing keys
@@ -191,7 +194,8 @@ Guix writes there.  Like guix-service-type for its channels.scm, link each
 file in place at activation."
   (define files
     `(("config.scm" ,(plain-file "config.scm"
-                                 (pro1x-user-config module procedure)))
+                                 (pro1x-user-config module procedure
+                                                    #:arguments arguments)))
       ("channels.scm" ,pro1x-channels-file)))
 
   (simple-service
