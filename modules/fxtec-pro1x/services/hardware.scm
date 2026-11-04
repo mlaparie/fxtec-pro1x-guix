@@ -122,6 +122,10 @@
   ;; override it until reboot.
   (charge-limit       pro1x-hardware-charge-limit       (default 85))
   (charge-resume      pro1x-hardware-charge-resume      (default 80))
+  ;; Stay awake while charging, so a charge limit is seen in time even in
+  ;; suspend (kernels with the awake_charging switch: 7.3 with moWerk's
+  ;; charger patches); #f lets the phone sleep while it charges.
+  (charging-awake?    pro1x-hardware-charging-awake?    (default #t))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -225,7 +229,12 @@ white, #RRGGBB or #f")
          (let ((status (read-file "/sys/class/power_supply/battery/status"))
                (pct (string->number
                      (read-file "/sys/class/power_supply/battery/capacity")))
-               (held (equal? "N" (read-file "/sys/module/pro1x_charger_icl/parameters/charge_enable"))))
+               (held (member (or (read-file
+                                  (if (file-exists? "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+                                      "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                                      "/sys/class/power_supply/usb/device/charging_enabled"))
+                                 "")
+                             '("N" "0"))))
            (define (on colour pattern) (and colour (cons colour pattern)))
            (cond ((and (equal? status "Discharging") pct (<= pct #$low-level))
                   (on #$low blip))
@@ -784,13 +793,18 @@ esac
           (respawn? #t)))
         '())))
 
-(define (pro1x-charge-limit-program limit resume)
+(define* (pro1x-charge-limit-program limit resume #:optional (awake? #t))
   (program-file
    "pro1x-charge-limit"
    #~(begin
        (use-modules (ice-9 rdelim))
+       ;; The charger's switch: our patch's module parameter (7.1, Y/N) or
+       ;; the driver's charging_enabled attribute (moWerk's 7.3 series,
+       ;; 1/0); both take 1 and 0.
        (define param
-         "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+         (if (file-exists? "/sys/module/pro1x_charger_icl/parameters/charge_enable")
+             "/sys/module/pro1x_charger_icl/parameters/charge_enable"
+             "/sys/class/power_supply/usb/device/charging_enabled"))
        (define capacity "/sys/class/power_supply/battery/capacity")
        (define (read-file file)
          (false-if-exception (call-with-input-file file read-line)))
@@ -800,6 +814,13 @@ esac
          (format #t "~a%: charging ~a~%" (read-file capacity)
                  (if on? "allowed" "held off"))
          (force-output))
+       ;; config.scm's charging-awake?, where the kernel has the switch
+       ;; (pro1x-charger-awake-switch on moWerk's 7.3 charger patches).
+       (let ((switch "/sys/module/pro1x_charger_icl/parameters/awake_charging"))
+         (when (file-exists? switch)
+           (false-if-exception
+            (call-with-output-file switch
+              (lambda (port) (display #$(if awake? "Y" "N") port))))))
        (if (not (file-exists? param))
            (begin
              (format #t "~a missing: this kernel has no charge control~%"
@@ -822,7 +843,7 @@ esac
                                 (string->number (cadr fields))
                                 #$resume))
                     (pct (string->number (or (read-file capacity) "")))
-                    (on? (equal? "Y" (read-file param))))
+                    (on? (member (read-file param) '("Y" "1"))))
                (cond ((not pct) #t)
                      ((not limit)               ;off: charge to full
                       (unless on? (set-charging! #t)))
@@ -843,15 +864,19 @@ esac
           (start #~(make-forkexec-constructor
                     (list #$(pro1x-charge-limit-program
                              limit (and limit
-                                        (pro1x-hardware-charge-resume config))))
+                                        (pro1x-hardware-charge-resume config))
+                             (pro1x-hardware-charging-awake? config)))
                     #:log-file "/var/log/pro1x-charge-limit.log"))
           ;; Stopping the service lets the battery charge to full again.
           (stop #~(lambda (running . args)
                     (apply (make-kill-destructor) running args)
-                    (false-if-exception
-                     (call-with-output-file
-                         "/sys/module/pro1x_charger_icl/parameters/charge_enable"
-                       (lambda (port) (display "1" port))))
+                    (for-each
+                     (lambda (switch)
+                       (false-if-exception
+                        (call-with-output-file switch
+                          (lambda (port) (display "1" port)))))
+                     '("/sys/module/pro1x_charger_icl/parameters/charge_enable"
+                       "/sys/class/power_supply/usb/device/charging_enabled"))
                     #f))
           (respawn? #t)))))
 
