@@ -64,7 +64,7 @@ once, so combine changes in one expression:
 | hardware `cpu-mode` | `'auto` | the CPU's energy mode: `'auto` (balanced; battery while the screen is off or the battery is at 20 % or less), `'battery` (schedutil, capped at 1.31/1.40 GHz), `'balanced` (schedutil, dynamic), `'performance` (top frequency).  Quick actions (CPU mode line) override it until the next reboot, marked "(until reboot)" |
 | hardware `shake-torch?` | `#t` | shaking the phone twice runs `shake-action`, locked or not |
 | hardware `shake-action` | `'torch` | `'torch` toggles the torch; a string is a shell command, run in Sway (over the lock screen for `lock-screen-apps`) |
-| hardware `portrait-apps` | Calls, Camera (`org.pro1x.Camera`), Snapshot | app_ids (`swaymsg -t get_tree`) that turn the panel to portrait while focused (Sway) |
+| hardware `portrait-apps` | Calls, Snapshot | app_ids (`swaymsg -t get_tree`) that turn the panel to portrait while focused (Sway) |
 | hardware `landscape-apps` | none | the same, landscape |
 | hardware `fullscreen-apps` | Calls, Camera, Snapshot | app_ids made fullscreen when they open (Sway) |
 | hardware `lock-screen-apps` | Calls, Camera, Snapshot | app_ids allowed to open over the lock screen: an incoming call, the camera button's triple press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
