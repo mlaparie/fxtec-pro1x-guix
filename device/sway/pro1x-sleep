@@ -27,6 +27,47 @@
 # sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 
+# The modem's data path (IPA): over mobile data, its interrupt (136,
+# "ipa") ended each suspend within seconds (2026-11-02, pm_wakeup_irq).
+# Calls and SMS come through QRTR, which wakes for them (wake_ports).
+ipa=$(ls -d /sys/devices/platform/*/5840000.ipa/power/wakeup 2>/dev/null | head -n 1)
+# gpio-keys: the keyboard's slide switch (hall-switch) woke it (author:
+# only keys and the power key should); Volume Up, on the same device, no
+# longer wakes it either.  The keyboard (aw9523) and the power key are
+# devices of their own and still do.
+gpiokeys=/sys/devices/platform/gpio-keys/power/wakeup
+# Asleep: the status LED dim cyan (author, 2026-11-02), so a sleeping
+# phone is told from a dark one.  feedbackd is frozen meanwhile.
+led=/sys/class/leds/rgb:status
+led_asleep() {
+    [ -w "$led/pattern" ] || return 0
+    echo "0 255 255" > "$led/multi_intensity"
+    echo "6 1000 6 1000" > "$led/pattern"
+}
+# The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
+# rang only once something else woke it): the RTC's wake alarm, 5 s
+# (author: 20 was too long, waking is quick) before the earliest ring_time Clocks keeps (dconf reads the user's
+# settings without a session bus).  The RTC restarts from 0 at each boot,
+# so the alarm is set relative ("+seconds").  A wake by the RTC keeps the
+# phone up (suspend_loop), and Clocks rings.
+rtcwake=/sys/class/rtc/rtc0/wakealarm
+alarm_wake() {
+    [ -w "$rtcwake" ] || return 0
+    echo 0 > "$rtcwake"
+    times=$(su -s /run/current-system/profile/bin/sh "${SUDO_USER:-user}" \
+                -c "dconf read /org/gnome/clocks/alarms" 2>/dev/null |
+                grep -o "'ring_time': <'[^']*'>" | sed "s/.*<'\(.*\)'>/\1/")
+    now=$(date +%s) next=
+    for t in $times; do
+        at=$(date -d "$t" +%s 2>/dev/null) || continue
+        [ "$at" -gt $((now + 30)) ] || continue
+        if [ -z "$next" ] || [ "$at" -lt "$next" ]; then next=$at; fi
+    done
+    [ -n "$next" ] || return 0
+    echo "+$((next - now - 5))" > "$rtcwake" &&
+        logger -t pro1x-sleep "Clocks alarm at $(date -d "@$next" +%H:%M): RTC wake set"
+}
+led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
              /sys/devices/platform/*/*/4a8c000.serial/power/wakeup \
              2>/dev/null | head -n 1)
@@ -160,8 +201,16 @@ case "${1:-}" in
     suspend)
         panel off
         [ -n "$uart" ] && echo disabled > "$uart"
+        [ -n "$ipa" ] && echo disabled > "$ipa"
+        [ -w "$gpiokeys" ] && echo disabled > "$gpiokeys"
+        led_asleep
+        alarm_wake
         suspend_loop
+        [ -w "$rtcwake" ] && echo 0 > "$rtcwake"
         [ -n "$uart" ] && echo enabled > "$uart"
+        [ -n "$ipa" ] && echo enabled > "$ipa"
+        [ -w "$gpiokeys" ] && echo enabled > "$gpiokeys"
+        led_awake
         sleep 1                                  # a crash shows by then
         adsp_recover
         # After a resume iio-sensor-proxy kept its sensors but proximity

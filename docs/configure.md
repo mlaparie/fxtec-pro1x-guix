@@ -62,6 +62,7 @@ once, so combine changes in one expression:
 | hardware `low-battery-led`, `low-battery-level` | `"#FF4000"`, `15` | a short blip every 4 s at or below that % |
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  Quick actions (Charge limit line) override it until the next reboot, marked "(until reboot)" |
 | hardware `charging-awake?` | `#t` | stay awake while charging, so the limit is seen in time (Linux 7.3); `#f` lets it sleep |
+| hardware `auto-suspend` | `#f` | seconds after blanking before suspending, locking first (Sway); `#f` never |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
 | hardware `cpu-mode` | `'auto` | the CPU's energy mode: `'auto` (balanced; battery while the screen is off or the battery is at 20 % or less), `'battery` (schedutil, capped at 1.31/1.40 GHz), `'balanced` (schedutil, dynamic), `'performance` (top frequency).  Quick actions (CPU mode line) override it until the next reboot, marked "(until reboot)" |
