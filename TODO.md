@@ -26,10 +26,10 @@ a reflash drops every generation, the 7.1 fallback (182) included.
 
 **Suspend on 7.3 (2026-11-04):** smp2p-sleepstate aborted suspends, about 2 events a
 second from shake-to-torch's accelerometer stream.  `pro1x-sleep` stops that service
-first (generation 211); awaiting the author's test.
+first (generation 211).  Author: "Lock and suspend" works.
 
 **U-Boot menu:** `bootmenu` with a countdown at each boot and generation numbers from
-`/boot/extlinux/menu.env` (environment only).  Built by no CI yet, not flashed.
+`/boot/extlinux/menu.env` (environment only).  Not flashed yet: `flash.sh --boot-only`.
 
 **On the phone (2026-11-03):** generation 203, kernel 7.3.0, from `next` (which
 has 7.3 since 02218e5), over Tailscale.  `main` is behind: the phone's channel
