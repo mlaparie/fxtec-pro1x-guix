@@ -211,6 +211,14 @@
         "confidence": "confirmed (headless on the PC); inferred for the phone",
         "date": "2026-10-31",
         "source": "WAYLAND_DEBUG=1 gtklock log; scratchpad mock-up runs"
+      },
+      {
+        "title": "callaudiod 0.1.9 never finds PipeWire's card profiles",
+        "general": "callaudiod compares a card's profile name with exactly \"HiFi\" or \"Voice Call\"; PipeWire names them \"HiFi (Mic, Speaker)\" and \"Voice Call (Earpiece, Mic)\". Without a match the card stays on HiFi and the Voice Call verb never runs. Match the verb as a prefix.",
+        "instance": "packages/callaudiod-voice-profile.patch, libcallaudio/pro1x. Before it: no call sound on 7.1 or 7.3, Sway and Phosh alike. With it: sound both ways, earpiece and speaker (author, generation 217, 2026-11-04). Why calls had sound some days earlier was not traced.",
+        "confidence": "confirmed",
+        "date": "2026-11-04",
+        "source": "9ed5ee8; phone"
       }
     ],
     "ci": [

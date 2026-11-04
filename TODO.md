@@ -61,6 +61,16 @@ but the author still saw the lock screen.  Last incoming call logged before this
 tested: incoming on 4G with 7.1 (#182).  Restore after a test, order matters:
 `lte|umts|gsm|cdma-1x|cdma-1xevdo|td-scdma` gives acquisition order lte, umts, gsm, ...
 
+**Call sound (2026-11-04):** works on 7.3, 3G, generation 217: both ways, earpiece and
+speaker, both directions of call, first call after a boot (one such call; the first in 216
+was silent).  Fixes: `callaudiod` patch, session restarted around the speaker button, session
+waits for the keep-alive streams.  Generation 218 shortens the silence at the button (217: a
+few seconds): needs a reboot and a call.  Earpiece profile shows `Spk0 SPK PA` on; the
+author heard the earpiece, not looked into.  Uplink has no DSP noise or echo processing (TX
+topology NONE); speaker calls may echo, ECNS topology not tried.  Still open: incoming on 4G,
+~2 s of lock screen on an incoming call, `Unbalanced enable for IRQ 199` once per boot at the
+first call (no effect seen).
+
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.
 

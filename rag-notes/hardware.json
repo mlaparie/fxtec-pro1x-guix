@@ -3,12 +3,12 @@
   "note": "Findings about the F(x)tec Pro¹x (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
   "boot_chain": [
    {
-     "title": "U-Boot's bootmenu can show a menu at every boot through the environment alone",
-     "general": "On qcom phone builds, bootretry=1 ends an extlinux menu at once, since endtime is unset before bootcmd. bootmenu has its own loop: bootmenu N counts down, bootmenu -1 waits for a key. env import -t in preboot can load labels and the delay from a file on disk, so they change without a reflash.",
-     "instance": "Pro¹x, U-Boot environment in packages/uboot.scm, labels from /boot/extlinux/menu.env. Author's test with -1: menu waits, keys work, a previous entry boots; with 15, the countdown worked and the default entry booted (author's test).",
-     "confidence": "confirmed",
-     "date": "2026-11-04",
-     "source": "dd1a33f; phone, 2026-11-04"
+    "title": "U-Boot's bootmenu can show a menu at every boot through the environment alone",
+    "general": "On qcom phone builds, bootretry=1 ends an extlinux menu at once, since endtime is unset before bootcmd. bootmenu has its own loop: bootmenu N counts down, bootmenu -1 waits for a key. env import -t in preboot can load labels and the delay from a file on disk, so they change without a reflash.",
+    "instance": "Pro¹x, U-Boot environment in packages/uboot.scm, labels from /boot/extlinux/menu.env. Author's test with -1: menu waits, keys work, a previous entry boots; with 15, the countdown worked and the default entry booted (author's test).",
+    "confidence": "confirmed",
+    "date": "2026-11-04",
+    "source": "dd1a33f; phone, 2026-11-04"
    },
    {
     "title": "Qualcomm ABL rejects a U-Boot arm64 Image whose header text_offset is not zero",
@@ -163,12 +163,12 @@
   ],
   "storage_and_fde": [
    {
-     "title": "Passphrase prompt on the phone: console, keyboard and timing",
-     "general": "A generation whose initrd tries small LUKS files on a plain root tests the prompt, keyboard and Argon2 cost without wiping anything. The initrd's static Guile has no ioctl symbol and no udev or losetup: find the partition through /sys/class/block/*/uevent PARTNAME and set up the loop with a small static program. cryptsetup 2.8 aborts on --tries 0.",
-     "instance": "Pro¹x, generations 212-213: readable in landscape, letters and digits right without Fn, no echo; partition found at 2.4 s; Argon2id 256 MiB, 4 passes, unlock 8 s including typing 10 digits. Real layout on UFS not flashed yet.",
-     "confidence": "confirmed",
-     "date": "2026-11-04",
-     "source": "e22f09a, ea785eb; author's test"
+    "title": "Passphrase prompt on the phone: console, keyboard and timing",
+    "general": "A generation whose initrd tries small LUKS files on a plain root tests the prompt, keyboard and Argon2 cost without wiping anything. The initrd's static Guile has no ioctl symbol and no udev or losetup: find the partition through /sys/class/block/*/uevent PARTNAME and set up the loop with a small static program. cryptsetup 2.8 aborts on --tries 0.",
+    "instance": "Pro¹x, generations 212-213: readable in landscape, letters and digits right without Fn, no echo; partition found at 2.4 s; Argon2id 256 MiB, 4 passes, unlock 8 s including typing 10 digits. Real layout on UFS not flashed yet.",
+    "confidence": "confirmed",
+    "date": "2026-11-04",
+    "source": "e22f09a, ea785eb; author's test"
    },
    {
     "title": "cryptsetup cannot open LUKS2 at an offset; use a loop device with losetup -o",
@@ -299,6 +299,22 @@
     "confidence": "confirmed",
     "date": "2026-10-30",
     "source": "DAPM/PCM logs /root/pops/082612 and the AMPS_OFF run on the phone; commit 2624e73, generation 30; the author no longer hears the pops (2026-10-30)"
+   },
+   {
+    "title": "A q6voice session does not survive its codec DMA port stopping",
+    "general": "The hostless voice PCM stays PREPARED, so another front end must keep the back end started. If that stream closes during a call (a card profile switch does), the other side stays silent even after the port and mixer are back; closing and reopening the voice PCM brings the sound back. Open the voice PCM after the keep-alive streams run.",
+    "instance": "Pro1x, 7.3.0, generations 216-217, 2026-11-04. #216: speaker on cut the sound, speaker off did not restore it, mixer identical. #217 restarts pro1x-voicepcm around the switch: earpiece, speaker and back all had sound both ways (author). The stopped port as the mechanism is inferred; the symptom and the cure are confirmed. The one silent call in #216 was the first after a boot, with pro1x-voicepcm powering the codec before the keep-alive stream; in #217's first call after a boot PipeWire did that and there was sound: two calls.",
+    "confidence": "confirmed (symptom and cure), inferred (mechanism)",
+    "date": "2026-11-04",
+    "source": "device/audio/pro1x-voice-call; author's test calls; call-audio log"
+   },
+   {
+    "title": "Calls have no microphone processing on the phone: TX topology is NONE",
+    "general": "The q6voice driver's voice TX topology control decides whether the DSP runs echo and noise reduction on the uplink. VSS_IVOCPROC_TOPOLOGY_ID_NONE means none. Noise or echo behaviour heard on the far end then comes from outside the phone's DSP chain.",
+    "instance": "Pro1x, 7.3.0: 'VoiceMMode1 TX Topology' = 69488 (0x10F70, NONE), RX = 69495 (0x10F77, default). TX_SM_ECNS is 0x10F71, not tried; it may need calibration. Whether the modem processes the uplink further is not known.",
+    "confidence": "confirmed (mixer value, patch's defines)",
+    "date": "2026-11-04",
+    "source": "amixer contents; device/kernel/patches-7.3/0004-pro1x-q6voice.patch"
    }
   ],
   "sensors": [
@@ -328,24 +344,24 @@
     "date": "2026-11-02",
     "source": "headless libcamerasrc test (agent's camtest.py through the camera app's environment), v4l2-ctl on the subdev; libcamera src/ipa/simple/soft_simple.cpp configure() takes exposureMax from configInfo.sensorControls"
    },
-      {
-        "title": "A flash LED in the sensor's flash-leds, without V4L2 flash support, can leave a camera without media links",
-        "general": "When a device tree links a flash LED to a sensor, camss's async notifier may wait for a V4L2 flash subdevice. Without the kernel option that subdevice never registers. Check for 0 links in media-ctl first, then compare the config with a working port.",
-        "instance": "Pro1x, 7.3.0, patch 0027 flash-leds on the rear camera; imx582 and s5k4h7 present with 0 links, libcamera reports no camera, CONFIG_V4L2_FLASH_LED_CLASS not set although LEDS_CLASS_FLASH and LEDS_QCOM_FLASH are =m. moWerk's sfos.fragment sets it =m; it was the only camera-related difference found between his fragment and our config. Booted 2026-11-04 (generation 210): both sensors have links, white:flash-0 and dw9800 are entities, cam -l lists back and front, and the author reports the camera app more or less works. The notifier wait itself was not traced.",
-        "confidence": "confirmed that the option fixes it; mechanism inferred",
-        "date": "2026-11-04",
-        "source": "media-ctl and cam -l on the phone; moWerk kernel/sfos.fragment:70 and HANDOVER.md; device/kernel/pro1x-7.3.fragment"
-      }
-    ],
-    "haptics": [
-      {
-        "title": "AW86224: the stock waveform file holds plain sine bursts",
-        "general": "Before seeking a vendor's haptic blob, decode it: this one is a table of start and end addresses and full-amplitude sines, which a free driver can generate. The vendor's sharper feel likely comes from playing from chip memory rather than continuous drive.",
-        "instance": "aw8622x_haptic.bin (1222 bytes, TheMuppets vendor repo): 2-byte checksum, base address 0, version 0x55, waves of 330, 809 and 59 samples, 60 samples per cycle (200 Hz at the driver's 12 kHz). LineageOS aw8622x.c uses wave 2 for short effects, a looped long wave otherwise. Not tried on the phone yet.",
-        "confidence": "confirmed for the file and driver source; the feel is inferred",
-        "date": "2026-11-03",
-        "source": "github.com/TheMuppets/proprietary_vendor_fxtec_pro1x; github.com/LineageOS/android_kernel_fxtec_sm6115"
-      }
-    ]
+   {
+    "title": "A flash LED in the sensor's flash-leds, without V4L2 flash support, can leave a camera without media links",
+    "general": "When a device tree links a flash LED to a sensor, camss's async notifier may wait for a V4L2 flash subdevice. Without the kernel option that subdevice never registers. Check for 0 links in media-ctl first, then compare the config with a working port.",
+    "instance": "Pro1x, 7.3.0, patch 0027 flash-leds on the rear camera; imx582 and s5k4h7 present with 0 links, libcamera reports no camera, CONFIG_V4L2_FLASH_LED_CLASS not set although LEDS_CLASS_FLASH and LEDS_QCOM_FLASH are =m. moWerk's sfos.fragment sets it =m; it was the only camera-related difference found between his fragment and our config. Booted 2026-11-04 (generation 210): both sensors have links, white:flash-0 and dw9800 are entities, cam -l lists back and front, and the author reports the camera app more or less works. The notifier wait itself was not traced.",
+    "confidence": "confirmed that the option fixes it; mechanism inferred",
+    "date": "2026-11-04",
+    "source": "media-ctl and cam -l on the phone; moWerk kernel/sfos.fragment:70 and HANDOVER.md; device/kernel/pro1x-7.3.fragment"
+   }
+  ],
+  "haptics": [
+   {
+    "title": "AW86224: the stock waveform file holds plain sine bursts",
+    "general": "Before seeking a vendor's haptic blob, decode it: this one is a table of start and end addresses and full-amplitude sines, which a free driver can generate. The vendor's sharper feel likely comes from playing from chip memory rather than continuous drive.",
+    "instance": "aw8622x_haptic.bin (1222 bytes, TheMuppets vendor repo): 2-byte checksum, base address 0, version 0x55, waves of 330, 809 and 59 samples, 60 samples per cycle (200 Hz at the driver's 12 kHz). LineageOS aw8622x.c uses wave 2 for short effects, a looped long wave otherwise. Not tried on the phone yet.",
+    "confidence": "confirmed for the file and driver source; the feel is inferred",
+    "date": "2026-11-03",
+    "source": "github.com/TheMuppets/proprietary_vendor_fxtec_pro1x; github.com/LineageOS/android_kernel_fxtec_sm6115"
+   }
+  ]
  }
 }
