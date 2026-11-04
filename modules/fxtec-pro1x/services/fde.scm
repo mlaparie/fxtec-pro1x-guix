@@ -14,10 +14,14 @@
 ;;; program (the initrd's static Guile has no ioctl).  The rest is Guix's own
 ;;; luks-device-mapping.
 ;;;
-;;; State: tested in QEMU, not yet on the phone (screen, keyboard, UFS timing).
+;;; Nothing in the configuration says which layout a phone has: it cannot be set
+;;; wrong.  Every system has the unlock tools in its initrd (about 1.6 MB), which
+;;; reads the layout from the disk, and asks for a passphrase only on this one.
+;;; The plain area is mounted the same way, if it exists (services/boot.scm).
+;;;
+;;; State: encrypted layout tested in QEMU, not yet flashed on the phone (UFS timing).
 
 (define-module (fxtec-pro1x services fde)
-  #:use-module (gnu system file-systems)
   #:use-module (gnu system linux-initrd)
   #:use-module (gnu system mapped-devices)
   #:use-module (guix gexp)
@@ -26,7 +30,6 @@
   #:autoload   (fxtec-pro1x packages misc) (pro1x-loop-offset)
   #:export (%pro1x-boot-area-mib
             %pro1x-fde-mapped-devices
-            %pro1x-fde-file-systems
             pro1x-fde-initrd
             pro1x-fde-prompt-test-initrd
             luks-pro1x-device-mapping))
@@ -60,17 +63,32 @@
             (and (> seconds 0)
                  (begin (sleep 1) (wait-for-partition (- seconds 1))))))
 
+      ;; The encrypted layout starts with the plain area: the label of the ext4 at
+      ;; the partition's start (superblock at 1024, label 120 further), which on an
+      ;; unencrypted phone is the root's, "guix".  What lies at the container's
+      ;; offset would not do: there, a plain root can hold anything.
+      (define (encrypted-layout? device)
+        (false-if-exception
+         (call-with-input-file device
+           (lambda (port)
+             (seek port (+ 1024 120) SEEK_SET)
+             (equal? (get-bytevector-n port 9)
+                     (string->utf8 "guixboot\x00")))
+           #:binary #t)))
+
       (let ((device (wait-for-partition 60)))
         (unless device
           (format #t "partition ~a not found~%" part-name))
-        (and device
-             (zero? (system* #$(file-append pro1x-loop-offset
-                                            "/bin/pro1x-loop-offset")
-                             #$%pro1x-luks-loop device
-                             #$(number->string
-                                (* %pro1x-boot-area-mib 1024 1024))))
-             #$(apply (mapped-device-kind-open luks-device-mapping)
-                      %pro1x-luks-loop targets options)))))
+        ;; Otherwise nothing to do: Guix goes on to find the root by its label.
+        (or (not device)
+            (not (encrypted-layout? device))
+            (and (zero? (system* #$(file-append pro1x-loop-offset
+                                                "/bin/pro1x-loop-offset")
+                                 #$%pro1x-luks-loop device
+                                 #$(number->string
+                                    (* %pro1x-boot-area-mib 1024 1024))))
+                 #$(apply (mapped-device-kind-open luks-device-mapping)
+                          %pro1x-luks-loop targets options))))))
 
 (define luks-pro1x-device-mapping
   (mapped-device-kind
@@ -91,26 +109,8 @@
     ;; (luks_try_token_unlock: Assertion `tries >= 1').
     (arguments '(#:extra-options ("--tries" "1000000"))))))
 
-(define %pro1x-fde-file-systems
-  (list
-   ;; Hides nothing the system needs, and a system that cannot mount it still
-   ;; runs: only the boot menu's updates depend on it.
-   (file-system
-     (device (file-system-label "guixboot"))
-     (mount-point "/boot")
-     (type "ext4")
-     (check? #f)
-     (mount-may-fail? #t)
-     (create-mount-point? #t)
-     (flags '(no-atime)))
-   (file-system
-     (device (file-system-label "guix"))
-     (mount-point "/")
-     (type "ext4")
-     (flags '(no-atime)))))
-
 (define (pro1x-fde-initrd devices)
-  "Return an initrd procedure for an operating-system that always opens DEVICES.
+  "Return an initrd procedure for an operating-system that always runs DEVICES' open.
 The initrd is the only place that does: they are not in the system's
 mapped-devices, nor dependencies of its root.  `guix system image' replaces the
 root file system with one without dependencies (operating-system-for-image), so

@@ -2,6 +2,7 @@
 """Boot a userdata image from scripts/flash-encrypted.sh in QEMU.
 
   fde-qemu-test.py USERDATA.IMG PASSPHRASE [--disk-gib N] [--entry N] [--keep]
+  fde-qemu-test.py --plain ROOT.EXT4 [--disk-gib N] [--entry N] [--keep]
 
 Puts the image in a GPT partition named "userdata" on a sparse virtual disk,
 reads the plain area the way U-Boot does (/boot/extlinux/extlinux.conf, entry
@@ -9,6 +10,7 @@ N), and boots that kernel and initrd on QEMU's "virt" machine, whose virtio and
 PL011 drivers the phone's kernel has.  Types a wrong passphrase, then the right
 one, then waits for SSH on localhost:2222 (root, ~/.ssh/pro1x-guix) and leaves
 the machine running until Ctrl-C or SIGTERM.  Serial output: DISK.console.log.
+With --plain, the unencrypted layout: the same system must boot without asking.
 
 What this covers: the initrd's unlock, retry, resize, Shepherd, deploys.  What
 it does not: U-Boot, UFS timing, the panel, the keyboard, every service that
@@ -45,10 +47,10 @@ def make_disk(image, disk, gib):
         "status=none")
 
 
-def debugfs_read(disk, path, out=None):
-    """Read PATH from the plain area, which starts at 1 MiB on DISK."""
+def debugfs_read(disk, path, out=None, area_mib=512):
+    """Read PATH from the file system that starts at 1 MiB on DISK."""
     plain = disk.with_suffix(".plain")
-    run("dd", f"if={disk}", f"of={plain}", "bs=1M", "skip=1", "count=512", "status=none")
+    run("dd", f"if={disk}", f"of={plain}", "bs=1M", "skip=1", f"count={area_mib}", "status=none")
     if out:
         run("debugfs", "-R", f"dump {path} {out}", str(plain),
             stderr=subprocess.DEVNULL)
@@ -72,24 +74,28 @@ def boot_entry(conf, number):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image", type=pathlib.Path)
-    ap.add_argument("passphrase")
+    ap.add_argument("passphrase", nargs="?")
+    ap.add_argument("--plain", action="store_true")
     ap.add_argument("--disk-gib", type=int, default=24)
     ap.add_argument("--entry", type=int, default=1)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--initrd", help="boot this initrd instead of the plain area's")
     args = ap.parse_args()
+    if not args.plain and args.passphrase is None:
+        ap.error("the passphrase is needed without --plain")
 
     disk = args.image.with_suffix(".raw")
     if not (args.keep and disk.exists()):
         make_disk(args.image, disk, args.disk_gib)
 
-    conf = debugfs_read(disk, BOOT_CONF)
+    area_mib = args.image.stat().st_size // MIB + 1 if args.plain else 512
+    conf = debugfs_read(disk, BOOT_CONF, area_mib=area_mib)
     kernel, initrd, append = boot_entry(conf, args.entry)
     print(f"entry {args.entry}: {kernel}\n  {initrd}\n  {append}", flush=True)
     work = disk.with_suffix(".boot")
     work.mkdir(exist_ok=True)
-    debugfs_read(disk, kernel, work / "Image")
-    debugfs_read(disk, initrd, work / "initrd")
+    debugfs_read(disk, kernel, work / "Image", area_mib)
+    debugfs_read(disk, initrd, work / "initrd", area_mib)
     for f in ("Image", "initrd"):
         if not (work / f).stat().st_size:
             sys.exit(f"cannot read {f} from the plain area: U-Boot could not either")
@@ -135,13 +141,14 @@ def main():
         qemu.stdin.flush()
 
     try:
-        wait_for_prompt(1, 900)
-        print("prompt 1: sending a wrong passphrase", flush=True)
-        send("wrong")
-        wait_for_prompt(2, 300)
-        print("prompt 2: asked again; sending the right one", flush=True)
+        if not args.plain:
+            wait_for_prompt(1, 900)
+            print("prompt 1: sending a wrong passphrase", flush=True)
+            send("wrong")
+            wait_for_prompt(2, 300)
+            print("prompt 2: asked again; sending the right one", flush=True)
+            send(args.passphrase)
         unlock_from = time.time()
-        send(args.passphrase)
         end = time.time() + 1800
         while time.time() < end and qemu.poll() is None:
             try:
@@ -156,6 +163,8 @@ def main():
             time.sleep(5)
         else:
             sys.exit(f"SSH did not come up; see {log.name}")
+        if args.plain and prompts:
+            sys.exit(f"the plain layout asked for a passphrase; see {log.name}")
         print("READY", flush=True)
         qemu.wait()
     finally:

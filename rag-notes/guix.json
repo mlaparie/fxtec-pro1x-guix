@@ -335,6 +335,30 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "commits 0bc8d46, 453deb8"
+      },
+      {
+        "title": "A setting that describes the disk is better read from the disk",
+        "general": "A system option that must match how the device was flashed cannot be checked when evaluating the configuration on another machine, and a wrong value gives a generation that does not boot. Letting the initrd read the layout removes the setting. A file-system entry for a partition that may not exist is the wrong tool for an optional mount: use a one-shot service.",
+        "instance": "#:encrypted? removed. Every initrd has cryptsetup and the loop helper (12.3 to 13.9 MB) and unlocks only if the ext4 at the start of userdata is labelled guixboot; what lies at the container's offset could be file data on a plain root. pro1x-boot-area mounts that label at /boot with mount -L, and is a no-op without it.",
+        "confidence": "confirmed",
+        "date": "2026-11-04",
+        "source": "eed6ca6; QEMU on both layouts; plain layout on the phone, generation 215"
+      },
+      {
+        "title": "operating-system-for-image drops a root's mapped devices",
+        "general": "guix system image replaces the root file system with one without dependencies, so mapped devices fall out of the image's initrd, and Guix then opens them from Shepherd. Forcing #:mapped-devices through an initrd procedure, with none in the operating-system, keeps the unlock in the initrd for images and generations alike.",
+        "instance": "Seen as an exception loading shepherd.conf in QEMU. pro1x-fde-initrd in services/fde.scm.",
+        "confidence": "confirmed",
+        "date": "2026-11-04",
+        "source": "services/fde.scm, tools/fde-qemu-test.py"
+      },
+      {
+        "title": "An older generation's services stay in charge until the next boot",
+        "general": "After booting an older generation and deploying, Shepherd still runs that generation's services until a reboot. What a newer service would have written does not appear. guix system list-generations marks the newest profile as current; /run/booted-system tells what runs.",
+        "instance": "Booted #211, deployed #215: menu.env kept its labels, because the service in #211 predates menu.env (dd1a33f), so the first entry read #214 while booting #215. Corrected by the boot into #215.",
+        "confidence": "confirmed",
+        "date": "2026-11-04",
+        "source": "phone, 2026-11-04; git log device/boot/pro1x-boot-menu"
       }
     ],
     "licensing": [

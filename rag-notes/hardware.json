@@ -3,6 +3,14 @@
   "note": "Findings about the F(x)tec Pro¹x (QX1050, SM6115) that hold under any OS, seen while porting Guix System. Only what this port measured or had to solve; the much larger hardware corpus for this phone is moWerk's sailfish-rag Mainline/ (read-only reference, see README). Seeded 2026-10-28 from this repository's git history and TODO.md; entries labelled handover were not re-checked on the device.",
   "boot_chain": [
    {
+     "title": "U-Boot's bootmenu can show a menu at every boot through the environment alone",
+     "general": "On qcom phone builds, bootretry=1 ends an extlinux menu at once, since endtime is unset before bootcmd. bootmenu has its own loop: bootmenu N counts down, bootmenu -1 waits for a key. env import -t in preboot can load labels and the delay from a file on disk, so they change without a reflash.",
+     "instance": "Pro¹x, U-Boot environment in packages/uboot.scm, labels from /boot/extlinux/menu.env. Author's test with -1: menu waits, keys work, a previous entry boots; with 15, the countdown worked and the default entry booted (author's test).",
+     "confidence": "confirmed",
+     "date": "2026-11-04",
+     "source": "dd1a33f; phone, 2026-11-04"
+   },
+   {
     "title": "Qualcomm ABL rejects a U-Boot arm64 Image whose header text_offset is not zero",
     "general": "The Qualcomm Android bootloader (ABL) checks the arm64 Image header of the kernel in the boot image. A U-Boot binary built with a negative text_offset (bytes 8-15 of the header) is refused and the phone falls straight back to fastboot, with no message. Zero text_offset as Linux does, gzip the image, and append the DTB after the gzip stream so ABL hands it to U-Boot in x0.",
     "instance": "Pro¹x, U-Boot packed as an Android boot image in boot_a/boot_b by scripts/flash.sh. U-Boot's header had text_offset = -0x80000000. The NixOS port already did this; the Guix flash script had missed it. --second was dropped once the DTB was appended.",
@@ -154,6 +162,14 @@
    }
   ],
   "storage_and_fde": [
+   {
+     "title": "Passphrase prompt on the phone: console, keyboard and timing",
+     "general": "A generation whose initrd tries small LUKS files on a plain root tests the prompt, keyboard and Argon2 cost without wiping anything. The initrd's static Guile has no ioctl symbol and no udev or losetup: find the partition through /sys/class/block/*/uevent PARTNAME and set up the loop with a small static program. cryptsetup 2.8 aborts on --tries 0.",
+     "instance": "Pro¹x, generations 212-213: readable in landscape, letters and digits right without Fn, no echo; partition found at 2.4 s; Argon2id 256 MiB, 4 passes, unlock 8 s including typing 10 digits. Real layout on UFS not flashed yet.",
+     "confidence": "confirmed",
+     "date": "2026-11-04",
+     "source": "e22f09a, ea785eb; author's test"
+   },
    {
     "title": "cryptsetup cannot open LUKS2 at an offset; use a loop device with losetup -o",
     "general": "cryptsetup's --offset applies to plain and loop-AES mappings, not LUKS2. To place a LUKS2 container after an unencrypted region on the same partition, expose the region with losetup -o <bytes> and open LUKS2 on the loop device. The kernel needs CONFIG_BLK_DEV_LOOP=y if this happens in the initrd.",

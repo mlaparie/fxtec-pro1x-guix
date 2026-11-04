@@ -14,6 +14,7 @@ OPT_UBOOT=""
 OPT_DTB=""
 OPT_ROOTFS=""
 OPT_BOOT_ONLY=false
+OPT_ENCRYPT=false
 OPT_OUTPUT=""
 VERBOSE=false
 
@@ -130,15 +131,16 @@ Options:
   --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
   --system FILE    Guix system .scm (prompted interactively if omitted)
   --boot-only      Flash U-Boot alone (boot_a, boot_b): userdata is kept
+  --encrypt        LUKS2 full-disk encryption (flash-encrypted.sh), asks for the
+                   passphrase; mobile.scm only.  With --rootfs: an image that
+                   finds the layout itself (built after 2026-11-04)
   --output DIR     Write the images to DIR and stop: nothing is flashed
   -v, --verbose    Show all dd progress and suppress no stderr output
   -h, --help       Show this help
 
 Systems in systems/:
-  mobile.scm           The phone system, unencrypted userdata  [default]
+  mobile.scm           The phone system  [default]
   minimal.scm          Headless, SSH only (fast build, good for testing)
-  mobile-encrypted.scm The phone system, LUKS2 full-disk encryption
-                       (delegates to flash-encrypted.sh automatically)
 
 Artifact discovery (tried in order for both U-Boot and rootfs):
   1. Explicit flag (--uboot / --rootfs)
@@ -167,6 +169,7 @@ while [[ $# -gt 0 ]]; do
         --rootfs)       OPT_ROOTFS="$2"; shift 2 ;;
         --system)       SYSTEM="$2";     shift 2 ;;
         --boot-only)    OPT_BOOT_ONLY=true; shift ;;
+        --encrypt)      OPT_ENCRYPT=true; shift ;;
         --output)       OPT_OUTPUT="$2"; shift 2 ;;
         -v|--verbose)   VERBOSE=true;    shift ;;
         -h|--help)      show_help; exit 0 ;;
@@ -174,6 +177,10 @@ while [[ $# -gt 0 ]]; do
         *) die "Unknown argument: $1  (try --help)" ;;
     esac
 done
+# Only the mobile system's initrd can unlock the disk.
+if [[ "$OPT_ENCRYPT" == true && "$SYSTEM" != "systems/mobile.scm" ]]; then
+    die "--encrypt needs systems/mobile.scm"
+fi
 
 # ── Tool environment ──────────────────────────────────────────────────────────
 # Re-exec inside guix shell for a reproducible tooling environment.
@@ -198,7 +205,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 # ── Select system (when we'll need to build one) ──────────────────────────────
 # Prompt only if no --system flag, no --rootfs flag, and no local rootfs.img.
-if [[ -z "$OPT_ROOTFS" && "$OPT_BOOT_ONLY" == false && "$SYSTEM" == "systems/mobile.scm" ]]; then
+if [[ -z "$OPT_ROOTFS" && "$OPT_BOOT_ONLY" == false && "$OPT_ENCRYPT" == false && "$SYSTEM" == "systems/mobile.scm" ]]; then
     mapfile -t SCMS < <(ls systems/*.scm 2>/dev/null | sort)
     if [[ ${#SCMS[@]} -gt 1 ]]; then
         echo "Available systems:"
@@ -307,12 +314,15 @@ if [[ "$OPT_BOOT_ONLY" == true ]]; then
 fi
 
 # Encrypted path: find the disk image here, export everything, delegate assembly.
-if [[ "$SYSTEM" == "systems/mobile-encrypted.scm" ]]; then
-    echo "==> System image ($SYSTEM)"
-    DISK_IMAGE=$(guix_select_or_build "system image" \
-        guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
-    [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
-    export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE" _OUTPUT_DIR="$OPT_OUTPUT"
+if [[ "$OPT_ENCRYPT" == true ]]; then
+    DISK_IMAGE=""
+    if [[ -z "$OPT_ROOTFS" ]]; then
+        echo "==> System image ($SYSTEM)"
+        DISK_IMAGE=$(guix_select_or_build "system image" \
+            guix system image --image-type=efi-raw --system="$ARCH" -L modules "$SYSTEM")
+        [[ -f "$DISK_IMAGE" ]] || die "System image not found: $DISK_IMAGE"
+    fi
+    export _UBOOT_BIN="$UBOOT_BIN" _UBOOT_DTB="$UBOOT_DTB" _DISK_IMAGE="$DISK_IMAGE" _ROOTFS="$OPT_ROOTFS" _OUTPUT_DIR="$OPT_OUTPUT"
     exec bash "$SCRIPT_DIR/flash-encrypted.sh"
 fi
 

@@ -32,10 +32,9 @@
   ;; Must equal the value compiled into U-Boot (make-u-boot-pro1x).
   (generations pro1x-boot-menu-generations (default 3))
   ;; Seconds U-Boot's menu counts down at each boot before the current system
-  ;; (0: none).  Takes effect at the next boot, no reflash: it is in menu.env.
-  (delay pro1x-boot-menu-delay (default 3))
-  ;; The root is encrypted: keep the plain area up to date (services/fde.scm).
-  (encrypted? pro1x-boot-menu-encrypted? (default #f)))
+  ;; (0: none, -1: wait for a key).  Takes effect at the next boot, no reflash: it is
+  ;; in menu.env.
+  (delay pro1x-boot-menu-delay (default 15)))
 
 ;;; device/boot/pro1x-boot-menu.  Guix's extlinux.conf has no "Default" entry,
 ;;; unlike NixOS's in modules/boot-menu.nix: the current system is entry 1, then
@@ -48,24 +47,44 @@
       #~(begin
           (setenv "PATH" (string-append #$coreutils "/bin:" #$gawk "/bin:"
                                         #$sed "/bin"))
-          (execl #$(file-append bash-minimal "/bin/sh") "sh"
+          (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
                  #$(local-file (repository-file "device/boot/pro1x-boot-menu"))
-                 #$@(if (pro1x-boot-menu-encrypted? config)
-                        '("--plain-area" "/boot" "/boot/extlinux/extlinux.conf"
-                          "/boot/boot/extlinux")
-                        '("/boot/extlinux/extlinux.conf" "/boot/extlinux"))
-                 #$n #$delay)))))
+                 (append
+                  ;; /boot is a mount of its own: the encrypted layout's plain
+                  ;; area, which pro1x-boot-area found (services/fde.scm).
+                  (if (= (stat:dev (stat "/boot")) (stat:dev (stat "/")))
+                      '("/boot/extlinux/extlinux.conf" "/boot/extlinux")
+                      '("--plain-area" "/boot" "/boot/extlinux/extlinux.conf"
+                        "/boot/boot/extlinux"))
+                  (list #$n #$delay)))))))
 
 (define (pro1x-boot-menu-shepherd-services config)
   (if (> (pro1x-boot-menu-generations config) 0)
       (let ((split (pro1x-boot-menu-split-script config)))
         (list
+         ;; Not in file-systems: the system does not say which layout it is on,
+         ;; and a file system there that is not found stops `guix system
+         ;; reconfigure' and delays the boot.  A system that cannot mount it still
+         ;; runs: only the boot menu's updates depend on it.
+         (shepherd-service
+          (provision '(pro1x-boot-area))
+          (requirement '(root-file-system))
+          (one-shot? #t)
+          (documentation "Mount the plain area of an encrypted phone at /boot,
+if this phone has one.")
+          (start
+           #~(lambda _
+               (false-if-exception (mkdir "/boot"))
+               (when (= (stat:dev (stat "/boot")) (stat:dev (stat "/")))
+                 (system* #$(file-append util-linux "/bin/mount")
+                          "-o" "noatime" "-L" "guixboot" "/boot"))
+               #t)))
          ;; Not a one-shot: the slots must follow every rewrite of
          ;; extlinux.conf (deploy, reconfigure, and delete-generations,
          ;; roll-back, switch-generation run on the phone), not only boot.
          (shepherd-service
           (provision '(pro1x-boot-menu))
-          (requirement '(file-systems))
+          (requirement '(file-systems pro1x-boot-area))
           (documentation "Write the U-Boot menu's files under /boot
 at start and whenever extlinux.conf changes.")
           (start

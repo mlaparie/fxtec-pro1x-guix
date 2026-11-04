@@ -64,7 +64,7 @@ Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested
-Full-disk encryption             QEMU only  systems/mobile-encrypted.scm + flash-encrypted.sh
+Full-disk encryption             QEMU only  flash.sh --encrypt
 ```
 
 ## Layout
@@ -76,13 +76,12 @@ modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels,
                              fde, hardware, keyboard, modem, sensors, usb-network
 systems/minimal.scm          Console + SSH system (baseline)
 systems/mobile.scm           Sway, Phosh and Sxmo sessions (greetd/tuigreet)
-systems/mobile-encrypted.scm mobile.scm with LUKS2 full-disk encryption
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
                              FDE helpers (xts-encrypt.c)
 scripts/backup-stock.sh      Back up modem EFS and boot partitions before flashing
 scripts/flash.sh             Initial flash (plain)
-scripts/flash-encrypted.sh   Initial flash with LUKS2 (through flash.sh)
+scripts/flash-encrypted.sh   Initial flash with LUKS2 (flash.sh --encrypt)
 tools/                       On-device diagnostics (haptics-tune, cam-focus, sensors-check)
 channels.scm                 Channel descriptor (unpinned)
 channels-lock.scm            Pinned channel commits for reproducible local builds
@@ -283,8 +282,10 @@ there).
 Tested in QEMU only so far (`tools/fde-qemu-test.py`), not on a phone.  The screen,
 the slide-out keyboard at the prompt, and U-Boot on this layout are unproven.
 
-`#:encrypted? #t` in `pro1x-mobile-operating-system` (`systems/mobile-encrypted.scm`
-has it).  It has to match how the phone was flashed.  Userdata layout:
+Encryption is chosen at the flash, and there is nothing to set in `config.scm`: the
+same system boots on both layouts.  Its initrd reads the layout from the disk and asks
+for a passphrase only on this one; `/boot` is mounted from the plain area if there is
+one.  Every initrd carries the unlock tools for this, about 1.6 MB.  Userdata layout:
 
 ```
 [0, 512 MiB)    plain ext4 "guixboot": kernels, initrds, extlinux.conf for U-Boot
@@ -299,7 +300,7 @@ off, not against someone tampering with it.
 **First flash** (erases userdata; asks for the passphrase, which you then type on
 the slide-out keyboard at each boot, so letters and digits only: plain US layout):
 ```sh
-bash scripts/flash.sh systems/mobile-encrypted.scm
+bash scripts/flash.sh --encrypt
 ```
 
 **Updates:** `scripts/deploy.sh` or `guix system reconfigure` as usual.  The

@@ -16,24 +16,32 @@ audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main
 7.1, the point to go back to.
 
 **Full-disk encryption: works in QEMU; prompt confirmed on the phone (2026-11-04),
-never flashed.**  `tools/fde-qemu-test.py` boots what `flash-encrypted.sh` writes:
-unlock, wrong passphrase asked again, root resized to the disk, deploy, the plain area
-following it, reboot into the new and an older entry.  On the phone (generations 212,
-213, `PRO1X_FDE_PROMPT_TEST=1 scripts/deploy.sh`): readable in landscape, all letters
-and digits typed correctly without Fn, partition found at 2.4 s, unlock with Argon2
-256 MiB 4 passes: 8 s including typing 10 digits.  Not proven until the flash: U-Boot
-reading the encrypted layout, the helper's loop on UFS, the resize on 225 GB.  A reflash
-drops every generation, the 7.1 fallback (182) included.
+never flashed.**  One system for both layouts since eed6ca6 (no `#:encrypted?`):
+`flash.sh --encrypt`, also with `--rootfs`, so CI's rootfs.img works once built from that
+commit or later.  From one image in QEMU (`tools/fde-qemu-test.py`, `--plain` too): plain
+boots without asking; encrypted asks again after a wrong passphrase, unlocks, resizes; a
+deploy updates the plain area and that generation boots.  On the phone: plain layout, #215
+booted without a prompt, root mounted at 3.4 s, `/boot` not mounted, 54 services up.  Prompt
+(generations 212, 213): readable in landscape, all letters and digits typed correctly
+without Fn, partition found at 2.4 s, unlock with Argon2 256 MiB 4 passes: 8 s including
+typing 10 digits.  Not proven until the flash: U-Boot reading the encrypted layout, the
+helper's loop on UFS, the resize on 225 GB.  After the flash and before the first deploy the
+plain area has no menu.env: U-Boot's built-in "Boot" entry, 3 s (read in the source; not
+seen).  A reflash drops every generation, the 7.1 fallback (182) included.
 
 **Suspend on 7.3 (2026-11-04):** smp2p-sleepstate aborted suspends, about 2 events a
 second from shake-to-torch's accelerometer stream.  `pro1x-sleep` stops that service
 first (generation 211).  Author: "Lock and suspend" works.
 
 **U-Boot menu:** `bootmenu` with a countdown at each boot and generation numbers from
-`/boot/extlinux/menu.env` (environment only).  Built by CI 41840039106 (in
-`~/pro1x-uboot-2026-11-04`), old boot_a in `~/pro1x-boot_a-2026-11-04.img.gz`; not flashed
-yet: `flash.sh --boot-only`.  Author's idea for later: no autoboot (delay -1 in the service,
-no reflash); every reboot then waits for a key, crashes and remote reboots too.
+`/boot/extlinux/menu.env` (environment only).  Built by CI 41840039106, in boot_a since
+2026-11-04 (written from the phone with `dd`; boot_b not written, old boot_a in
+`~/pro1x-boot_a-2026-11-04.img.gz`).  Author's test with `menu_delay=-1`: the menu waits,
+labels show generation numbers, keys work, #211 booted (`/proc/cmdline`).  Default now
+15 s, deployed in #215; author: "the 15s delay worked".  In `config.scm` as
+`pro1x-boot-menu-configuration`'s `delay` (15, 0 for none, -1 to wait for a key).  An older
+entry does not move the system profile: `guix system list-generations` still says
+"current" for the newest, `/run/booted-system` tells what runs.
 
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.

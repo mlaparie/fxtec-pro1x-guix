@@ -42,10 +42,9 @@ of public key files."
       '()
       `((".ssh/pro1x-guix.pub" ,(car keys)))))
 
-(define* (pro1x-user-config module procedure #:key (arguments ""))
+(define (pro1x-user-config module procedure)
   "Return the text of /etc/guix/config.scm for the system that PROCEDURE, a
-symbol exported by MODULE, a list of symbols, returns when given ARGUMENTS, the
-text of its arguments that this phone cannot do without."
+symbol exported by MODULE, a list of symbols, returns."
   (string-append
    ";;; /etc/guix/config.scm — starting point for your own configuration of
 ;;; this phone, written by the fxtec-pro1x channel.  To use it:
@@ -61,9 +60,7 @@ text of its arguments that this phone cannot do without."
              " (with-output-to-string (lambda () (write module))) ")
 
 (define base
-  (" (symbol->string procedure) (if (string-null? arguments)
-                                    ""
-                                    (string-append "\n   " arguments)) "
+  (" (symbol->string procedure) "
    ;; Root SSH login by key lets `guix deploy` from a PC update this phone
    ;; (scripts/deploy.sh in the fxtec-pro1x-guix repository).  It is off
    ;; until you uncomment the line below.  ~/.ssh/pro1x-guix.pub is the
@@ -161,7 +158,16 @@ text of its arguments that this phone cannot do without."
   ;;                (verbose? #f)
   ;;                )))
   ;;    The port's other services, also inside modify-services.  Each needs its module
-  ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors.
+  ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors,
+  ;;    boot.
+  ;;    (pro1x-boot-menu-service-type
+  ;;     config => (pro1x-boot-menu-configuration
+  ;;                (inherit config)
+  ;;                U-Boot's menu at each boot.  Any whole number: seconds before it boots
+  ;;                the current system; 0: no menu, it boots at once, so an older generation
+  ;;                cannot be chosen; -1: no autoboot, it waits for a key, after a crash or
+  ;;                a remote reboot too.  Takes effect at the next deploy, then boot; no reflash.
+  ;;                (delay 15)))
   ;;    (pro1x-keyboard-service-type
   ;;     config => (pro1x-keyboard-configuration
   ;;                (inherit config)
@@ -184,9 +190,9 @@ text of its arguments that this phone cannot do without."
   )
 "))
 
-(define* (pro1x-user-config-service module procedure #:key (arguments ""))
-  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE,
-called with ARGUMENTS (see pro1x-user-config), and /etc/guix/channels.scm.
+(define (pro1x-user-config-service module procedure)
+  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE, and
+/etc/guix/channels.scm.
 
 Not through etc-service-type: an /etc entry under guix/ would turn the whole
 of /etc/guix into a read-only store link and hide the acl and signing keys
@@ -194,8 +200,7 @@ Guix writes there.  Like guix-service-type for its channels.scm, link each
 file in place at activation."
   (define files
     `(("config.scm" ,(plain-file "config.scm"
-                                 (pro1x-user-config module procedure
-                                                    #:arguments arguments)))
+                                 (pro1x-user-config module procedure)))
       ("channels.scm" ,pro1x-channels-file)))
 
   (simple-service

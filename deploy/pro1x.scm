@@ -43,7 +43,7 @@
 ;;;   PRO1X_PORT, PRO1X_HOST_KEY  SSH port (default 22) and host key (default
 ;;;                 the known_hosts entry), for a test machine (tools/fde-qemu-test.py)
 ;;;
-;;; State: first used 2026-10-28.  On encrypted systems the phone's
+;;; State: first used 2026-10-28.  On an encrypted phone, the phone's
 ;;; pro1x-boot-menu service keeps the plain boot area up to date.
 
 (use-modules (gnu machine)

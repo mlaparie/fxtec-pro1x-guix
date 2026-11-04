@@ -7,7 +7,8 @@
 # The passphrase is typed at the phone's slide-out keyboard, in the initrd: plain
 # US layout, no keyd.  Use letters and digits.
 #
-# State: tested in QEMU, not yet flashed.
+# State: tested in QEMU, not yet flashed.  The system boots on either layout, and
+# has the same image: nothing in it says encrypted (services/fde.scm).
 #
 # Called by flash.sh after it has handled guix shell, U-Boot, and system image
 # discovery.  Not intended to be run directly.
@@ -16,16 +17,19 @@
 #   _FASTBOOT_BIN  — absolute path to fastboot binary
 #   _UBOOT_BIN     — u-boot-nodtb.bin path in the Guix store
 #   _UBOOT_DTB     — sm6115-fxtec-pro1x.dtb path in the Guix store
-#   _DISK_IMAGE    — guix system image output (efi-raw disk image)
+#   _DISK_IMAGE    — guix system image output (efi-raw disk image), or
+#   _ROOTFS        — the root ext4 alone (flash.sh --rootfs, a CI rootfs.img)
 #   _OUTPUT_DIR    — optional: write the images there and stop
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for _v in _FASTBOOT_BIN _UBOOT_BIN _UBOOT_DTB _DISK_IMAGE; do
+for _v in _FASTBOOT_BIN _UBOOT_BIN _UBOOT_DTB; do
     [[ -n "${!_v:-}" ]] || { echo "error: $_v not set — run via flash.sh" >&2; exit 1; }
 done
+[[ -n "${_DISK_IMAGE:-}${_ROOTFS:-}" ]] \
+    || { echo "error: _DISK_IMAGE or _ROOTFS not set — run via flash.sh" >&2; exit 1; }
 
 ARCH="aarch64-linux"
 VERBOSE=false
@@ -83,14 +87,19 @@ mkbootimg \
 
 # ── Extract root partition ────────────────────────────────────────────────────
 echo "==> Extracting root partition…"
-PART_INFO=$(partx -o START,SECTORS -g -n 2 "$_DISK_IMAGE")
-PART_START=$(echo "$PART_INFO" | awk '{print $1}')
-PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
-[[ -n "$PART_START" && -n "$PART_SECTORS" ]] || die "Could not read partition table"
-DD_PROGRESS=(); [[ "$VERBOSE" == true ]] && DD_PROGRESS=(status=progress)
-dd if="$_DISK_IMAGE" of="$TMPDIR/root.ext4" \
-    bs=512 skip="$PART_START" count="$PART_SECTORS" "${DD_PROGRESS[@]}"
-ROOT_MIB=$(( PART_SECTORS / 2048 ))
+if [[ -n "${_ROOTFS:-}" ]]; then
+    cp --reflink=auto "$_ROOTFS" "$TMPDIR/root.ext4"
+    chmod +w "$TMPDIR/root.ext4"
+else
+    PART_INFO=$(partx -o START,SECTORS -g -n 2 "$_DISK_IMAGE")
+    PART_START=$(echo "$PART_INFO" | awk '{print $1}')
+    PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
+    [[ -n "$PART_START" && -n "$PART_SECTORS" ]] || die "Could not read partition table"
+    DD_PROGRESS=(); [[ "$VERBOSE" == true ]] && DD_PROGRESS=(status=progress)
+    dd if="$_DISK_IMAGE" of="$TMPDIR/root.ext4" \
+        bs=512 skip="$PART_START" count="$PART_SECTORS" "${DD_PROGRESS[@]}"
+fi
+ROOT_MIB=$(( $(wc -c < "$TMPDIR/root.ext4") / 1048576 ))
 echo "    root.ext4: ${ROOT_MIB} MiB"
 ACTUAL=$(e2label "$TMPDIR/root.ext4" 2>/dev/null || true)
 [[ "$ACTUAL" == "guix" ]] || e2label "$TMPDIR/root.ext4" guix
