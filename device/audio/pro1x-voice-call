@@ -79,9 +79,20 @@ speaker=""
 follow_speaker() {
   s=$(callaudiocli -S 2>/dev/null | awk '/Speaker enabled/ {print $3}')
   [ -n "$s" ] && [ "$s" != "$speaker" ] || return 0
+  # At the start of a call callaudiod has already chosen the profile.
+  if [ -z "$speaker" ] && [ "$s" != CALL_AUDIO_SPEAKER_ON ]; then
+    speaker=$s
+    return 0
+  fi
   card=$(pactl list short cards 2>/dev/null | awk '$2 ~ /platform.sound/ {print $2; exit}')
   [ -n "$card" ] || return 0
   speaker=$s
+  # The profile switch closes the keep-alive stream, the only stream that keeps
+  # the codec DMA port started: the voice PCM stays PREPARED.  A session that
+  # loses the port stays silent when the port comes back (call of 2026-11-04,
+  # same mixer before and after), so it is restarted around the switch.
+  stop_pcm
+  stop_keepers
   if [ "$s" = CALL_AUDIO_SPEAKER_ON ]; then
     pactl set-card-profile "$card" "Voice Call (Mic, Speaker)" && echo "speaker on"
   else
@@ -110,7 +121,19 @@ calls() { # object paths of the calls that are not over, on one line
     awk '/\((dialing|ringing-in|ringing-out|active|held|waiting)\)/ { print $1 }' | sort | tr '\n' ' '
 }
 
+# The session goes on started ports: wait for the keep-alive streams to run.
+# One session opened before them had no sound from the other side.
+wait_streams() {
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    awk '/^state: RUNNING/ { n++ } END { exit n != 2 }' \
+      /proc/asound/card0/pcm0p/sub0/status /proc/asound/card0/pcm1c/sub0/status && return 0
+    sleep 0.5
+  done
+  echo "keep-alive streams not running after 5 s"
+}
+
 start_pcm() {
+  wait_streams
   pro1x-voicepcm &
   vp="$!"
   echo "voice session started"
@@ -158,6 +181,7 @@ while :; do
     incall=1
     # Keep-alives only during a call.
     if ! alive; then
+      stop_pcm
       stop_keepers
       sleep 1
       start_keepers || true
@@ -176,10 +200,12 @@ while :; do
     case " $sig " in *" $c "*) ;; *) added=1 ;; esac
   done
   if [ "$added" = 1 ]; then
-    stop_pcm
-    start_pcm # a new call: (re)start the session
+    stop_pcm # a new call: restart the session
   elif [ -z "$now" ] && [ -n "$vp" ]; then
     stop_pcm # the last call ended
+  fi
+  if [ -n "$now" ] && [ -z "$vp" ]; then
+    start_pcm
   fi
   sig=$now
 
