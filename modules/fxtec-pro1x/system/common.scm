@@ -77,23 +77,107 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                 (operating-system-packages base)))
   ;; (services (cons (service some-service-type)
   ;;                 (operating-system-user-services base)))
-  ;; Keyboard light timeout, panel dimming (seconds; #f for never) and
-  ;; notification LED colours (\"red\", \"green\", \"blue\", \"white\" or
-  ;; \"#RRGGBB\", optionally a blink period in ms; unlisted events keep
-  ;; feedbackd's colours); needs (fxtec-pro1x services keyboard) and
-  ;; (fxtec-pro1x services hardware) in use-modules, and only one services
-  ;; field:
+  ;; The port's options; needs (fxtec-pro1x services hardware) in use-modules,
+  ;; and only one services field:
   ;; (services
   ;;  (modify-services (operating-system-user-services base)
-  ;;    (pro1x-keyboard-service-type
-  ;;     config => (pro1x-keyboard-configuration
-  ;;                (inherit config) (backlight-timeout 60)))
   ;;    (pro1x-hardware-service-type
   ;;     config => (pro1x-hardware-configuration
-  ;;                (inherit config) (dim-after 150) (dim-level 20)
+  ;;                (inherit config)
+  ;;                Every option, with its default; uncomment to change.
+  ;;                Screen: seconds without input (#f: never), dim level in % of maximum.
+  ;;                (dim-after 150)
+  ;;                (dim-level 20)
+  ;;                (blank-after 180)
+  ;;                Lock this many seconds after blanking (0: at once; #f: never).
+  ;;                (lock-after 120)
+  ;;                Suspend this many seconds after blanking, locking first (#f: never; Sway).
+  ;;                (auto-suspend #f)
+  ;;                Double tap on the touchscreen wakes the panel.
+  ;;                (double-tap-wake? #t)
+  ;;                Light or dark apps and shell: 'prefer-dark or 'default (light).
+  ;;                (color-scheme 'prefer-dark)
+  ;;                Rows to black out at the panel's top and bottom.
+  ;;                (display-top-gap 0)
+  ;;                (display-bottom-gap 0)
+  ;;                On-screen keyboard: word completion dictionaries besides English, any of
+  ;;                \"fr\" \"de\" \"it\" (no Spanish in Guix); quick actions combines them, or off.
+  ;;                (keyboard-languages '())
+  ;;                Its layouts (xkb names), independent of the dictionaries; quick actions
+  ;;                chooses among them.
+  ;;                (keyboard-layouts '(\"us\"))
+  ;;                A short vibration on each key.
+  ;;                (keyboard-haptics? #t)
+  ;;                At each Sway login: Firefox-family browsers fitted to portrait, with a
+  ;;                mobile user agent there; #f stops it, what it added stays.
+  ;;                (browser-fit? #t)
+  ;;                The lock screen's on-screen keyboard: 'dark or 'light.
+  ;;                (lock-keyboard 'dark)
+  ;;                Charging: stop at this % (#f: charge to full), again at or below the second;
+  ;;                quick actions overrides until reboot.  Stay awake while charging (7.3 kernel).
+  ;;                (charge-limit 85)
+  ;;                (charge-resume 80)
+  ;;                (charging-awake? #t)
+  ;;                CPU: 'auto, 'battery, 'balanced or 'performance; quick actions overrides
+  ;;                until reboot.
+  ;;                (cpu-mode 'auto)
+  ;;                What wakes the phone from suspend, besides its keys and alarms.
+  ;;                (wake-on '(calls sms))
+  ;;                Torch off after this many seconds (#f: never).
+  ;;                (torch-timeout 60)
+  ;;                Shaking twice: 'torch, or a shell command (a string).
+  ;;                (shake-torch? #t)
+  ;;                (shake-action 'torch)
+  ;;                The camera button's triple press: a shell command.
+  ;;                (camera-triple-press \"pro1x-camera-app\")
+  ;;                Apps, by Wayland app_id (swaymsg -t get_tree): portrait or landscape while
+  ;;                focused, fullscreen when opened, allowed over the lock screen.
+  ;;                (portrait-apps '(\"org.gnome.Calls\" \"org.gnome.Snapshot\"))
+  ;;                (landscape-apps '())
+  ;;                (fullscreen-apps '(\"org.gnome.Calls\" \"org.pro1x.Camera\" \"org.gnome.Snapshot\"))
+  ;;                (lock-screen-apps '(\"org.gnome.Calls\" \"org.pro1x.Camera\"))
+  ;;                Notification LED: (EVENT COLOUR) or (EVENT COLOUR BLINK-MS); colours \"red\"
+  ;;                \"green\" \"blue\" \"white\" or \"#RRGGBB\"; unlisted events keep feedbackd's.  More
+  ;;                events: \"message-missed-email\", \"message-missed-notification\",
+  ;;                \"notification-missed-generic\", \"battery-caution\".
   ;;                (notification-leds
-  ;;                 '((\"message-missed-sms\" \"green\")
-  ;;                   (\"phone-missed-call\" \"#FF8000\" 1000)))))))
+  ;;                 '((\"message-missed-sms\" \"blue\") (\"message-missed-instant\" \"blue\")
+  ;;                   (\"phone-missed-call\" \"#8000FF\") (\"bell-terminal\" \"white\")))
+  ;;                Battery LED: breathing while charging, steady when full or at the limit, a
+  ;;                blip every 4 s at or below low-battery-level %; #f turns one off.
+  ;;                (charging-led \"#FFA000\")
+  ;;                (charged-led \"#00FF00\")
+  ;;                (low-battery-led \"#FF4000\")
+  ;;                (low-battery-level 15)
+  ;;                LED while blank but not locked: (COLOUR LEVEL), level 0-255, or #f.
+  ;;                (unlocked-led '(\"white\" 6))
+  ;;                Console and debugging: fbcon rotation (0-3), USB serial console on ttyGS0,
+  ;;                verbose kernel log.
+  ;;                (console-rotation #f)
+  ;;                (serial-enable? #f)
+  ;;                (verbose? #f)
+  ;;                )))
+  ;;    The port's other services, also inside modify-services.  Each needs its module
+  ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors.
+  ;;    (pro1x-keyboard-service-type
+  ;;     config => (pro1x-keyboard-configuration
+  ;;                (inherit config)
+  ;;                (xkb-layout \"us\")            ; session keyboard layout
+  ;;                (xkb-variant \"intl\")
+  ;;                (backlight-timeout 60)))     ; seconds, #f: never
+  ;;    (pro1x-usb-network-service-type
+  ;;     config => (pro1x-usb-network-configuration
+  ;;                (inherit config)
+  ;;                (address \"172.16.42.1\")      ; the phone over USB
+  ;;                (prefix 24)))
+  ;;    (pro1x-modem-service-type
+  ;;     config => (pro1x-modem-configuration (inherit config) (verbose? #f)))
+  ;;    (pro1x-sensors-service-type
+  ;;     config => (pro1x-sensors-configuration
+  ;;                (inherit config)
+  ;;                (autostart? #t)
+  ;;                (accel-mount-matrix \"-1, 0, 0; 0, -1, 0; 0, 0, 1\")
+  ;;                (disable-recovery? #t)))     ; no ADSP restart loop after a crash
   )
 "))
 

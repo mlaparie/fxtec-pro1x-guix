@@ -42,6 +42,8 @@ once, so combine changes in one expression:
 
 ## Port options
 
+The starting `config.scm` lists these, commented with their defaults.
+
 | field | default | |
 |---|---|---|
 | keyboard `backlight-timeout` | `60` | seconds without a key before the keyboard light goes off; `#f` never |
