@@ -69,7 +69,7 @@ few seconds): needs a reboot and a call.  Earpiece profile shows `Spk0 SPK PA` o
 author heard the earpiece, not looked into.  Uplink has no DSP noise or echo processing (TX
 topology NONE); speaker calls may echo, ECNS topology not tried.  Still open: incoming on 4G,
 ~2 s of lock screen on an incoming call, `Unbalanced enable for IRQ 199` once per boot at the
-first call (no effect seen).
+first call (no effect seen); Calls' mute button has no effect (author, generation 218, later).
 
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.
