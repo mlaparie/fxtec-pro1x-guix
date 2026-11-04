@@ -20,8 +20,9 @@ Display, touch, GPU; keyboard, Fn layer, backlight; Wi-Fi; Bluetooth
 limit; SIM, SMS, MMS, calls (earpiece), mobile data; vibration;
 Tailscale.
 
-Branch `next` is on Linux 7.3 (the phone runs it since 2026-11-03).  Both cameras
-work there too, early.  Not yet checked on 7.3: calls, audio, suspend, deep sleep,
+`main` is on Linux 7.3 since 2026-11-04 (the phone since 2026-11-03), merged before
+the checks below; tag `pre-7.3` is the last `main` on 7.1.  Both cameras work on 7.3
+too, early.  Not yet checked on 7.3: calls, audio, suspend, deep sleep,
 charging.
 
 ## Phone comforts

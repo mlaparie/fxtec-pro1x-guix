@@ -10,7 +10,10 @@ pointers off, ✕ locks before the app closes; the author's test on generation 2
 "seems to work", more to come; not tried with a real call or alarm.  Cameras:
 `CONFIG_V4L2_FLASH_LED_CLASS=m` brought back both sensors' media links, `cam -l`
 lists back and front, and the author's verdict is that the camera app "more or less
-works"; improvements later.  A backup for a reflash exists off the phone.
+works"; improvements later.  A backup for a reflash exists off the phone.  `main` =
+`next` since this commit, merged by the author's choice before the 7.3 checks (calls,
+audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main` on
+7.1, the point to go back to.
 
 **Full-disk encryption: not ready (read in the code 2026-11-04; nothing run).**
 `README.md` still says Untested.  What stands in the way:
