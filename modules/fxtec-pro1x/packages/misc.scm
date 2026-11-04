@@ -941,6 +941,24 @@ ModemManager, for clients such as Chatty.")
               (local-file
                (repository-file "device/phosh/stevia-shortcuts-bar-at-start.patch")
                "stevia-shortcuts-bar-at-start.patch")
+              ;; Ours: that bar on every layout, not only the terminal's
+              ;; (author: wanted all the time, 2026-11-03).
+              (local-file
+               (repository-file "device/phosh/stevia-shortcuts-bar-always.patch")
+               "stevia-shortcuts-bar-always.patch")
+              ;; Ours: word completion from the dictionaries chosen in quick
+              ;; actions, merged, whatever the layout.
+              (local-file
+               (repository-file "device/phosh/stevia-chosen-dictionaries.patch")
+               "stevia-chosen-dictionaries.patch")
+              ;; Ours: in Sway, completion without the application's hint.
+              (local-file
+               (repository-file "device/phosh/stevia-completion-without-hint.patch")
+               "stevia-completion-without-hint.patch")
+              ;; Ours: only shown and hidden by hand in Sway (pro1x-osk).
+              (local-file
+               (repository-file "device/phosh/stevia-manual-toggle.patch")
+               "stevia-manual-toggle.patch")
               ;; Ours: 250 px in portrait (author: a little taller).
               (local-file
                (repository-file "device/phosh/stevia-portrait-height.patch")
@@ -956,6 +974,36 @@ ModemManager, for clients such as Chatty.")
                              "/lib/systemd/user"))
       #:phases
       #~(modify-phases %standard-phases
+          ;; No slide in or out: the animation advanced 0.0667 per 16.7 ms
+          ;; frame, ~250 ms whatever enable-animations says
+          ;; (pos-input-surface.c animate_cb); now it ends on its first
+          ;; frame (author: slow to show, no animation, 2026-11-02).
+          ;; Over the apps or pushing them up (author, 2026-11-02): no
+          ;; exclusive zone while $XDG_RUNTIME_DIR/pro1x-osk-overlay exists
+          ;; (quick actions' keyboard line toggles it), read at each show.
+          (add-after 'unpack 'pro1x-overlay-switch
+            (lambda _
+              (substitute* "src/pos-input-surface.c"
+                (("set_exclusive_zone \\(PHOSH_LAYER_SURFACE \\(self\\), (height|min\\.height)\\);"
+                  _ zone)
+                 (string-append
+                  "set_exclusive_zone (PHOSH_LAYER_SURFACE (self), "
+                  "g_file_test (g_build_filename (g_get_user_runtime_dir (), "
+                  "\"pro1x-osk-overlay\", NULL), G_FILE_TEST_EXISTS) ? 0 : "
+                  zone ");")))))
+          ;; Word completion: dictionaries from the system profile (the
+          ;; compiled-in path is this package's own, which has none);
+          ;; keyboard-languages in config.scm chooses them.
+          (add-after 'unpack 'pro1x-dictionary-path
+            (lambda _
+              (substitute* "src/completers/pos-completer-hunspell.c"
+                (("g_strsplit \\(POS_HUNSPELL_DICT_PATH,")
+                 "g_strsplit (\"/run/current-system/profile/share/hunspell\","))))
+          (add-after 'unpack 'pro1x-no-slide
+            (lambda _
+              (substitute* "src/pos-input-surface.c"
+                (("self->animation\\.progress \\+= 0\\.06666 \\* time / 16666\\.00")
+                 "self->animation.progress = 1.0"))))
           ;; Super in the terminal layout's key bar, before stevia's own
           ;; defaults (Sway needs it; author, 2026-10-30).
           ;; Ignore hardware keyboards: the Pro1X keyboard is always
@@ -977,7 +1025,7 @@ ModemManager, for clients such as Chatty.")
                     ;; scaling=[]: the base height (200), 250 in portrait
                     ;; (our patch), not 40 mm (352 px here), which was too
                     ;; tall (author).
-                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\n
+                    (display "[mobi.phosh.osk]\nignore-hw-keyboards=true\nscaling=[]\ncompletion-mode=['manual','hint']\n
 [mobi.phosh.osk.Terminal]
 shortcuts=['<super>', '<ctrl>', '<alt>', 'Left', 'Up', 'Down', 'Right', '<ctrl>r', 'Home', 'End', '<ctrl>w', '<alt>b', '<alt>f', '<ctrl>v', '<ctrl>c', '<ctrl><shift>v', '<ctrl><shift>c', 'Menu']
 "

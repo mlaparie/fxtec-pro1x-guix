@@ -30,9 +30,14 @@ there yet.  Not yet checked on 7.3: calls, audio, suspend, deep sleep, charging.
 - Screen off and touch disabled near the face during calls (Sway).
 - Portrait with the keyboard closed, landscape with it out; optional
   auto-rotation that ignores quick tilts.
-- On-screen keyboard (stevia) when the keyboard is closed, never when it
-  is out; Super key in its terminal layout; a short vibration per key
-  (config.scm).
+- On-screen keyboard (stevia): in Sway by hand (bottom swipe, quick actions),
+  hidden when the keyboard slides out; in Phosh when a text field needs it
+  with the keyboard closed; a bar of shortcut keys above the first row on
+  every layout (Super, Ctrl, arrows…); a short vibration per key (config.scm).
+- Word completion on the on-screen keyboard: English, plus French, German or
+  Italian if added in config.scm.  Quick actions turns it off or combines the
+  dictionaries you tick, whatever the layout; layouts are separate
+  (keyboard-layouts).
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
 - Dark apps and shell by default (color-scheme in config.scm).
 - Charge limit (85/80 %) set in config.scm; quick actions override it until reboot.

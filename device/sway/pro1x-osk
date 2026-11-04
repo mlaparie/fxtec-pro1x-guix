@@ -1,18 +1,17 @@
 #!/bin/sh
-# pro1x-osk run | follow — the on-screen keyboard (stevia) kept ready in Sway
+# pro1x-osk run | toggle — the on-screen keyboard (stevia) kept ready in Sway
 #
-#   run      stevia, started again whenever it ends (it was found not
-#            running, 2026-11-02: quick actions then had to start it, and
-#            text fields brought up nothing).  Running, it shows for a
-#            focused text field by itself (text-input) and comes up at
-#            once on a D-Bus call.
-#   follow   in portrait with the keyboard slid in, show it while a
-#            terminal has the focus (terminals have no text-input), hide it
-#            when the focus leaves one (author, 2026-11-02)
+#   run      stevia, started again whenever none runs (none owns
+#            sm.puri.OSK0).  Shown and hidden by hand only (author,
+#            2026-11-03; our patch, PRO1X_OSK_MANUAL): a text field neither
+#            shows nor hides it, so focus changes do not resize the windows.
+#   toggle   shown or hidden, for the bottom swipe: sway-quick-actions
+#            --osk took 110-120 ms to start, the D-Bus calls 15-30 ms, stevia
+#            answers in 2-4 ms (measured 2026-11-02); one toggle per 0.6 s,
+#            as a pressed swipe can fire twice
 #
-# Both started by the Sway config; they end with the session.
-#
-# State: written 2026-11-02; not yet run on the phone.
+# Started by the Sway config; ends with the session.  Quick actions' keyboard
+# line and pro1x-osk-slider (hidden when the keyboard slides out) also set it.
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 
@@ -21,41 +20,62 @@ osk() {                         # osk true|false
         --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
 }
 
-portrait() {
-    swaymsg -t get_outputs -r 2>/dev/null |
-        jq -e '.[] | select(.name == "DSI-1")
-               | .transform == "normal" or .transform == "180"' >/dev/null
-}
-
-slid_out() {                    # SW_KEYPAD_SLIDE set: evtest exits 10
-    evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
-    [ $? = 10 ]
-}
-
-terminal() {                    # an app_id of a terminal
-    case "$1" in
-        foot|footclient|*[Tt]erminal*|*[Cc]onsole*|kitty|Alacritty) return 0 ;;
-    esac
-    return 1
-}
-
 case "${1:-}" in
     run)
+        # Its layouts from keyboard-layouts in config.scm: set here, as
+        # stevia's wrapper puts its own schemas before a system-wide default
+        # (see the stevia package).  The same ones in another order stay: the
+        # first is the one chosen in quick actions.  Dictionaries: all those
+        # installed at first, then as chosen in quick actions.
+        KEYBOARD_LAYOUTS=us KEYBOARD_DICTIONARIES=en_US
+        [ -r /etc/pro1x/keyboard.conf ] && . /etc/pro1x/keyboard.conf
+        current=$(gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)
+        sources= same=yes n=0
+        for l in $KEYBOARD_LAYOUTS; do
+            sources="$sources${sources:+, }('xkb', '$l')"
+            n=$((n + 1))
+            case "$current" in *"'$l'"*) ;; *) same= ;; esac
+        done
+        [ "$(printf '%s' "$current" | grep -o "'xkb'" | wc -l)" = "$n" ] || same=
+        [ -n "$same" ] ||
+            gsettings set org.gnome.desktop.input-sources sources "[$sources]" 2>/dev/null
+        case "$(gsettings get mobi.phosh.osk.Completers dictionaries 2>/dev/null)" in
+            *\'*) ;;
+            *)
+                list=
+                for d in $KEYBOARD_DICTIONARIES; do list="$list${list:+, }'$d'"; done
+                gsettings set mobi.phosh.osk.Completers dictionaries "[$list]" 2>/dev/null ;;
+        esac
         while swaymsg -t get_version >/dev/null 2>&1; do
-            phosh-osk-stevia
-            sleep 1
+            if gdbus call --session --dest org.freedesktop.DBus \
+                   --object-path /org/freedesktop/DBus \
+                   --method org.freedesktop.DBus.NameHasOwner sm.puri.OSK0 \
+                   2>/dev/null | grep -q true; then
+                sleep 5
+            else
+                PRO1X_OSK_MANUAL=1 phosh-osk-stevia
+                sleep 1
+            fi
         done ;;
-    follow)
-        shown="$rt/pro1x-osk-terminal"     # we showed it for a terminal
-        rm -f "$shown"
-        swaymsg -t subscribe -m '["window"]' 2>/dev/null |
-            jq --unbuffered -r 'select(.change == "focus") | .container.app_id // ""' |
-            while read -r app; do
-                if terminal "$app" && portrait && ! slid_out; then
-                    osk true; touch "$shown"
-                elif [ -f "$shown" ]; then
-                    osk false; rm -f "$shown"
-                fi
-            done ;;
-    *) echo "usage: pro1x-osk run|follow" >&2; exit 1 ;;
+    toggle)
+        stamp="$rt/pro1x-osk-toggled"
+        now=$(date +%s%N)
+        [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0
+        echo "$now" > "$stamp"
+        # The swipe starts on the empty gap at the panel's edge, and a touch
+        # there gives the focus to the workspace (author, 2026-11-03): back
+        # to its last window.
+        ( swaymsg -t get_tree -r 2>/dev/null |
+              jq -e '.. | objects | select(.focused? == true and .type == "workspace")' \
+                 >/dev/null && swaymsg 'focus child' >/dev/null ) 2>/dev/null &
+        # A buzz as the menu swipes do (author, 2026-11-02); fbcli reads
+        # from a sleep, or it ends the feedback at once.
+        { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
+        case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+                    --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
+                    2>/dev/null)" in
+            *true*) osk false ;;
+            *) osk true ;;
+        esac ;;
+    *) echo "usage: pro1x-osk run|toggle" >&2; exit 1 ;;
 esac

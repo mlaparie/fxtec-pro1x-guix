@@ -1,0 +1,21 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] With $PRO1X_OSK_MANUAL, complete in any normal text field
+
+Completion waits for the application's completion hint, or the button in the
+layout menu.  Firefox-based browsers do not seem to send the hint, so the bar
+never showed there (author, 2026-11-03).  In Sway, the completion mode alone
+decides: on unless it is empty.  Only "normal" text input still completes, so
+not passwords or URL bars.  Phosh and the greeter run without the variable.
+---
+--- a/src/pos-input-surface.c
++++ b/src/pos-input-surface.c
+@@ -2435,7 +2435,8 @@
+       return TRUE;
+   }
+ 
+-  if (self->completion_enabled == FALSE)
++  if (self->completion_enabled == FALSE &&
++      !(g_getenv ("PRO1X_OSK_MANUAL") && self->completion_mode != PHOSH_OSK_COMPLETION_MODE_NONE))
+     return FALSE;
+ 
+   /* Completion should only be used on "regular" layouts */
