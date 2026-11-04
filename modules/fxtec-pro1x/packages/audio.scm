@@ -15,7 +15,23 @@
   #:use-module (guix packages)
   #:use-module (guix utils)
   #:use-module ((guix licenses) #:prefix license:)
-  #:export (pro1x-audio))
+  #:export (pro1x-audio
+            libcallaudio/pro1x))
+
+;;; callaudiod compares a card's profile with exactly "HiFi" or "Voice Call", while
+;;; PipeWire names them "HiFi (Mic, Speaker)" and so on.  It then logged "nothing
+;;; to be done", the card stayed on HiFi, the Voice Call verb did not run, and calls
+;;; had no sound either way (2026-11-04, 7.1 and 7.3).
+(define libcallaudio/pro1x
+  (package
+    (inherit libcallaudio)
+    (source
+     (origin
+       (inherit (package-source libcallaudio))
+       (patches
+        (list
+         (local-file (repository-file "packages/callaudiod-voice-profile.patch")
+                     "callaudiod-voice-profile.patch")))))))
 
 (define-public pro1x-audio
   (package
@@ -55,7 +71,7 @@
                                   (string-append #$util-linux "/bin")
                                   (string-append #$modem-manager "/bin")
                                   ;; callaudiocli: Calls' speaker button state
-                                  (string-append #$libcallaudio "/bin")
+                                  (string-append #$libcallaudio/pro1x "/bin")
                                   bin)
                             ":")))
                 (mkdir-p bin)

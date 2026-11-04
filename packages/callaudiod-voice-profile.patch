@@ -1,0 +1,82 @@
+--- a/src/cad-pulse.c	2026-11-04 21:37:15.025435550 +0100
++++ b/src/cad-pulse.c	2026-11-04 21:37:15.075711774 +0100
+@@ -825,11 +825,52 @@
+     }
+ }
+ 
++/*
++ * PipeWire names a card's UCM profiles after the verb and the devices, one
++ * profile per output: "HiFi (Mic, Speaker)", "Voice Call (Earpiece, Mic)".  So
++ * a verb is a prefix of the name here, and the profile to select is the best
++ * one for that verb: a plugged headset first, otherwise the highest priority.
++ */
++static gboolean profile_has_verb(const char *name, const char *verb)
++{
++    size_t len = strlen(verb);
++
++    return strncmp(name, verb, len) == 0 && (name[len] == '\0' || name[len] == ' ');
++}
++
++static const char *best_profile(const pa_card_info *info, const char *verb)
++{
++    const pa_card_profile_info2 *best = NULL;
++    uint32_t i;
++
++    for (i = 0; i < info->n_profiles; i++) {
++        const pa_card_profile_info2 *profile = info->profiles2[i];
++
++        if (!profile_has_verb(profile->name, verb) || !profile->available)
++            continue;
++
++        if (strstr(profile->name, "Headphones") != NULL) {
++            for (uint32_t j = 0; j < info->n_ports; j++) {
++                if (strstr(info->ports[j]->name, "Headphones") != NULL &&
++                    info->ports[j]->available == PA_PORT_AVAILABLE_YES)
++                    return profile->name;
++            }
++            continue;
++        }
++
++        if (!best || profile->priority > best->priority)
++            best = profile;
++    }
++
++    return best ? best->name : NULL;
++}
++
+ static void set_card_profile(pa_context *ctx, const pa_card_info *info, int eol, void *data)
+ {
+     CadPulseOperation *operation = data;
+     pa_card_profile_info2 *profile;
+     pa_operation *op = NULL;
++    const char *target = NULL;
+ 
+     if (eol != 0)
+         return;
+@@ -844,18 +885,18 @@
+ 
+     profile = info->active_profile2;
+ 
+-    if (strcmp(profile->name, SND_USE_CASE_VERB_VOICECALL) == 0 && operation->value == 0) {
++    if (profile_has_verb(profile->name, SND_USE_CASE_VERB_VOICECALL) && operation->value == 0) {
+         g_debug("switching to default profile");
+-        op = pa_context_set_card_profile_by_index(ctx, operation->pulse->card_id,
+-                                                  SND_USE_CASE_VERB_HIFI,
+-                                                  operation_complete_cb, operation);
+-    } else if (strcmp(profile->name, SND_USE_CASE_VERB_HIFI) == 0 && operation->value == 1) {
++        target = best_profile(info, SND_USE_CASE_VERB_HIFI);
++    } else if (profile_has_verb(profile->name, SND_USE_CASE_VERB_HIFI) && operation->value == 1) {
+         g_debug("switching to voice profile");
+-        op = pa_context_set_card_profile_by_index(ctx, operation->pulse->card_id,
+-                                                  SND_USE_CASE_VERB_VOICECALL,
+-                                                  operation_complete_cb, operation);
++        target = best_profile(info, SND_USE_CASE_VERB_VOICECALL);
+     }
+ 
++    if (target)
++        op = pa_context_set_card_profile_by_index(ctx, operation->pulse->card_id, target,
++                                                  operation_complete_cb, operation);
++
+     if (op) {
+         pa_operation_unref(op);
+     } else {

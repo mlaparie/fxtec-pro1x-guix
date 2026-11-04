@@ -25,6 +25,7 @@
 (use-modules (gnu)
              (fxtec-pro1x system common)
              (guix gexp)
+             (fxtec-pro1x packages audio)   ; libcallaudio/pro1x
              (fxtec-pro1x packages bootloader)
              (gnu packages bash)
              (gnu packages fonts)
@@ -936,7 +937,7 @@ Dracula palette, no kernel messages over the greeter.")
      ;; microphone through it (org.mobian_project.CallAudio).  It was only a
      ;; library dependency of Calls, so its D-Bus service was not found and
      ;; the speaker and mute buttons did nothing (author, 2026-10-30).
-     libcallaudio
+     libcallaudio/pro1x
      ;; Fetch MMS launcher (the session starts the reminder).
      pro1x-mms-fetch
      ;; Camera viewer: libcamera's cameras reach it through PipeWire
