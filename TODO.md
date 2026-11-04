@@ -15,6 +15,10 @@ works"; improvements later.  A backup for a reflash exists off the phone.  `main
 audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main` on
 7.1, the point to go back to.
 
+**Next:** the author's 7.3 checks (calls, audio, deep sleep, charging); then merge `next` to
+`main` (author's decision, 2026-11-04), which brings detection and the `config.scm` options to
+`guix pull` and reconfigure on the phone.
+
 **Full-disk encryption: works in QEMU; prompt confirmed on the phone (2026-11-04),
 never flashed.**  One system for both layouts since eed6ca6 (no `#:encrypted?`):
 `flash.sh --encrypt`, also with `--rootfs`, so CI's rootfs.img works once built from that
