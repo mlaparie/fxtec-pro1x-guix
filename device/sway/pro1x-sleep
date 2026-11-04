@@ -20,6 +20,10 @@
 #     frpc_dsp), and its restart left no sound card.  The kernel's fastrpc
 #     patches (pro1x-fastrpc-*) are the fix; this still restarts a crashed
 #     ADSP once (debugfs "recover"), then hexagonrpcd and the sensors.
+# Measured 2026-11-04, Linux 7.3: pro1x-shake-torch's accelerometer stream makes
+# the ADSP raise smp2p-sleepstate about twice a second (none without it), and
+# that wakeup source aborted most tries to suspend, five in a row at times.  The
+# stream stops before sleeping; the service starts again after the wake.
 # Hibernate needs swap and a resume device, which the port does not set up.
 #
 # State: the loop written 2026-11-01 for the patched kernel, not yet run.
@@ -199,6 +203,7 @@ suspend_loop() {
 
 case "${1:-}" in
     suspend)
+        herd stop pro1x-shake-torch >/dev/null 2>&1
         panel off
         [ -n "$uart" ] && echo disabled > "$uart"
         [ -n "$ipa" ] && echo disabled > "$ipa"
