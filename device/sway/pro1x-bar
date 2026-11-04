@@ -50,7 +50,7 @@ apply() {
         # had the landscape keys); not at the watcher's first look.
         if [ -f "$rt/pro1x-bar.orientation" ]; then
             pro1x-menu hide-all
-            pro1x-lock --locked && pro1x-lock --refresh >/dev/null 2>&1 &
+            pro1x-lock --locked && pro1x-lock --refresh-if-turned >/dev/null 2>&1 &
         fi
         echo "$o" > "$rt/pro1x-bar.orientation"
         swaymsg "bar bar-0 status_command pro1x-bar main $o" >/dev/null

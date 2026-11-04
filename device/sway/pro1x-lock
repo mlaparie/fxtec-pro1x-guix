@@ -12,6 +12,16 @@
 #                          locker dies without unlocking)
 #   pro1x-lock --refresh-when-idle   the same, unless a key or touch came in
 #                          the last 20 s (a password being typed): then later
+#   pro1x-lock --refresh-if-turned   the same, if the panel's orientation
+#                          is not the one it was drawn for
+#   pro1x-lock --rotate OUTPUT TRANSFORM   turn the panel under a gtklock
+#                          (sway-autorotate): gtklock out first, then the
+#                          turn, then a new one for it.  A landscape gtklock
+#                          is wider than a portrait panel, and dies on the
+#                          turn ("Error 71"), red screen.  Exit 1 with no
+#                          gtklock: the caller turns the panel.
+#   pro1x-lock --restart   after a crash (the supervisor below): drawn again
+#                          for the panel as it is now
 #   pro1x-lock --locked    exit 0 when a lock screen is up
 #   pro1x-lock --unlock    unlock from a script (pro1x-call-watch, incoming
 #                          call): gtklock unlocks on SIGTERM
@@ -32,6 +42,7 @@
 # State: gtklock with the module run on the phone 2026-10-31 (it drew its
 # keyboard and unlocked on SIGTERM); this script built, not yet run there.
 
+self=$0
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 ui="$rt/pro1x-lock.ui" css="$rt/pro1x-lock.css"
 uid=$(id -u)
@@ -40,8 +51,44 @@ keyboard=dark
 [ -r /etc/pro1x/lock.conf ] && . /etc/pro1x/lock.conf   # KEYBOARD=dark|light
 [ -n "${KEYBOARD:-}" ] && keyboard=$KEYBOARD
 
+portrait_now() {                # the panel's transform
+    swaymsg -t get_outputs -r 2>/dev/null |
+        jq -e '.[] | select(.name == "DSI-1")
+               | .transform == "normal" or .transform == "180"' >/dev/null
+}
+
+# Dark while one gtklock gives way to the next: Sway paints the locked
+# session red with no client (author: the red flash on a slide was annoying).
+# SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.
+swap_out() {                    # swap_out PID
+    level=$(brightnessctl get 2>/dev/null)
+    if [ -n "$level" ] && [ "$level" -gt 0 ]; then
+        brightnessctl -q set 0
+        ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+              sleep 0.1
+              [ "$(pgrep -u "$uid" -x gtklock)" ] &&
+                  [ "$(pgrep -u "$uid" -x gtklock)" != "$1" ] && break
+          done
+          sleep 0.6
+          brightnessctl -q set "$level" ) >/dev/null 2>&1 &
+    fi
+    kill -KILL $1
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -u "$uid" -x gtklock >/dev/null || break
+        sleep 0.2
+    done
+}
+
 case "${1:-}" in
     --locked)
+        # The lock client the supervisor runs, by its PID: two pgreps took
+        # 600 ms on the phone (400 processes), most of the power menu's
+        # delay after the buzz (2026-11-03).  Without the file (a lock
+        # started some other way), as before.
+        if [ -r "$rt/pro1x-lock.pid" ]; then
+            kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null
+            exit
+        fi
         pgrep -u "$uid" -x gtklock >/dev/null ||
             pgrep -u "$uid" -x swaylock >/dev/null
         exit ;;
@@ -60,6 +107,28 @@ case "${1:-}" in
             exit 0
         fi
         exec "$0" --refresh ;;
+    --refresh-if-turned)
+        if portrait_now; then o=portrait; else o=landscape; fi
+        [ "$(cat "$rt/pro1x-lock-orientation" 2>/dev/null)" = "$o" ] && exit 0
+        exec "$0" --refresh ;;
+    --rotate)
+        old=$(pgrep -u "$uid" -x gtklock)
+        [ -n "$old" ] || exit 1
+        # Portrait to portrait, or landscape to landscape: nothing to redraw.
+        case "$3" in normal|180) o=portrait ;; *) o=landscape ;; esac
+        if [ "$(cat "$rt/pro1x-lock-orientation" 2>/dev/null)" = "$o" ]; then
+            swaymsg output "$2" transform "$3" >/dev/null
+            exit 0
+        fi
+        swap_out "$old"
+        swaymsg output "$2" transform "$3" >/dev/null
+        shift 3
+        set -- --restart "$@" ;;
+    --refresh|--restart) ;;
+    *)
+        # Already locked: a second locker cannot take the lock, and ended in
+        # three failures and swaylock over the first (2026-11-03).
+        "$0" --locked && exit 0 ;;
 esac
 
 # XML text: & < > escaped.
@@ -92,12 +161,10 @@ notes=$(printf '%s' "$notes" | xml)
 # Battery and CPU mode (author), as of this drawing: the lock screen is
 # redrawn on new notifications and rotations, not on its own.
 bat=/sys/class/power_supply/battery
-status="Battery $(cat "$bat/capacity" 2>/dev/null)% ($(cat "$bat/status" 2>/dev/null | tr A-Z a-z)) · CPU $(cat /var/lib/pro1x/cpu-mode 2>/dev/null || echo auto)"
+status="Battery $(cat "$bat/capacity" 2>/dev/null)% ($(cat "$bat/status" 2>/dev/null | tr A-Z a-z)) · CPU $(pro1x-cpu-mode get 2>/dev/null || echo auto)"
 
 # Portrait or landscape (the panel's transform), for the layout and keys.
-if swaymsg -t get_outputs -r 2>/dev/null |
-       jq -e '.[] | select(.name == "DSI-1")
-              | .transform == "normal" or .transform == "180"' >/dev/null; then
+if portrait_now; then
     portrait=yes
 else
     portrait=no
@@ -277,21 +344,29 @@ $pass_xml
 $status_xml
 $notes_xml"
 else
-    # Landscape: banner left, clock and status right, one row across the
-    # width; the password, then the notifications, centred below
-    # (author: spread in width, not packed in the middle).
+    # Landscape: banner with the status under it on the left, clock and
+    # date on the right, both centred on the same middle line, one row
+    # across the width; the password, then the notifications, centred
+    # below (author: spread in width, not packed in the middle; status
+    # under the banner, aligned with the clock, 2026-11-02).
     body="    <child>
       <object class=\"GtkBox\">
         <property name=\"orientation\">horizontal</property>
         <property name=\"homogeneous\">1</property>
         <property name=\"spacing\">24</property>
+    <child>
+      <object class=\"GtkBox\">
+        <property name=\"orientation\">vertical</property>
+        <property name=\"valign\">center</property>
 $banner_xml
+$status_xml
+      </object>
+    </child>
     <child>
       <object class=\"GtkBox\">
         <property name=\"orientation\">vertical</property>
         <property name=\"valign\">center</property>
 $clock_xml
-$status_xml
       </object>
     </child>
       </object>
@@ -358,27 +433,12 @@ if [ "${1:-}" = --refresh ]; then
     shift
     old=$(pgrep -u "$uid" -x gtklock)
     [ -n "$old" ] || exit 0
-    # SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.  The session stays
-    # locked without a client until the new one takes over, and Sway paints
-    # it red meanwhile: the backlight goes dark over the swap (author: the
-    # red flash on a slide was annoying), and comes back once the new
-    # gtklock has had time to draw.
-    level=$(brightnessctl get 2>/dev/null)
-    if [ -n "$level" ] && [ "$level" -gt 0 ]; then
-        brightnessctl -q set 0
-        ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-              sleep 0.1
-              [ "$(pgrep -u "$uid" -x gtklock)" ] &&
-                  [ "$(pgrep -u "$uid" -x gtklock)" != "$old" ] && break
-          done
-          sleep 0.6
-          brightnessctl -q set "$level" ) >/dev/null 2>&1 &
-    fi
-    kill -KILL $old
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        pgrep -u "$uid" -x gtklock >/dev/null || break
-        sleep 0.2
-    done
+    swap_out "$old"
+fi
+if [ "${1:-}" = --restart ]; then
+    shift
+    # A redraw got there first.
+    pgrep -u "$uid" -x gtklock >/dev/null && exit 0
 fi
 
 if ! command -v gtklock >/dev/null; then
@@ -398,6 +458,48 @@ else
     echo none > "$rt/pro1x-lock-osk"
 fi
 
-# When it was drawn, for pro1x-blank-led (no redraw within 30 s of one).
+# When it was drawn, for pro1x-blank-led (no redraw within 30 s of one), and
+# for which orientation.
 date +%s > "$rt/pro1x-lock-drawn"
-exec gtklock -d -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@"
+if [ "$portrait" = yes ]; then echo portrait; else echo landscape; fi \
+    > "$rt/pro1x-lock-orientation"
+# gtklock under a supervisor (author, 2026-11-02: an unresponsive red
+# screen, twice; Sway locked with no client after "Error 71 (Protocol
+# error) dispatching to Wayland display" in gtklock, right after the panel
+# was switched): it ends on its own when unlocked (status 0) or killed by
+# a redraw (SIGKILL, 137); any other end is a crash, and this script runs
+# again, to draw it for the panel as it is now: restarted as it was, a
+# landscape one crashed again in portrait, three times, then swaylock
+# (2026-11-03).  After three crashes in a row, swaylock (still locked, with
+# a way to unlock).  This returns once a gtklock is up, as gtklock -d did
+# (swayidle -w waits).
+supervise() {
+    tries=${PRO1X_LOCK_TRIES:-0}
+    started=$(date +%s)
+    gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &
+    echo $! > "$rt/pro1x-lock.pid"
+    wait $!
+    rc=$?
+    case $rc in
+        0) rm -f "$rt/pro1x-lock.pid"; exit 0 ;;   # unlocked
+        137) exit 0 ;;              # a redraw: its new gtklock takes over
+    esac
+    [ $(( $(date +%s) - started )) -lt 30 ] || tries=0
+    tries=$((tries + 1))
+    logger -t pro1x-lock "gtklock ended with status $rc (crash $tries)"
+    if [ $tries -lt 3 ]; then
+        sleep 0.3
+        PRO1X_LOCK_TRIES=$tries exec "$self" --restart
+    fi
+    logger -t pro1x-lock "falling back to swaylock"
+    swaylock -c 1d2021 --clock --indicator &
+    echo $! > "$rt/pro1x-lock.pid"
+    wait $!
+    rm -f "$rt/pro1x-lock.pid"
+}
+supervise "$@" </dev/null >>"$rt/pro1x-gtklock.log" 2>&1 &
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    [ -r "$rt/pro1x-lock.pid" ] && kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null && exit 0
+    sleep 0.2
+done
+logger -t pro1x-lock "gtklock not up after 3 s"

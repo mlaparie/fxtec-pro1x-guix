@@ -42,9 +42,11 @@ redraw() {
         pro1x-lock --refresh-when-idle >/dev/null 2>&1 &
         return
     fi
-    drawn=$(cat "$rt/pro1x-lock-drawn" 2>/dev/null || echo 0)
-    [ $(( $(date +%s) - drawn )) -ge 30 ] || return
-    pro1x-lock --refresh >/dev/null 2>&1 &
+    # No redraw on wake any more (author, 2026-11-02): each swap of gtklock
+    # flashed red, and one that went wrong (gtklock dying with a Wayland
+    # protocol error as the panel powered on) left an unresponsive red
+    # screen; the status still follows battery changes and notifications.
+    return
 }
 
 # Typing: no key or touch in the last 20 s leaves $rt/pro1x-input-idle

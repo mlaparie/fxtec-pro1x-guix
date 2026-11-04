@@ -73,9 +73,10 @@ there yet.  Not yet checked on 7.3: calls, audio, suspend, deep sleep, charging.
   reboot, lock, suspend…).  In the menus (quick actions, launcher, window
   switcher, power), the volume keys move and the power key confirms, with
   the keyboard closed.
-- Lock screen (gtklock): clock, GNU Guix banner, unread notifications
-  per app; an on-screen keyboard while the keyboard is closed (numpad in
-  landscape), dark or light in config.scm.
+- Lock screen (gtklock): clock, GNU Guix banner, battery and CPU mode, unread
+  notifications per app; an on-screen keyboard while the keyboard is closed
+  (numpad in landscape), dark or light in config.scm.  It redraws itself when
+  the phone turns.
 - Notifications briefly light a dark screen, dimly.
 - Incoming calls show over the lock screen (not yet tried with a call);
   Calls and the camera open fullscreen in portrait, the previous
