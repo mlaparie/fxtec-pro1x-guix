@@ -55,6 +55,7 @@ once, so combine changes in one expression:
 | hardware `keyboard-haptics?` | `#t` | a short vibration per on-screen key |
 | hardware `keyboard-languages` | `'()` | word completion dictionaries besides English: `'("fr")`, any of `"fr"` `"de"` `"it"`; quick actions chooses which to combine, or off |
 | hardware `keyboard-layouts` | `'("us")` | on-screen keyboard layouts, independent of the dictionaries; chosen in quick actions or with the keyboard's layout key |
+| hardware `browser-fit?` | `#t` | at each Sway login, fit Firefox-family browsers to portrait, with a mobile user agent there (see below) |
 | hardware `lock-keyboard` | `'dark` | the Sway lock screen's keyboard, `'dark` or `'light` |
 | hardware `notification-leds` | blue messages, purple missed calls, white bell | list of `(EVENT COLOUR)` or `(EVENT COLOUR PERIOD-MS)`; colours `"red"` … or `"#RRGGBB"` |
 | hardware `charging-led`, `charged-led` | `"#FFA000"`, `"#00FF00"` | breathing while charging, steady when full or held; `#f` off |
@@ -105,6 +106,13 @@ Accounts made before 2026-10-31 have full copies instead: replace
 and remove `~/.config/i3status-rust/config.toml` to follow the port.
 
 GNOME Settings choices live in dconf and survive updates.
+
+At each Sway login `pro1x-browser-fit` adds to every LibreWolf, IceCat and
+Firefox profile: width rules in `chrome/userChrome.css`, a few lines in
+`user.js`, and the portrait user agent extension (Mozilla-signed; source in
+`device/browser/portrait-ua`).  Hardware `browser-fit? #f` stops that; what it
+added stays until you remove it from the profile (the block, the lines, and
+`extensions/pro1x-portrait-ua@fxtec.xpi`).
 
 ## channels.scm
 

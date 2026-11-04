@@ -1614,6 +1614,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-power-key                power key: screen off or on
 ;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
+;;;   bin/pro1x-browser-fit              Firefox-based browsers fit portrait
 ;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
 ;;;   bin/pro1x-power-button             power key: short off/on, held the menu
 ;;; ---------------------------------------------------------------------------
@@ -1668,6 +1669,8 @@ window opened by a sway key binding.")
           ("pro1x-power-key" "bin/")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
+          ("pro1x-browser-fit" "bin/")
+          ("pro1x-portrait-ua.xpi" "share/pro1x-sway/")
           ("pro1x-sleep" "bin/")
           ("pro1x-cpu-mode" "bin/")
           ("pro1x-charge-limit" "bin/")

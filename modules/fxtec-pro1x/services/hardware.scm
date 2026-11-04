@@ -26,6 +26,7 @@
 ;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
 ;;;   • on-screen keyboard: word completion dictionaries (keyboard-languages),
 ;;;     English always, and layouts (keyboard-layouts), independent of them;
+;;;   • browsers fitted to portrait (browser-fit?, default #t): pro1x-browser-fit;
 ;;;   • on-screen keyboard haptics (keyboard-haptics?, default #t): feedbackd theme;
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
@@ -124,6 +125,10 @@
   ;; The on-screen keyboard's layouts (xkb names), independent of the
   ;; dictionaries: '("us" "fr").  The first shows at first.
   (keyboard-layouts   pro1x-hardware-keyboard-layouts   (default '("us")))
+  ;; At each Sway login, width rules and the portrait user agent extension
+  ;; in every LibreWolf, IceCat and Firefox profile (pro1x-browser-fit).  #f
+  ;; adds nothing more; what it added stays until removed by hand.
+  (browser-fit?       pro1x-hardware-browser-fit?       (default #t))
   ;; The lock screen's on-screen keyboard (Sway, gtklock): 'dark or 'light.
   (lock-keyboard      pro1x-hardware-lock-keyboard      (default 'dark))
   ;; Wake the panel with a double tap while it is off.
@@ -986,6 +991,14 @@ under the file names stevia looks for.")
                      "LOCK_AFTER="
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
+                     "\n")))
+      ;; /etc/pro1x/browser.conf: for pro1x-browser-fit.
+      ("pro1x/browser.conf"
+       ,(plain-file "browser.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "BROWSER_FIT="
+                     (if (pro1x-hardware-browser-fit? config) "yes" "no")
                      "\n")))
       ;; /etc/pro1x/keyboard.conf: the on-screen keyboard's layouts and
       ;; dictionaries, for pro1x-osk.

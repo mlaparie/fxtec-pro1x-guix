@@ -38,6 +38,10 @@ there yet.  Not yet checked on 7.3: calls, audio, suspend, deep sleep, charging.
   Italian if added in config.scm.  Quick actions turns it off or combines the
   dictionaries you tick, whatever the layout; layouts are separate
   (keyboard-layouts).
+- LibreWolf, IceCat and Firefox fit portrait: narrower window, and our signed
+  extension sends a mobile user agent in portrait only, so sites offer their
+  mobile layout.  It makes the browser stand out in portrait next to
+  resistFingerprinting.
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
 - Dark apps and shell by default (color-scheme in config.scm).
 - Charge limit (85/80 %) set in config.scm; quick actions override it until reboot.
