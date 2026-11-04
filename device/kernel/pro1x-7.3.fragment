@@ -3,3 +3,8 @@
 # (0037: which master blocks XO shutdown, debugfs).
 CONFIG_QCOM_SMP2P_SLEEPSTATE=m
 CONFIG_QCOM_RPM_MASTER_STATS=m
+# The rear camera's flash LED as a V4L2 subdevice: 0027 lists it in the sensor's
+# flash-leds, and the camera's media device waits for it (moWerk's sfos.fragment
+# sets this too).  Off here on 7.3: both sensors with 0 media links, "No camera
+# found" (2026-11-03).
+CONFIG_V4L2_FLASH_LED_CLASS=m
