@@ -159,7 +159,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                )))
   ;;    The port's other services, also inside modify-services.  Each needs its module
   ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors,
-  ;;    boot.
+  ;;    boot, audio.
   ;;    (pro1x-boot-menu-service-type
   ;;     config => (pro1x-boot-menu-configuration
   ;;                (inherit config)
@@ -167,7 +167,20 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                the current system; 0: no menu, it boots at once, so an older generation
   ;;                cannot be chosen; -1: no autoboot, it waits for a key, after a crash or
   ;;                a remote reboot too.  Takes effect at the next deploy, then boot; no reflash.
-  ;;                (delay 15)))
+  ;;                (delay 15)
+  ;;                Older generations in that menu.  Leave at 3: the same number is
+  ;;                built into U-Boot, and changing that one needs a new flash.
+  ;;                (generations 3)))
+  ;;    (pro1x-boot-success-service-type
+  ;;     config => (pro1x-boot-success-configuration
+  ;;                (inherit config)
+  ;;                Marks the boot slot as good after a boot.
+  ;;                (qbootctl-package qbootctl)))  ; in (fxtec-pro1x packages misc)
+  ;;    (pro1x-audio-service-type
+  ;;     config => (pro1x-audio-configuration
+  ;;                (inherit config)
+  ;;                UCM profiles and the voice call helper.
+  ;;                (audio-package pro1x-audio)))  ; in (fxtec-pro1x packages audio)
   ;;    (pro1x-keyboard-service-type
   ;;     config => (pro1x-keyboard-configuration
   ;;                (inherit config)
@@ -186,7 +199,14 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config)
   ;;                (autostart? #t)
   ;;                (accel-mount-matrix \"-1, 0, 0; 0, -1, 0; 0, 0, 1\")
-  ;;                (disable-recovery? #t)))     ; no ADSP restart loop after a crash
+  ;;                (disable-recovery? #t)       ; no ADSP restart loop after a crash
+  ;;                ;; Platform properties the ADSP asks for by name.
+  ;;                (properties '((\"hw_platform\" . \"QRD\")))
+  ;;                ;; Only to replace them: the sensor configuration tree, a directory
+  ;;                ;; (default device/hexagonfs in the channel), and the daemon's package.
+  ;;                ;; (hexagonfs (local-file \"hexagonfs\" #:recursive? #t))
+  ;;                ;; (hexagonrpcd-package hexagonrpcd)   ; in (fxtec-pro1x packages misc)
+  ;;                ))
   )
 "))
 
