@@ -61,7 +61,12 @@ ssh_root=(ssh -i "$HOME/.ssh/pro1x-guix" -o BatchMode=yes "root@$host")
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 home="/home/$user"
-if "${ssh_root[@]}" test -f "$home/.config/guix/config.scm"; then
+# Not an `if': ssh's own failure (255) must stop here, not read as "no such file",
+# or a phone that drops off for a moment gets the stock configuration.
+status=0
+"${ssh_root[@]}" test -f "$home/.config/guix/config.scm" || status=$?
+[[ "$status" != 255 ]] || { echo "error: cannot reach root@$host" >&2; exit 1; }
+if [[ "$status" == 0 ]]; then
     dir="$home/.config/guix"
 else
     dir=/etc/guix
