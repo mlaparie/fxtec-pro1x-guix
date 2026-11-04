@@ -30,7 +30,7 @@
   pro1x-boot-menu-configuration?
   ;; How many "Boot previous generation N" entries to write.
   ;; Must equal the value compiled into U-Boot (make-u-boot-pro1x).
-  (generations pro1x-boot-menu-generations (default 3))
+  (generations pro1x-boot-menu-generations (default 4))
   ;; Seconds U-Boot's menu counts down at each boot before the current system
   ;; (0: none, -1: wait for a key).  Takes effect at the next boot, no reflash: it is
   ;; in menu.env.

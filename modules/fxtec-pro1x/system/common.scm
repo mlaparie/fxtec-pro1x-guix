@@ -168,9 +168,10 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                cannot be chosen; -1: no autoboot, it waits for a key, after a crash or
   ;;                a remote reboot too.  Takes effect at the next deploy, then boot; no reflash.
   ;;                (delay 15)
-  ;;                Older generations in that menu.  Leave at 3: the same number is
-  ;;                built into U-Boot, and changing that one needs a new flash.
-  ;;                (generations 3)))
+  ;;                Older generations in that menu, besides the current one.  Leave at 4:
+  ;;                the same number is built into U-Boot, and changing that one needs a
+  ;;                new flash.
+  ;;                (generations 4)))
   ;;    (pro1x-boot-success-service-type
   ;;     config => (pro1x-boot-success-configuration
   ;;                (inherit config)

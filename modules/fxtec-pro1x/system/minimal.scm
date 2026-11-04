@@ -156,7 +156,7 @@ files root may log in with."
      ;; N must match previous-generations in u-boot-pro1x.
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration
-               (generations 3)))
+               (generations 4)))
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type

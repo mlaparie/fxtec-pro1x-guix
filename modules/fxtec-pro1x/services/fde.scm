@@ -6,7 +6,7 @@
 ;;;   [512 MiB, end)  : LUKS2 container (header + encrypted root ext4)
 ;;;
 ;;; 512 MiB: a kernel and its initrd are about 60 MiB, and the area holds the
-;;; current system and three previous ones (services/boot.scm).
+;;; current system and four previous ones (services/boot.scm), 300 MiB at most.
 ;;;
 ;;; A loop device exposes the container because `cryptsetup open' for LUKS2
 ;;; does not take --offset.  The initrd has no udev and no losetup: the partition

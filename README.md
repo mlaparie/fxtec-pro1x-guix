@@ -304,7 +304,7 @@ bash scripts/flash.sh --encrypt
 ```
 
 **Updates:** `scripts/deploy.sh` or `guix system reconfigure` as usual.  The
-`pro1x-boot-menu` service copies the current system and three previous ones to the
+`pro1x-boot-menu` service copies the current system and four previous ones to the
 plain area when Guix writes its boot configuration.
 
 ## Keyboard

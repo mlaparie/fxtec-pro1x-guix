@@ -5,8 +5,10 @@
 ;;;   • inserts N "Boot previous generation" menu entries
 ;;;   • patches USB gadget (high-speed, UTMI pipe clock) and UFS GDSC
 ;;;
-;;; `previous-generations` (default 3) must match what systems/minimal.scm
-;;; requests; it is compiled into U-Boot so reflash after changing it.
+;;; `previous-generations` (default 4: five generations in the menu with the
+;;; current one) must match services/boot.scm's `generations`; it is compiled into
+;;; U-Boot, so reflash after changing it.  With more in menu.env than here, the
+;;; extra labels would replace U-Boot's own menu entries after them.
 ;;;
 ;;; U-Boot's bootmenu opens at every boot and counts down to the current system
 ;;; (`menu_delay' seconds, any key stops it; volume keys and power work), since
@@ -72,7 +74,7 @@
 (define (native-aarch64?)
   (string-prefix? "aarch64" (%current-system)))
 
-(define* (make-u-boot-pro1x #:key (previous-generations 3))
+(define* (make-u-boot-pro1x #:key (previous-generations 4))
   (let* ((n previous-generations)
          ;; "bootmenu_1=Boot previous generation 1=sysboot …\n" × n
          (prev-entries

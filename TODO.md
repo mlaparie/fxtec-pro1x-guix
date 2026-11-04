@@ -47,6 +47,11 @@ labels show generation numbers, keys work, #211 booted (`/proc/cmdline`).  Defau
 entry does not move the system profile: `guix system list-generations` still says
 "current" for the newest, `/run/booted-system` tells what runs.
 
+**Five generations in the U-Boot menu (2026-11-04):** current plus four older, in
+`make-u-boot-pro1x` and the boot menu service.  Build-evaluated only.  boot_a has the U-Boot
+with three: a system with four must not reach the phone before the new U-Boot, or its
+fourth label replaces U-Boot's own next menu entry.
+
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.
 

@@ -643,7 +643,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration
-               (generations 3)))
+               (generations 4)))
 
      ;; seatd: minimal seat manager; libseat uses its socket to open a DRM
      ;; session without needing a PAM login.  Provides the 'elogind symbol so
