@@ -315,10 +315,10 @@
       {
         "title": "A flash LED in the sensor's flash-leds, without V4L2 flash support, can leave a camera without media links",
         "general": "When a device tree links a flash LED to a sensor, camss's async notifier may wait for a V4L2 flash subdevice. Without the kernel option that subdevice never registers. Check for 0 links in media-ctl first, then compare the config with a working port.",
-        "instance": "Pro1x, 7.3.0, patch 0027 flash-leds on the rear camera; imx582 and s5k4h7 present with 0 links, libcamera reports no camera, CONFIG_V4L2_FLASH_LED_CLASS not set although LEDS_CLASS_FLASH and LEDS_QCOM_FLASH are =m. moWerk's sfos.fragment sets it =m; it was the only camera-related difference found between his fragment and our config. Fix built by CI, not booted when written.",
-        "confidence": "symptom confirmed; cause inferred",
+        "instance": "Pro1x, 7.3.0, patch 0027 flash-leds on the rear camera; imx582 and s5k4h7 present with 0 links, libcamera reports no camera, CONFIG_V4L2_FLASH_LED_CLASS not set although LEDS_CLASS_FLASH and LEDS_QCOM_FLASH are =m. moWerk's sfos.fragment sets it =m; it was the only camera-related difference found between his fragment and our config. Booted 2026-11-04 (generation 210): both sensors have links, white:flash-0 and dw9800 are entities, cam -l lists back and front, and the author reports the camera app more or less works. The notifier wait itself was not traced.",
+        "confidence": "confirmed that the option fixes it; mechanism inferred",
         "date": "2026-11-04",
-        "source": "media-ctl on the phone; moWerk kernel/sfos.fragment:70 and HANDOVER.md; device/kernel/pro1x-7.3.fragment"
+        "source": "media-ctl and cam -l on the phone; moWerk kernel/sfos.fragment:70 and HANDOVER.md; device/kernel/pro1x-7.3.fragment"
       }
     ],
     "haptics": [
