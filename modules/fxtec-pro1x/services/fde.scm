@@ -164,6 +164,19 @@ open from Shepherd, whose configuration then failed to load (seen in QEMU)."
           (when (zero? code)
             (system* cryptsetup "close" (string-append "fde-test-" name)))))
 
+      ;; What the console reads, with echo: a key that fails shows here, which a
+      ;; passphrase prompt cannot tell.  Ends on an empty line, or 60 s without one.
+      (define (show-typing)
+        (let ((console (open-input-file "/dev/console")))
+          (format #t "~%KEYBOARD TEST.  Open the keyboard, type letters, Enter.  Enter alone ends:~%")
+          (let loop ()
+            (when (pair? (car (select (list console) '() '() 60)))
+              (let ((line (read-line console)))
+                (log (format #f "typed: ~s" line))
+                (unless (or (eof-object? line) (string-null? line))
+                  (loop)))))
+          (close-port console)))
+
       (mkdir-p "/run/cryptsetup/")
       (mkdir-p mnt)
       (log "started")
@@ -173,7 +186,8 @@ open from Shepherd, whose configuration then failed to load (seen in QEMU)."
           (false-if-exception
            ((@ (guix build syscalls) mount) device mnt "ext4"
             (@ (guix build syscalls) MS_RDONLY)))
-          (format #t "~%KEYBOARD TEST.  Open the keyboard.  Letters, top row first:~%")
+          (show-typing)
+          (format #t "~%KEYBOARD TEST.  Letters, top row first (nothing shows):~%")
           (try "letters")
           (format #t "~%KEYBOARD TEST.  Digits, 1 to 0:~%")
           (try "digits")
@@ -185,7 +199,8 @@ open from Shepherd, whose configuration then failed to load (seen in QEMU)."
   (mapped-device-kind
    (inherit luks-device-mapping)
    (open open-fde-prompt-test)
-   (modules (cons '(ice-9 ftw) (mapped-device-kind-modules luks-device-mapping)))))
+   (modules (append '((ice-9 ftw) (ice-9 rdelim))
+                    (mapped-device-kind-modules luks-device-mapping)))))
 
 (define (pro1x-fde-prompt-test-initrd)
   "Return the initrd procedure of the test above."
