@@ -98,6 +98,8 @@ follow_speaker() {
   else
     pactl set-card-profile "$card" "Voice Call (Earpiece, Mic)" && echo "speaker off"
   fi
+  # The new sink is there when pactl returns (130-180 ms on the phone).
+  start_keepers && start_pcm
 }
 
 stop_keepers() {
@@ -124,10 +126,10 @@ calls() { # object paths of the calls that are not over, on one line
 # The session goes on started ports: wait for the keep-alive streams to run.
 # One session opened before them had no sound from the other side.
 wait_streams() {
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for _ in $(seq 50); do
     awk '/^state: RUNNING/ { n++ } END { exit n != 2 }' \
       /proc/asound/card0/pcm0p/sub0/status /proc/asound/card0/pcm1c/sub0/status && return 0
-    sleep 0.5
+    sleep 0.1
   done
   echo "keep-alive streams not running after 5 s"
 }
@@ -221,5 +223,6 @@ while :; do
     # no PCM to open (q6voice missing): nothing more to do in the always mode
     [ "$always" = 1 ] && exit 1
   fi
-  sleep 1
+  # Half a second in a call: this is how late the speaker button can act.
+  if [ -n "$vp" ]; then sleep 0.5; else sleep 1; fi
 done
