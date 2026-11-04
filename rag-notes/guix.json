@@ -499,6 +499,70 @@
         "confidence": "confirmed",
         "date": "2026-10-30",
         "source": "commit d6641f0; strings of libgtk-3.so (GUIX_GTK3_IM_MODULE_FILE); stevia debug log"
+      },
+      {
+        "title": "Session daemons keep the scripts of their login's generation",
+        "general": "A deploy does not reach what the session already runs: a wrapped daemon also puts its own generation's bin first in PATH, so what it calls is old too. Before calling a change broken, compare the daemon's PATH with the current generation.",
+        "instance": "Volume keys and hide ignored the app menu's new sub-list until Sway restarted (generation 183 daemons, generation 187 current).",
+        "confidence": "confirmed",
+        "date": "2026-11-03",
+        "source": "/proc/PID/environ; author's test after the restart"
+      },
+      {
+        "title": "A locker wider than the panel dies on rotation; restart it for the new geometry",
+        "general": "ext-session-lock requires the committed size to match the configure. A lock surface whose minimum size exceeds the new output gets a protocol error, and restarting it with the same layout fails again. Take the locker out before the turn and draw a new one after; recompute the layout on any crash restart.",
+        "instance": "gtklock with the landscape keyboard, landscape to portrait: Error 71 three times, then swaylock. Fixed in pro1x-lock --rotate; author rotated while locked, no red screen, right keyboard.",
+        "confidence": "confirmed for the fix; the size mismatch as cause is inferred",
+        "date": "2026-11-03",
+        "source": "commit: Lock screen: gtklock out before the panel turns; /run/user/1000/pro1x-gtklock.log"
+      },
+      {
+        "title": "Synchronized output (DEC 2026) hides the blank frame between fzf instances",
+        "general": "fzf leaves the alternate screen before execute(), so a sub-list shows a blank frame. Sending ?2026h before leaving and ?2026l after the next list drew removes it without rebuilding the menus as one fzf. fzf's option parsing eats backslashes in FZF_DEFAULT_OPTS, so pass the sequences by environment variable there.",
+        "instance": "Foot, fzf 0.74, quick actions, switcher and app menu; author: flash gone.",
+        "confidence": "confirmed",
+        "date": "2026-11-03",
+        "source": "commit: Menus: no blank frame into a sub-list and back"
+      },
+      {
+        "title": "A touch on a Sway gap focuses the workspace",
+        "general": "seatop_default gives the focus to the workspace on a press on empty space, without any IPC event when the workspace does not change. An edge swipe that starts in a gap loses the window's focus; 'focus child' restores the last tiled one. Tap-outside-to-hide cannot rely on events for it either.",
+        "instance": "SwayFX 0.6, sway/input/seatop_default.c:372; the bottom swipe for the on-screen keyboard. Hypothesis from the author.",
+        "confidence": "confirmed in source; the fix not yet confirmed on the phone",
+        "date": "2026-11-03",
+        "source": "pro1x-osk toggle"
+      },
+      {
+        "title": "Foot rounds a floating window to whole cells by default",
+        "general": "A first show after a hidden start and later shows settled on different sizes, one cell apart. resize-by-cells=no and sizes in ppt alone, without a relative shrink, gave one size.",
+        "instance": "504x724 then 512x736 at scale 2; after the change 512x736 on first and later shows, in the size log.",
+        "confidence": "confirmed by the log; the cause is inferred from the one-cell difference",
+        "date": "2026-11-03",
+        "source": "commit: Sway: stevia by hand only; menus one size"
+      },
+      {
+        "title": "Stevia finds dictionaries only in its compiled path, under lang_REGION names",
+        "general": "Hunspell dictionary packages differ in file name (Guix's French is fr-classique). Point stevia at the system profile and link the files under the names it looks for. gsettings without GIO_EXTRA_MODULES uses a memory backend and misreads as defaults: check with dconf read.",
+        "instance": "stevia 0.56, keyboard-languages; hunspell-dict-fr-classique, -de, -it-it, -en-us about 0.7-1.3 MB each; Spanish not in Guix at this pin.",
+        "confidence": "confirmed for files and settings; suggestions not yet seen",
+        "date": "2026-11-03",
+        "source": "commit: On-screen keyboard: word completion"
+      },
+      {
+        "title": "A mobile user agent, not the viewport pref, gives Firefox-family browsers mobile layouts",
+        "general": "dom.meta_viewport.enabled had no visible effect on a desktop build: a page wider than the window was not shrunk to fit. Sites that choose their layout by user agent need the agent changed; a pref cannot follow orientation, a WebExtension can, checking the window's shape per request.",
+        "instance": "LibreWolf 158: DuckDuckGo overflowed at 477 CSS px in portrait with the desktop agent; fits with Android 14 Mobile, per the author, and landscape keeps the desktop agent. resistFingerprinting did not inflate screen.width. User-Agent Switcher and Manager has no orientation setting that could be found.",
+        "confidence": "confirmed by the author with a temporary add-on; signed install not done",
+        "date": "2026-11-03",
+        "source": "device/browser/portrait-ua; screenshots of file test pages"
+      },
+      {
+        "title": "An app over a Wayland lock screen really unlocks the session: restrict it first, and lock before it closes",
+        "general": "ext-session-lock has nothing above the lock: showing an app means ending the lock. So fullscreen the app before unlocking, enter a compositor mode without bindings, turn other input devices off, fail closed if any step fails, track the window by its id rather than its app name, and on the app's close lock first and close it behind the lock.",
+        "instance": "Sway and gtklock. gtklock unlocks on SIGTERM, so killing a process group around it opens the session. An empty Sway mode block creates no mode: it needs one binding, and a failed 'mode' must keep the lock. Criteria with con_id=__focused__ match on an empty workspace, so ask the tree for the focused window. By app name, a second camera window tiled with the first and showed the session. Tried by the author at generation 209 with the camera button; no real call or alarm yet.",
+        "confidence": "confirmed for the camera path",
+        "date": "2026-11-04",
+        "source": "device/sway/pro1x-open, device/sway/pro1x-lock, device/camera/pro1x-camera-app"
       }
     ]
   }

@@ -4,6 +4,27 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
+**On the phone (2026-11-04):** generation 209, kernel 7.3.0, from `next`.  Lock
+screen hardened: an app over it runs in a Sway mode without bindings, keyboards and
+pointers off, ✕ locks before the app closes; the author's test "seems to work", more
+to come; not tried with a real call or alarm.  Cameras: "No camera found" on 7.3,
+both sensors with 0 media links.  `CONFIG_V4L2_FLASH_LED_CLASS=m` added for it (the
+cause is inferred, not booted yet).  Next: import the CI kernel, deploy, reboot,
+check `media-ctl -p` links and the camera.  Older state just below.
+
+**On the phone (2026-11-03):** generation 203, kernel 7.3.0, from `next` (which
+has 7.3 since 02218e5), over Tailscale.  `main` is behind: the phone's channel
+follows it, so `guix system reconfigure` on the phone fails until `main` catches
+up (its config.scm uses the new options; deploy from the PC).  Fallback: 7.1,
+generation 182.  Author confirmed: rotation while locked, app menu workspaces,
+sub-lists without a flash, Stevia by hand only, word completion with chosen
+dictionaries, portrait menu height, quick actions, bottom swipe focus, CPU mode on
+the lock screen, power menu speed, LibreWolf in portrait with the signed extension
+after a restart.  Minor: switcher flicker.  Haptics: bursts from the chip's memory,
+script ready and not run, on the author's go (not yet in the repository).  7.3
+checklist still to do, then merge `main`: calls, audio, camera, suspend and wake,
+deep sleep, charging.
+
 **On the phone (2026-10-30, 01:20):** flashed 2026-10-29 from the CI
 image of `next` (2d71b95, generation 1), then generations 2-13 deployed
 from the PC (USB).  Generation 13 is the first built from the phone's own
@@ -28,6 +49,69 @@ modules`); `--repo` deploys `systems/*.scm` instead.
 - moWerk's SailfishOS mainline port and sailfish-rag (AGENTS.md §4).
 
 ---
+
+## State, 2026-11-02 night
+
+- Phone: generation 142 (userspace of c1324fa minus the last pro1x-osk
+  fix; kernel 3nfp9v97, modem wake v3).  CI run 41368293086 (main,
+  550d477) builds the kernel with dw9800-soft and modem wake v4: import
+  it, deploy, reboot, then suspend with the SIM registered.
+- Confirmed by the author tonight: calls wake the phone from suspend
+  (v3); the camera flash works (0.6 s pre-flash).
+- Open: suspend held only while unregistered (v4 is the fix); camera
+  colours (no CCM), slow exposure; one landscape photo to check the
+  accelerometer turn; stevia slowness and text fields (it was running:
+  the earlier "not running" was a wrong check).
+- If the phone reboots before the next deploy, pro1x-osk run spins
+  (fixed in c1324fa): kill it by PID.
+- Later the same night (generation 150): stevia without its slide
+  animation shows "much faster" (author); the earlier tests ran the old
+  stevia, not restarted after its deploy: restart stevia after a stevia
+  deploy.  Haptics on menu swipes and the power hold work once fbcli is
+  fed from a sleep (felt by the author); menu swipes act at 80 px with the
+  finger down.  sov works with its own style only.  Charge limit
+  overshot to 91% once (gauge jump suspected, not measured): battery
+  trace running again (/root/charge-trace.sh, until reboot).
+
+## State, 2026-11-03 night
+
+- Phone: generation 179 (next e476eb7: everything of 2026-11-02/03, see
+  DEBRIEF-2026-11-03.md), kernel wiqj3i9r (7.1, modem wake v4,
+  dw9800-soft), time zone Europe/Paris.
+- 7.3 trial: branch kernel-7.3-trial, kernel n9iv2m73 (CI 41551104730)
+  in /tmp/cik73t, path checked; full image run 41564798402.  Not booted.
+- Loggers still running on the phone until reboot: /var/log/pro1x-flash.log,
+  /var/log/pro1x-pm-latency.log.
+
+## State, 2026-11-02 morning
+
+- Phone: generation 153 (next 2d2ac45: libcamera 0018, Night button),
+  kernel still 3nfp9v97 (7.1, modem wake v3).
+- To import (author's sudo): 7.1 kernel wiqj3i9r (CI 41378484852, modem
+  wake v4 + dw9800-soft) in /tmp/cik; 7.3 kernel i5n6m4fc (CI 41388196979,
+  branch kernel-7.3 with next merged) in /tmp/cik73.  Neither booted.
+- Debrief for the author: DEBRIEF-2026-11-02.md (untracked).
+
+## Camera exposure: libcamera never lengthens the frame (plan, 2026-11-02)
+
+Measured on the phone (rag-notes hardware/camera): the IMX582's 1080p mode
+runs at its minimum blanking (70 lines), so no exposure can exceed 10.4 ms,
+asked or automatic; the dark indoor photos follow from it.  The sensor
+driver allows blanking up to 64420 lines (~0.6 s exposures).  libcamera's
+simple pipeline takes the exposure limit at configure time and never writes
+VBLANK.  Plan:
+Step 1 done (2026-11-02, device/libcamera/af/0018): exposures up to 619 ms
+applied on the phone, auto up to 66 ms.  Steps 2-3 open.
+1. A libcamera patch (soft IPA): exposureMax from the VBLANK maximum; per
+   frame, VBLANK = max(minimum, exposure + margin - height), sent with the
+   exposure through DelayedControls (VBLANK registered with the exposure's
+   delay); FrameDurationLimits honoured.  Model: src/ipa/rpi/common and
+   rkisp1's agc handling of vblank.  Build in CI (C++ under emulation is
+   slow), test with the headless test (camtest.py in the agent's notes:
+   asked exposure vs applied, mean brightness).
+2. The camera app: a Night/long exposure button (manual exposure up to
+   ~0.5 s, gain moderate) once 1 works; the viewfinder keeps 30 fps.
+3. Check whether moWerk's camerabin work hit the same cap (his notes).
 
 ## Kernel 7.3 upgrade (planned, branch `kernel-7.3`; author, 2026-11-02)
 
