@@ -24,7 +24,7 @@ swaymsg -t subscribe -m '["window"]' 2>/dev/null |
             new)
                 pro1x-lock --locked || continue
                 echo "$id" > "$flag"
-                pro1x-lock --unlock
+                pro1x-lock --app-unlock
                 swaymsg 'output * power on' >/dev/null
                 swaymsg "[con_id=$id] focus" >/dev/null ;;
             close)

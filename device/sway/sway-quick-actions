@@ -114,6 +114,7 @@ qs_start() {                    # qs_start [hidden]
 }
 
 qs_show() {
+    [ -e "$rt/pro1x-locked-app" ] && return    # one app over the lock screen
     case "$(qs_state)" in
         hidden)
             # pro1x-menu's geometry, for the current orientation.

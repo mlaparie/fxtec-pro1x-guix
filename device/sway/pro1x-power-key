@@ -8,6 +8,8 @@
 # decides from the panel's state, and leaves the panel on when pro1x-idle's
 # resume woke it for this very press (it stamps the time).
 rt="${XDG_RUNTIME_DIR:-/tmp}"
+# One app over the lock screen (pro1x-lock --app-unlock): the key ends that.
+[ -e "$rt/pro1x-locked-app" ] && pro1x-lock
 on=$(swaymsg -t get_outputs -r |
          jq -r '[.[] | select(.name == "DSI-1") | .power] | any')
 if [ "$on" = true ]; then

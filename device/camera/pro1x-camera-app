@@ -232,7 +232,7 @@ class Camera(Gtk.Application):
         # 2026-11-02).
         close = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.START,
                         margin_top=16, margin_end=16)
-        close.pack_start(self.button("✕", lambda *_: self.win.destroy()),
+        close.pack_start(self.button("✕", lambda *_: self.quit_now()),
                          False, False, 0)
         self.overlay.add_overlay(close)
 
@@ -333,6 +333,29 @@ class Camera(Gtk.Application):
         self.apply_controls()
         self.pipeline.set_state(Gst.State.PLAYING)
         self.say(name.split(" ")[0], 2)
+
+    @staticmethod
+    def locked_flag():
+        """There while this is open over the lock screen (pro1x-lock
+        --app-unlock)."""
+        return os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-locked-app")
+
+    def quit_now(self):
+        """Out at once, always: closing could hang (author, 2026-11-03, with no
+        camera found), and over the lock screen a window left behind is a way
+        in.  At most 1.5 s for the pipeline and LED, then the process ends.
+        Over the lock screen, the lock comes first, and pro1x-open closes this
+        behind it, so the session never shows (author, 2026-11-03)."""
+        if os.path.exists(self.locked_flag()):
+            subprocess.Popen(["swaymsg", "exec", "pro1x-lock"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            threading.Timer(5, os._exit, (0,)).start()
+            return
+        threading.Timer(1.5, os._exit, (0,)).start()
+        self.win.hide()
+        self.stop()
+        self.led(False)
+        os._exit(0)
 
     def stop(self):
         if self.pipeline:
@@ -731,6 +754,9 @@ class Camera(Gtk.Application):
         leaves fullscreen, its container turns tabbed, and the viewer opens
         as the next tab; when the viewer closes, fullscreen again."""
         if not self.last_photo:
+            return
+        # Over the lock screen no other app may open (pro1x-lock --app-unlock).
+        if os.path.exists(self.locked_flag()):
             return
         me = '[app_id="^org.pro1x.Camera$"]'
         subprocess.run(["swaymsg", me + " fullscreen disable, layout tabbed"],

@@ -4,20 +4,27 @@
 #
 # Unlocked: runs COMMAND.  Locked: runs it, and if within 8 s a window of
 # an app in LOCK_SCREEN_APPS appears (/etc/pro1x/apps.conf,
-# lock-screen-apps in config.scm), unlocks for it, focuses it, lights the
-# panel, and
-# locks again as soon as the focus goes to another app or the app closes
-# (author, 2026-10-31: the camera, like Calls, should open while locked).
-# Used by the camera button's triple press and the shake action; Calls has
-# pro1x-call-watch.  Meanwhile the phone is unlocked behind that app.
-#
-# State: written 2026-10-31, not yet run on the phone.
+# lock-screen-apps in config.scm), unlocks for it (pro1x-lock --app-unlock:
+# keyboards, pointers, bindings, menus and gestures stay off meanwhile), focuses
+# it, lights the panel, and locks again as soon as the focus goes to another app
+# or the app closes (author, 2026-10-31: the camera, like Calls, should open
+# while locked; 2026-11-03: closing it left the phone unlocked).  Used by the
+# camera button's triple press and the shake action; Calls has
+# pro1x-call-watch.  Meanwhile the session is unlocked behind that app, so an
+# app allowed here must not itself reach other things.
 
 [ $# -gt 0 ] || exit 2
 LOCK_SCREEN_APPS=
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
+rt="${XDG_RUNTIME_DIR:-/tmp}"
 
-pro1x-lock --locked || exec sh -c "$*"
+# Already open for one app: nothing else.
+[ -e "$rt/pro1x-locked-app" ] && exit 0
+
+# From a blank screen too (author, 2026-11-03: triple press did not wake it).
+swaymsg 'output * power on' >/dev/null
+swaymsg 'input type:touch events enabled' >/dev/null
+pro1x-dim restore 2>/dev/null
 
 focused() {                     # "CON_ID APP_ID" of the focused window
     swaymsg -t get_tree -r 2>/dev/null |
@@ -41,6 +48,32 @@ case "${1##*/}" in
     *) want= ;;
 esac
 
+window_of() {                   # the CON_ID of APP_ID's window, if any
+    windows | awk -v a="$1" '$2 == a { print $1; exit }'
+}
+
+if ! pro1x-lock --locked; then
+    # Unlocked: a single-window app already open is only focused.
+    if [ -n "$want" ] && c=$(window_of "$want") && [ -n "$c" ]; then
+        exec swaymsg "[con_id=$c] focus"
+    fi
+    exec sh -c "$*"
+fi
+
+# Locked: a window left from before starts over, or two would tile and show
+# what is behind them (author, 2026-11-03).
+if [ -n "$want" ]; then
+    while c=$(window_of "$want") && [ -n "$c" ]; do
+        swaymsg "[con_id=$c] kill" >/dev/null
+        sleep 0.5
+        c2=$(window_of "$want")
+        [ "$c2" = "$c" ] || continue
+        p=$(swaymsg -t get_tree -r | jq -r --argjson c "$c" '.. | objects | select(.id? == $c) | .pid')
+        kill -KILL "$p" 2>/dev/null
+        sleep 0.3
+    done
+fi
+
 # While locked, Sway does not focus new windows (author: Snapshot started
 # but stayed behind the lock): watch the tree for a new window of an
 # allowed app instead.
@@ -62,19 +95,39 @@ WINDOWS
 done
 [ -n "$app" ] || exit 0
 
-pro1x-lock --unlock
+pid=$(swaymsg -t get_tree -r | jq -r --argjson c "$con" '.. | objects | select(.id? == $c) | .pid')
+# Over everything before the unlock, nothing behind it to see or touch.
+swaymsg "[con_id=$con] fullscreen enable" >/dev/null
+pro1x-lock --app-unlock || { kill -KILL "$pid" 2>/dev/null; exit 1; }
+# A touchpad hold from before ends: it takes the touchscreen from the app.
+[ -p /run/pro1x-pointer ] && echo release > /run/pro1x-pointer
+# Again after the unlock: without this no touch reached the app (2026-11-03).
 swaymsg 'output * power on' >/dev/null
 swaymsg 'input type:touch events enabled' >/dev/null
 pro1x-dim restore 2>/dev/null
 swaymsg "[con_id=$con] focus" >/dev/null
 sleep 0.5                       # the focus settles after the unlock
 
-# Lock again when the focus leaves APP (another app, a workspace switch,
-# APP closed).  Our menus are no exception: they would reach everything.
-swaymsg -m -r -t subscribe '["window", "workspace"]' 2>/dev/null |
-    while IFS= read -r _; do
-        now=$(focused)
-        [ "${now#* }" = "$app" ] && continue
-        pro1x-lock
-        break
+# Lock again when the focus leaves this very window (another window, even of the
+# same app; a workspace switch; closed).  Asked in a loop: no event to miss, and
+# nothing to clean up.  The lock goes through Sway so that it belongs to no
+# process group of ours: a kill of the group here reached gtklock, which unlocks
+# on SIGTERM, and left the phone open (2026-11-03).  Tried again until a lock
+# client runs.
+while [ -e "$rt/pro1x-locked-app" ]; do
+    sleep 0.3
+    now=$(focused)
+    [ "${now%% *}" = "$con" ] && continue
+    logger -t pro1x-lock "locking again: the focus left $app"
+    swaymsg exec pro1x-lock >/dev/null
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        sleep 0.25
+        [ -e "$rt/pro1x-locked-app" ] || break
     done
+done
+
+# Locked again: the app does not stay behind it.
+swaymsg "[con_id=$con] kill" >/dev/null 2>&1
+sleep 1
+kill -KILL "$pid" 2>/dev/null
+exit 0

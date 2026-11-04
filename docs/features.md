@@ -78,6 +78,10 @@ there yet.  Not yet checked on 7.3: calls, audio, suspend, deep sleep, charging.
   (numpad in landscape), dark or light in config.scm.  It redraws itself when
   the phone turns.
 - Notifications briefly light a dark screen, dimly.
+- An app allowed over the lock screen (a call, an alarm, the camera button's
+  triple press) really unlocks the session behind it: bindings, keyboards,
+  pointers, menus and gestures stay off meanwhile, and the phone locks again
+  when it closes or loses the focus.
 - Incoming calls show over the lock screen (not yet tried with a call);
   Calls and the camera open fullscreen in portrait, the previous
   rotation comes back after.

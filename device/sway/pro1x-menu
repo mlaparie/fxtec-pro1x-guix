@@ -15,6 +15,10 @@
 # State: written 2026-10-30, not yet run on the phone.
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
+# One app over the lock screen: no menu may open or take keys.
+case "${1:-}" in
+    toggle|key) [ -e "$rt/pro1x-locked-app" ] && exit 1 ;;
+esac
 cmd=${1:-toggle} id=${2:-quickactions} hidden=${3:-}
 
 portrait() {

@@ -5,7 +5,7 @@
 # incoming call could not be answered while locked (author, 2026-10-30).
 # This follows ModemManager's CallAdded and CallDeleted signals on the
 # system bus.  For an incoming call (Call Direction 1) while locked, it
-# unlocks (pro1x-lock --unlock) and lights the panel; Calls
+# unlocks (pro1x-lock --app-unlock) and lights the panel; Calls
 # then shows its window fullscreen (Sway config rule).  When that call is
 # deleted (hung up, rejected or missed), it locks again (pro1x-lock).
 # Meanwhile the phone is unlocked for as long as the call lasts: the price
@@ -89,7 +89,7 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
                    case " $LOCK_SCREEN_APPS " in *" org.gnome.Calls "*) true ;; *) false ;; esac &&
                    pro1x-lock --locked; then
                     echo "$call" > "$flag"
-                    pro1x-lock --unlock
+                    pro1x-lock --app-unlock
                     swaymsg 'output * power on' >/dev/null
                     swaymsg 'input type:touch events enabled' >/dev/null
                     pro1x-dim restore 2>/dev/null

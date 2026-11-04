@@ -55,8 +55,14 @@ done |
                   locked= menu=
                   [ -r "$rt/pro1x-lock.pid" ] &&
                       kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null && locked=yes
-                  swaymsg '[con_id=__focused__ app_id="^(quickactions|launcher|windowswitcher|powermenu)$"] nop' \
-                      >/dev/null 2>&1 && menu=yes
+                  # One app over the lock screen: the same, no menu.
+                  [ -e "$rt/pro1x-locked-app" ] && locked=yes
+                  # From the tree: criteria with con_id=__focused__ match any
+                  # menu when an empty workspace has the focus.
+                  case "$(swaymsg -t get_tree -r |
+                          jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" in
+                      quickactions|launcher|windowswitcher|powermenu) menu=yes ;;
+                  esac
                   sleep 0.56
                   [ "$(cat "$held" 2>/dev/null)" = "$stamp" ] || exit 0
                   rm -f "$held"

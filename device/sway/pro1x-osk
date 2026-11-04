@@ -58,6 +58,7 @@ case "${1:-}" in
             fi
         done ;;
     toggle)
+        [ -e "$rt/pro1x-locked-app" ] && exit 0  # one app over the lock screen
         stamp="$rt/pro1x-osk-toggled"
         now=$(date +%s%N)
         [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0

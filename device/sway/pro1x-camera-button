@@ -72,6 +72,13 @@ evtest "$dev" 2>/dev/null |
     while IFS= read -r line; do
         case "$line" in
             *"(KEY_CAMERA), value 1"*)
+                # One app over the lock screen: a photo at most; no click, no
+                # touchpad (which would take the touchscreen from the app).
+                if [ -e "$rt/pro1x-locked-app" ]; then
+                    rm -f "$st" "$st.pending" "$st.drag"
+                    shoot_in_camera
+                    continue
+                fi
                 # .pending: "COUNT STAMP", the short presses so far.
                 n=$(cut -d' ' -f1 "$st.pending" 2>/dev/null || echo 0)
                 if [ "${n:-0}" -ge 2 ]; then          # the third press
@@ -90,6 +97,7 @@ evtest "$dev" 2>/dev/null |
                   touch "$st.drag"
                   pointer hold ) & ;;      # it grabs the touchscreen
             *"(KEY_CAMERA), value 0"*)
+                [ -e "$rt/pro1x-locked-app" ] && continue
                 if [ -f "$st.drag" ]; then
                     rm -f "$st.drag" "$st"
                     pointer release

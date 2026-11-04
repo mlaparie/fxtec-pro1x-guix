@@ -176,9 +176,9 @@
   (fullscreen-apps    pro1x-hardware-fullscreen-apps
                       (default '("org.gnome.Calls" "org.pro1x.Camera"
                                  "org.gnome.Snapshot")))
+  ;; Not Snapshot: its gallery shows every earlier photo (2026-11-03).
   (lock-screen-apps   pro1x-hardware-lock-screen-apps
-                      (default '("org.gnome.Calls" "org.pro1x.Camera"
-                                 "org.gnome.Snapshot")))
+                      (default '("org.gnome.Calls" "org.pro1x.Camera")))
   ;; The camera button in Sway: a triple press runs this shell command
   ;; (pro1x-open; default: the camera), a press in Snapshot takes a picture,
   ;; a single press elsewhere left-clicks where the pointer is (right with

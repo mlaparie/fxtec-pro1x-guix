@@ -71,7 +71,7 @@ once, so combine changes in one expression:
 | hardware `portrait-apps` | Calls, Snapshot | app_ids (`swaymsg -t get_tree`) that turn the panel to portrait while focused (Sway) |
 | hardware `landscape-apps` | none | the same, landscape |
 | hardware `fullscreen-apps` | Calls, Camera, Snapshot | app_ids made fullscreen when they open (Sway) |
-| hardware `lock-screen-apps` | Calls, Camera, Snapshot | app_ids allowed to open over the lock screen: an incoming call, the camera button's triple press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
+| hardware `lock-screen-apps` | Calls, Camera | app_ids allowed to open over the lock screen: an incoming call, the camera button's triple press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
 | hardware `camera-triple-press` | `"pro1x-camera-app"` | shell command for a triple press of the camera button (default: the camera; not while the proximity sensor reads near); a press in the camera app (or Snapshot) takes a picture, a single press elsewhere is a left click where the pointer is (a right click with Fn held); held, the touchscreen is a touchpad moving the pointer, and with Super held too a window drag |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
