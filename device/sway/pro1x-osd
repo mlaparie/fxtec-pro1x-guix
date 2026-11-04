@@ -7,7 +7,8 @@
 #   pro1x-osd volume|bright show      only show the level (quick actions)
 #
 # A bar for a second when the volume or the brightness changes from the
-# keys (author, 2026-10-31).  Muted shows the volume in grey, brightness
+# keys (author, 2026-10-31).  Steps of 2 % (author, 2026-11-02: smaller);
+# brightness never below 1 of 255, the dimmest before black (-n1).  Muted shows the volume in grey, brightness
 # is yellow (wob draws no text).  The bar's
 # look: wob.ini next to the port's sway config.  Brightness only through
 # the backlight's brightness file (brightnessctl), never actual_brightness
@@ -52,13 +53,13 @@ case "$1 ${2:-}" in
     # their presses and holds); the volume stays.
     "volume up") in_menu && exit 0
                  note_volume
-                 wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+                 wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+ ;;
     "volume down") in_menu && exit 0
                    note_volume
-                   wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+                   wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%- ;;
     "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
-    "bright up") brightnessctl -q set 5%+ ;;
-    "bright down") brightnessctl -q set 5%- ;;
+    "bright up") brightnessctl -q -n1 set 2%+ ;;
+    "bright down") brightnessctl -q -n1 set 2%- ;;
     # Changed elsewhere (quick actions): only the bar.
     "volume show"|"bright show") ;;
     *) echo "usage: pro1x-osd daemon | volume up|down|mute | bright up|down" >&2

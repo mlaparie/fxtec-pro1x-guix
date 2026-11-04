@@ -9,7 +9,9 @@
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications.
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
-# feedback, CPU mode, charge limit, orientation, and for Wi-Fi and
+# feedback, CPU mode, charge limit, orientation, keyboard layout, word
+# completion (several at once), and for
+# Wi-Fi and
 # Bluetooth on, off or their tool; author: a list, not stepping); Right
 # and Left step only brightness and volume, and Right opens Wi-Fi's and
 # Bluetooth's choices and the SIM and Notifications tools; Esc closes.  The header shows the battery level and charging state; the
@@ -23,6 +25,10 @@
 # default action, Tab picks another, Del dismisses, Ctrl-X dismisses all,
 # PgUp/PgDn scroll the preview, Esc goes back.
 #
+# A change shows on its line at once and applies in the background
+# (--cached, confirm): if it did not work, the line says "failed" in red for
+# 2 s, then the real state (author, 2026-11-03: a full reload takes 1.4 s).
+#
 # Needs: nmcli, mmcli, rfkill, brightnessctl, wpctl, makoctl (system
 # profile); gsettings, gdbus, fzf, sway-autorotate, sway-notifications (in
 # this package's PATH).  The user is in netdev (NetworkManager,
@@ -35,6 +41,11 @@ torch=/sys/class/leds/white:flash-0/brightness
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
 self=$0
+# No blank frame between a list and its sub-list (author, 2026-11-03): the
+# terminal holds its drawing (synchronized output) from just before fzf
+# leaves the screen until the next list has drawn.
+sync_begin="execute-silent[printf '\\033[?2026h' >/dev/tty]"
+sync_end="execute-silent[(sleep 0.03; printf '\\033[?2026l' >/dev/tty) &]"
 
 osk() {                         # osk true|false: stevia, if it runs
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
@@ -87,6 +98,7 @@ qs_state() {                    # shown, hidden or none
 }
 
 qs_hide() {
+    pro1x-menu close-sub quickactions
     # Its query cleared, for next time (in the background: called from
     # inside fzf's execute, which answers only afterwards).
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
@@ -97,7 +109,7 @@ qs_hide() {
 
 qs_start() {                    # qs_start [hidden]
     QS_IN_FOOT=1 QS_RESIDENT=1 QS_START_HIDDEN=${1:-} \
-        setsid pro1x-term --app-id=quickactions -o pad=12x8 -o "font=Iosevka Term:size=13" "$0" \
+        setsid pro1x-term --app-id=quickactions -o resize-by-cells=no -o pad=12x8 -o "font=Iosevka Term:size=13" "$0" \
         >/dev/null 2>&1 < /dev/null &
 }
 
@@ -136,7 +148,9 @@ fi
 
 modem_kv() { mmcli -m any --output-keyvalue 2>/dev/null; }
 battery=/sys/class/power_supply/battery
-charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable
+charge_param=/sys/module/pro1x_charger_icl/parameters/charge_enable    # 7.1
+[ -e "$charge_param" ] ||                                              # 7.3
+    charge_param=/sys/class/power_supply/usb/device/charging_enabled
 kv_get() { sed -n "s/^$1 *: //p"; }  # modem_kv | kv_get <key>
 pin_tries() { grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9; }
 
@@ -204,7 +218,9 @@ sim_unlock() {
 
 dim() {                         # grey for off states
     case "$1" in
-        off|hidden|"not running"|*"(muted)") printf '\033[90m%s\033[0m' "$1" ;;
+        # Faint, not a grey: readable on the selected line's grey too, where
+        # the text is black (fg+; author, 2026-11-03).
+        off|hidden|"not running"|*"(muted)") printf '\033[2m%s\033[0m' "$1" ;;
         *) printf '%s' "$1" ;;
     esac
 }
@@ -252,6 +268,8 @@ mobile_set() {                  # mobile_set off|234|34|23|3
                 3) mmcli -m any --set-allowed-modes='3g' ;;
             esac >/dev/null 2>&1 ;;
     esac
+    rc=$?
+    [ "$rc" = 0 ] || return "$rc"
     echo "$opt $(date +%s)" > "$f"
     # The status again once the 2 s are over.
     ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
@@ -277,6 +295,9 @@ roaming() {                     # roaming: on, off or "no connection"
 # options, like the window switcher's, so the lines stay short enough for
 # portrait).
 choose() {
+    # The line, kept: the charge entry's `set --' replaces $1, and the
+    # choice was then applied to no line at all (2026-11-02).
+    line=$1
     case "$1" in
         wwan)
             title="mobile data"
@@ -315,6 +336,12 @@ choose() {
             title="rotation"
             cur=$(rotation_mode)
             opts=$(printf 'sensor\tsensor (accelerometer)\nkeyboard\tkeyboard (portrait slid in, landscape out)\nfixed\tfixed (the orientation line)\n') ;;
+        layout)
+            # The layouts config.scm chose (keyboard-layouts).
+            title="keyboard layout"
+            cur=$(layout_now)
+            KEYBOARD_LAYOUTS=us; . /etc/pro1x/keyboard.conf 2>/dev/null
+            opts=$(for l in $KEYBOARD_LAYOUTS; do printf '%s\t%s\n' "$l" "$l"; done) ;;
         orient)
             title="orientation (fixes it)"
             cur=$(orientation)
@@ -331,26 +358,153 @@ choose() {
                fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
                    --prompt="$title > " --layout=reverse-list --no-info --cycle \
                    --margin=1,2 --color=16,gutter:-1 \
-                   --bind="load:pos(${at:-1})" |
+                   --bind="load:pos(${at:-1})+$sync_end" \
+                   --bind="enter:$sync_begin+accept" \
+                   --bind="esc:$sync_begin+abort" |
                cut -f1)
     rm -f "$asksock"
     case "$pick" in ""|back) return ;; esac
-    case "$1" in
-        wwan) mobile_set "$pick" ;;
-        feedback) gsettings set org.sigxcpu.feedbackd profile "$pick" ;;
-        cpu) sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
-        charge) charge_set "$pick" ;;
-        orient) set_orientation "$pick" ;;
-        rotation)
+    case "$line" in
+        wwan) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
+        feedback) confirm feedback "$pick" feedback_to "$pick" ;;
+        cpu) confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        charge)
             case "$pick" in
-                sensor) sway-autorotate on ;;
-                keyboard) sway-autorotate keyboard ;;
-                fixed) sway-autorotate fixed ;;
-            esac ;;
+                default|off) shown=$pick ;;
+                *) shown="$pick% (charge again at $((pick - 5))%)" ;;
+            esac
+            confirm charge "$shown" charge_set "$pick" ;;
+        orient) confirm orient "$pick" orientation_to "$pick" ;;
+        layout) confirm layout "$pick" layout_to "$pick" ;;
+        rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
-            if [ "$pick" = tool ]; then step "$1" +
-            else set_to "$1" "$pick"; fi ;;
+            if [ "$pick" = tool ]; then
+                # Its networks or devices need it on (author, 2026-11-02).
+                [ "$(state_of "$line")" = on ] || set_to "$line" on
+                step "$line" +
+            else confirm "$line" "$(dim "$pick")" toggle_to "$line" "$pick"; fi ;;
     esac
+}
+
+layout_now() {                  # stevia's first layout
+    gsettings get org.gnome.desktop.input-sources sources 2>/dev/null |
+        sed -n "s/^[^']*'xkb', '\\([^']*\\)'.*/\\1/p"
+}
+layout_to() {                   # first in the list: stevia switches to it
+    KEYBOARD_LAYOUTS=us; . /etc/pro1x/keyboard.conf 2>/dev/null
+    sources="('xkb', '$1')"
+    for l in $KEYBOARD_LAYOUTS; do
+        [ "$l" = "$1" ] || sources="$sources, ('xkb', '$l')"
+    done
+    gsettings set org.gnome.desktop.input-sources sources "[$sources]"
+    [ "$(layout_now)" = "$1" ]
+}
+
+# Word completion: off, or any of the installed dictionaries combined
+# (keyboard-languages; our stevia patch; author, 2026-11-03).  Enter on a line
+# acts at once; back leaves.  Off, or unticking the last one, keeps the choice
+# for later: an empty list would make stevia follow the layout.
+dict_label() {
+    case "$1" in
+        en_*) echo English ;; fr_*) echo French ;; de_*) echo German ;;
+        it_*) echo Italian ;; *) echo "$1" ;;
+    esac
+}
+dict_installed() {
+    for f in /run/current-system/profile/share/hunspell/*.dic; do
+        [ -e "$f" ] && { f=${f##*/}; echo "${f%.dic}"; }
+    done
+}
+dict_chosen() {                 # one per line
+    gsettings get mobi.phosh.osk.Completers dictionaries 2>/dev/null |
+        grep -o "'[^']*'" | tr -d "'"
+}
+completion_on() {
+    case "$(gsettings get mobi.phosh.osk completion-mode 2>/dev/null)" in
+        *manual*|*hint*) return 0 ;;
+    esac
+    return 1
+}
+completion_set() {              # on or off
+    if [ "$1" = on ]; then
+        gsettings set mobi.phosh.osk completion-mode "['manual', 'hint']"
+    else
+        gsettings set mobi.phosh.osk completion-mode "[]"
+    fi
+}
+dict_shown() {                  # "English, French", or off
+    completion_on || { dim off; return; }
+    dict_chosen | while read -r d; do dict_label "$d"; done | paste -sd, | sed 's/,/, /g'
+}
+dict_lines() {
+    printf 'back\t← back\n'
+    if completion_on; then on=yes mark=" "; else on= mark="●"; fi
+    printf 'off\t%s off\n' "$mark"
+    chosen=$(dict_chosen)
+    for d in $(dict_installed); do
+        mark=" "
+        if [ -n "$on" ]; then
+            case " $(echo $chosen) " in *" $d "*) mark="●" ;; esac
+        fi
+        printf '%s\t%s %s\n' "$d" "$mark" "$(dict_label "$d")"
+    done
+}
+dict_toggle() {
+    [ "$1" = off ] && { completion_set off; return; }
+    chosen=$(dict_chosen) new=
+    if completion_on; then
+        case " $(echo $chosen) " in
+            *" $1 "*)
+                for d in $chosen; do [ "$d" = "$1" ] || new="$new${new:+, }'$d'"; done
+                [ -n "$new" ] || { completion_set off; return; } ;;
+            *) for d in $chosen "$1"; do new="$new${new:+, }'$d'"; done ;;
+        esac
+    else
+        # Back on, with this one alone.
+        new="'$1'"
+        completion_set on
+    fi
+    gsettings set mobi.phosh.osk.Completers dictionaries "[$new]"
+}
+dict_choose() {
+    asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
+    dict_lines |
+        fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
+            --prompt="dictionaries > " --layout=reverse-list --no-info --cycle \
+            --no-sort --margin=1,2 --color=16,gutter:-1 \
+            --bind="load:$sync_end" \
+            --bind="esc:$sync_begin+abort" \
+            --bind="enter:transform:case {1} in
+                      back) echo \"$sync_begin+accept\" ;;
+                      *) echo \"execute-silent($self --dict-toggle {1})+reload-sync($self --dict-lines)\" ;;
+                    esac" >/dev/null
+    rm -f "$asksock"
+    cache_put dicts "$(dict_shown)"
+}
+feedback_to() {
+    gsettings set org.sigxcpu.feedbackd profile "$1"
+    [ "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" = "$1" ]
+}
+orientation_to() {              # the panel turns a moment later
+    set_orientation "$1"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ "$(orientation)" = "$1" ] && return 0
+        sleep 0.2
+    done
+    return 1
+}
+rotation_to() {
+    case "$1" in
+        sensor) sway-autorotate on ;;
+        keyboard) sway-autorotate keyboard ;;
+        fixed) sway-autorotate fixed ;;
+    esac
+    [ "$(rotation_mode)" = "$1" ]
+}
+toggle_to() {                   # toggle_to <setting> <on|off>
+    set_to "$1" "$2"
+    sleep 0.3                   # let NetworkManager and rfkill settle
+    [ "$(state_of "$1")" = "$2" ]
 }
 
 orientation() {                 # portrait or landscape, from the panel
@@ -387,7 +541,7 @@ blocked() {                     # rfkill type -> on/off (on = not blocked)
 battery_state() {               # "76% discharging", "85% held at limit"
     cap=$(cat "$battery/capacity" 2>/dev/null) || { echo "no battery"; return; }
     st=$(cat "$battery/status" 2>/dev/null | tr 'A-Z' 'a-z')
-    [ "$(cat "$charge_param" 2>/dev/null)" = N ] && st="held at limit"
+    case "$(cat "$charge_param" 2>/dev/null)" in N|0) st="held at limit" ;; esac
     echo "$cap% $st"
 }
 
@@ -442,9 +596,87 @@ mobile_info() {                 # " · 59% Operator 4G", from modem key-values
     printf ' · %s%% %s %s' "$sig" "$op" "$(gen "$tech")"
 }
 
+# The lines as last read, each change shown over them until it is confirmed.
+# Up to column 33 a line is its key and label, then its value.
+cache="$rt/pro1x-qs-lines"
+pending="$rt/pro1x-qs-pending"
+
+overlay() {
+    while IFS= read -r l; do
+        k=${l%% *}
+        if [ -f "$pending/$k" ]; then
+            printf '%.33s%s\n' "$l" "$(cat "$pending/$k")"
+        else
+            printf '%s\n' "$l"
+        fi
+    done
+}
+refresh_lines() {
+    lines > "$cache.$$" && mv "$cache.$$" "$cache"
+}
+cached_lines() {                # at once, unless nothing was read yet
+    [ -r "$cache" ] || refresh_lines
+    overlay < "$cache"
+}
+cache_put() {                   # cache_put KEY VALUE: a value just read
+    [ -r "$cache" ] || return
+    while IFS= read -r l; do
+        if [ "${l%% *}" = "$1" ]; then printf '%.33s%s\n' "$l" "$2"
+        else printf '%s\n' "$l"; fi
+    done < "$cache" > "$cache.$$" && mv "$cache.$$" "$cache"
+}
+shown_value() {                 # what KEY's line says, without colours
+    if [ -f "$pending/$1" ]; then cat "$pending/$1"
+    else grep "^$1 " "$cache" 2>/dev/null | cut -c34-
+    fi | sed 's/\x1b\[[0-9;]*m//g'
+}
+qs_reload() {
+    curl -s -m 5 --unix-socket "$sock" -X POST http://localhost \
+         -d "reload($self --cached)" >/dev/null 2>&1
+}
+
+# confirm KEY SHOWN COMMAND...: SHOWN on KEY's line now, COMMAND in the
+# background, one at a time per line; then the real lines, or "failed" in
+# red for 2 s first.  QS_ALSO: other keys shown with their own values, gone
+# together.
+confirm() {
+    key=$1 shown=$2; shift 2
+    mkdir -p "$pending"
+    printf '%s' "$shown" > "$pending/$key"
+    (
+        i=0
+        until mkdir "$pending/.lock-$key" 2>/dev/null; do
+            sleep 0.1; i=$((i + 1))
+            [ "$i" -lt 100 ] || break
+        done
+        if "$@"; then ok=yes; else ok=; fi
+        refresh_lines
+        for k in $QS_ALSO; do rm -f "$pending/$k"; done
+        # A later press on this line keeps its own value.
+        if [ "$(cat "$pending/$key" 2>/dev/null)" = "$shown" ]; then
+            rm -f "$pending/$key"
+            if [ -z "$ok" ]; then
+                printf '\033[91mfailed\033[0m' > "$pending/$key"
+                qs_reload
+                sleep 2
+                rm -f "$pending/$key"
+            fi
+        fi
+        rmdir "$pending/.lock-$key" 2>/dev/null
+        qs_reload
+    ) >/dev/null 2>&1 </dev/null &
+}
+
 volume() {                      # "60%" or "60% muted"
     wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
         awk '{ printf "%d%%%s", $2 * 100 + 0.5, ($3 ? " muted" : "") }'
+}
+
+volume_shown() {                # its line's value
+    case "$1" in
+        *muted) dim "${1%% *} (muted)" ;;
+        *) printf '%s' "$1" ;;
+    esac
 }
 
 # The slow queries (nmcli, mmcli, wpctl) run in parallel, each into its
@@ -460,6 +692,8 @@ lines() {
     volume > "$d/vol" &
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
     osk_state > "$d/osk" &
+    layout_now > "$d/layout" &
+    dict_shown > "$d/dicts" &
     wait
     radio=$(cat "$d/radio")           # enabled:enabled
     wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
@@ -475,14 +709,11 @@ lines() {
     if [ "$rot" = fixed ]; then
         orient_shown=$orient
     else
-        orient_shown=$(printf '\033[90m%s (%s)\033[0m' "$orient" "$(rotation_mode)")
+        orient_shown=$(printf '\033[2m%s (%s)\033[0m' "$orient" "$(rotation_mode)")
     fi
     caf=$(cat "$caffeine" 2>/dev/null || echo off)
     [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && t=on || t=off
-    vol=$(cat "$d/vol")
-    case "$vol" in
-        *muted) vol=$(dim "${vol%% *} (muted)") ;;
-    esac
+    vol=$(volume_shown "$(cat "$d/vol")")
     mobile="$(dim "$wwan")$(mobile_info "$kv")"
     flash=$(mobile_flash) && mobile="→ $flash"
     # First line: the header (fzf --header-lines=1), battery state.
@@ -501,6 +732,8 @@ lines() {
         "orient      Orientation          $orient_shown" \
         "caffeine    Keep screen on       $(dim "$caf")" \
         "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
+        "dicts       Word completion      $(cat "$d/dicts")" \
+        "layout      Keyboard layout      $(cat "$d/layout")" \
         "torch       Torch                $(dim "$t")" \
         "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")" \
@@ -610,7 +843,9 @@ act() {                         # Enter
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
             else set_orientation portrait; fi ;;
-        volume) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+        volume)
+            wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+            cache_put volume "$(volume_shown "$(volume)")" ;;
         feedback)                 # full -> quiet -> silent -> full
             case "$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")" in
                 full) feedback_step - ;;
@@ -618,10 +853,26 @@ act() {                         # Enter
                 *) gsettings set org.sigxcpu.feedbackd profile full ;;
             esac ;;
         *)
-            if [ "$(state_of "$1")" = on ]; then set_to "$1" off
-            else set_to "$1" on; fi ;;
+            case "$(shown_value "$1")" in
+                on*|shown*|touchpad*) want=off ;;
+                *) want=on ;;
+            esac
+            case "$1:$want" in
+                touchpad:on) shown=touchpad ;;
+                touchpad:off) shown=touchscreen ;;
+                osk:on) shown=shown ;;
+                osk:off) shown=$(dim hidden) ;;
+                *) shown=$(dim "$want") ;;
+            esac
+            QS_ALSO=
+            if [ "$1" = airplane ]; then  # every radio with it
+                if [ "$want" = on ]; then radios=off; else radios=on; fi
+                QS_ALSO="wifi wwan bluetooth"
+                mkdir -p "$pending"
+                for k in $QS_ALSO; do dim "$radios" > "$pending/$k"; done
+            fi
+            confirm "$1" "$shown" toggle_to "$1" "$want" ;;
     esac
-    sleep 0.3                   # let NetworkManager and rfkill settle
 }
 
 step() {                        # Right (+) and Left (-)
@@ -634,10 +885,14 @@ step() {                        # Right (+) and Left (-)
         orient-) set_orientation portrait ;;
         lock+|camera+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
-        bright+) brightnessctl -q set +10%; pro1x-osd bright show ;;
-        bright-) brightnessctl -q set 10%-; pro1x-osd bright show ;;
-        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 5%+; pro1x-osd volume show ;;
-        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-; pro1x-osd volume show ;;
+        bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
+                 cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
+        bright-) brightnessctl -q -n1 set 2%-; pro1x-osd bright show
+                 cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
+        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+; pro1x-osd volume show
+                 cache_put volume "$(volume_shown "$(volume)")" ;;
+        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-; pro1x-osd volume show
+                 cache_put volume "$(volume_shown "$(volume)")" ;;
         feedback?) feedback_step "$2" ;;
         charge+|charge-)          # off, 80, 85, 90, 95
             set -- "$2" $CHARGE_OPTS
@@ -676,13 +931,55 @@ notif_preview() {               # notif_preview <kind> <id>
     [ "$1" = old ] && printf '\n(history: no actions)\n'
 }
 
-notif_default() {               # Enter: the default action, else dismiss
-    [ "$1" = new ] || return
-    if sway-notifications actions "$2" | cut -f1 | grep -qx default; then
+# The command of the app a notification names (author, 2026-11-02:
+# Telegram and the browser should open too): the desktop entry whose Name
+# or StartupWMClass is the app name, else whose file name contains it.
+app_command() {
+    [ -n "$1" ] || return
+    want=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+    word=$(printf '%s' "$want" | cut -d' ' -f1)
+    dirs="$HOME/.local/share/applications $HOME/.local/share/flatpak/exports/share/applications
+          /var/lib/flatpak/exports/share/applications /run/current-system/profile/share/applications
+          $HOME/.guix-profile/share/applications"
+    file=
+    for d in $dirs; do
+        [ -d "$d" ] || continue
+        file=$(grep -l -i -x -E "(Name|StartupWMClass)=$1" "$d"/*.desktop 2>/dev/null | head -n 1)
+        [ -n "$file" ] && break
+    done
+    if [ -z "$file" ]; then
+        for d in $dirs; do
+            file=$(ls "$d"/*.desktop 2>/dev/null | grep -i -F "$word" | head -n 1)
+            [ -n "$file" ] && break
+        done
+    fi
+    [ -n "$file" ] || return
+    sed -n 's/^Exec=//p' "$file" | head -n 1 |
+        sed 's/ *%[fFuUdDnNickvm]//g; s/ *@@[a-zA-Z]*//g'
+}
+
+notif_default() {               # Enter: the default action, else the app
+    # Its app, from the list (kind, id, urgency, app, summary).
+    app=$(sway-notifications list 2>/dev/null |
+              awk -F'\t' -v k="$1" -v i="$2" '$1 == k && $2 == i { print $4; exit }')
+    case "$app" in
+        Chats|chatty|sm.puri.Chatty) cmd=chatty ;;
+        Calls|gnome-calls|org.gnome.Calls) cmd=gnome-calls ;;
+        Clocks|org.gnome.clocks) cmd=gnome-clocks ;;
+        *) cmd=$(app_command "$app") ;;
+    esac
+    if [ "$1" = new ] &&
+       sway-notifications actions "$2" | cut -f1 | grep -qx default; then
         makoctl invoke -n "$2" default
+    elif [ -n "$cmd" ]; then
+        # No action to invoke (a notification from mako's history, or
+        # none offered): open its app (author, 2026-11-02: Enter on an SMS
+        # or a missed call opened nothing).
+        swaymsg exec "pro1x-open $cmd" >/dev/null
+        qs_hide
     fi
     # mako keeps it after an invoke: clear it as Phosh does.
-    makoctl dismiss -n "$2"
+    [ "$1" = new ] && makoctl dismiss -n "$2"
 }
 
 notif_pick() {                  # Tab: choose one of the actions
@@ -695,23 +992,34 @@ notif_pick() {                  # Tab: choose one of the actions
 }
 
 notif_dock() {
+    # Its own socket, so hiding the menu closes it (pro1x-menu hide_menu;
+    # author: the menu came back on the notifications, not the root).
     notif_lines |
-        fzf --prompt="notifications > " --layout=reverse --no-sort --cycle \
+        fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
+            --prompt="notifications > " --layout=reverse --no-sort --cycle \
             --delimiter='\t' --with-nth=3 \
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
             --preview-window=down,60%,wrap \
+            --bind="load:$sync_end" \
+            --bind="esc:$sync_begin+abort" \
             --bind="enter:execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)" \
             --bind="tab:execute($self --notif-pick {1} {2})+reload($self --notif-lines)" \
             --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
             --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
             --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+    rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock"
 }
 
 case "${1:-}" in
-    --lines) lines; exit ;;
+    --lines) refresh_lines; overlay < "$cache"; exit ;;
+    --cached) cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
-    --choose) choose "$2"; exit ;;
+    --choose)
+        if [ "$2" = dicts ]; then dict_choose; else choose "$2"; fi
+        exit ;;
+    --dict-lines) dict_lines; exit ;;
+    --dict-toggle) dict_toggle "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
@@ -757,44 +1065,44 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
          else
              echo "change-preview-window(down,50%,wrap)+show-preview"
          fi'
-lines |
+{ refresh_lines; overlay < "$cache"; } |
     # Same layout and colours as the launcher and window switcher: list
     # from the top, prompt at the bottom.  Notification preview on the right
     # in landscape, below in portrait (under 70 columns; author).
-    fzf "$@" --prompt="quick actions > " --no-sort --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+    fzf "$@" --prompt="quick actions > " --no-sort --track --id-nth=1 --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1,fg+:0 \
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
-                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
-                  *) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
+                  *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  wifi|bluetooth) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
-                  notif) echo \"execute($self --notif)+reload($self --lines)\" ;;
+                  notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation) echo \"execute($self --choose {1})+reload-sync($self --lines)+pos(\$(({n} + 1)))\" ;;
-                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
+                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
                 esac" \
         --bind="f4:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --lines)\" ;;
+                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
                 esac" >/dev/null

@@ -59,8 +59,13 @@ there yet.  Not yet checked on 7.3: calls, audio, suspend, deep sleep, charging.
   app launcher; left, window switcher.  Same swipe again closes.
 - Quick actions (Super+q): toggles with Left/Right, battery, network
   details (2G/3G/4G), mobile data modes and roaming, SIM PIN entry,
-  notifications with a preview, camera, lock, charge limit; Right on
-  Wi-Fi or Bluetooth opens a picker (nmcli-fzf, bluetuith).
+  notifications with a preview, camera, lock, charge limit, word completion,
+  keyboard layout; Right on Wi-Fi or Bluetooth opens a picker (nmcli-fzf,
+  bluetuith).  A change shows on its line at once, and "failed" in red if it
+  did not work.
+- App launcher (Super+m): after the app, the workspace to open it on, the
+  current one first, so Enter or power twice opens it here.
+- The bottom swipe keeps the focused window focused.
 - Status bar: the full list in landscape, the essentials in portrait;
   Super+b hides it.
 - Lock with Ctrl+Super+l or both volume keys together.

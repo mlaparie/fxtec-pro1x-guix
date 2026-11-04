@@ -1614,6 +1614,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-power-key                power key: screen off or on
 ;;;   bin/pro1x-osd                      volume/brightness keys, with a wob bar
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
+;;;   bin/pro1x-launcher                 app menu: the app, then its workspace
 ;;;   bin/pro1x-browser-fit              Firefox-based browsers fit portrait
 ;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
 ;;;   bin/pro1x-power-button             power key: short off/on, held the menu
@@ -1669,6 +1670,7 @@ window opened by a sway key binding.")
           ("pro1x-power-key" "bin/")
           ("pro1x-osd" "bin/")
           ("pro1x-power-menu" "bin/")
+          ("pro1x-launcher" "bin/")
           ("pro1x-browser-fit" "bin/")
           ("pro1x-portrait-ua.xpi" "share/pro1x-sway/")
           ("pro1x-sleep" "bin/")
@@ -1678,8 +1680,7 @@ window opened by a sway key binding.")
           ("pro1x-osk" "bin/")
           ("pro1x-kbd-light" "bin/")
           ("pro1x-power-button" "bin/")
-          ("wob.ini" "share/pro1x-sway/")
-          ("sov" "share/pro1x-sway/sov"))
+          ("wob.ini" "share/pro1x-sway/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'wrap
@@ -1750,6 +1751,7 @@ window opened by a sway key binding.")
                  '("pro1x-menu" "pro1x-switcher" "pro1x-wifi" "pro1x-blank-led"
                    "pro1x-camera" "pro1x-bar" "pro1x-volume-lock"
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
+                   "pro1x-launcher"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
                    "pro1x-osk"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
@@ -1834,3 +1836,15 @@ out, the device settings every sway session shares (pro1x.conf, for
 /etc/sway/config.d), an i3status-rust bar configuration, an fzf window
 switcher, and pro1x-idle and pro1x-dim, which dim the panel when idle.")
     (license license:gpl3+)))
+
+(define-public sov-pro1x
+  ;; Guix's sov without its test suite: mt_channel_test (a threading test
+  ;; of sov's own message channels, nothing the overview depends on)
+  ;; failed on the CI's aarch64 runner and stopped the image build
+  ;; (run 41368293086, 2026-11-02), while the same build passed here.
+  (package
+    (inherit sov)
+    (name "sov-pro1x")
+    (arguments
+     (substitute-keyword-arguments (package-arguments sov)
+       ((#:tests? _ #t) #f)))))

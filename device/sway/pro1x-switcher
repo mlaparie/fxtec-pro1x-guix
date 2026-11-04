@@ -4,7 +4,8 @@
 #   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
-# Lists the windows, then workspaces 1-10 (author).  On a window, Enter and
+# Lists Sway overview (sov, in yellow), the windows, then workspaces 1-10
+# (author).  On a window, Enter and
 # Ctrl-o (a short power press) ask Back / Focus / Close / Move to
 # workspace / Tile / Tab / Stack / Toggle fullscreen, floating, sticky
 # (author: Return does what the power key does);
@@ -24,7 +25,7 @@ self=$0
 if [ "${1:-}" = --close ]; then
     swaymsg "[con_id=$2] kill" >/dev/null
     sleep 0.3
-    if ! "$0" --list | grep -q -v '^ws:'; then          # no window left
+    if ! "$0" --list | grep -q -v -e '^ws:' -e '^sov'; then   # no window left
         curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
              -d "clear-query+first" >/dev/null 2>&1 &
         swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
@@ -36,14 +37,22 @@ fi
 # (ws:N): switch to it; then the switcher goes away, its query cleared.
 if [ "${1:-}" = --go ]; then
     case "$2" in
+        sov) ;;
         ws:*) swaymsg "workspace number ${2#ws:}" >/dev/null ;;
         *) swaymsg "[con_id=$2] focus" >/dev/null ;;
     esac
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
     swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+    [ "$2" = sov ] && pro1x-sov show
     exit
 fi
+
+# No blank frame between a list and its sub-list (author, 2026-11-03): the
+# terminal holds its drawing (synchronized output) from just before fzf
+# leaves the screen until the next list has drawn.
+sync_begin="execute-silent[printf '\\033[?2026h' >/dev/tty]"
+sync_end="execute-silent[(sleep 0.03; printf '\\033[?2026l' >/dev/tty) &]"
 
 if [ "${1:-}" = --ask ]; then
     # pro1x-switcher --ask CON_ID: Back / Focus / Close window, for the
@@ -54,7 +63,9 @@ if [ "${1:-}" = --ask ]; then
         prompt=$1; shift
         printf '%s\n' "$@" |
             fzf --listen="$asksock" --prompt="$prompt > " --layout=reverse-list \
-                --bind="load:pos(2)" \
+                --bind="load:pos(2)+$sync_end" \
+                --bind="enter:$sync_begin+accept" \
+                --bind="esc:$sync_begin+abort" \
                 --no-info --cycle --margin=1,2 --color=16,gutter:-1
         rm -f "$asksock"
     }
@@ -93,6 +104,8 @@ if [ "${1:-}" = --list ]; then
     # menus live in the scratchpad, which is not listed.  Short names
     # (author, 2026-11-02): the last part of the app_id (org.pro1x.Camera:
     # Camera), the title cut at 28.
+    # First, Sway Overview in yellow (author, 2026-11-02).
+    printf 'sov\t\033[33mSway overview\033[0m\t\n'
     swaymsg -t get_tree -r |
         jq -r '[.. | objects | select(.type == "workspace" and .name != "__i3_scratch")] as $ws
                | def windows: [.. | objects
@@ -112,8 +125,8 @@ fi
 hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
 # On a workspace line: switch to it; on a window: its question.
 act="case {1} in
-       ws:*) echo \"execute-silent($self --go {1})\" ;;
-       *) echo \"execute($self --ask {1})+reload-sync($self --list)\" ;;
+       ws:*|sov) echo \"execute-silent($self --go {1})\" ;;
+       *) echo \"$sync_begin+execute($self --ask {1})+reload-sync($self --list)+$sync_end\" ;;
      esac"
 "$self" --list |
     fzf --listen="$sock" --delimiter='\t' --with-nth=2,3 --no-sort --ansi \
@@ -122,7 +135,7 @@ act="case {1} in
         --bind="ctrl-o:transform:$act" \
         --bind="right:execute-silent($self --go {1})" \
         --bind="ctrl-k:transform:case {1} in
-                  ws:*) ;;
+                  ws:*|sov) ;;
                   *) echo \"execute-silent($self --close {1})+reload($self --list)\" ;;
                 esac" \
         --bind="esc:$hide" >/dev/null

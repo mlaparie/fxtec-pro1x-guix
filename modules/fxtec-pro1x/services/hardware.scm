@@ -327,8 +327,10 @@ white, #RRGGBB or #f")
   ;; feedbackd's default theme leaves without feedback, and a stronger one
   ;; for button-pressed (Shift, layout keys): the default's 7 ms at 0.2
   ;; ran but could not be felt on this motor (aw86224).  0.6 for 20 ms
-  ;; was a little weak (author, 2026-11-01): 0.8 for 25 ms.  In the quiet
-  ;; profile, so in quiet and full.
+  ;; was a little weak (author, 2026-11-01): 0.8 for 25 ms; stronger again
+  ;; (author, 2026-11-02): 1.0 for 35 ms.  In the quiet profile, so in quiet
+  ;; and full.  The menu swipes and the power key's hold play button-pressed
+  ;; too (fbcli, pro1x-gestures and pro1x-power-button).
   (define (entry spec)
     (match spec
       ((event colour . rest)
@@ -351,9 +353,9 @@ blue, white or #RRGGBB")
    (if haptics?
        ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.8], \"durations\": [25] },
+          \"magnitudes\": [1.0], \"durations\": [35] },
         { \"event-name\": \"button-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [0.8], \"durations\": [25] }\n      ]\n    }"
+          \"magnitudes\": [1.0], \"durations\": [35] }\n      ]\n    }"
        "")
    "\n  ]\n}\n"))
 

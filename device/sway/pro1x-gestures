@@ -2,11 +2,10 @@
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
 #   swipe down from the top edge      quick actions (sway-quick-actions)
-#   swipe up from the bottom edge     Sway Overview, the workspaces (pro1x-sov)
+#   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
-#   two fingers up from the bottom    on-screen keyboard, shown or hidden
-#   (swapped, author 2026-11-02)
+#   (Sway Overview moved to the window switcher, author 2026-11-02)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
 # COMMAND...; quick actions closes itself).  Every command runs in the
@@ -23,6 +22,20 @@
 #
 # State: the three swipes work in Sway, landscape (-o 1; author,
 # 2026-10-30); the other orientations and the toggles are untested.
+
+# menu ID: a menu swipe, acted on while the finger is still down (author,
+# 2026-11-02): a buzz and the menu at once.  A held swipe can fire again
+# as the finger goes on, which would close the menu again: once per 0.8 s
+# per menu.  fbcli ends the feedback when its input ends (it waits for
+# Return), so it reads from a sleep, not /dev/null.
+if [ "${1:-}" = menu ]; then
+    stamp="${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-$2"
+    now=$(date +%s%N)
+    [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 800000000 ] && exit 0
+    echo "$now" > "$stamp"
+    { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
+    exec pro1x-menu toggle "$2"
+fi
 
 # toggle APP-ID COMMAND...: close that window if it is open, else run.
 if [ "${1:-}" = toggle ]; then
@@ -59,13 +72,14 @@ start() {                       # start <transform>
     # the same way, the last one lifted must touch the edge band, all
     # within the timeout): 100 px edge bands (-s 2), 30 degrees off
     # straight (-r 30), 1.2 s (-m 1200).
-    # The sov swipe (pressed) acts after 80 px (author: shorter; was 125).
+    # Every swipe acts once the finger has gone 80 px (pressed, P), not
+    # on release: the keyboard (author, 2026-11-02), and the menus with a
+    # buzz (menu, above; author, 2026-11-02).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
-        -g "1,UD,T,*,R,pro1x-menu toggle quickactions &" \
-        -g "2,DU,B,*,R,sway-quick-actions --osk toggle &" \
-        -g "1,DU,B,*,P,pro1x-sov toggle &" \
-        -g "1,RL,R,*,R,pro1x-menu toggle launcher &" \
-        -g "1,LR,L,*,R,pro1x-menu toggle windowswitcher &" \
+        -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
+        -g "1,DU,B,*,P,pro1x-osk toggle &" \
+        -g "1,RL,R,*,P,pro1x-gestures menu launcher &" \
+        -g "1,LR,L,*,P,pro1x-gestures menu windowswitcher &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }
