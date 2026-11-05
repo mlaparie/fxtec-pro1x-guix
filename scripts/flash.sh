@@ -133,7 +133,8 @@ Options:
   --boot-only      Flash U-Boot alone (boot_a, boot_b): userdata is kept
   --encrypt        LUKS2 full-disk encryption (flash-encrypted.sh), asks for the
                    passphrase; mobile.scm only.  With --rootfs: an image that
-                   finds the layout itself (built after 2026-11-04)
+                   finds the layout itself (built after 2026-11-04).  Without
+                   this flag, a terminal is asked whether to encrypt (mobile.scm)
   --output DIR     Write the images to DIR and stop: nothing is flashed
   -v, --verbose    Show all dd progress and suppress no stderr output
   -h, --help       Show this help
@@ -226,6 +227,16 @@ if [[ -z "$OPT_ROOTFS" && "$OPT_BOOT_ONLY" == false && "$OPT_ENCRYPT" == false &
 fi
 echo "System: $SYSTEM"
 echo ""
+
+# ── Encryption ────────────────────────────────────────────────────────────────
+# Asked when flashing by hand without --encrypt.  Only the mobile system's
+# initrd can unlock the disk; U-Boot alone does not touch userdata.
+if [[ "$OPT_ENCRYPT" == false && "$OPT_BOOT_ONLY" == false && "$SYSTEM" == "systems/mobile.scm" && -t 0 ]]; then
+    read -r -p "Encrypt the disk (LUKS2, asks for a passphrase)? [y/N] " _encrypt
+    _encrypt="${_encrypt//$'\r'/}"
+    [[ "$_encrypt" =~ ^[Yy]$ ]] && OPT_ENCRYPT=true
+    echo ""
+fi
 
 # ── Deploy key ────────────────────────────────────────────────────────────────
 # systems/*.scm let root in by SSH with ~/.ssh/pro1x-guix.pub, so that
