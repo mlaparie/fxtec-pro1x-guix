@@ -7,9 +7,9 @@
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
-# (full/quiet/silent), brightness, volume, mute, notifications.
+# (full/quiet/silent), brightness, volume, mute, notifications, operator.
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
-# feedback, CPU mode, charge limit, orientation, keyboard layout, word
+# operator, feedback, CPU mode, charge limit, orientation, keyboard layout, word
 # completion (several at once), and for
 # Wi-Fi and
 # Bluetooth on, off or their tool; author: a list, not stepping); Right
@@ -18,6 +18,13 @@
 # Wi-Fi line the network and signal, the mobile line the access technology,
 # signal and operator; the charge limit line what config.scm set
 # (pro1x-hardware-configuration charge-limit, charge-resume; read only).  One fzf stays open and reloads its lines after each action.
+#
+# The Operator line is auto, or the network forced from its choices: auto, the
+# SIM's home network, the last scan's networks, or a new scan (up to 3 min, no
+# service meanwhile).  A forced network that is out of reach means no service,
+# so no incoming calls, and the line says so in red; ModemManager goes back to
+# auto when it starts (inferred from its source), hence the state in
+# XDG_RUNTIME_DIR.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications
@@ -290,6 +297,55 @@ roaming() {                     # roaming: on, off or "no connection"
     [ "$(nmcli -g gsm.home-only connection show "$c")" = yes ] && echo off || echo on
 }
 
+# Which network to use: the forced one's code and name, none when automatic.
+operator_forced="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-operator"
+operator_scan="$statedir/operators"     # code, name, radios; from the last scan
+operator_shown() {              # auto, or the forced one; [modem key-values]
+    [ -r "$operator_forced" ] || { echo auto; return; }
+    IFS='	' read -r code name < "$operator_forced"
+    printf '%s (forced)' "${name:-$code}"
+    case "$(printf '%s\n' "$1" | kv_get modem.3gpp.registration-state)" in
+        home*|roaming*) ;;
+        *) printf ' \033[91mno service\033[0m' ;;
+    esac
+}
+operator_set() {                # operator_set auto|CODE [NAME]
+    if [ "$1" = auto ]; then
+        mmcli -m any --3gpp-register-home --timeout=120 >/dev/null 2>&1 || return
+        rm -f "$operator_forced"
+    else
+        mmcli -m any --3gpp-register-in-operator="$1" --timeout=120 >/dev/null 2>&1 || return
+        printf '%s\t%s\n' "$1" "$2" > "$operator_forced"
+    fi
+    # Registering goes on after mmcli has returned.
+    ( sleep 10; refresh_lines; qs_reload ) >/dev/null 2>&1 </dev/null &
+}
+operator_parse() {              # mmcli's scan -> code, name, radios; one per code
+    sed -n 's/^modem\.3gpp\.scan-networks\.value\[[0-9]*\] *: //p' |
+        awk '{
+            code = $0; sub(/^operator-code: /, "", code); sub(/,.*/, "", code)
+            name = $0; sub(/.*operator-name: /, "", name)
+            sub(/, access-technologies: .*/, "", name)
+            tech = $0; sub(/.*access-technologies: /, "", tech); sub(/, availability: .*/, "", tech)
+            if (!(code in names)) order[++n] = code
+            names[code] = name
+            radios[code] = (code in radios ? radios[code] "," : "") tech
+        } END {
+            for (i = 1; i <= n; i++) print order[i] "\t" names[order[i]] "\t" radios[order[i]]
+        }'
+}
+operator_do_scan() {            # in this terminal; the list again afterwards
+    printf 'Scanning, up to 3 min. No service meanwhile.\n'
+    found=$(mmcli -m any --3gpp-scan --timeout=180 --output-keyvalue 2>/dev/null | operator_parse)
+    if [ -n "$found" ]; then
+        mkdir -p "$statedir"
+        printf '%s\n' "$found" > "$operator_scan"
+    else
+        printf 'Nothing found, or the modem refused. Enter to go back. '
+        read -r _
+    fi
+}
+
 # choose KEY: the line's options as a list, its own fzf (socket
 # pro1x-quick-actions-ask.sock, which pro1x-menu key drives while it is
 # open); the current one marked; the pick applied (author: sub choices as
@@ -304,6 +360,18 @@ choose() {
             title="mobile data"
             cur=$(cut -d' ' -f1 "${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile" 2>/dev/null)
             opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done) ;;
+        operator)
+            title="operator"
+            cur=auto
+            [ -r "$operator_forced" ] && cur=$(cut -f1 "$operator_forced")
+            sim=$(mmcli -i any --output-keyvalue 2>/dev/null)
+            home=$(printf '%s\n' "$sim" | kv_get sim.properties.operator-code)
+            homename=$(printf '%s\n' "$sim" | kv_get sim.properties.operator-name)
+            opts=$(printf 'auto\tauto\n'
+                   [ -z "$home" ] || [ "$home" = -- ] || printf '%s\t%s (SIM)\n' "$home" "$homename"
+                   awk -F'\t' -v home="$home" '$1 != home { print $1 "\t" $2 " " $3 }' \
+                       "$operator_scan" 2>/dev/null
+                   printf 'scan\tscan (up to 3 min, no service meanwhile)…\n') ;;
         feedback)
             title="feedback"
             cur=$(gsettings get org.sigxcpu.feedbackd profile | tr -d "'")
@@ -367,6 +435,17 @@ choose() {
     case "$pick" in ""|back) return ;; esac
     case "$line" in
         wwan) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
+        operator)
+            if [ "$pick" = scan ]; then
+                operator_do_scan
+                choose operator
+            elif [ "$pick" = auto ]; then
+                confirm operator "→ auto" operator_set auto
+            else
+                if [ "$pick" = "$home" ]; then name=$homename
+                else name=$(awk -F'\t' -v c="$pick" '$1 == c { print $2; exit }' "$operator_scan"); fi
+                confirm operator "→ ${name:-$pick}" operator_set "$pick" "$name"
+            fi ;;
         feedback) confirm feedback "$pick" feedback_to "$pick" ;;
         cpu) confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
         charge)
@@ -726,6 +805,7 @@ lines() {
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
+        "operator    Operator             $(operator_shown "$kv")" \
         "sim         SIM                  $(sim_state "$kv")" \
         "bluetooth   Bluetooth            $(dim "$bt")" \
         "airplane    Airplane mode        $(dim "$plane")" \
@@ -1077,7 +1157,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
@@ -1093,12 +1173,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
-                  feedback|wwan|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
