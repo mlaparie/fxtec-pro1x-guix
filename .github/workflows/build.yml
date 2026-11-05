@@ -342,10 +342,17 @@ jobs:
 
       # ── Cut a release when a tag is pushed ───────────────────────────────
       # GitHub refuses release files of 2 GiB or more; rootfs.img is larger
-      # (v0.1.0 failed: "size must be less than 2147483648").
+      # (v0.1.0 failed: "size must be less than 2147483648"), and so is it
+      # compressed (2.71 GiB for v0.2.0): split into parts of 1900 MiB.
+      # cat rootfs.img.zst.part* | zstd -d -o rootfs.img joins them.
       - name: Compress the root file system for the release
         if: startsWith(github.ref, 'refs/tags/')
-        run: zstd -T0 -12 --rm rootfs.img -o rootfs.img.zst && ls -l rootfs.img.zst
+        run: |
+          zstd -T0 -12 --rm rootfs.img -o rootfs.img.zst
+          split -b 1900M -d -a 1 rootfs.img.zst rootfs.img.zst.part
+          rm rootfs.img.zst
+          sha256sum rootfs.img.zst.part* > SHA256SUMS
+          ls -l rootfs.img.zst.part*
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -354,4 +361,5 @@ jobs:
           files: |
             u-boot-nodtb.bin
             sm6115-fxtec-pro1x.dtb
-            rootfs.img.zst
+            rootfs.img.zst.part*
+            SHA256SUMS

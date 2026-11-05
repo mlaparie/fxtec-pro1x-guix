@@ -11,8 +11,8 @@ for the phone.  Built with guix 8b96d76 and nonguix c241d19.
 - VoLTE: 81voltd (postmarketOS) serves the IMS data connection the modem
   asks for, and a watchdog restarts it when 4G has none.  On Free in
   France, incoming calls on 4G rang 8 times in 8 with it, against about
-  one in three without.  Outgoing calls connect, but take about 25 s on
-  4G: the modem ends up falling back to 3G.
+  one in three without.  Outgoing calls connect, but most take 20–40 s
+  on 4G: the modem falls back to 3G (one in five rang within 2 s).
 - Call audio on 7.3: both ways, earpiece and speaker, volume keys in
   calls.
 - Full-disk encryption (LUKS2), asked for by `scripts/flash.sh`, also
@@ -27,6 +27,14 @@ for the phone.  Built with guix 8b96d76 and nonguix c241d19.
 - `nm-connection-editor` for Wi-Fi settings beyond nmtui (WPA2
   Enterprise).
 - `config.scm` lists every option of the port's services.
+- nvtop, a GPU monitor, opened from the quick actions' GPU line.
+
+### Install
+
+As for 0.1.1 (below), except that the root file system comes in parts,
+since even compressed it is over GitHub's 2 GiB limit:
+`cat rootfs.img.zst.part* | zstd -d -o rootfs.img`, after checking them
+with `sha256sum -c SHA256SUMS`.
 
 ### Known issues
 
