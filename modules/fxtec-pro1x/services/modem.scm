@@ -23,11 +23,14 @@
 (define-record-type* <pro1x-modem-configuration>
   pro1x-modem-configuration make-pro1x-modem-configuration
   pro1x-modem-configuration?
-  (verbose? pro1x-modem-verbose? (default #f)))
+  (verbose? pro1x-modem-verbose? (default #f))
+  ;; VoLTE: 81voltd serves the IMS data connection the modem asks for.
+  (volte? pro1x-modem-volte? (default #t)))
 
 (define (pro1x-modem-shepherd-services config)
   (let ((verbose-flag (if (pro1x-modem-verbose? config) '("-v") '())))
-    (list
+    (append
+     (list
 
      ;; tqftpserv: deliver modem firmware over QRTR.
      ;; The binary is patched to look for firmware at /run/current-system/firmware.
@@ -86,7 +89,30 @@
           #:environment-variables '("PATH=/run/current-system/profile/bin")
           #:log-file "/var/log/ModemManager.log"))
       (stop #~(make-kill-destructor))
-      (respawn? #t)))))
+      (respawn? #t)))
+     (if (pro1x-modem-volte? config)
+         (list (pro1x-81voltd-service config))
+         '()))))
+
+;;; 81voltd: the modem's IMS stack asks the host, over QRTR (service 770), to
+;;; open its IMS data connection; 81voltd opens it through ModemManager (APN
+;;; "ims" on Free, chosen by the modem).  Without it, incoming calls on Free
+;;; 4G rang about one time in three; with it, 8 of 8 rang over VoLTE, audio
+;;; both ways in 7 (2026-11-05, run by hand).  Stopping it leaves the IMS
+;;; bearer up (81voltd's README).
+(define (pro1x-81voltd-service config)
+  (shepherd-service
+   (provision '(81voltd))
+   (requirement '(modem-manager))
+   (documentation "IMS data service for the modem's VoLTE (81voltd)")
+   (start
+    #~(make-forkexec-constructor
+       (list #$(file-append pro1x-81voltd "/bin/81voltd"))
+       #:environment-variables
+       '#$(if (pro1x-modem-verbose? config) '("G_MESSAGES_DEBUG=all") '())
+       #:log-file "/var/log/81voltd.log"))
+   (stop #~(make-kill-destructor))
+   (respawn? #t)))
 
 ;;; The SIM's UIM provisioning session, activated before ModemManager.
 ;;; The modem firmware (MPSS.HA.1.1) does not keep the primary GW
