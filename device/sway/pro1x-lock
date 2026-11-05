@@ -434,7 +434,7 @@ fi
 cat > "$css" <<EOF
 window { background-color: #000000; color: #d5c4a1; }
 #pro1x-gnu, #pro1x-guix, #pro1x-notes, #pro1x-status { font-family: "DejaVu Sans Mono", monospace; }
-#pro1x-gnu, #pro1x-guix { font-size: 11px; }
+#pro1x-gnu, #pro1x-guix { font-size: 10px; }
 #pro1x-gnu { color: #d5c4a1; }
 #pro1x-guix { color: #FFCC00; }
 #pro1x-notes { color: #928374; font-size: 18px; margin-top: 8px; }
