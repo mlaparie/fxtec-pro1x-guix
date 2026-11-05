@@ -14,6 +14,7 @@
 ;;;   phosh             — Phosh mobile shell
 ;;;   phosh-pro1x       — Phosh configured to use phoc-pro1x compositor
 ;;;   sway-launcher-desktop — fzf application launcher for sway (in a terminal)
+;;;   nvtop             — top for GPUs (Adreno here; also AMD, Intel, NVIDIA, Mali…)
 ;;;   pro1x-sway-config — default sway config, i3status-rust bar, window switcher
 
 (define-module (fxtec-pro1x packages misc)
@@ -43,6 +44,7 @@
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages hunspell)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages ncurses)
   #:use-module ((gnu packages kde-plasma) #:select (plasma-mobile-sounds))
   #:use-module (nonguix build-system binary)  ; bluetuith
   #:use-module (gnu packages perl)
@@ -58,6 +60,7 @@
   #:use-module (gnu packages gl)
   #:use-module (gnu packages video)
   #:use-module (gnu packages window-management)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
@@ -1368,6 +1371,52 @@ sounds under their XDG names, falling back to the freedesktop theme.")
     (description "bluetuith manages Bluetooth adapters and devices from a
 terminal interface.")
     (license license:expat)))
+
+;;; ---------------------------------------------------------------------------
+;;; nvtop — top for GPUs: load, clock, memory and GPU time per process
+;;; Not in Guix.  Built with every Linux back end it has (author, 2026-11-05:
+;;; not only Adreno).  On the Pro¹x it reads the Adreno 610 through the msm
+;;; driver (per-process GPU time from DRM fdinfo).  It loads libdrm at run
+;;; time by file name, which finds nothing on Guix: given its store path.
+;;; The NVIDIA, MetaX and Enflame back ends load vendor libraries at run time
+;;; too, and stay idle without them.  TPU support is off (no libtpuinfo).
+;;; ---------------------------------------------------------------------------
+(define-public nvtop
+  (package
+    (name "nvtop")
+    (version "3.3.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Syllo/nvtop")
+             (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0b390h0xnjs3kkbbdw789g7pg3zm3xqh90f622mmmkyravskyy63"))))
+    (build-system cmake-build-system)
+    (arguments
+     (list
+      #:tests? #f                       ; they need gtest and a GPU
+      #:configure-flags #~'("-DUSE_LIBUDEV_OVER_LIBSYSTEMD=ON")
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'unpack 'libdrm-store-path
+            (lambda* (#:key inputs #:allow-other-keys)
+              (substitute* (find-files "src" "\\.c$")
+                (("dlopen\\(\"libdrm\\.so(\\.[12])?\"")
+                 (string-append "dlopen(\""
+                                (search-input-file inputs "lib/libdrm.so.2")
+                                "\""))))))))
+    (native-inputs (list pkg-config))
+    (inputs (list eudev libdrm ncurses))
+    (home-page "https://github.com/Syllo/nvtop")
+    (synopsis "Monitor GPU use in the terminal")
+    (description "nvtop is a top-like monitor for GPUs: load, clock, memory,
+temperature and the processes using them, with graphs.  It reads AMD, Intel,
+Adreno (msm), Mali (panfrost, panthor), Raspberry Pi (v3d) and Rockchip
+devices, and NVIDIA ones when the vendor's library is installed.")
+    (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-wallpapers — the Sway and Phosh backgrounds, made for the port

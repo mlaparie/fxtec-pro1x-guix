@@ -7,7 +7,8 @@
 # data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
-# (full/quiet/silent), brightness, volume, mute, notifications, operator.
+# (full/quiet/silent), brightness, volume, mute, notifications, operator,
+# GPU monitor (the GPU's clock; Enter or Right opens nvtop).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
 # operator, feedback, CPU mode, charge limit, orientation, keyboard layout, word
 # completion (several at once), and for
@@ -678,6 +679,17 @@ charge_limit() {                # config.scm's, or this boot's override
     if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (charge again at %s%%)' "$1" "$2"; fi
     pro1x-charge-limit temporary && until_reboot
 }
+# The GPU's clock now (devfreq's current rate),
+# or "off" while it is powered down.
+gpu_clock() {
+    g=$(echo /sys/class/devfreq/*.gpu)
+    if [ "$(cat "$g/device/power/runtime_status" 2>/dev/null)" = suspended ]; then
+        dim off
+    else
+        echo "$(( $(cat "$g/cur_freq" 2>/dev/null || echo 0) / 1000000 )) MHz"
+    fi
+}
+
 cpu_mode() {
     printf '%s' "$(pro1x-cpu-mode get 2>/dev/null || echo auto)"
     pro1x-cpu-mode temporary && until_reboot
@@ -859,6 +871,7 @@ lines() {
         "touchpad    Touch input          $(touch_mode)" \
         "feedback    Feedback             $(cat "$d/fb")" \
         "cpu         CPU mode             $(cpu_mode)" \
+        "gpu         GPU monitor          $(gpu_clock)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
         "charge      Charge limit         $(charge_limit)"
@@ -960,6 +973,7 @@ act() {                         # Enter
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
         camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
+        gpu) open_tool nvtop ;;   # load, clock, GPU time per app
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
@@ -1004,7 +1018,7 @@ step() {                        # Right (+) and Left (-)
         wwan-) mobile_cycle - ;;
         orient+) set_orientation landscape ;;
         orient-) set_orientation portrait ;;
-        lock+|camera+) act "$1" ;;
+        lock+|camera+|gpu+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
         bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
@@ -1217,6 +1231,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
+                  gpu) echo \"execute-silent($self --act {1})\" ;;
                 esac" \
         --bind="left:transform:case {1} in
                   bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;

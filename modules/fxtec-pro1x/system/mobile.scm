@@ -904,6 +904,8 @@ Dracula palette, no kernel messages over the greeter.")
      pro1x-wallpapers
      ;; Bluetooth manager for Sway's quick actions (Right on Bluetooth).
      bluetuith
+     ;; GPU monitor (author): Sway's quick actions open it on the GPU line.
+     nvtop
      i3status-rust font-awesome
      ;; foot's font (skeleton foot.ini).
      font-iosevka-term
