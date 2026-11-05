@@ -419,11 +419,23 @@ colours from the system configuration.")
       (string-append
        "ACTION==\"add\", SUBSYSTEM==\"module\", KERNEL==\"aw86224\","
        " ATTR{parameters/drv2_lvl}=\"" (number->string level) "\"\n")))
+  ;; The base file's text, then EXTRA: mixed-text-file would put the base
+  ;; file's store path there instead (2026-11-06: generation 3 had only the
+  ;; path and the vibration rule).
+  (define (rules-file extra)
+    (computed-file "60-pro1x.rules"
+      #~(begin
+          (use-modules (ice-9 textual-ports))
+          (call-with-output-file #$output
+            (lambda (port)
+              (display (call-with-input-file #$base get-string-all) port)
+              (display #$extra port))))))
+  (define base
+    (local-file (repository-file "device/udev/60-pro1x.rules")
+                "60-pro1x-base.rules"))
   (let* ((top    (pro1x-hardware-display-top-gap    config))
          (bottom (pro1x-hardware-display-bottom-gap config))
-         (gap?   (> (+ top bottom) 0))
-         (base   (local-file (repository-file "device/udev/60-pro1x.rules")
-                             "60-pro1x.rules")))
+         (gap?   (> (+ top bottom) 0)))
     (if gap?
         (let* ((even   (lambda (g) (- g (modulo g 2))))
                (gtop   (even top))
@@ -437,8 +449,8 @@ colours from the system configuration.")
                  " ENV{ID_INPUT_TOUCHSCREEN}==\"1\","
                  " ENV{LIBINPUT_CALIBRATION_MATRIX}=\""
                  "1 0 0 0 " (number->string scale) " " (number->string offset) "\"\n")))
-          (mixed-text-file "60-pro1x.rules" base touch-rule (vibration-rule)))
-        (mixed-text-file "60-pro1x.rules" base (vibration-rule)))))
+          (rules-file (string-append touch-rule (vibration-rule))))
+        (rules-file (vibration-rule)))))
 
 ;;; The clock from the RTC.  The PMIC's RTC keeps running but Linux cannot
 ;;; set it (TrustZone; moWerk's SailfishOS notes), so the clock came up in
