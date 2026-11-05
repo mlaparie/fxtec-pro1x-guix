@@ -12,7 +12,6 @@ session; F12 for shutdown and reboot):
 - **2 Phosh**: swipe up for the app drawer, down from the top for quick
   settings.
 - **3 Sxmo on Sway**: not usable yet (superd missing).
-- **4 Sway (plain)**: Sway without SwayFX's blur, to compare speed.
 
 ## Keyboard and slider
 

@@ -308,9 +308,10 @@
                #$pro1x-audio-session
                #$(file-append sxmo-utils "/bin/sxmo_swayinit.sh")))))
 
-;; Sway session for greetd: SWAY is swayfx (the "1 Sway" session) or sway
-;; (plain, to compare speed; author, 2026-10-31); FLAVOUR, in PRO1X_SWAY,
-;; picks the effects file the port's config includes.
+;; Sway session for greetd: SWAY is swayfx (the "1 Sway" session); FLAVOUR,
+;; in PRO1X_SWAY, picks the effects file the port's config includes.  A plain
+;; sway session, for comparing speed (2026-10-31), was dropped on 2026-11-06:
+;; the comparison was done, and Phosh is the fallback.
 ;; ── Greeter ─────────────────────────────────────────────────────────────
 ;; tuigreet's arguments, for the console and for the Sway greeter.  A gexp:
 ;; the greeting reads the running kernel when tuigreet starts.
@@ -506,8 +507,6 @@ screen-keyboard-enabled=true
 ;; Both built against json-c/pro1x: json-c 0.19 leaked every parsed
 ;; object (swaybar grew about 0.5 GB an hour).
 (define sway-session (make-sway-session "start-sway" swayfx/pro1x "swayfx"))
-(define sway-plain-session
-  (make-sway-session "start-sway-plain" sway/pro1x "plain"))
 
 (define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
@@ -677,12 +676,6 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
           ,(mixed-text-file "sway.desktop"
              "[Desktop Entry]\nName=1 Sway\nExec="
              sway-session
-             "\nType=Application\n"))
-        ;; Plain sway with the same configuration, to compare with SwayFX.
-        `("wayland-sessions/sway-plain.desktop"
-          ,(mixed-text-file "sway-plain.desktop"
-             "[Desktop Entry]\nName=4 Sway (plain, for comparison)\nExec="
-             sway-plain-session
              "\nType=Application\n"))))
 
      ;; Readline (bash and others): no bell.  Tab with several completions
@@ -703,9 +696,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
         `("sway/pro1x.d/desktop.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))
         `("sway/pro1x-effects/swayfx.conf"
-          ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))
-        `("sway/pro1x-effects/plain.conf"
-          ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-plain.conf"))))
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 
      ;; /etc/phoc.ini — scale 1.75 for the 1080×2160 panel (author's
      ;; default, 2026-10-30; was 2).  Phosh does not save display changes,

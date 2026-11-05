@@ -385,7 +385,6 @@ and session):
 | **Sway** | the port's config in `/etc/sway/pro1x.d/`, yours in `~/.config/sway/config` ([configure.md](docs/configure.md#files-outside-configscm)); see [features.md](docs/features.md#sway-on-the-phone) |
 | **Phosh** | phoc-pro1x + phosh-pro1x |
 | **Sxmo + Sway** | needs superd (not packaged yet) |
-| **Sway (plain)** | Guix's sway with the same config, without SwayFX's blur; for comparing speed |
 
 Session files in `/etc/wayland-sessions/` use store paths in `Exec=`.
 
