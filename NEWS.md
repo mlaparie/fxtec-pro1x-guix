@@ -51,7 +51,9 @@ with `sha256sum -c SHA256SUMS`.
 
 0.1.0 was tagged but never published: its root file system was over
 GitHub's 2 GiB limit for release files.  0.1.1 is the same system with the
-image compressed (`rootfs.img.zst`).
+image compressed (`rootfs.img.zst`), which was still over the limit: its
+release has U-Boot and the DTB but no root file system (the CI build's
+artifact has it).
 
 First release of GNU Guix System for the F(x)tec Pro¹x (QX1050,
 SM6115): a near-mainline Linux 7.1 kernel, U-Boot chainloaded from the
