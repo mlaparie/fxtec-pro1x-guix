@@ -52,6 +52,12 @@ entry does not move the system profile: `guix system list-generations` still say
 with three: a system with four must not reach the phone before the new U-Boot, or its
 fourth label replaces U-Boot's own next menu entry.
 
+**VoLTE (2026-11-05, generation 236): incoming calls on Free 4G fixed.**  81voltd runs as a
+service (`volte?` in pro1x-modem-configuration, default on), with pro1x-volte-watch restarting
+it when 4G has no IMS bearer.  8 of 8 incoming calls rang, 7 over VoLTE, audio both ways in 7.
+Open: outgoing calls take 22-26 s on 4G before falling back to 3G; one silent VoLTE call; not
+yet tested after a reboot, with mobile data off, or in airplane mode.
+
 **Incoming calls on 4G, tests (2026-11-05, evening):** about one call in three rings on Free 4G,
 with `ps-preferred`, `cs-preferred` or a busy data link alike (rag-notes hardware).  3G: all rang.
 7.1 (#182): 0 of 3; `cs-only`: 0 of 3, so neither the kernel nor the voice domain.  Voice domain

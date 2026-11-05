@@ -165,6 +165,14 @@
       "confidence": "confirmed for the counts and logs; the cause is not known",
       "date": "2026-11-05",
       "source": "/root/call-test/net.log and cs.log on the phone, /var/log/messages, author's report per call"
+    },
+    {
+      "title": "VoLTE with 81voltd on SM6115: the modem opens its IMS bearer at once, and calls on LTE ring",
+      "general": "A Qualcomm modem that has its own IMS stack (QRTR services 33 IMS application, 18 IMS settings, 77 IMS priv) asks the host for the IMS data connection through the IMS Data service (770). Serve it with 81voltd: the modem chooses the APN and opens it through ModemManager. Where the network expects VoLTE on LTE, this is what makes incoming calls ring. After a stay on 3G the bearer closes and may not come back on LTE: restarting 81voltd reopens it. Outgoing calls may still fall back to CS.",
+      "instance": "Pro1X, 7.3.0, generations 233-236, SIM home Free 20815, carrier profile ROW_Commercial, 81voltd a7794dd, 2026-11-05. Bearer on APN ims, IPv6 only, within seconds of 81voltd's start (IPv4 refused: pdn-ipv4-call-disallowed). Incoming on LTE: 8 of 8 rang, 7 over VoLTE (no radio change), 1 by CS fallback; audio both ways in 7, one silent. Outgoing: 22-26 s dialing on LTE, then a move to Orange 3G and ringing within 1 s. After that, the IMS bearer was closed (regular-deactivation) and none came back on LTE; calls went to voicemail until 81voltd was restarted. pro1x-volte-watch: a bearer disconnected by hand was back 33 s later. Without 81voltd: about one in three rang (other entry).",
+      "confidence": "confirmed (calls by the author, logs on the phone)",
+      "date": "2026-11-05",
+      "source": "/var/log/messages, /var/log/81voltd.log, /var/log/pro1x-volte-watch.log, /root/call-test/net.log on the phone; author's report per call"
     }
   ],
   "usb_network": [

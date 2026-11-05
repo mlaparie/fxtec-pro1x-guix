@@ -1,5 +1,44 @@
 # Release notes
 
+## 0.2.0 — 2026-11-05
+
+Linux 7.3 (mainline, moWerk's series and this port's patches), calls on
+4G through VoLTE, optional full-disk encryption, and a Sway session made
+for the phone.  Built with guix 8b96d76 and nonguix c241d19.
+
+### New
+
+- VoLTE: 81voltd (postmarketOS) serves the IMS data connection the modem
+  asks for, and a watchdog restarts it when 4G has none.  On Free in
+  France, incoming calls on 4G rang 8 times in 8 with it, against about
+  one in three without.  Outgoing calls connect, but take about 25 s on
+  4G: the modem ends up falling back to 3G.
+- Call audio on 7.3: both ways, earpiece and speaker, volume keys in
+  calls.
+- Full-disk encryption (LUKS2), asked for by `scripts/flash.sh`, also
+  with a CI `rootfs.img`: tested in QEMU and with the phone's prompt, not
+  yet flashed on a phone.
+- U-Boot menu with generation numbers and dates, the current one and four
+  older; countdown in `config.scm`.
+- Sway: lock screen (gtklock, black, follows rotation), quick actions
+  (operator choice with automatic fallback, charge limit, CPU mode,
+  notifications), edge swipes, SIM PIN prompt at login, on-screen keyboard
+  on demand.
+- `nm-connection-editor` for Wi-Fi settings beyond nmtui (WPA2
+  Enterprise).
+- `config.scm` lists every option of the port's services.
+
+### Known issues
+
+- Mute in calls has no effect; no echo cancelling; the microphone picks up
+  handling noise.
+- One VoLTE call in eight had no sound (not reproduced).
+- Charging goes above the charge limit; suspend does not reach the SoC's
+  deep sleep.
+- The boot menu's labels are stale while a generation older than
+  2026-11-04 runs.
+- A reflash drops every earlier generation.
+
 ## 0.1.1 — 2026-10-31
 
 0.1.0 was tagged but never published: its root file system was over
