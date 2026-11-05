@@ -55,7 +55,8 @@ fourth label replaces U-Boot's own next menu entry.
 **Incoming calls on 4G (2026-11-05, #219):** intermittent, not 7.3-specific as first thought:
 it rang on 7.3 with LTE at 09:12:45; a call at 09:13:51 was lost in the same second as a network
 rejection (cause 9 and 15, logged every day since 2026-10-30, 7.1 too).  Known issue for the
-release; 3G rings every time so far.  Details in rag-notes.  Older notes below:
+release; 3G rings every time so far.  Details in rag-notes.  The author wants this fixed before
+the release (2026-11-05); carrier tests agreed, when the author has time.  Older notes below:
 
 **Incoming calls on 7.3 (2026-11-04, #215, Free on Orange's network):** on 4G the caller gets
 voicemail at once and ModemManager logs no call; outgoing works, about 20 s to ringing.  On
