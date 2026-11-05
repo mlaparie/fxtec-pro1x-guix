@@ -8,8 +8,9 @@
 # US layout, no keyd.  Use letters and digits.
 #
 # State: tested in QEMU.  The first flash on the phone (2026-11-05) sent an
-# empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).  The system boots on either layout, and
-# has the same image: nothing in it says encrypted (services/fde.scm).
+# empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).
+# The system boots on either layout, and has the same image: nothing in it
+# says encrypted (services/fde.scm).
 #
 # Called by flash.sh after it has handled guix shell, U-Boot, and system image
 # discovery.  Not intended to be run directly.
