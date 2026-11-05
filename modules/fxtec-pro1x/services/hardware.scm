@@ -28,6 +28,9 @@
 ;;;     English always, and layouts (keyboard-layouts), independent of them;
 ;;;   • browsers fitted to portrait (browser-fit?, default #t): pro1x-browser-fit;
 ;;;   • on-screen keyboard haptics (keyboard-haptics?, default #t): feedbackd theme;
+;;;   • vibration strength (vibration-level, default 80): the motor's sustained
+;;;     drive level, a udev rule; calls and messages vibrate at full strength
+;;;     and longer than feedbackd's default (its device theme);
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
@@ -117,6 +120,10 @@
   ;; A short vibration on each on-screen keyboard key (stevia), in
   ;; feedbackd's quiet and full profiles (author).
   (keyboard-haptics?  pro1x-hardware-keyboard-haptics?  (default #t))
+  ;; The vibration motor's sustained drive level, 1-127 (aw86224 drv2_lvl;
+  ;; stock 59): every vibration is stronger with it, and the motor warms
+  ;; more.  80: calls and texts were too weak at 59 (author, 2026-11-06).
+  (vibration-level    pro1x-hardware-vibration-level    (default 80))
   ;; Word completion dictionaries to install besides English, which is
   ;; always there: '("fr"), any of "fr" "de" "it" (%pro1x-keyboard-languages).
   ;; Spanish has no dictionary in Guix.  Which of them are combined is chosen
@@ -322,7 +329,10 @@ white, #RRGGBB or #f")
 
 (define (pro1x-feedbackd-theme-json leds haptics?)
   ;; A feedbackd device theme (named after the device tree compatible) that
-  ;; inherits feedbackd's default theme and replaces its LED entries.  With
+  ;; inherits feedbackd's default theme and replaces its LED entries.  Calls
+  ;; and messages vibrate harder than the default's (author, 2026-11-06: much
+  ;; stronger): calls at full strength (0.5 there), texts three 0.6 s pulses
+  ;; (two of 0.5 s), chat messages two 0.3 s (one of 0.15 s).  With
   ;; HAPTICS?, also a short vibration for stevia's key-pressed event, which
   ;; feedbackd's default theme leaves without feedback, and a stronger one
   ;; for button-pressed (Shift, layout keys): the default's 7 ms at 0.2
@@ -350,20 +360,28 @@ blue, white or #RRGGBB")
    "  \"profiles\": [\n    { \"name\": \"silent\",\n      \"feedbacks\": [\n"
    (string-join (map entry leds) ",\n")
    "\n      ]\n    }"
+   ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
+        { \"event-name\": \"phone-incoming-call\", \"type\": \"VibraPeriodic\",
+          \"magnitude\": 1.0, \"duration\": 1000 },
+        { \"event-name\": \"message-new-sms\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0, 0.0, 1.0, 0.0, 1.0],
+          \"durations\": [600, 150, 600, 150, 600] },
+        { \"event-name\": \"message-new-instant\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [300, 120, 300] }"
    (if haptics?
-       ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
+       ",
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
           \"magnitudes\": [1.0], \"durations\": [35] },
         { \"event-name\": \"button-pressed\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [1.0], \"durations\": [35] }\n      ]\n    }"
+          \"magnitudes\": [1.0], \"durations\": [35] }"
        "")
+   "\n      ]\n    }"
    "\n  ]\n}\n"))
 
 (define (pro1x-feedbackd-theme config)
-  ;; No LED colours and no key haptics: no theme, feedbackd's defaults.
+  ;; Always a theme: the call and message vibrations are in it.
   (match (list (pro1x-hardware-notification-leds config)
                (pro1x-hardware-keyboard-haptics? config))
-    ((() #f) '())
     ((leds haptics?)
      (let ((json (plain-file "pro1x-feedbackd-theme.json"   ;no "," in store names
                              (pro1x-feedbackd-theme-json leds haptics?))))
@@ -389,8 +407,18 @@ colours from the system configuration.")
           (license license:gpl3+)))))))
 
 (define (pro1x-udev-rules config)
-  ;; Returns a file-like object: the base rules optionally extended with a
-  ;; touch calibration matrix rule when display gaps are configured.
+  ;; Returns a file-like object: the base rules, the vibration motor's drive
+  ;; level (a module parameter, set when the module loads), and a touch
+  ;; calibration matrix rule when display gaps are configured.
+  (define (vibration-rule)
+    (let ((level (pro1x-hardware-vibration-level config)))
+      (unless (and (integer? level) (<= 1 level 127))
+        (raise (formatted-message
+                (G_ "vibration-level: ~s is not an integer from 1 to 127")
+                level)))
+      (string-append
+       "ACTION==\"add\", SUBSYSTEM==\"module\", KERNEL==\"aw86224\","
+       " ATTR{parameters/drv2_lvl}=\"" (number->string level) "\"\n")))
   (let* ((top    (pro1x-hardware-display-top-gap    config))
          (bottom (pro1x-hardware-display-bottom-gap config))
          (gap?   (> (+ top bottom) 0))
@@ -409,8 +437,8 @@ colours from the system configuration.")
                  " ENV{ID_INPUT_TOUCHSCREEN}==\"1\","
                  " ENV{LIBINPUT_CALIBRATION_MATRIX}=\""
                  "1 0 0 0 " (number->string scale) " " (number->string offset) "\"\n")))
-          (mixed-text-file "60-pro1x.rules" base touch-rule))
-        base)))
+          (mixed-text-file "60-pro1x.rules" base touch-rule (vibration-rule)))
+        (mixed-text-file "60-pro1x.rules" base (vibration-rule)))))
 
 ;;; The clock from the RTC.  The PMIC's RTC keeps running but Linux cannot
 ;;; set it (TrustZone; moWerk's SailfishOS notes), so the clock came up in
@@ -619,14 +647,15 @@ esac
   ;; reversals per double shake.  Threshold 5 -> 8 -> 11 m/s²: too
   ;; sensitive, then still too permissive (author).  The recorded double
   ;; shakes had reversals of 5.5-31 m/s²: at 11 they need to be firmer.
+  ;; 2026-11-06: still too easy (author): 15 m/s², within 1.0 s (1.2).
   (program-file
    "pro1x-shake-torch"
    #~(begin
        (use-modules (ice-9 popen) (ice-9 rdelim) (ice-9 regex) (ice-9 format)
                     (ice-9 ftw) (srfi srfi-1))
-       (define threshold 11.0)          ;m/s² of motion (gravity removed)
+       (define threshold 15.0)          ;m/s² of motion (gravity removed)
        (define needed 3)                ;reversals …
-       (define window 1.2)              ;… within this many seconds
+       (define window 1.0)              ;… within this many seconds
        (define torch "/sys/class/leds/white:flash-0")
        (define (now)
          (/ (get-internal-real-time) 1.0 internal-time-units-per-second))

@@ -55,6 +55,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
 | hardware `color-scheme` | `'prefer-dark` | `'default` for light apps and shell |
 | hardware `keyboard-haptics?` | `#t` | a short vibration per on-screen key |
+| hardware `vibration-level` | `80` | the vibration motor's strength, 1-127 (stock 59); every vibration, the motor warms more when higher |
 | hardware `keyboard-languages` | `'()` | word completion dictionaries besides English: `'("fr")`, any of `"fr"` `"de"` `"it"`; quick actions chooses which to combine, or off |
 | hardware `keyboard-layouts` | `'("us")` | on-screen keyboard layouts, independent of the dictionaries; chosen in quick actions or with the keyboard's layout key |
 | hardware `browser-fit?` | `#t` | at each Sway login, fit Firefox-family browsers to portrait, with a mobile user agent there (see below) |

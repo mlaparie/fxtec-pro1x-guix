@@ -108,6 +108,9 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (keyboard-layouts '(\"us\"))
   ;;                A short vibration on each key.
   ;;                (keyboard-haptics? #t)
+  ;;                Vibration strength, 1-127 (stock 59): every vibration; higher warms
+  ;;                the motor more.
+  ;;                (vibration-level 80)
   ;;                At each Sway login: Firefox-family browsers fitted to portrait, with a
   ;;                mobile user agent there; #f stops it, what it added stays.
   ;;                (browser-fit? #t)
