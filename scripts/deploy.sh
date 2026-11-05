@@ -26,6 +26,9 @@
 # scripts/flash.sh made, ~/.ssh/pro1x-guix, and keeps that key in root's
 # authorized keys, whatever the configuration says.
 #
+# The channel's commit comes from sr.ht, or from the GitHub mirror when sr.ht
+# does not answer.
+#
 # Environment: PRO1X_USER, the phone account whose configuration is used
 # (default user).
 #
@@ -81,6 +84,15 @@ else
 fi
 "${ssh_root[@]}" "cd $home/.ssh 2>/dev/null && tar cf - *.pub 2>/dev/null" \
     | tar xf - -C "$tmp$home/.ssh" 2>/dev/null || true
+
+# sr.ht down: this port's channel from its GitHub mirror.
+srht=https://git.sr.ht/~mlaparie/fxtec-pro1x-guix
+mirror=https://github.com/mlaparie/fxtec-pro1x-guix
+if grep -q "$srht" "$tmp$dir/channels.scm" &&
+   ! timeout 20 git ls-remote "$srht" HEAD >/dev/null 2>&1; then
+    echo "sr.ht not answering: fetching the channel from $mirror." >&2
+    sed -i "s|$srht|$mirror|" "$tmp$dir/channels.scm"
+fi
 
 echo "Configuration: $dir/config.scm, channels: $dir/channels.scm (phone)"
 PRO1X_SYSTEM="$tmp$dir/config.scm" \
