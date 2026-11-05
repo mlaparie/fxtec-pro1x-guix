@@ -1,4 +1,4 @@
-;;; fxtec-pro1x/packages/kernel.scm — Linux 7.1 for the F(x)tec Pro1X (SM6115)
+;;; fxtec-pro1x/packages/kernel.scm — Linux 7.3 for the F(x)tec Pro1X (SM6115)
 ;;;
 ;;; The source is the sm6115-mainline tree (not linux-libre).  Build infra-
 ;;; structure is borrowed from the nonguix `linux` package so we skip deblob-
@@ -19,7 +19,8 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:export (linux-pro1x))
 
-;;; The device patches: the NixOS port's 14, in its order, then ours.
+;;; The device patches: moWerk's 7.3 series (patches-7.3/), then ours
+;;; (patches/; the 7.1 list that was there is in git history, tag pre-7.3).
 (define %pro1x-patch-dir
   (repository-file "device/kernel/patches/"))
 
