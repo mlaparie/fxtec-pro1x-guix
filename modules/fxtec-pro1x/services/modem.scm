@@ -91,7 +91,7 @@
       (stop #~(make-kill-destructor))
       (respawn? #t)))
      (if (pro1x-modem-volte? config)
-         (list (pro1x-81voltd-service config))
+         (list (pro1x-81voltd-service config) pro1x-volte-watch-service)
          '()))))
 
 ;;; 81voltd: the modem's IMS stack asks the host, over QRTR (service 770), to
@@ -111,6 +111,55 @@
        #:environment-variables
        '#$(if (pro1x-modem-verbose? config) '("G_MESSAGES_DEBUG=all") '())
        #:log-file "/var/log/81voltd.log"))
+   (stop #~(make-kill-destructor))
+   (respawn? #t)))
+
+;;; After a stay on 3G (an outgoing call fell back there), the modem closed
+;;; the IMS bearer and, back on 4G, 81voltd opened no new one: calls went to
+;;; voicemail again, until a restart of 81voltd, which brought it back at once
+;;; (2026-11-05).  So: on 4G for 30 s without a connected bearer on the "ims"
+;;; APN, delete the dead IMS bearers and restart 81voltd.  Waits 90 s after a
+;;; restart, twice as long after each one that did not help (at most 30 min),
+;;; for networks without VoLTE.
+(define pro1x-volte-watch-script
+  (program-file
+   "pro1x-volte-watch"
+   #~(begin
+       (setenv "PATH" "/run/current-system/profile/bin")
+       (execl #$(file-append bash-minimal "/bin/sh") "sh" "-c" "
+kv() { sed -n \"s/^$1 *: //p\"; }
+miss=0 wait=90
+while :; do
+  sleep 10
+  m=$(mmcli -m any --output-keyvalue 2>/dev/null) || { miss=0; continue; }
+  echo \"$m\" | grep -q '^modem.generic.access-technologies.value.*: lte' || { miss=0; continue; }
+  up= stale=
+  for b in $(echo \"$m\" | sed -n 's/^modem.generic.bearers.value[^:]*: *//p'); do
+    k=$(mmcli -b \"$b\" --output-keyvalue 2>/dev/null)
+    [ \"$(echo \"$k\" | kv bearer.properties.apn)\" = ims ] || continue
+    if [ \"$(echo \"$k\" | kv bearer.status.connected)\" = yes ]; then up=1
+    else stale=\"$stale $b\"; fi
+  done
+  if [ -n \"$up\" ]; then miss=0 wait=90; continue; fi
+  miss=$((miss + 1))
+  [ $miss -ge 3 ] || continue
+  echo \"$(date '+%F %T') on 4G without an IMS bearer: restarting 81voltd (next wait ${wait} s)\"
+  for b in $stale; do mmcli -m any --delete-bearer=\"$b\" >/dev/null 2>&1; done
+  herd restart 81voltd >/dev/null 2>&1
+  sleep $wait
+  wait=$((wait * 2)); [ $wait -le 1800 ] || wait=1800
+  miss=0
+done"))))
+
+(define pro1x-volte-watch-service
+  (shepherd-service
+   (provision '(pro1x-volte-watch))
+   (requirement '(81voltd))
+   (documentation "Restart 81voltd when 4G has no IMS bearer")
+   (start
+    #~(make-forkexec-constructor
+       (list #$pro1x-volte-watch-script)
+       #:log-file "/var/log/pro1x-volte-watch.log"))
    (stop #~(make-kill-destructor))
    (respawn? #t)))
 
