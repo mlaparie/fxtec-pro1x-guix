@@ -18,8 +18,8 @@ kernel patches, firmware, and flash approach originate there.
 | page | |
 |---|---|
 | [docs/features.md](docs/features.md) | what it is and what works |
-| [docs/install.md](docs/install.md) | flashing the first time |
-| [docs/usage.md](docs/usage.md) | daily use: sessions, keys, screen, network; the change-deploy-rollback loop |
+| [docs/install.md](docs/install.md) | flashing the first time; reflashing with a backup of your data |
+| [docs/usage.md](docs/usage.md) | daily use: sessions, keys, swipes and menus, screen, network, passwords; the change-deploy-rollback loop |
 | [docs/configure.md](docs/configure.md) | your config.scm and channels, the port's options |
 | [docs/home.md](docs/home.md) | home files: managed, seeded once, or left alone (Guix Home) |
 | [docs/update.md](docs/update.md) | updating, generations, rollback |
@@ -30,7 +30,7 @@ The rest of this README is the reference for working on the port.
 
 ## Port status
 
-As observed on the phone (2026-10-31, Linux 7.1).  Phone comforts and the
+As observed on the phone (2026-11-06, Linux 7.3).  Phone comforts and the
 Sway session: [features.md](docs/features.md).
 
 ```
@@ -50,10 +50,10 @@ Earpiece                         Working    in calls
 Headphones                       Untested
 Microphones                      Working    in calls
 Vibration motor                  Working    feedbackd
-Calls                            Partial    calls work (earpiece, both directions); Calls' speaker and mute buttons have no effect yet
+Calls                            Partial    both directions, earpiece and speaker; on 4G through VoLTE (81voltd); mute has no effect yet
 SMS                              Working    Chatty
 MMS                              Working    mmsd-tng + Chatty
-Mobile data                      Working    3G; LTE seen, not confirmed
+Mobile data                      Working    3G and 4G
 Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity sensor                 Working    calls (Sway), no wake in a pocket
@@ -64,7 +64,7 @@ Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
 NFC, video codecs                Untested
-Full-disk encryption             QEMU only  flash.sh --encrypt
+Full-disk encryption             Working    flash.sh --encrypt (first flashed 2026-11-05)
 ```
 
 ## Layout
@@ -80,8 +80,11 @@ device/                      Distro-independent: kernel patches + config, UCM2 p
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
                              FDE helpers (xts-encrypt.c)
 scripts/backup-stock.sh      Back up modem EFS and boot partitions before flashing
+scripts/backup-phone.sh      Save the phone's data to the PC before a reflash, restore it after
 scripts/flash.sh             Initial flash (plain)
 scripts/flash-encrypted.sh   Initial flash with LUKS2 (flash.sh --encrypt)
+scripts/mksparse.py          Sparse parts for fastboot (the encrypted flash's userdata)
+scripts/deploy.sh            Update the phone from the PC (guix deploy)
 tools/                       On-device diagnostics (haptics-tune, cam-focus, sensors-check)
 channels.scm                 Channel descriptor (unpinned)
 channels-lock.scm            Pinned channel commits for reproducible local builds
@@ -280,8 +283,10 @@ there).
 
 ## Full-disk encryption (LUKS2)
 
-Tested in QEMU only so far (`tools/fde-qemu-test.py`), not on a phone.  The screen,
-the slide-out keyboard at the prompt, and U-Boot on this layout are unproven.
+Flashed on the author's phone on 2026-11-05: U-Boot reads the plain area, the
+passphrase is typed on the slide-out keyboard at the prompt, and the root grows to
+the partition on first boot.  `tools/fde-qemu-test.py` boots such an image in QEMU,
+to test changes without the phone.
 
 Encryption is chosen at the flash, and there is nothing to set in `config.scm`: the
 same system boots on both layouts.  Its initrd reads the layout from the disk and asks
@@ -299,7 +304,8 @@ stay unencrypted, and the bootloader unlocked: this protects data while the phon
 off, not against someone tampering with it.
 
 **First flash** (erases userdata; asks for the passphrase, which you then type on
-the slide-out keyboard at each boot, so letters and digits only: plain US layout):
+the slide-out keyboard at each boot: the prompt has the plain US layout, so a
+symbol is where a US keyboard has it):
 ```sh
 bash scripts/flash.sh --encrypt
 ```
