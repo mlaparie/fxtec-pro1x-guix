@@ -22,9 +22,9 @@
 # The Operator line is auto, or the network forced from its choices: auto, the
 # SIM's home network, the last scan's networks, or a new scan (up to 3 min, no
 # service meanwhile).  A forced network that is out of reach means no service,
-# so no incoming calls, and the line says so in red; ModemManager goes back to
-# auto when it starts (inferred from its source), hence the state in
-# XDG_RUNTIME_DIR.
+# so no incoming calls: the line says "no service" in red, or "refused" when the
+# modem went back to another network.  A reboot goes back to auto (seen once with
+# SFR forced), hence the state in XDG_RUNTIME_DIR.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications
@@ -303,10 +303,15 @@ operator_scan="$statedir/operators"     # code, name, radios; from the last scan
 operator_shown() {              # auto, or the forced one; [modem key-values]
     [ -r "$operator_forced" ] || { echo auto; return; }
     IFS='	' read -r code name < "$operator_forced"
-    printf '%s (forced)' "${name:-$code}"
     case "$(printf '%s\n' "$1" | kv_get modem.3gpp.registration-state)" in
-        home*|roaming*) ;;
-        *) printf ' \033[91mno service\033[0m' ;;
+        home*|roaming*)
+            # A network that refuses the SIM can leave it on another.
+            if [ "$(printf '%s\n' "$1" | kv_get modem.3gpp.operator-code)" = "$code" ]; then
+                printf '%s (forced)' "${name:-$code}"
+            else
+                printf '%s \033[91mrefused\033[0m' "${name:-$code}"
+            fi ;;
+        *) printf '%s \033[91mno service\033[0m' "${name:-$code}" ;;
     esac
 }
 operator_set() {                # operator_set auto|CODE [NAME]
@@ -368,8 +373,8 @@ choose() {
             home=$(printf '%s\n' "$sim" | kv_get sim.properties.operator-code)
             homename=$(printf '%s\n' "$sim" | kv_get sim.properties.operator-name)
             opts=$(printf 'auto\tauto\n'
-                   [ -z "$home" ] || [ "$home" = -- ] || printf '%s\t%s (SIM)\n' "$home" "$homename"
-                   awk -F'\t' -v home="$home" '$1 != home { print $1 "\t" $2 " " $3 }' \
+                   [ -z "$home" ] || [ "$home" = -- ] || printf '%s\t%s %s (SIM)\n' "$home" "$homename" "$home"
+                   awk -F'\t' -v home="$home" '$1 != home { print $1 "\t" $2 " " $1 " " $3 }' \
                        "$operator_scan" 2>/dev/null
                    printf 'scan\tscan (up to 3 min, no service meanwhile)…\n') ;;
         feedback)
