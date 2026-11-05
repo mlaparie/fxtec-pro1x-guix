@@ -133,9 +133,13 @@
                 ;; 3. append extra options + olddefconfig (mirrors NixOS extraConfig)
                 (apply invoke "make" "qcom_defconfig" make-flags)
                 (apply invoke "make" "qcom-phone.config" make-flags)
-                ;; Enable sysboot + extras (matches NixOS extraConfig).
+                ;; Enable sysboot + extras (matches NixOS extraConfig); pmic
+                ;; and smc for the menu's "Reboot to stock fastboot".
                 (invoke "sh" "-c"
-                        "printf 'CONFIG_CMD_SYSBOOT=y\\nCONFIG_CMD_HASH=y\\n' >> .config")
+                        (string-append
+                         "printf 'CONFIG_CMD_SYSBOOT=y\\nCONFIG_CMD_HASH=y\\n"
+                         "CONFIG_CMD_PMIC=y\\nCONFIG_ARM_SMCCC=y\\n"
+                         "CONFIG_CMD_SMC=y\\n' >> .config"))
                 (apply invoke "make" "olddefconfig" make-flags)))
 
             (add-after 'configure 'patch-boot-env
@@ -153,7 +157,15 @@
                   (("bootcmd=bootefi bootmgr; pause; run menucmd")
                    "bootcmd=bootmenu ${menu_delay}; pause; run menucmd")
                   (("bootmenu_0=Boot=bootefi bootmgr; pause")
-                   "bootmenu_0=Boot=sysboot scsi 0#userdata any ${scriptaddr} /boot/extlinux/extlinux.conf; pause"))
+                   "bootmenu_0=Boot=sysboot scsi 0#userdata any ${scriptaddr} /boot/extlinux/extlinux.conf; pause")
+                  ;; U-Boot's fastboot writes eMMC only (FASTBOOT_FLASH_MMC),
+                  ;; and the phone has UFS: it could not flash (2026-11-05).
+                  ;; In its place, the stock bootloader's fastboot, reached as
+                  ;; Linux's `reboot bootloader' does: reason 2 in the PON's
+                  ;; SOFT_RB_SPARE (0x88f, bits 7:1 on pm8998-pon, so 0x04;
+                  ;; drivers/power/reset/qcom-pon.c), then PSCI SYSTEM_RESET.
+                  (("bootmenu_3=Enable fastboot mode=echo \"Press any key to exit fastboot mode\"; run fastboot")
+                   "bootmenu_3=Reboot to fastboot (stock bootloader)=pmic dev pmic@0; pmic write 0x88f 0x04; smc 0x84000009"))
 
                 ;; 2. Renumber existing entries ≥ 1 to make room for prev-N slots.
                 #$@(if (> n 0)
