@@ -36,7 +36,7 @@
 # closed (author, 2026-10-31): Sway hides every other surface while locked,
 # stevia included, and gtklock-virtkb-module draws a keyboard inside the
 # lock window.  Everything is text in a GTK layout written here
-# ($XDG_RUNTIME_DIR/pro1x-lock.ui): the banner (figlet, standard font) with
+# ($XDG_RUNTIME_DIR/pro1x-lock.ui): the banner with
 # "Guix" in Guix's yellow, gtklock's clock and date, the password field,
 # and one line per app with notifications still shown by mako (how many,
 # and when the latest arrived; sway-notifications summary).  Styles in
@@ -153,14 +153,19 @@ esac
 # XML text: & < > escaped.
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-banner='  ____ _   _ _   _    ____       _
- / ___| \ | | | | |  / ___|_   _(_)_  __
-| |  _|  \| | | | | | |  _| | | | \ \/ /
-| |_| | |\  | |_| | | |_| | |_| | |>  <
- \____|_| \_|\___/   \____|\__,_|_/_/\_\'
-# "GNU" is columns 1-20, "Guix" the rest: two labels side by side.
-gnu=$(printf '%s\n' "$banner" | awk '{ printf "%-20.20s\n", $0 }' | xml)
-guixpart=$(printf '%s\n' "$banner" | cut -c21- | awk '{ printf "%-21s\n", $0 }' | xml)
+banner=$(cat <<'ART'
+ .d8888b.  888b    888 888     888       .d8888b.           d8b
+d88P  Y88b 8888b   888 888     888      d88P  Y88b          Y8P
+888    888 88888b  888 888     888      888    888
+888        888Y88b 888 888     888      888        888  888 888 888  888
+888  88888 888 Y88b888 888     888      888  88888 888  888 888 `Y8bd8P'
+888    888 888  Y88888 888     888      888    888 888  888 888   X88K
+Y88b  d88P 888   Y8888 Y88b. .d88P      Y88b  d88P Y88b 888 888 .d8""8b.
+ "Y8888P88 888    Y888  "Y88888P"        "Y8888P88  "Y88888 888 888  888
+ART
+)
+gnu=$(printf '%s\n' "$banner" | awk '{ printf "%-37.37s\n", $0 }' | xml)
+guixpart=$(printf '%s\n' "$banner" | cut -c38- | awk '{ printf "%-36s\n", $0 }' | xml)
 
 when() {                        # epoch -> "14:32", or "Mon 14:32" before today
     [ "$1" -gt 0 ] 2>/dev/null || { echo "?"; return; }
@@ -427,16 +432,16 @@ else
     key_bg='#3c3836' key_fg='#ebdbb2' key_line='#504945'
 fi
 cat > "$css" <<EOF
-window { background-color: #1d2021; color: #d5c4a1; }
+window { background-color: #000000; color: #d5c4a1; }
 #pro1x-gnu, #pro1x-guix, #pro1x-notes, #pro1x-status { font-family: "DejaVu Sans Mono", monospace; }
-#pro1x-gnu, #pro1x-guix { font-size: 16px; }
+#pro1x-gnu, #pro1x-guix { font-size: 11px; }
 #pro1x-gnu { color: #d5c4a1; }
 #pro1x-guix { color: #FFCC00; }
 #pro1x-notes { color: #928374; font-size: 18px; margin-top: 8px; }
 #pro1x-status { color: #a89984; font-size: 18px; margin-top: 8px; }
 #clock-label { font-size: 64px; color: #ebdbb2; }
 #date-label { font-size: 20px; color: #a89984; }
-#input-field { background: #282828; color: #ebdbb2; border: 1px solid #458588;
+#input-field { background: #000000; color: #ebdbb2; border: 1px solid #458588;
                border-radius: 8px; caret-color: #FFCC00; }
 #error-label { color: #fb4934; }
 #warning-label { color: #fabd2f; }
@@ -461,7 +466,7 @@ if [ "${1:-}" = --restart ]; then
 fi
 
 if ! command -v gtklock >/dev/null; then
-    exec swaylock -f -c 1d2021 --clock --indicator "$@"
+    exec swaylock -f -c 000000 --clock --indicator "$@"
 fi
 
 # The keyboard only with the hardware keyboard closed: evtest --query exits
@@ -511,7 +516,7 @@ supervise() {
         PRO1X_LOCK_TRIES=$tries exec "$self" --restart
     fi
     logger -t pro1x-lock "falling back to swaylock"
-    swaylock -c 1d2021 --clock --indicator &
+    swaylock -c 000000 --clock --indicator &
     echo $! > "$rt/pro1x-lock.pid"
     wait $!
     rm -f "$rt/pro1x-lock.pid"
