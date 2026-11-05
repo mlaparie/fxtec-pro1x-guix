@@ -68,7 +68,7 @@ portrait_now() {                # the panel's transform
 # SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.
 # The last swap of several puts the level back: on quick turns the second one read
 # level 0, did nothing, and the first's restore lit the red (author, 2026-11-05).
-# Whatever happens, lit again within 2.6 s; red then means no lock client came.
+# Whatever happens, lit again within 2.3 s; red then means no lock client came.
 swap_out() {                    # swap_out PID
     saved="$rt/pro1x-lock-level" owner="$rt/pro1x-lock-swap"
     level=$(brightnessctl get 2>/dev/null)
@@ -82,7 +82,7 @@ swap_out() {                    # swap_out PID
               [ "$(pgrep -u "$uid" -x gtklock)" ] &&
                   [ "$(pgrep -u "$uid" -x gtklock)" != "$1" ] && break
           done
-          sleep 0.6
+          sleep 0.3
           if [ "$(cat "$owner" 2>/dev/null)" = "$token" ]; then
               brightnessctl -q set "$(cat "$saved")"
               rm -f "$saved" "$owner"

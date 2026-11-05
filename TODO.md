@@ -58,6 +58,11 @@ rejection (cause 9 and 15, logged every day since 2026-10-30, 7.1 too).  Known i
 release; 3G rings every time so far.  Details in rag-notes.  The author wants this fixed before
 the release (2026-11-05); carrier tests agreed, when the author has time.  Older notes below:
 
+**VoLTE (later, author, 2026-11-05):** not working on the phone; IMS service answers
+`InvalidOperation`.  81voltd (Debian) is the lead to study.  Staying off 4G on an operator is
+refused as a workaround.
+
+
 **Incoming calls on 7.3 (2026-11-04, #215, Free on Orange's network):** on 4G the caller gets
 voicemail at once and ModemManager logs no call; outgoing works, about 20 s to ringing.  On
 3G (`qmicli --nas-set-system-selection-preference=umts`; `mmcli --set-allowed-modes=3g`
