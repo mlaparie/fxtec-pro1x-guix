@@ -54,8 +54,12 @@ fourth label replaces U-Boot's own next menu entry.
 
 **Incoming calls on 4G, tests (2026-11-05, evening):** about one call in three rings on Free 4G,
 with `ps-preferred`, `cs-preferred` or a busy data link alike (rag-notes hardware).  3G: all rang.
-Voice domain back to `ps-preferred`.  Next: the same calls on 7.1.  Ping trial not finished (1 of 3
-rang), about 9 MB/h: not adopted.
+7.1 (#182): 0 of 3; `cs-only`: 0 of 3, so neither the kernel nor the voice domain.  Voice domain
+back to `ps-preferred`.  Ping trial: 1 of 3 rang, about 9 MB/h: not adopted.  Next: the SIM in
+another phone on Free 4G with VoLTE off, to tell the network from this phone.
+
+**Boot menu labels stale after `guix system switch-generation` (2026-11-05):** menu.env is written
+at boot only, so the menu showed #182 on top of what was #233; the author picked #232.
 
 **Incoming calls on 4G (2026-11-05, #219):** intermittent, not 7.3-specific as first thought:
 it rang on 7.3 with LTE at 09:12:45; a call at 09:13:51 was lost in the same second as a network
