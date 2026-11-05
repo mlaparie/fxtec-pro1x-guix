@@ -132,7 +132,7 @@ miss=0 wait=90
 while :; do
   sleep 10
   m=$(mmcli -m any --output-keyvalue 2>/dev/null) || { miss=0; continue; }
-  echo \"$m\" | grep -q '^modem.generic.access-technologies.value.*: lte' || { miss=0; continue; }
+  printf '%s\\n' \"$m\" 2>/dev/null | grep -q '^modem.generic.access-technologies.value.*: lte' || { miss=0; continue; }
   up= stale=
   for b in $(echo \"$m\" | sed -n 's/^modem.generic.bearers.value[^:]*: *//p'); do
     k=$(mmcli -b \"$b\" --output-keyvalue 2>/dev/null)
