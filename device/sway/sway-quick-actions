@@ -1075,6 +1075,13 @@ notif_pick() {                  # Tab: choose one of the actions
 notif_dock() {
     # Its own socket, so hiding the menu closes it (pro1x-menu hide_menu;
     # author: the menu came back on the notifications, not the root).
+    # The preview right in landscape, below in portrait (author), as the
+    # main list's; it follows a rotation.
+    layout='if test "$FZF_COLUMNS" -gt $((FZF_LINES * 2)); then
+                echo "change-preview-window(right,45%,wrap)"
+            else
+                echo "change-preview-window(down,60%,wrap)"
+            fi'
     notif_lines |
         fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
             --prompt="notifications > " --layout=reverse --no-sort --cycle \
@@ -1082,7 +1089,8 @@ notif_dock() {
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
             --preview-window=down,60%,wrap \
-            --bind="load:$sync_end" \
+            --bind="load:transform~$layout~+$sync_end" \
+            --bind="resize:transform:$layout" \
             --bind="esc:$sync_begin+abort" \
             --bind="enter:execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)" \
             --bind="tab:execute($self --notif-pick {1} {2})+reload($self --notif-lines)" \
@@ -1139,7 +1147,8 @@ set --
     set -- --listen="$sock" --bind="esc:execute-silent($self --hide)"
 # The notification preview, on the Notifications line only: right in
 # landscape, below in portrait (author), from the window's shape in
-# characters (a fixed column threshold put it below in landscape too).
+# characters.  No <SIZE(...) in --preview-window: it compares the preview's
+# own width, 45% of the window, so it went below in landscape too.
 preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
          if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
              echo "change-preview-window(right,45%,wrap)+show-preview"
@@ -1152,10 +1161,11 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
     # in landscape, below in portrait (under 70 columns; author).
     fzf "$@" --prompt="quick actions > " --no-sort --track --id-nth=1 --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1,fg+:0 \
         --with-nth=2.. --header-lines=1 \
-        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,<70(hidden,down,50%,wrap)' \
+        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:transform:$preview" \
         --bind="load:transform:$preview" \
+        --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
