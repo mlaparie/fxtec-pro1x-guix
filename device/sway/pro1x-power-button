@@ -47,12 +47,17 @@ done |
         case "$line" in
             *"(KEY_POWER), value 1"*)
                 # Held for 0.6 s with the flag still there: the menu.
-                date +%s%N > "$held"
+                # The stamp is taken here, not read back in the subshell:
+                # pro1x-doubletap's Esc sends press and release at once, the
+                # release removed the flag before the subshell read it, and
+                # an empty stamp matched the missing flag, so waking the
+                # screen with Esc opened the menu (author, 2026-11-05).
+                stamp=$(date +%s%N)
+                echo "$stamp" > "$held"
                 # What the long press will do is settled during the hold, so
                 # that after the buzz only the show is left (author: slow after
                 # the buzz; pro1x-menu focused alone took 100 ms, 2026-11-03).
-                ( stamp=$(cat "$held")
-                  locked= menu=
+                ( locked= menu=
                   [ -r "$rt/pro1x-lock.pid" ] &&
                       kill -0 "$(cat "$rt/pro1x-lock.pid")" 2>/dev/null && locked=yes
                   # One app over the lock screen: the same, no menu.
