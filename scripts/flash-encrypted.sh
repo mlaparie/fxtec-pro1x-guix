@@ -223,7 +223,7 @@ fi
 # 0 KB (2026-11-05: the phone then had no /boot/extlinux/extlinux.conf).  So
 # the image goes as sparse parts under the download limit, made here.
 echo "==> Splitting userdata.img into sparse parts…"
-python3 "$SCRIPT_DIR/mksparse.py" "$TMPDIR/userdata.img" "$TMPDIR/userdata" \
+python3 "$SCRIPT_DIR/mksparse.py" --consume "$TMPDIR/userdata.img" "$TMPDIR/userdata" \
     > "$TMPDIR/parts.txt"
 rm -f "$TMPDIR/userdata.img"
 mapfile -t PARTS < "$TMPDIR/parts.txt"

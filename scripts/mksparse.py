@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Split a raw partition image into Android sparse images under a size limit.
 
-  mksparse.py IMAGE PREFIX [MAX_BYTES]
+  mksparse.py [--consume] IMAGE PREFIX [MAX_BYTES]
 
 Writes PREFIX.0.simg, PREFIX.1.simg…, one per line on stdout.  Each part
 covers the whole partition: its share of the image as raw chunks (zero
 blocks as fill chunks), the rest "don't care", so flashing them one after the
 other with fastboot writes the image.  MAX_BYTES defaults to 512 MiB, well
 under the 768 MiB the stock bootloader reports (max-download-size).
+With --consume, the part of IMAGE written to a part is freed from it as it
+goes (fallocate --punch-hole), so the parts need no room beside the image.
 
 Why: fastboot 7.1.2 (Guix's) splits raw images itself, but read the
 encrypted userdata.img as empty (libsparse's import gave a length of -1)
 and sent 0 KB, 2026-11-05; the CI rootfs.img it split fine.
 """
 import struct
+import subprocess
 import sys
 
 BLOCK = 4096
@@ -32,8 +35,12 @@ def chunk(kind, blocks, data_bytes):
 
 
 def main():
-    image, prefix = sys.argv[1], sys.argv[2]
-    limit = int(sys.argv[3]) if len(sys.argv) > 3 else 512 * 1024 * 1024
+    args = sys.argv[1:]
+    consume = args[:1] == ["--consume"]
+    if consume:
+        args = args[1:]
+    image, prefix = args[0], args[1]
+    limit = int(args[2]) if len(args) > 2 else 512 * 1024 * 1024
     with open(image, "rb") as f:
         f.seek(0, 2)
         size = f.tell()
@@ -81,6 +88,11 @@ def main():
                 out.write(header(total, chunks))
                 for b in body:
                     out.write(b)
+            if consume:
+                subprocess.run(["fallocate", "--punch-hole",
+                                "--offset", str(start * BLOCK),
+                                "--length", str((block - start) * BLOCK), image],
+                               check=True)
             print(name, flush=True)
             part += 1
 
