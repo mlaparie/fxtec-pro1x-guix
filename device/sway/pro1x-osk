@@ -53,6 +53,14 @@ case "${1:-}" in
                    2>/dev/null | grep -q true; then
                 sleep 5
             else
+                # Hidden until asked for: it came up by itself at login
+                # (author, 2026-11-05).
+                ( i=0
+                  while [ $i -lt 25 ]; do
+                      sleep 0.2
+                      osk false && break
+                      i=$((i + 1))
+                  done ) &
                 PRO1X_OSK_MANUAL=1 phosh-osk-stevia
                 sleep 1
             fi
