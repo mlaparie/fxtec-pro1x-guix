@@ -94,6 +94,10 @@ start "$current"
 
 rm -f "$events"; mkfifo "$events"
 swaymsg -m -r -t subscribe '["output"]' > "$events" 2>/dev/null &
+# sway-autorotate sets the login orientation as this starts: a change before
+# the subscription is lost, and left the swipes in the wrong orientation until
+# the next turn (author, 2026-11-05).  So look again once it is surely on.
+( sleep 3; echo recheck > "$events" ) &
 while IFS= read -r _; do
     t=$(transform)
     if [ "$t" != "$current" ]; then
