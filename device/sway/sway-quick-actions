@@ -23,8 +23,9 @@
 # SIM's home network, the last scan's networks, or a new scan (up to 3 min, no
 # service meanwhile).  A forced network that is out of reach means no service,
 # so no incoming calls: the line says "no service" in red, or "refused" when the
-# modem went back to another network.  A reboot goes back to auto (seen once with
-# SFR forced), hence the state in XDG_RUNTIME_DIR.
+# modem went back to another network, and after a minute it goes back to auto
+# with a notification.  A reboot goes back to auto too (seen once with SFR
+# forced), hence the state in XDG_RUNTIME_DIR.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
 # PIN-locked.  The Notifications line opens a dock of mako's notifications
@@ -318,12 +319,46 @@ operator_set() {                # operator_set auto|CODE [NAME]
     if [ "$1" = auto ]; then
         mmcli -m any --3gpp-register-home --timeout=120 >/dev/null 2>&1 || return
         rm -f "$operator_forced"
-    else
-        mmcli -m any --3gpp-register-in-operator="$1" --timeout=120 >/dev/null 2>&1 || return
-        printf '%s\t%s\n' "$1" "$2" > "$operator_forced"
+        # Registering goes on after mmcli has returned.
+        ( sleep 10; refresh_lines; qs_reload ) >/dev/null 2>&1 </dev/null &
+        return
     fi
-    # Registering goes on after mmcli has returned.
-    ( sleep 10; refresh_lines; qs_reload ) >/dev/null 2>&1 </dev/null &
+    if ! mmcli -m any --3gpp-register-in-operator="$1" --timeout=120 >/dev/null 2>&1; then
+        operator_give_up "$2"
+        return 1
+    fi
+    printf '%s\t%s\n' "$1" "$2" > "$operator_forced"
+    operator_watch "$1" "$2" >/dev/null 2>&1 </dev/null &
+}
+# Not on the forced network within a minute: back to auto (author), since no
+# service means no incoming calls.  mmcli reports success while the modem still
+# searches, and a network can refuse the SIM later.  Ends if another choice is
+# made meanwhile.
+operator_watch() {              # operator_watch CODE NAME
+    i=0
+    while [ "$i" -lt 12 ]; do
+        sleep 5; i=$((i + 1))
+        [ "$(cut -f1 "$operator_forced" 2>/dev/null)" = "$1" ] || return
+        kv=$(modem_kv)
+        case "$(printf '%s\n' "$kv" | kv_get modem.3gpp.registration-state)" in
+            home*|roaming*)
+                if [ "$(printf '%s\n' "$kv" | kv_get modem.3gpp.operator-code)" = "$1" ]; then
+                    refresh_lines; qs_reload
+                    return
+                fi ;;
+        esac
+        [ "$i" = 2 ] && { refresh_lines; qs_reload; }
+    done
+    operator_give_up "$2"
+}
+operator_give_up() {            # operator_give_up NAME
+    mmcli -m any --3gpp-register-home --timeout=120 >/dev/null 2>&1
+    rm -f "$operator_forced"
+    gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.Notify Operator 0 "" Operator \
+        "${1:-That network} refused or out of reach, back to auto" "[]" "{}" 5000
+    refresh_lines; qs_reload
 }
 operator_parse() {              # mmcli's scan -> code, name, radios; one per code
     sed -n 's/^modem\.3gpp\.scan-networks\.value\[[0-9]*\] *: //p' |
