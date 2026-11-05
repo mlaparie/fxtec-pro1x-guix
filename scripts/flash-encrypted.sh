@@ -7,7 +7,8 @@
 # The passphrase is typed at the phone's slide-out keyboard, in the initrd: plain
 # US layout, no keyd.  Use letters and digits.
 #
-# State: tested in QEMU, not yet flashed.  The system boots on either layout, and
+# State: tested in QEMU.  The first flash on the phone (2026-11-05) sent an
+# empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).  The system boots on either layout, and
 # has the same image: nothing in it says encrypted (services/fde.scm).
 #
 # Called by flash.sh after it has handled guix shell, U-Boot, and system image
@@ -217,10 +218,20 @@ if [[ -n "${_OUTPUT_DIR:-}" ]]; then
     echo "==> Wrote $_OUTPUT_DIR; nothing flashed."
     exit 0
 fi
+
+# Fastboot 7.1.2 read this image as empty when it split it itself, and sent
+# 0 KB (2026-11-05: the phone then had no /boot/extlinux/extlinux.conf).  So
+# the image goes as sparse parts under the download limit, made here.
+echo "==> Splitting userdata.img into sparse parts…"
+python3 "$SCRIPT_DIR/mksparse.py" "$TMPDIR/userdata.img" "$TMPDIR/userdata" \
+    > "$TMPDIR/parts.txt"
+rm -f "$TMPDIR/userdata.img"
+mapfile -t PARTS < "$TMPDIR/parts.txt"
+(( ${#PARTS[@]} > 0 )) || die "no sparse parts written"
 echo ""
 echo "==> All artifacts ready — device must be in fastboot mode."
 echo "    boot.img:     $TMPDIR/boot.img"
-echo "    userdata.img: $TMPDIR/userdata.img  (${TOTAL_MIB} MiB)"
+echo "    userdata:     ${#PARTS[@]} sparse parts  (${TOTAL_MIB} MiB)"
 echo ""
 read -r -p "Flash now? [y/N] " CONFIRM
 CONFIRM="${CONFIRM//$'\r'/}"
@@ -242,8 +253,10 @@ fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 echo "==> Erasing userdata…"
 fastboot erase userdata
 
-echo "==> Flashing userdata…"
-fastboot flash userdata "$TMPDIR/userdata.img"
+echo "==> Flashing userdata (${#PARTS[@]} parts)…"
+for p in "${PARTS[@]}"; do
+    fastboot flash userdata "$p" || die "flashing $p failed"
+done
 
 echo "==> Setting active slot to A…"
 fastboot set_active a
