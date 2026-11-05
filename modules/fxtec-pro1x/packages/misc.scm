@@ -668,6 +668,44 @@ Used as the compositor for the Phosh mobile shell.")
      (modify-inputs (package-inputs modem-manager)
        (replace "libqmi" libqmi-1.36)))))
 
+;;; ---------------------------------------------------------------------------
+;;; 81voltd — the IMS data service a Qualcomm modem asks the host for (VoLTE)
+;;; The modem's own IMS stack asks, over QRTR (service 770), for a data
+;;; connection on the IMS APN; 81voltd opens it through ModemManager.  From
+;;; postmarketOS, GPL-2.0-or-later, untagged: 1.2.0 in meson.build.
+;;; State: builds; not run on the Pro1X yet, no service.  Reported working on
+;;; SDM845 (Pixel 3a) with some carriers only.
+;;; ---------------------------------------------------------------------------
+(define-public pro1x-81voltd
+  (let ((commit "a7794dd6c8ac216a97dc5a931edab2dfc46eca2a"))
+    (package
+      (name "81voltd")
+      (version (git-version "1.2.0" "0" commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://gitlab.postmarketos.org/modem/81voltd")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "0v6dj4dbnmhy53sha8567d2d9bk27mlxs7pd6n16cdnayfd4lpkr"))))
+      (build-system meson-build-system)
+      (native-inputs (list pkg-config))
+      ;; The generated QMI code is in the tree; qmic is optional.
+      (inputs (list glib libqmi-1.36 libqrtr modem-manager-1.24))
+      ;; Uses true and false without stdbool.h, as C23 allows; Guix's GCC
+      ;; is older.
+      (arguments
+       (list #:tests? #f
+             #:configure-flags #~'("-Dc_args=['-include', 'stdbool.h']")))
+      (home-page "https://gitlab.postmarketos.org/modem/81voltd")
+      (synopsis "IMS data service for Qualcomm modems over QRTR")
+      (description
+       "81voltd answers the modem's requests to start and stop the IMS data
+connection that its VoLTE stack needs, opening it through ModemManager.")
+      (license license:gpl2+))))
+
 ;;; callaudiod — call audio routing daemon
 ;;; Required at build time by the libcall-ui subproject embedded in Phosh.
 ;;; ---------------------------------------------------------------------------

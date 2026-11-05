@@ -58,8 +58,15 @@ with `ps-preferred`, `cs-preferred` or a busy data link alike (rag-notes hardwar
 back to `ps-preferred`.  Ping trial: 1 of 3 rang, about 9 MB/h: not adopted.  Next: the SIM in
 another phone on Free 4G with VoLTE off, to tell the network from this phone.
 
-**Boot menu labels stale after `guix system switch-generation` (2026-11-05):** menu.env is written
-at boot only, so the menu showed #182 on top of what was #233; the author picked #232.
+**Boot menu labels stale after `guix system switch-generation` (2026-11-05):** only while a
+generation from before 2026-11-04 runs (#182 here): those have no menu.env writer, so the menu
+kept #182 on top of what was #233, and the author picked #232.  From 2026-11-04 on, the watcher
+rewrites the labels at every rewrite of extlinux.conf (switch-generation, delete-generations,
+deploy): on #233, 3 s after an identical rewrite (deletion not tried).
+
+**81voltd (2026-11-05):** packaged (`81voltd`, misc.scm), builds for aarch64, not run yet.  The
+modem offers IMS application (33), IMS settings (18) and IMS priv (77) services over QRTR; they
+answer InvalidOperation for now.  Carrier profile ROW_Commercial; none for Free or Orange.
 
 **Incoming calls on 4G (2026-11-05, #219):** intermittent, not 7.3-specific as first thought:
 it rang on 7.3 with LTE at 09:12:45; a call at 09:13:51 was lost in the same second as a network
