@@ -12,18 +12,18 @@ Picked at the text login (tuigreet, remembers user and session):
 - **Phosh**: phone shell (GNOME Settings, Calls, Chatty, Snapshot).
 - **Sxmo on Sway**: starts; needs superd, not packaged yet.
 
-## Works (2026-10-31, Linux 7.1)
+## Works (2026-11-06, Linux 7.3)
 
 Display, touch, GPU; keyboard, Fn layer, backlight; Wi-Fi; Bluetooth
 (audio too); USB SSH; speaker, earpiece, microphones; both cameras
 (Snapshot, early); accelerometer, proximity sensor; battery and charge
-limit; SIM, SMS, MMS, calls (earpiece), mobile data; vibration;
-Tailscale.
+limit; SIM, SMS, MMS, calls (earpiece and speaker; VoLTE on 4G), mobile
+data (3G, 4G); vibration; Tailscale; full-disk encryption.
 
 `main` is on Linux 7.3 since 2026-11-04 (the phone since 2026-11-03), merged before
 the checks below; tag `pre-7.3` is the last `main` on 7.1.  Both cameras work on 7.3
-too, early.  Not yet checked on 7.3: calls, audio, suspend, deep sleep,
-charging.
+too, early; calls and audio were checked on 7.3 since.  Not yet checked on 7.3:
+suspend, deep sleep, charging (it goes above the charge limit).
 
 ## Phone comforts
 

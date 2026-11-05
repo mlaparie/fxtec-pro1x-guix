@@ -5,7 +5,8 @@
 # flash), active slot A.  With --output in flash.sh: nothing, it stops before.
 #
 # The passphrase is typed at the phone's slide-out keyboard, in the initrd: plain
-# US layout, no keyd.  Use letters and digits.
+# US layout, no keyd: a symbol is where a US keyboard has it (the author's
+# passphrase with symbols worked, 2026-11-05).
 #
 # State: tested in QEMU.  The first flash on the phone (2026-11-05) sent an
 # empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).

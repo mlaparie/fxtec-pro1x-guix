@@ -19,7 +19,8 @@
 ;;; reads the layout from the disk, and asks for a passphrase only on this one.
 ;;; The plain area is mounted the same way, if it exists (services/boot.scm).
 ;;;
-;;; State: encrypted layout tested in QEMU, not yet flashed on the phone (UFS timing).
+;;; State: encrypted layout flashed on the phone (2026-11-05): unlocks, boots, grows
+;;; the root; also tested in QEMU (tools/fde-qemu-test.py).
 
 (define-module (fxtec-pro1x services fde)
   #:use-module (gnu system linux-initrd)
