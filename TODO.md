@@ -59,8 +59,14 @@ release; 3G rings every time so far.  Details in rag-notes.  The author wants th
 the release (2026-11-05); carrier tests agreed, when the author has time.  Older notes below:
 
 **VoLTE (later, author, 2026-11-05):** not working on the phone; IMS service answers
-`InvalidOperation`.  81voltd (Debian) is the lead to study.  Staying off 4G on an operator is
-refused as a workaround.
+`InvalidOperation`.  Staying off 4G on an operator is refused as a workaround.  Lead: 81voltd
+(gitlab.postmarketos.org/modem/81voltd, in Debian main and Alpine): serves the IMS Data service
+(QMI service 770) to the modem's own IMS stack over QRTR and starts the bearer through
+ModemManager.  Reported working on SDM845, Pixel 3a, with one carrier and not another; nothing
+known for SM6115 or Free.  Plan: (1) does this modem ask for service 770: `qrtr-lookup`, then run
+81voltd with G_MESSAGES_DEBUG=all and see whether request 0x20 arrives; (2) package it in this
+channel (libqmi, libqrtr, ModemManager versions); (3) IMS APN and carrier profile (MCFG) for Free,
+possibly only in the stock firmware; (4) call test.  Step 1 alone tells whether it is worth it.
 
 
 **Incoming calls on 7.3 (2026-11-04, #215, Free on Orange's network):** on 4G the caller gets
