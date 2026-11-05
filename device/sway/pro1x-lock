@@ -66,9 +66,16 @@ portrait_now() {                # the panel's transform
 # Dark while one gtklock gives way to the next: Sway paints the locked
 # session red with no client (author: the red flash on a slide was annoying).
 # SIGKILL, not SIGTERM: on SIGTERM gtklock unlocks.
+# The last swap of several puts the level back: on quick turns the second one read
+# level 0, did nothing, and the first's restore lit the red (author, 2026-11-05).
+# Whatever happens, lit again within 2.6 s; red then means no lock client came.
 swap_out() {                    # swap_out PID
+    saved="$rt/pro1x-lock-level" owner="$rt/pro1x-lock-swap"
     level=$(brightnessctl get 2>/dev/null)
-    if [ -n "$level" ] && [ "$level" -gt 0 ]; then
+    [ -f "$saved" ] || { [ -n "$level" ] && [ "$level" -gt 0 ] && echo "$level" > "$saved"; }
+    if [ -f "$saved" ]; then
+        token=$$.$(date +%s%N)
+        echo "$token" > "$owner"
         brightnessctl -q set 0
         ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
               sleep 0.1
@@ -76,7 +83,10 @@ swap_out() {                    # swap_out PID
                   [ "$(pgrep -u "$uid" -x gtklock)" != "$1" ] && break
           done
           sleep 0.6
-          brightnessctl -q set "$level" ) >/dev/null 2>&1 &
+          if [ "$(cat "$owner" 2>/dev/null)" = "$token" ]; then
+              brightnessctl -q set "$(cat "$saved")"
+              rm -f "$saved" "$owner"
+          fi ) >/dev/null 2>&1 &
     fi
     kill -KILL $1
     for i in 1 2 3 4 5 6 7 8 9 10; do
