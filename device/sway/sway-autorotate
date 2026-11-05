@@ -120,6 +120,16 @@ esac
 
 [ -f "$state" ] || echo off > "$state"
 echo $$ > "$pidfile"
+# At login, as the greeter was: portrait, or landscape with the keyboard out
+# (pro1x.conf's transform 90 is for every Sway session).  The sensor, if on,
+# takes over from its first reading.
+if [ "$(cat "$state")" = fixed ]; then
+    set_transform "$(cat "$fixed" 2>/dev/null || echo normal)"
+elif slider_out; then
+    set_transform 90
+else
+    set_transform normal
+fi
 rm -f "$fifo" "$events"; mkfifo "$fifo" "$events"
 sensor=                         # monitor-sensor's PID while held
 
