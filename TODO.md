@@ -52,6 +52,11 @@ entry does not move the system profile: `guix system list-generations` still say
 with three: a system with four must not reach the phone before the new U-Boot, or its
 fourth label replaces U-Boot's own next menu entry.
 
+**Incoming calls on 4G (2026-11-05, #219):** intermittent, not 7.3-specific as first thought:
+it rang on 7.3 with LTE at 09:12:45; a call at 09:13:51 was lost in the same second as a network
+rejection (cause 9 and 15, logged every day since 2026-10-30, 7.1 too).  Known issue for the
+release; 3G rings every time so far.  Details in rag-notes.  Older notes below:
+
 **Incoming calls on 7.3 (2026-11-04, #215, Free on Orange's network):** on 4G the caller gets
 voicemail at once and ModemManager logs no call; outgoing works, about 20 s to ringing.  On
 3G (`qmicli --nas-set-system-selection-preference=umts`; `mmcli --set-allowed-modes=3g`
@@ -64,12 +69,13 @@ tested: incoming on 4G with 7.1 (#182).  Restore after a test, order matters:
 **Call sound (2026-11-04):** works on 7.3, 3G, generation 217: both ways, earpiece and
 speaker, both directions of call, first call after a boot (one such call; the first in 216
 was silent).  Fixes: `callaudiod` patch, session restarted around the speaker button, session
-waits for the keep-alive streams.  Generation 218 shortens the silence at the button (217: a
-few seconds): needs a reboot and a call.  Earpiece profile shows `Spk0 SPK PA` on; the
+waits for the keep-alive streams.  Generation 218: 1-1.5 s of silence at the button (author).  Generation 219: volume keys set
+the call volume, earpiece and speaker (author).  Earpiece profile shows `Spk0 SPK PA` on; the
 author heard the earpiece, not looked into.  Uplink has no DSP noise or echo processing (TX
 topology NONE); speaker calls may echo.  ECNS topology silences the uplink (two calls, author), no calibration data to send: left off.  Still open: incoming on 4G,
 ~2 s of lock screen on an incoming call, `Unbalanced enable for IRQ 199` once per boot at the
-first call (no effect seen); Calls' mute button has no effect (author, generation 218, later).
+first call (no effect seen); Calls' mute button has no effect (author, generation 218, later);
+mic picks up handling noise and button presses (author, no processing in the DSP).
 
 **Wi-Fi after boot:** first associated at 97-106 s and once more at 245 s (generations
 212-213); SSH over Tailscale, relayed, follows minutes later.  Cause not looked into.

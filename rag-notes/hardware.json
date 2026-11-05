@@ -149,6 +149,14 @@
     "confidence": "confirmed",
     "date": "2026-10-30",
     "source": "author 2026-10-30; mmsd-tng log"
+   },
+   {
+    "title": "A missed call on LTE can coincide with a network rejection, and is not a kernel matter",
+    "general": "Before blaming a kernel for calls going to voicemail on LTE, match call events against ModemManager's rejections and radio type: the same kernel can ring on LTE minutes earlier. Repeated EMM rejections and detaches leave moments in which a call is lost.",
+    "instance": "Pro1x, Free SIM (208-15), 2026-11-05, kernel 7.3.0, generation 219: rang at 09:12:45 with LTE system info 7 s before and LTE after. At 09:13:51 a call appeared in ModemManager as unknown -> terminated in the same second as rejection 'ms-identity-not-derived-by-network' (9), 'no-cells-in-location-area' (15) and bearer end emm-detached. Causes 9 and 15 are logged on every day from 2026-10-30, with 7.1 too. This replaces the earlier notes' 'on 7.3 4G does not ring' and the QRTR lead, which had no evidence. Which of the author's call attempts is which event is not established; why the network rejects, and whether Android on this SIM behaves the same, is not known.",
+    "confidence": "confirmed (timings, one ring and one lost call), inferred (rejection causes the loss)",
+    "date": "2026-11-05",
+    "source": "/var/log/messages on the phone, ModemManager lines; author's test calls"
    }
   ],
   "usb_network": [
