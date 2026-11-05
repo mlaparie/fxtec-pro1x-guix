@@ -88,6 +88,37 @@ close_sub() {
     done
 }
 
+# The menus come in from the side their swipe starts at: quick actions
+# from the top, the launcher from the right, the window switcher from the
+# left (author, 2026-11-06: SwayFX animates windows that open, and the
+# menus are only shown).  slide_from ID: what the show command adds, so the
+# menu appears 160 px away and nearly transparent in the same frame;
+# slide_in ID CON then brings it in over five relative moves, slowing down,
+# as it turns opaque: about 50 ms, with no look at the tree (reading it for
+# the position cost 100 ms more).  The power menu, centred, just appears.
+slide_dirs() {
+    case "$1" in
+        quickactions) echo "up down" ;;
+        launcher) echo "right left" ;;
+        windowswitcher) echo "left right" ;;
+    esac
+}
+
+slide_from() {
+    set -- $(slide_dirs "$1")
+    [ $# = 2 ] && echo ", move $1 160 px, opacity 0.2"
+}
+
+slide_in() {
+    set -- "$2" $(slide_dirs "$1")
+    [ $# = 3 ] || return 0
+    c=$1 on=$3
+    for step in "72 0.45" "43 0.65" "26 0.85" "13 0.95" "6 1"; do
+        set -- $step
+        swaymsg "[con_id=$c] move $on $1 px, opacity $2" >/dev/null
+    done
+}
+
 hide_menu() {
     close_sub "$1"
     curl -s -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
@@ -254,8 +285,9 @@ case "$cmd" in
         [ $# -gt 0 ] && shift
         for extra in "$@"; do swaymsg "[con_id=$extra] kill" >/dev/null 2>&1; done
         if [ -n "$first" ] &&
-           swaymsg "[con_id=$first] scratchpad show, $(geometry "$id")" \
+           swaymsg "[con_id=$first] scratchpad show, $(geometry "$id")$(slide_from "$id")" \
                >/dev/null 2>&1; then
+            slide_in "$id" "$first"
             # Refresh the list as it shows (cheap).
             case "$id" in
                 quickactions) sock="$rt/pro1x-quick-actions.sock"
