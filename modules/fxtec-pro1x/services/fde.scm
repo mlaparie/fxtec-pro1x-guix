@@ -32,7 +32,6 @@
   #:export (%pro1x-boot-area-mib
             %pro1x-fde-mapped-devices
             pro1x-fde-initrd
-            pro1x-fde-prompt-test-initrd
             luks-pro1x-device-mapping))
 
 (define %pro1x-boot-area-mib 512)
@@ -121,92 +120,3 @@ open from Shepherd, whose configuration then failed to load (seen in QEMU)."
     ;; The last occurrence of a keyword wins.
     (apply base-initrd file-systems
            (append rest (list #:mapped-devices devices)))))
-
-;;; The prompt on the phone, without wiping it: a generation whose initrd, on the
-;;; unencrypted system, asks for the passphrases of two small LUKS2 files in
-;;; /var/lib/pro1x/ (same Argon2 cost as flash-encrypted.sh), then boots as usual
-;;; whatever happened.  Two: one for the letters, one for the digits, to tell which
-;;; part of the keyboard fails.  Results are in dmesg ("pro1x-fde-test").  Made by
-;;; PRO1X_FDE_PROMPT_TEST=1 scripts/deploy.sh; the next deploy without it removes
-;;; it.  What this shows on the screen and keyboard holds for the real prompt, which
-;;; is the same cryptsetup on the same console.
-(define (open-fde-prompt-test source targets . options)
-  #~(let ((cryptsetup #$(file-append cryptsetup-static "/sbin/cryptsetup"))
-          (mnt "/fde-test"))
-      (define (partition-device)
-        (any (lambda (name)
-               (let ((uevent (string-append "/sys/class/block/" name "/uevent")))
-                 (and (file-exists? uevent)
-                      (string-contains
-                       (call-with-input-file uevent get-string-all)
-                       (string-append "PARTNAME=" #$source "\n"))
-                      (string-append "/dev/" name))))
-             (or (scandir "/sys/class/block") '())))
-
-      (define (wait-for-partition seconds)
-        (or (partition-device)
-            (and (> seconds 0)
-                 (begin (sleep 1) (wait-for-partition (- seconds 1))))))
-
-      (define (log message)
-        (call-with-output-file "/dev/kmsg"
-          (lambda (port)
-            (format port "pro1x-fde-test: ~a~%" message))))
-
-      (define (try name)
-        (let* ((start (current-time))
-               (file (string-append mnt "/var/lib/pro1x/fde-test-" name ".luks"))
-               (code (status:exit-val
-                      (system*/tty cryptsetup "open" "--type" "luks2" "--readonly"
-                                   "--tries" "3" "--timeout" "120"
-                                   file (string-append "fde-test-" name)))))
-          (log (format #f "~a: cryptsetup exit ~a after ~a s"
-                       name code (- (current-time) start)))
-          (when (zero? code)
-            (system* cryptsetup "close" (string-append "fde-test-" name)))))
-
-      ;; What the console reads, with echo: a key that fails shows here, which a
-      ;; passphrase prompt cannot tell.  Ends on an empty line, or 60 s without one.
-      (define (show-typing)
-        (let ((console (open-input-file "/dev/console")))
-          (format #t "~%KEYBOARD TEST.  Open the keyboard, type letters, Enter.  Enter alone ends:~%")
-          (let loop ()
-            (when (pair? (car (select (list console) '() '() 60)))
-              (let ((line (read-line console)))
-                (log (format #f "typed: ~s" line))
-                (unless (or (eof-object? line) (string-null? line))
-                  (loop)))))
-          (close-port console)))
-
-      (mkdir-p "/run/cryptsetup/")
-      (mkdir-p mnt)
-      (log "started")
-      (let ((device (wait-for-partition 60)))
-        (log (format #f "partition: ~a" device))
-        (when device
-          (false-if-exception
-           ((@ (guix build syscalls) mount) device mnt "ext4"
-            (@ (guix build syscalls) MS_RDONLY)))
-          (show-typing)
-          (format #t "~%KEYBOARD TEST.  Letters, top row first (nothing shows):~%")
-          (try "letters")
-          (format #t "~%KEYBOARD TEST.  Digits, 1 to 0:~%")
-          (try "digits")
-          (false-if-exception ((@ (guix build syscalls) umount) mnt))))
-      ;; Whatever came of it, the system boots.
-      #t))
-
-(define pro1x-fde-prompt-test-mapping
-  (mapped-device-kind
-   (inherit luks-device-mapping)
-   (open open-fde-prompt-test)
-   (modules (append '((ice-9 ftw) (ice-9 rdelim))
-                    (mapped-device-kind-modules luks-device-mapping)))))
-
-(define (pro1x-fde-prompt-test-initrd)
-  "Return the initrd procedure of the test above."
-  (pro1x-fde-initrd
-   (list (mapped-device
-          (source "userdata")
-          (targets '("pro1x-fde-test"))
-          (type pro1x-fde-prompt-test-mapping)))))

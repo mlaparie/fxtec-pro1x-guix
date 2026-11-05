@@ -38,8 +38,6 @@
 ;;;                 the phone's channels: keep them all in the provenance
 ;;;   PRO1X_HOST    phone address (default 172.16.42.1)
 ;;;   PRO1X_IDENTITY  private key (default ~/.ssh/pro1x-guix)
-;;;   PRO1X_FDE_PROMPT_TEST  set: a generation that tries the passphrase prompt
-;;;                 at boot, then boots as usual (services/fde.scm)
 ;;;   PRO1X_PORT, PRO1X_HOST_KEY  SSH port (default 22) and host key (default
 ;;;                 the known_hosts entry), for a test machine (tools/fde-qemu-test.py)
 ;;;
@@ -56,7 +54,6 @@
              (guix gexp)
              (guix ui)                  ; load*
              (fxtec-pro1x services channels)
-             (fxtec-pro1x services fde)
              (ice-9 popen)
              (ice-9 rdelim)
              (srfi srfi-1))
@@ -129,21 +126,12 @@ left out of the provenance~%"))
                           (openssh-configuration-authorized-keys
                            config)))))))))
 
-(define (with-prompt-test os)
-  "Return OS with the passphrase prompt test, if asked for."
-  (if (getenv "PRO1X_FDE_PROMPT_TEST")
-      (operating-system
-        (inherit os)
-        (initrd (pro1x-fde-prompt-test-initrd)))
-      os))
-
 (list
  (machine
   (operating-system
-   (with-prompt-test
-    (with-root-ssh-key
-     (with-host-signing-key
-      (load* (canonicalize-path %system-file) '())))))
+   (with-root-ssh-key
+    (with-host-signing-key
+     (load* (canonicalize-path %system-file) '()))))
   (environment managed-host-environment-type)
   (configuration
    (machine-ssh-configuration
