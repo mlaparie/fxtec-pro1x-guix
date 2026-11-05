@@ -1,0 +1,36 @@
+#!/bin/sh
+# pro1x-sim-prompt — ask for the SIM's PIN once, at login, if it is locked
+#
+# A locked SIM takes no calls, and nothing said so (author, 2026-11-05).  Waits
+# for the modem, for up to two minutes; opens the PIN prompt of quick actions
+# (sway-quick-actions --sim: a star per digit, one try, PUK left to the owner)
+# only when the modem asks for a PIN or PUK.  No SIM, or no lock: nothing.  With
+# the keyboard closed the on-screen keyboard shows while the prompt is open.
+# Started by the Sway config.
+#
+# State: written 2026-11-05, build-tested only.
+
+osk() {
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
+}
+
+i=0
+while [ "$i" -lt 60 ]; do
+    state=$(mmcli -m any --output-keyvalue 2>/dev/null)
+    case "$(printf '%s\n' "$state" | sed -n 's/^modem.generic.state *: //p')" in
+        ""|unknown|initializing) i=$((i + 1)); sleep 2; continue ;;
+    esac
+    break
+done
+case "$(printf '%s\n' "$state" | sed -n 's/^modem.generic.unlock-required *: //p')" in
+    sim-pin|sim-puk) ;;
+    *) exit 0 ;;
+esac
+
+# evtest --query exits with 10 while the keyboard is slid out.
+evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
+closed=$?
+[ "$closed" = 10 ] || osk true
+foot --app-id=pro1x-sim -e sway-quick-actions --sim
+[ "$closed" = 10 ] || osk false

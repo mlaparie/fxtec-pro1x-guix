@@ -1627,6 +1627,7 @@ window opened by a sway key binding.")
 ;;;   bin/sway-quick-actions            Phosh-like toggles in fzf (Super+q)
 ;;;   bin/sway-notifications             mako's notifications for its dock
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
+;;;   bin/pro1x-sim-prompt               the SIM PIN prompt at login, if locked
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
@@ -1685,6 +1686,7 @@ window opened by a sway key binding.")
           ("sway-quick-actions" "bin/")
           ("sway-notifications" "bin/")
           ("pro1x-osk-slider" "bin/")
+          ("pro1x-sim-prompt" "bin/")
           ("pro1x-lock" "bin/")
           ("pro1x-mako" "bin/")
           ("pro1x-notify" "bin/")
