@@ -43,8 +43,8 @@
 # PRO1X_FORCE.
 #
 # State: the same commands, by hand, backed up and restored the author's
-# phone across the first encrypted flash (2026-11-05); the script itself not
-# yet run.
+# phone across the first encrypted flash (2026-11-05).  The script's backup
+# run on the phone (2026-11-06); its restore not yet.
 
 set -euo pipefail
 
@@ -75,22 +75,25 @@ case "$cmd" in
         if [[ "${1:-}" == -o ]]; then out="$2"; shift 2; fi
         host="${1:-172.16.42.1}"
         [[ -e "$out" ]] && die "$out exists; not overwriting it"
+        # Names, not a pattern: pgrep matches at most 15 characters of it.
         if [[ -z "${PRO1X_FORCE:-}" ]] &&
-           phone "pgrep -x -u $user -l '(\.?librewolf(-real)?|\.?firefox(-real)?)'" ; then
+           phone "r=1; for n in librewolf .librewolf-real firefox .firefox-real; do
+                      pgrep -x -u $user -l \$n && r=0; done; exit \$r"; then
             die "close the browser on the phone first (PRO1X_FORCE=1 to go on)"
         fi
         umask 077
         echo "==> Saving the phone's data to $out…"
-        phone "HOME=/home/$user flatpak --user list --app --columns=application \
-                   > /home/$user/flatpak-apps.txt 2>/dev/null || true
-               chown $user /home/$user/flatpak-apps.txt
+        # As the user: run as root, flatpak made root-owned files in the
+        # user's repository, and the reinstall then failed (2026-11-06).
+        phone "su - $user -c 'flatpak --user list --app --columns=application \
+                   > ~/flatpak-apps.txt 2>/dev/null' || true
                ok=; for p in ${paths[*]}; do [ -e /\$p ] && ok=\"\$ok \$p\"; done
                tar -C / --exclude=home/$user/.cache \
                    --exclude=home/$user/.local/share/flatpak -cf - \$ok" > "$out"
-        n=$(tar -tf "$out" | wc -l)
-        echo "    $n entries, $(du -h "$out" | cut -f1)."
+        list=$(tar -tf "$out")
+        echo "    $(wc -l <<< "$list") entries, $(du -h "$out" | cut -f1)."
         for p in home/"$user"/.config etc/ssh; do
-            tar -tf "$out" | grep -q "^$p/" || echo "    [warn] nothing under $p" >&2
+            grep -q "^$p/" <<< "$list" || echo "    [warn] nothing under $p" >&2
         done
         echo "Done.  Keep $out private: it holds Wi-Fi passwords and keys." ;;
     restore)
