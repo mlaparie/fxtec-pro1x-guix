@@ -882,6 +882,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; GNOME Settings from a long press on a quick setting.
      phosh-mobile-settings
      gnome-control-center
+     ;; nm-connection-editor: every Wi-Fi setting (WPA2 Enterprise), which
+     ;; nmtui lacks and GNOME Settings closes on (author, 2026-11-05).
+     network-manager-applet
      sxmo-utils
      clickclack
      ;; Sway session (config: device/sway, Super = yellow arrows)
