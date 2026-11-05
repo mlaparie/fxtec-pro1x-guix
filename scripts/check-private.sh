@@ -17,9 +17,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 if [[ $# -ge 1 ]]; then
-    added=$(git diff "$1" | grep '^+' | grep -v '^+++' || true)
+    added=$(git diff "$1" | grep '^+' | grep -v '^+++' | sed 's/^+//' || true)
 else
-    added=$(git diff --cached | grep '^+' | grep -v '^+++' || true)
+    added=$(git diff --cached | grep '^+' | grep -v '^+++' | sed 's/^+//' || true)
 fi
 [[ -n "$added" ]] || exit 0
 
