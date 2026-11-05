@@ -71,9 +71,11 @@ if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
     # the touchscreen itself).  On resume, the panel goes on only if it is
     # still off: woken by the power key first, the first touch after that
     # powered an already lit panel on again, a black blink 2 s after waking
-    # (2026-11-03, Sway output events logged on the phone).
+    # (2026-11-03, Sway output events logged on the phone).  The stamp for
+    # pro1x-power-key comes first: written after the panel was on, a short press
+    # was released before it, and the key blanked the panel again (a flash).
     set -- timeout "$BLANK_AFTER" 'pro1x-menu hide-all; swaymsg "input type:touch events disabled"; swaymsg "output * power off"' \
-        resume 'swaymsg -t get_outputs -r | jq -e "any(.[]; .power == false)" >/dev/null && swaymsg "output * power on"; swaymsg "input type:touch events enabled"; date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"' "$@"
+        resume 'date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"; swaymsg -t get_outputs -r | jq -e "any(.[]; .power == false)" >/dev/null && swaymsg "output * power on"; swaymsg "input type:touch events enabled"' "$@"
 fi
 if [ -n "$DIM_AFTER" ]; then
     set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"
