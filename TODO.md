@@ -52,6 +52,11 @@ entry does not move the system profile: `guix system list-generations` still say
 with three: a system with four must not reach the phone before the new U-Boot, or its
 fourth label replaces U-Boot's own next menu entry.
 
+**Incoming calls on 4G, tests (2026-11-05, evening):** about one call in three rings on Free 4G,
+with `ps-preferred`, `cs-preferred` or a busy data link alike (rag-notes hardware).  3G: all rang.
+Voice domain back to `ps-preferred`.  Next: the same calls on 7.1.  Ping trial not finished (1 of 3
+rang), about 9 MB/h: not adopted.
+
 **Incoming calls on 4G (2026-11-05, #219):** intermittent, not 7.3-specific as first thought:
 it rang on 7.3 with LTE at 09:12:45; a call at 09:13:51 was lost in the same second as a network
 rejection (cause 9 and 15, logged every day since 2026-10-30, 7.1 too).  Known issue for the
