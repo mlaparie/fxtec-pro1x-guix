@@ -4,7 +4,17 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-11-04):** generation 210, kernel 7.3.0, from `next`.  Lock
+**On the phone (2026-11-06): reflashed encrypted** (2026-11-05, CI rootfs of v0.2.0,
+68bbc02, `flash.sh --encrypt`), backup restored, then generation 2 deployed from `next`
+(the author's config.scm; nvtop, the Esc fix).  The first try sent an empty userdata
+(fastboot 7.1.2), fixed with sparse parts (mksparse.py); the phone had been in U-Boot's
+fastboot, which cannot flash UFS (U-Boot entry since changed, not flashed).  Boot: prompt at
+2.5 s, root at 16.4 s with the typing, a one-time resize of 20 s.  The boot menu service
+updates the plain area on this layout (#2 and #1 listed).  Not yet checked after the
+reflash: VoLTE calls, a reboot of generation 2, the new U-Boot entry.  Backup:
+`scripts/backup-phone.sh` (backup run on the phone; restore by hand only).
+
+**Before (2026-11-04):** generation 210, kernel 7.3.0, from `next`.  Lock
 screen hardened: an app over it runs in a Sway mode without bindings, keyboards and
 pointers off, ✕ locks before the app closes; the author's test on generation 209
 "seems to work", more to come; not tried with a real call or alarm.  Cameras:
@@ -19,8 +29,8 @@ audio, suspend, deep sleep, charging); tag `pre-7.3` (550d477) is the last `main
 `main` (author's decision, 2026-11-04), which brings detection and the `config.scm` options to
 `guix pull` and reconfigure on the phone.
 
-**Full-disk encryption: works in QEMU; prompt confirmed on the phone (2026-11-04),
-never flashed.**  One system for both layouts since eed6ca6 (no `#:encrypted?`):
+**Full-disk encryption: flashed on the phone 2026-11-05 and works** (above); the notes
+below are from before.  Works in QEMU; prompt confirmed on the phone (2026-11-04).  One system for both layouts since eed6ca6 (no `#:encrypted?`):
 `flash.sh --encrypt`, also with `--rootfs`, so CI's rootfs.img works once built from that
 commit or later.  From one image in QEMU (`tools/fde-qemu-test.py`, `--plain` too): plain
 boots without asking; encrypted asks again after a wrong passphrase, unlocks, resizes; a

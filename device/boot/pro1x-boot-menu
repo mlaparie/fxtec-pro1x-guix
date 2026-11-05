@@ -21,7 +21,8 @@
 # Environment: PRO1X_SYSTEM_LINK, the current generation's profile link (default
 # /var/guix/profiles/system), for its number and date.
 #
-# State: tested in QEMU, not yet on the phone.
+# State: tested in QEMU; on the encrypted phone (2026-11-06) a deploy's kernel
+# and initrd went to the plain area and the menu listed both generations.
 
 set -eu
 
