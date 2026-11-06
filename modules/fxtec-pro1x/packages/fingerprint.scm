@@ -116,3 +116,35 @@ Qualcomm QSEE on the F(x)tec Pro1X.")
       (license (license:non-copyleft
                 "https://github.com/TheMuppets/proprietary_vendor_fxtec_pro1x"
                 "Proprietary firmware")))))
+
+;;; mafp-client: sends one command to the fingerprint trusted app through the
+;;; QSEECOM TEE driver and prints the reply (device/fingerprint/mafp-client).
+;;; A test tool for mapping the protocol.
+;;; State: build-tested only.
+(define-public mafp-client
+  (package
+    (name "mafp-client")
+    (version "0.1")
+    (source (local-file (repository-file "device/fingerprint/mafp-client")
+                        "mafp-client"
+                        #:recursive? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:tests? #f
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (replace 'build
+                 (lambda _
+                   (invoke #$(cc-for-target) "-O2" "-Wall" "-Wextra"
+                           "-o" "mafp-client" "mafp-client.c")))
+               (replace 'install
+                 (lambda _
+                   (install-file "mafp-client"
+                                 (string-append #$output "/bin")))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Send a command to the Pro1X fingerprint trusted app")
+    (description
+     "A test tool: sends one command to the MicroArray fingerprint trusted
+application (mafp) through the Linux QSEECOM TEE driver and prints the reply.")
+    (license license:gpl3+)))
