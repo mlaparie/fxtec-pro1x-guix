@@ -1434,7 +1434,8 @@ devices, and NVIDIA ones when the vendor's library is installed.")
     (source (local-file (repository-file "device/wallpapers") "pro1x-wallpapers"
                         #:recursive? #t))
     (build-system trivial-build-system)
-    (native-inputs (list guix-backgrounds imagemagick librsvg python-minimal))
+    (native-inputs (list font-dejavu guix-backgrounds imagemagick librsvg
+                         python-minimal))
     (arguments
      (list
       #:modules '((guix build utils))
@@ -1442,6 +1443,8 @@ devices, and NVIDIA ones when the vendor's library is installed.")
       #~(begin
           (use-modules (guix build utils))
           (let ((dir (string-append #$output "/share/backgrounds/pro1x"))
+                (mono (string-append #$(this-package-native-input "font-dejavu")
+                                     "/share/fonts/truetype/DejaVuSansMono.ttf"))
                 (disc (string-append #$(this-package-native-input
                                         "guix-backgrounds")
                                      "/share/backgrounds/guix/"
@@ -1464,11 +1467,30 @@ devices, and NVIDIA ones when the vendor's library is installed.")
             ;; A little above the middle.
             (invoke "convert" "-size" "2160x2160" "xc:#252a3a" "gnu.png"
                     "-gravity" "center" "-geometry" "+0-90" "-composite"
-                    (string-append dir "/dark.png"))))))
+                    (string-append dir "/dark.png"))
+            ;; Sway's: the same, with the gestures and keys in a small box
+            ;; (author, 2026-11-06).  Monospace at 24 px, under the bar's
+            ;; 10 pt at scale 2 (27 px); below the gnu, inside the middle
+            ;; 1080 px square, the part that "fill" shows in portrait and in
+            ;; landscape, and above the landscape bottom edge.
+            (invoke "convert" "-background" "#1d2021c0" "-fill" "#ebdbb2"
+                    "-font" mono "-pointsize" "24" "-interline-spacing" "8"
+                    (string-append
+                     "label:"
+                     "Quick menu          top swipe     or Super+q\n"
+                     "Window management   left swipe    or Super+Tab\n"
+                     "App launcher        right swipe   or Super+m\n"
+                     "On-screen keyboard  bottom swipe  or Super+i\n"
+                     "Help                                 Super+Ctrl+h")
+                    "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
+            (invoke "convert" (string-append dir "/dark.png") "help.png"
+                    "-gravity" "center" "-geometry" "+0+330" "-composite"
+                    (string-append dir "/dark-sway.png"))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Background images for the F(x)tec Pro1X sessions")
     (description "A low-poly gradient and Guix's gnu on slate, as square
-PNGs for the light and dark Sway and Phosh backgrounds.")
+PNGs for the light and dark Sway and Phosh backgrounds; Sway's has a box
+with its gestures and keys.")
     (license (list license:gpl3+          ;the generator, light.png
                    license:cc-by-sa4.0)))) ;dark.png, after Guix's artwork
 
