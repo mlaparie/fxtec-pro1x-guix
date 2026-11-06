@@ -121,7 +121,7 @@ qs_hide() {
     # inside fzf's execute, which answers only afterwards).
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
-    swaymsg '[app_id="^quickactions$"] opacity 0, move scratchpad' >/dev/null
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
 
@@ -136,7 +136,7 @@ qs_show() {
     case "$(qs_state)" in
         hidden)
             # pro1x-menu's geometry, for the current orientation.
-            swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions), opacity 1" >/dev/null
+            swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
             "$0" --refresh-while-shown >/dev/null 2>&1 < /dev/null & ;;
         none) qs_start ;;
     esac

@@ -106,10 +106,9 @@ slide_dirs() {
     esac
 }
 
-slide_from() {                  # or full opacity, for a menu without a slide
+slide_from() {
     set -- $(slide_dirs "$1")
-    if [ $# = 2 ]; then echo ", move $1 160 px, opacity 0.2"
-    else echo ", opacity 1"; fi
+    [ $# = 2 ] && echo ", move $1 160 px, opacity 0.2"
 }
 
 slide_in() {
@@ -135,17 +134,12 @@ slide_in() {
     exec 9<&-
 }
 
-# Hidden at opacity 0 (here and in the menus' own hides): should Sway draw
-# a frame of a shown menu at its old place before the slide's first move,
-# it is invisible (author: Super+q seemed to flash its final position
-# first, 2026-11-06; unconfirmed, too fast to record).  Shows without a
-# slide set opacity 1.
 hide_menu() {
     rm -f "$rt/pro1x-menu-shown"
     close_sub "$1"
     curl -s -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
-    swaymsg "[app_id=\"^$1\$\"] opacity 0, move scratchpad" >/dev/null 2>&1
+    swaymsg "[app_id=\"^$1\$\"] move scratchpad" >/dev/null 2>&1
 }
 
 # The con ids of menu $1's windows.
@@ -342,7 +336,7 @@ case "$cmd" in
             : > "$rt/pro1x-menu-shown"
             for i in 1 2 3 4 5 6 7 8 9 10; do
                 sleep 0.3
-                swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id"), opacity 1" \
+                swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \
                     >/dev/null 2>&1 && break
             done
         fi ;;
