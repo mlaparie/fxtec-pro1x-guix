@@ -1233,6 +1233,9 @@ set --
 # landscape, below in portrait (author), from the window's shape in
 # characters.  No <SIZE(...) in --preview-window: it compares the preview's
 # own width, 45% of the window, so it went below in landscape too.
+# On focus in the background (bg-transform, the last one only): a
+# transform there made fzf wait ~20 ms for a shell on every row, and a
+# scroll went on after the finger stopped (author, 2026-11-06).
 preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
          if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
              echo "change-preview-window(right,45%,wrap)+show-preview"
@@ -1247,7 +1250,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --with-nth=2.. --header-lines=1 \
         --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
-        --bind="focus:transform:$preview" \
+        --bind="focus:bg-cancel+bg-transform:$preview" \
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
