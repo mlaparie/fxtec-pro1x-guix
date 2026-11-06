@@ -876,6 +876,14 @@ all four orientations (mount matrix from the NixOS port).
   9f1e7c8).
 - Not surveyed: battery/charging reporting, suspend, haptics/LED
   (feedbackd), GPS, Bluetooth.
+- Sway menu slides jump at the start (author, 2026-11-06): on every menu,
+  most visible on quick actions, the widest.  Ruled out by measurement:
+  the step timing (same for all menus; ~17 ms, an occasional 30 ms
+  swaymsg), a resize at show, fzf or foot redrawing during the slide, Sway
+  clamping the window at the screen edge.  Tried and reverted: steps paced
+  by the clock (d0fda0f: worse), hidden menus at opacity 0 (aaaf5cf: no
+  change).  wf-recorder captures only ~1 frame per 100 ms here, too coarse.
+  Trace: touch `$XDG_RUNTIME_DIR/pro1x-menu.trace`.
 
 ## 7. Later
 
