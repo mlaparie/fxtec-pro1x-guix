@@ -68,6 +68,7 @@
              (gnu system accounts)
              (gnu system file-systems)
              (fxtec-pro1x packages firmware)
+             (fxtec-pro1x packages gnss)
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x packages misc)
              (fxtec-pro1x packages sxmo)
@@ -932,6 +933,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; phone is awake: waking from suspend or power-off for an alarm is
      ;; not done yet.
      gnome-clocks
+     ;; GPS (author): Satellite shows satellites, fix and speed from the
+     ;; modem's NMEA through ModemManager, and records GPX tracks.
+     satellite
      ;; callaudiod: Calls switches speaker and earpiece and mutes the
      ;; microphone through it (org.mobian_project.CallAudio).  It was only a
      ;; library dependency of Calls, so its D-Bus service was not found and
