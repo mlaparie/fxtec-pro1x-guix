@@ -919,6 +919,8 @@ Dracula palette, no kernel messages over the greeter.")
      ;; mpv plays links with yt-dlp (Super+y: the clipboard's URL); bpytop,
      ;; the system monitor in quick actions' CPU mode (author, 2026-11-06).
      yt-dlp bpytop
+     ;; sensors, opened by a click on the bar's temperature (author).
+     lm-sensors
      calls chatty
      ;; The camera: stills at 12 MP, tap to focus, ISO, flash (ours, on
      ;; libcamera with moWerk's patches); Snapshot stays.

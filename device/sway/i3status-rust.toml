@@ -38,6 +38,10 @@ shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status temp"
 interval = 2
 format = " $text "
+# Clicks open in quick actions' floating tool window (as on the author's PC).
+[[block.click]]
+button = "left"
+cmd = "pro1x-term --app-id=qs-tool -e watch sensors"
 
 [[block]]
 block = "memory"
@@ -52,6 +56,10 @@ path = "/"
 info_type = "available"
 interval = 30
 format = " $icon $available "
+# nnn through the author's fish function n, with the nuke opener if present.
+[[block.click]]
+button = "left"
+cmd = '''pro1x-term --app-id=qs-tool -e sh -c '[ -x "$HOME/.config/nnn/plugins/nuke" ] && export NNN_OPENER="$HOME/.config/nnn/plugins/nuke"; exec fish -c n''''
 
 [[block]]
 block = "net"
@@ -76,6 +84,9 @@ hide_when_empty = true
 block = "sound"
 driver = "pulseaudio"
 format = " $icon {$volume|muted} "
+[[block.click]]
+button = "left"
+action = "toggle_mute"
 
 # Brightness from the backlight's brightness file (not actual_brightness,
 # see pro1x-status); scroll to change it.
@@ -127,3 +138,7 @@ critical = 15
 block = "time"
 interval = 1
 format = " $timestamp.datetime(f:'%a %d, %R') "
+# The author's reminders (~/.local/bin/remint).
+[[block.click]]
+button = "left"
+cmd = '''pro1x-term --app-id=qs-tool -e fish -c '~/.local/bin/remint; or read -P "remint failed (~/.local/bin/remint); Enter closes " _''''

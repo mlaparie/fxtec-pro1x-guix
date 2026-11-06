@@ -52,6 +52,9 @@ hide_when_empty = true
 block = "sound"
 driver = "pulseaudio"
 format = " $icon {$volume|muted} "
+[[block.click]]
+button = "left"
+action = "toggle_mute"
 
 [[block]]
 block = "custom"
@@ -85,3 +88,6 @@ critical = 15
 block = "time"
 interval = 1
 format = " $timestamp.datetime(f:'%R') "
+[[block.click]]
+button = "left"
+cmd = '''pro1x-term --app-id=qs-tool -e fish -c '~/.local/bin/remint; or read -P "remint failed (~/.local/bin/remint); Enter closes " _''''
