@@ -34,6 +34,7 @@ format = " $icon $1m.eng(w:4) "
 
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status temp"
 interval = 2
 format = " $text "
@@ -64,6 +65,7 @@ missing_format = ""
 # Mobile data: access technology and signal (ModemManager).
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status mobile"
 interval = 5
 format = " \uf012 $text "
@@ -79,6 +81,7 @@ format = " $icon {$volume|muted} "
 # see pro1x-status); scroll to change it.
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status bright"
 interval = 2
 format = " ☀ $text "
@@ -94,6 +97,7 @@ update = true
 # Bluetooth icon, coloured when on (rfkill); left click toggles.
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status bt"
 json = true
 interval = 2

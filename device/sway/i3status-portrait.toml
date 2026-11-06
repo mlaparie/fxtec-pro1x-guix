@@ -42,6 +42,7 @@ missing_format = ""
 
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status mobile"
 interval = 5
 format = " \uf012 $text "
@@ -54,6 +55,7 @@ format = " $icon {$volume|muted} "
 
 [[block]]
 block = "custom"
+shell = "sh"   # not the login shell: fish took 1.6 s per run (2026-11-06)
 command = "pro1x-status bt"
 json = true
 interval = 2
