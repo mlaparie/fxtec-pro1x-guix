@@ -115,6 +115,10 @@ slide_in() {
     set -- "$2" $(slide_dirs "$1")
     [ $# = 3 ] || return 0
     c=$1 on=$3
+    # With $rt/pro1x-menu.trace present, each step's time is appended to it
+    # (bash's clock, no process): to compare the menus' slides.
+    trace=; [ -e "$rt/pro1x-menu.trace" ] && trace="$rt/pro1x-menu.trace"
+    [ -n "$trace" ] && echo "$EPOCHREALTIME $1 start" >> "$trace"
     # The wait between moves: bash's read with a timeout on a FIFO nobody
     # writes, as sleep took 22 ms to start here and swaymsg 11 ms; so each
     # step is about a frame (11 + 6 ms).
@@ -124,6 +128,7 @@ slide_in() {
     for step in "56 0.4" "40 0.6" "28 0.75" "18 0.88" "11 0.96" "7 1"; do
         set -- $step
         swaymsg "[con_id=$c] move $on $1 px, opacity $2" >/dev/null
+        [ -n "$trace" ] && echo "$EPOCHREALTIME $c $1" >> "$trace"
         [ "$2" = 1 ] || read -r -t 0.006 -u 9 _ || :
     done
     exec 9<&-

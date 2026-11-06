@@ -783,8 +783,11 @@ qs_reload() {
 refresh_swap() {
     find "$cache.lock" -maxdepth 0 -mmin +1 -exec rmdir {} \; 2>/dev/null
     mkdir "$cache.lock" 2>/dev/null || return 0
+    tr="$rt/pro1x-menu.trace"       # pro1x-menu: timing of the slides
+    [ -e "$tr" ] && echo "$EPOCHREALTIME refresh start" >> "$tr"
     if lines > "$cache.new.$$" && ! cmp -s "$cache.new.$$" "$cache"; then
         mv "$cache.new.$$" "$cache"
+        [ -e "$tr" ] && echo "$EPOCHREALTIME refresh swap" >> "$tr"
         curl -s -m 5 --unix-socket "$sock" -X POST http://localhost \
              -d "$sync_begin+reload-sync($self --cached)+$sync_end" >/dev/null 2>&1
     fi
