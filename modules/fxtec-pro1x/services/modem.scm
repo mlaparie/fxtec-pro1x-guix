@@ -217,6 +217,51 @@ exit 0
              #:log-file "/var/log/pro1x-uim-provision.log"))
    (stop #~(make-kill-destructor))))
 
+;;; The modem's GNSS engine comes up locked (NV 452 gps1_lock = 3: MI and
+;;; MT).  Android's location HAL unlocks it; without that every location
+;;; session stays silent.  rmtfs runs with -r, so the modem's NV writes stay
+;;; in RAM and the unlock is redone at every boot.  ModemManager's GPS reads
+;;; NMEA, and its own "setup NMEA traces" times out on this modem (the Get
+;;; NMEA Types indication arrives before the response), so the NMEA types
+;;; are set here too.  From the NixOS port (nyymi609/fxtec-pro1x-nixos,
+;;; commit bb65696, modules/modem.nix).  Exits 0 in every case.
+;;;
+;;; State: both QMI requests accepted on this phone, by hand (2026-11-06).
+(define pro1x-gnss-unlock-script
+  (let ((qmicli (file-append libqmi-1.36 "/bin/qmicli")))
+    (mixed-text-file
+     "pro1x-gnss-unlock"
+     "#!" (file-append bash-minimal "/bin/sh") "
+PATH=" coreutils "/bin:" grep "/bin:" libqrtr "/bin
+log() { echo \"pro1x-gnss-unlock: $*\"; }
+# The location service (16) shows up on QRTR a while after the modem starts.
+i=0
+while [ $i -lt 120 ]; do
+  qrtr-lookup | grep -q '^ *16 .* 0 ' && break
+  i=$((i + 1)); sleep 2
+done
+i=0
+while [ $i -lt 5 ]; do
+  " qmicli " -d qrtr://0 --loc-set-engine-lock=none &&
+    " qmicli " -d qrtr://0 --loc-set-nmea-types='gga|rmc|gsv|gsa|vtg' &&
+    { log 'GNSS engine unlocked, NMEA types set'; exit 0; }
+  i=$((i + 1)); sleep 5
+done
+log 'unlocking the GNSS engine failed'
+exit 0
+")))
+
+(define (pro1x-gnss-unlock-service config)
+  (shepherd-service
+   (provision '(pro1x-gnss-unlock))
+   (requirement '(rmtfs))
+   (documentation "Unlock the modem's GNSS engine")
+   (one-shot? #t)
+   (start #~(make-forkexec-constructor
+             (list "/bin/sh" #$pro1x-gnss-unlock-script)
+             #:log-file "/var/log/pro1x-gnss-unlock.log"))
+   (stop #~(make-kill-destructor))))
+
 ;;; polkit: let members of netdev use ModemManager (unlock the SIM with PIN
 ;;; or PUK, calls, SMS) and NetworkManager.  polkit's defaults allow these
 ;;; only to the active local session, which it cannot tell without logind
@@ -276,7 +321,8 @@ exit 0
      (service-extension shepherd-root-service-type
                         (lambda (config)
                           (append (pro1x-modem-rmtfs-wait config)
-                                  (list (pro1x-uim-provision-service config))
+                                  (list (pro1x-uim-provision-service config)
+                                        (pro1x-gnss-unlock-service config))
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))
