@@ -1481,6 +1481,8 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "Window management   s-<tab>  or left swipe\n"
                      "App launcher        s-m      or right swipe\n"
                      "On-screen keyboard  s-i      or bottom swipe\n"
+                     "Open terminal       s-<ret>\n"
+                     "Close window        s-<backspace>\n"
                      "Help                C-s-h")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
             (invoke "convert" (string-append dir "/dark.png") "help.png"
