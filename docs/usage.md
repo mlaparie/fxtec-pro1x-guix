@@ -7,7 +7,8 @@ session; F12 for shutdown and reboot):
 
 - **1 Sway**: Super (yellow arrows) is the modifier.  Super+Return
   terminal, Super+q quick actions, Super+m launcher, Super+Tab window
-  switcher, Super+i on-screen keyboard, Super+Ctrl+l lock, Super+b bar,
+  switcher, Super+i on-screen keyboard, Super+Ctrl+l lock, Super+b bar, Super+y the
+  clipboard's URL in mpv (yt-dlp),
   Super+Shift+q close, Super+Ctrl+h all key bindings, Super+Shift+e exit.
 - **2 Phosh**: swipe up for the app drawer, down from the top for quick
   settings.
