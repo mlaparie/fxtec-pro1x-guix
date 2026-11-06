@@ -302,8 +302,10 @@ case "$cmd" in
             slide_in "$id" "$first"
             # Refresh the list as it shows (cheap).
             case "$id" in
-                quickactions) sock="$rt/pro1x-quick-actions.sock"
-                               action="reload(sway-quick-actions --lines)+first" ;;
+                # Off screen, then every 5 s while shown (sway-quick-actions).
+                quickactions)
+                    sway-quick-actions --refresh-while-shown >/dev/null 2>&1 < /dev/null &
+                    sock= ;;
                 # The list built first, off screen; shown only if it changed,
                 # in one frame, without a clear (author: flicker, and no delay
                 # to the window showing, 2026-11-03).

@@ -137,8 +137,7 @@ qs_show() {
         hidden)
             # pro1x-menu's geometry, for the current orientation.
             swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
-            curl -s --unix-socket "$sock" -X POST http://localhost \
-                 -d "reload($0 --lines)+first" >/dev/null 2>&1 ;;
+            "$0" --refresh-while-shown >/dev/null 2>&1 < /dev/null & ;;
         none) qs_start ;;
     esac
 }
@@ -291,8 +290,7 @@ mobile_set() {                  # mobile_set off|234|34|23|3
     [ "$rc" = 0 ] || return "$rc"
     echo "$opt $(date +%s)" > "$f"
     # The status again once the 2 s are over.
-    ( sleep 2.2; curl -s --unix-socket "$sock" -X POST http://localhost \
-          -d "reload($self --lines)" >/dev/null 2>&1 ) &
+    ( sleep 2.2; refresh_swap ) &
 }
 
 # Roaming: its own line, so it combines with any Mobile data option.  It
@@ -777,6 +775,23 @@ qs_reload() {
          -d "reload($self --cached)" >/dev/null 2>&1
 }
 
+# The lines read again off screen, and swapped in only if they changed, in
+# one frame without a clear (as the window switcher does).  A reload of
+# --lines inside fzf (1.3 s on the phone) left the menu slow to answer as
+# it showed (author, 2026-11-06); meanwhile it now shows the last lines.
+# One at a time; a lock older than a minute is from a refresh that died.
+refresh_swap() {
+    find "$cache.lock" -maxdepth 0 -mmin +1 -exec rmdir {} \; 2>/dev/null
+    mkdir "$cache.lock" 2>/dev/null || return 0
+    if lines > "$cache.new.$$" && ! cmp -s "$cache.new.$$" "$cache"; then
+        mv "$cache.new.$$" "$cache"
+        curl -s -m 5 --unix-socket "$sock" -X POST http://localhost \
+             -d "$sync_begin+reload-sync($self --cached)+$sync_end" >/dev/null 2>&1
+    fi
+    rm -f "$cache.new.$$"
+    rmdir "$cache.lock"
+}
+
 # confirm KEY SHOWN COMMAND...: SHOWN on KEY's line now, COMMAND in the
 # background, one at a time per line; then the real lines, or "failed" in
 # red for 2 s first.  QS_ALSO: other keys shown with their own values, gone
@@ -1173,6 +1188,19 @@ notif_dock() {
 
 case "${1:-}" in
     --lines) refresh_lines; overlay < "$cache"; exit ;;
+    # On show (pro1x-menu, qs_show): a refresh now, then every 5 s while the
+    # menu is shown (author, 2026-11-06), from one loop at a time.
+    --refresh-while-shown)
+        refresh_swap
+        pidf="$rt/pro1x-qs-refresh.pid"
+        [ -r "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null && exit 0
+        echo $$ > "$pidf"
+        while sleep 5 && [ -e "$rt/pro1x-menu-shown" ] &&
+              [ "$(qs_state)" = shown ]; do
+            refresh_swap
+        done
+        rm -f "$pidf"
+        exit ;;
     --cached) cached_lines; exit ;;
     # A step, then the lines, in one run: a held key made two runs per step,
     # about 60 ms each only to start (author, 2026-11-06: sluggish).
