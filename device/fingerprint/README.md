@@ -76,12 +76,14 @@ No blob is in this repository; they are proprietary.
    - Starting `mafp` (raw QSEE OS app start, `.mdt` + `.b00`..`.b07` in a tzmem
      buffer, SHM bridge mode) fails: status -2 (`QCOM_SCM_EINVAL_ADDR`), result -47.
      The phone stayed up.
-3. Likely cause (inferred): `mafp` is a 32-bit app, and the vendor driver loads the
-   32-bit common library `cmnlib` into TrustZone first (`QSEOS_LOAD_SERV_IMAGE_COMMAND`,
-   cmd 7). The bootloader only loads `cmnlib64` (`qcom,commonlib64-loaded-by-uefi`).
-   On this unit the `cmnlib_a/b` and `cmnlib64_a/b` partitions are all zeros, and
-   `modem_a/image` has no cmnlib. Next: find `cmnlib.mbn` in the stock firmware
-   package, load it with cmd 7, then retry the app start.
+3. Not cmnlib (corrected 2026-11-06): the vendor DT's `qcom,appsbl-qseecom-support`
+   tells the vendor driver that the bootloader loaded `cmnlib`, and
+   `qcom,commonlib64-loaded-by-uefi` the same for `cmnlib64`. The stock firmware
+   flashes the `cmnlib` partitions empty, and its vendor partition has no `cmnlib`.
+   The image layout matches the vendor's. Open: the memory. The vendor loads from its
+   `qseecom_mem` reserved region, registered with TrustZone as an SHM bridge at probe;
+   mainline's tzmem pool may have no bridge here (inferred, to check). The module's
+   `lib=` parameter is not needed.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
