@@ -7,6 +7,7 @@
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gawk)
+  #:use-module (gnu packages linux)         ; util-linux (mount)
   #:use-module (gnu packages telephony)
   #:use-module (gnu services)
   #:use-module (gnu services base)
@@ -32,24 +33,18 @@
     (append
      (list
 
-     ;; tqftpserv: deliver modem firmware over QRTR.
-     ;; The binary is patched to look for firmware at /run/current-system/firmware.
-     ;; Guix's activate-firmware sets firmware_class.path in sysfs but does not
-     ;; create that symlink; we create it here at service-start time, after the
-     ;; activation scripts have already run.
+     ;; tqftpserv: deliver modem firmware over QRTR.  It looks for a file
+     ;; first next to modem.mbn under firmware_class.path (the store), then
+     ;; under its patched base, /run/tqftpserv-fw, where pro1x-modem-pr puts
+     ;; the modem partition's modem_pr.
      (shepherd-service
       (provision '(tqftpserv))
-      (requirement '(udev))
+      (requirement '(udev pro1x-modem-pr))
       (documentation "TFTP server for Qualcomm modem firmware (QRTR)")
       (start
        #~(make-forkexec-constructor
-          (list "/bin/sh" "-c"
-                (string-append
-                 "fw=$(cat /sys/module/firmware_class/parameters/path 2>/dev/null);"
-                 "[ -n \"$fw\" ] && [ ! -e /run/current-system/firmware ]"
-                 " && ln -sf \"$fw\" /run/current-system/firmware;"
-                 "exec " #$(file-append tqftpserv "/bin/tqftpserv")
-                 #$(if (pro1x-modem-verbose? config) " -v" "")))
+          (list #$(file-append tqftpserv "/bin/tqftpserv")
+                #$@(if (pro1x-modem-verbose? config) '("-v") '()))
           #:log-file "/var/log/tqftpserv.log"))
       (stop #~(make-kill-destructor))
       (respawn? #t))
@@ -217,6 +212,52 @@ exit 0
              #:log-file "/var/log/pro1x-uim-provision.log"))
    (stop #~(make-kill-destructor))))
 
+;;; The modem asks over QRTR TFTP, at every start, for its MCFG files
+;;; (/readonly/firmware/image/modem_pr/mcfg/configs/mcfg_hw/mbn_hw.dig and
+;;; mcfg_sw/mbn_sw.dig, then the configurations they list).  Android mounts
+;;; the modem partition at /vendor/firmware_mnt; without the files the modem
+;;; runs on built-in defaults: calls and data work, but GNSS hears no
+;;; satellite (moWerk's SailfishOS port, notes/gnss.md, 2026-10-30; here
+;;; tqftpserv logged "unable to open .../mbn_hw.dig (2), reject" at every
+;;; boot).  This mounts modem_a read-only (both slots carry the same
+;;; MPSS.HA.1.1-00140 as the modem.mbn the port loads) and links its
+;;; image/modem_pr next to modem.mbn under tqftpserv's base.  Read-only:
+;;; nothing writes to the partition.  Exits 0 in every case, so the modem
+;;; still starts without it.
+;;;
+;;; State: not yet booted with it.
+(define pro1x-modem-pr-script
+  (mixed-text-file
+   "pro1x-modem-pr"
+   "#!" (file-append bash-minimal "/bin/sh") "
+PATH=" coreutils "/bin:" util-linux "/bin
+log() { echo \"pro1x-modem-pr: $*\"; }
+part=/dev/disk/by-partlabel/modem_a mnt=/run/pro1x-modem-part
+dir=/run/tqftpserv-fw/qcom/sm6115/Fxtec/QX1050
+mkdir -p \"$mnt\" \"$dir\"
+mountpoint -q \"$mnt\" ||
+  mount -t vfat -o ro,nodev,nosuid,noexec \"$part\" \"$mnt\" ||
+  { log \"mounting $part failed\"; exit 0; }
+if [ -d \"$mnt/image/modem_pr\" ]; then
+  ln -sfn \"$mnt/image/modem_pr\" \"$dir/modem_pr\"
+  log \"modem_pr served from $part\"
+else
+  log \"no image/modem_pr on $part\"
+fi
+exit 0
+"))
+
+(define (pro1x-modem-pr-service config)
+  (shepherd-service
+   (provision '(pro1x-modem-pr))
+   (requirement '(udev))
+   (documentation "Serve the modem partition's MCFG files to tqftpserv")
+   (one-shot? #t)
+   (start #~(make-forkexec-constructor
+             (list "/bin/sh" #$pro1x-modem-pr-script)
+             #:log-file "/var/log/pro1x-modem-pr.log"))
+   (stop #~(make-kill-destructor))))
+
 ;;; The modem's GNSS engine comes up locked (NV 452 gps1_lock = 3: MI and
 ;;; MT).  Android's location HAL unlocks it; without that every location
 ;;; session stays silent.  rmtfs runs with -r, so the modem's NV writes stay
@@ -322,7 +363,8 @@ exit 0
                         (lambda (config)
                           (append (pro1x-modem-rmtfs-wait config)
                                   (list (pro1x-uim-provision-service config)
-                                        (pro1x-gnss-unlock-service config))
+                                        (pro1x-gnss-unlock-service config)
+                                        (pro1x-modem-pr-service config))
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))

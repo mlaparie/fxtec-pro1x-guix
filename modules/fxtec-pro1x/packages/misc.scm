@@ -166,11 +166,14 @@ the ABL from reverting to fastboot after a hard reboot.")
      (list #:tests? #f
            #:phases
            #~(modify-phases %standard-phases
+               ;; The second place it looks for a file (after the store's
+               ;; firmware_class.path): a directory the system can write,
+               ;; where pro1x-modem-pr links the modem partition's modem_pr.
                (add-before 'configure 'fix-firmware-path
                  (lambda _
                    (substitute* "translate.c"
                      (("\"/lib/firmware/\"")
-                      "\"/run/current-system/firmware/\"")))))))
+                      "\"/run/tqftpserv-fw/\"")))))))
     (home-page "https://github.com/andersson/tqftpserv")
     (synopsis "TFTP server that delivers modem firmware over QRTR")
     (description
