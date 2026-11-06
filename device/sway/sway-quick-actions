@@ -8,7 +8,8 @@
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications, operator,
-# GPU monitor (the GPU's clock; Enter or Right opens nvtop).
+# GPU monitor (the GPU's clock; Enter or Right opens nvtop in its own
+# window; bpytop is among CPU mode's choices).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
 # operator, feedback, CPU mode, charge limit, orientation, keyboard layout, word
 # completion (several at once), and for
@@ -433,7 +434,7 @@ choose() {
             cur=$(pro1x-cpu-mode get 2>/dev/null)
             pro1x-cpu-mode temporary || cur=default
             CPU_MODE=auto; . /etc/pro1x/cpu.conf 2>/dev/null
-            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\n' "$CPU_MODE") ;;
+            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\nbpytop\tbpytop (system monitor, own window)\n' "$CPU_MODE") ;;
         wifi|bluetooth)
             # Power, Right or Enter (author, 2026-11-02): on or off, or the
             # list of networks (pro1x-wifi) or devices (bluetuith).
@@ -488,7 +489,8 @@ choose() {
                 confirm operator "→ ${name:-$pick}" operator_set "$pick" "$name"
             fi ;;
         feedback) confirm feedback "$pick" feedback_to "$pick" ;;
-        cpu) confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+        cpu) if [ "$pick" = bpytop ]; then open_app bpytop
+             else confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick"; fi ;;
         charge)
             case "$pick" in
                 default|off) shown=$pick ;;
@@ -967,13 +969,20 @@ open_tool() {                   # a terminal tool in a floating foot
     swaymsg exec "pro1x-term --app-id=qs-tool -e $1" >/dev/null
 }
 
+# open_app COMMAND: in its own (tiled) foot window, to keep open beside the
+# others (author, 2026-11-06: nvtop and bpytop, not in the floating one).
+open_app() {
+    qs_hide
+    swaymsg exec "pro1x-term --app-id=$1 -e $1" >/dev/null
+}
+
 act() {                         # Enter
     case "$1" in
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
         camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
-        gpu) open_tool nvtop ;;   # load, clock, GPU time per app
+        gpu) open_app nvtop ;;    # load, clock, GPU time per app
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape

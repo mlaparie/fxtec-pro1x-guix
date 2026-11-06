@@ -915,6 +915,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; emacs-pgtk: native Wayland.  The plain emacs is an X11 build and
      ;; fell back to the terminal in Sway, which runs without XWayland.
      emacs-pgtk mpv nnn
+     ;; mpv plays links with yt-dlp (Super+y: the clipboard's URL); bpytop,
+     ;; the system monitor in quick actions' CPU mode (author, 2026-11-06).
+     yt-dlp bpytop
      calls chatty
      ;; The camera: stills at 12 MP, tap to focus, ISO, flash (ours, on
      ;; libcamera with moWerk's patches); Snapshot stays.
