@@ -1,0 +1,77 @@
+# Fingerprint reader: what Android does, mapped for a mainline driver
+
+State: **not working on Guix**. This file is the map for making it work. It was read
+from the stock vendor blobs (as extracted by LineageOS into
+TheMuppets/proprietary_vendor_fxtec_pro1x, branch `lineage-21`) with radare2 and
+r2ghidra, and from the GPL vendor kernel (LineageOS android_kernel_fxtec_sm6115).
+No blob is in this repository; they are proprietary.
+
+## The stack on Android
+
+| layer | file | role |
+|---|---|---|
+| kernel | `drivers/input/fingerprint/madev.c`, `qcom-settings.c` (GPL, MicroArray v4.0.05) | built with `TEE` and `USE_PLATFORM_DRIVE`: powers the sensor, forwards its IRQ, wake locks, `/dev/madev0` ioctls. No SPI access. |
+| device tree | `microarray_fp`, compatible `microarray,fingerprint` | reset `tlmm 104`, IRQ `tlmm 97`, power `tlmm 108`, `suben` `tlmm 67` |
+| trusted app | `/vendor/firmware/mafp.mbn` (32-bit ARM, QSEE) | owns the SPI bus (`qsee_spi_open`), captures, enrolls, matches, stores templates through QSEE's secure file system (`qsee_sfs_*`, files `group-%d-template-%d.data`) |
+| client library | `/vendor/lib64/libfprint-x64.so` | MicroArray's library (`bio_*` API for the HAL, `ma_tac_*` for the TA) |
+| HAL | `/vendor/lib64/hw/microarray.fingerprint.default.so` | thin wrapper over `bio_*` |
+| Qualcomm | `libQSEEComAPI.so`, `qseecomd` | load the app, send commands; qseecomd serves the TA's listeners (file system, RPMB, time) |
+
+## Transport
+
+- App name `mafp`, loaded whole from `/vendor/firmware/mafp.mbn` with
+  `QSEECom_start_app_V2` (one image in a buffer, not the split `.mdt`/`.bNN`).
+  Shared buffer 0x20000 bytes.
+- Every call is `QSEECom_send_cmd(handle, buf, 0x20000, buf, 0x20000)` with
+  `buf = [u32 command][u32 length][payload]`; the reply overwrites the payload in the
+  same buffer. One mutex around it. No encryption on this path (the library's AES
+  code is for tokens, not the transport).
+- `ma_tac_service_init` (0xC9) checks the TA's git tag against the library's,
+  `abc068b05c329448182ee5ea66bf85f9889eb37a` (TA version string
+  `v4.1.9.197_abc068b0`).
+
+## Commands (payload size in bytes, from the callers)
+
+| id | function | size | | id | function | size |
+|---|---|---|---|---|---|---|
+| 0xC8 | init | 0x408 | | 0xDD | save_paras | 8 |
+| 0xC9 | service_init / set / update config | 0x180 | | 0xDE | init_navigate | 8 |
+| 0xCA | set_active_group | 0x154 | | 0xDF | navigate_tap | 8 |
+| 0xCD | pre_enroll | 8 | | 0xE0 | navigate_direction | 8 |
+| 0xCE | enroll_start | 0x48 | | 0xE1 | reset_interrupt_para | 8 |
+| 0xCF | do_enroll | 0x16810 | | 0xE2 | enumerate | 0x20 |
+| 0xD0 | enroll_finish | 8 | | 0xE3 | read_line | 8 |
+| 0xD1 | cancel | 8 | | 0xE4 | spi_test | 8 |
+| 0xD2 | detect_touch | 0x16808 | | 0xE5 | deadpixs_test | 8 |
+| 0xD3 | detectTouch_getEnergy / press_test | 0x3C0C | | 0xE6, 0xE7 | interrupt_test | 8 |
+| 0xD4 | get_energy | 0x16814 | | 0xE9–0xEE | factory enroll, authenticate, remove, image, temp pic, vendor | 8 or 0x20008 |
+| 0xD5 | do_verify | 0x16860 | | 0xEF | factory_get_chipid | 0xC |
+| 0xD6 | update_authenticate_data | 4 | | 0xF0–0xFA | factory and SPI tests | up to 0x20008 |
+| 0xD7 | remove | 0x20 | | 0xF1 | update_config | 0x180 |
+| 0xD8 | has_calibrate | 8 | | 0xFB | get_auth_id | 0xC |
+| 0xD9 | calibrate | 8 | | 0xFC | sensor_power_down | 8 |
+| 0xDA | calc_interrupt_para | 8 | | 0xFD | sensor_increase_interrupt_th | 8 |
+| 0xDB | sleep / reverse_sleep | 8 | | 0xFE | sensor_reset_interrupt_th | 8 |
+| 0xDC | reverse_wakeup | 8 | | | | |
+
+`ma_tac_update_template` is empty: the TA saves templates itself.
+
+## What mainline lacks
+
+1. Loading a TA: mainline `qcom_qseecom` only looks up apps firmware already loaded,
+   and on this phone it is not even created (`qseecom: untested machine, skipping`,
+   version 0x1402000).
+2. A way for userspace (or a kernel client) to send this command buffer.
+3. Listeners: the TA's `qsee_sfs_*` calls come back to Linux as listener requests
+   (qseecomd's file system service, and probably RPMB). Without them, enrolling
+   most likely fails when the TA saves a template (inferred, not tested).
+4. The sensor's power and reset GPIOs and IRQ, and a libfprint driver on top.
+
+## Plan
+
+1. (done) Map the protocol, this file.
+2. A kernel test: power the sensor from the DT GPIOs, load `mafp.mbn` from an
+   out-of-tree module using qcom_scm, send 0xC8 and 0xC9, read the chip ID (0xEF).
+   Needs a new kernel, so a reboot.
+3. Listeners for the TA's file storage; then enroll and verify structures.
+4. A libfprint driver, so fprintd, PAM and the lock screen can use it.
