@@ -399,7 +399,7 @@
       {
         "title": "Mainline qcom_scm finds QSEECOM on this TrustZone but skips it (machine not allowlisted)",
         "general": "Mainline qcom_scm probes QSEECOM and only creates the qcom_qseecom device on allowlisted machines. The mainline interface only looks up TAs that firmware already loaded (qcom_scm_qseecom_app_get_id) and sends commands to them from kernel clients; it has no app loading and no userspace interface. Loading a vendor TA needs an extra (out-of-tree) loader. The newer QTEE driver (drivers/tee/qcomtee, smcinvoke) is only promised from SM8650 on.",
-        "instance": "Pro¹x, kernel 7.3.0: dmesg \"qcom_scm firmware:scm: qseecom: found qseecom with version 0x1402000\" then \"qseecom: untested machine, skipping\". Vendor kernel had CONFIG_QSEECOM=y and CONFIG_QCOM_SMCINVOKE=y. Untested: whether this TZ accepts smcinvoke from mainline.",
+        "instance": "Pro¹x, kernel 7.3.0: dmesg \"qcom_scm firmware:scm: qseecom: found qseecom with version 0x1402000\" then \"qseecom: untested machine, skipping\". Vendor kernel had CONFIG_QSEECOM=y and CONFIG_QCOM_SMCINVOKE=y. Mainline's QTEE probe (qcom_scm_qtee_init: one smcinvoke call, the device is skipped only on -EIO) created no qcomtee device on this TZ under kernel 7.3 (CONFIG_QCOMTEE=m built, no platform device, no /dev/tee*; 2026-11-06), so mainline's object interface is not offered here, although the stock kernel has CONFIG_QCOM_SMCINVOKE=y.",
         "confidence": "confirmed",
         "date": "2026-11-06",
         "source": "phone dmesg 2026-11-06; vendor arch/arm64/configs/vendor/bengal*; LKML QSEECOM series (Maximilian Luz, 2023) and QTEE series (Amirreza Zarrabi, 2025-2026)"

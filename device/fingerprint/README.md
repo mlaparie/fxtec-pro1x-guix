@@ -85,6 +85,9 @@ No blob is in this repository; they are proprietary.
    mainline's tzmem pool is bridged too (`qcom_tzmem_using_shm_bridge` is 1 on the
    phone), so that is not it either. Cause of the -2: open. The module's `lib=`
    parameter is not needed.
+   Mainline's newer QTEE driver (`qcomtee`, object interface) is no way round:
+   `qcom_scm` created no `qcomtee` device on this TrustZone (its probe call is
+   refused), although the module is built.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
