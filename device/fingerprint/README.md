@@ -70,8 +70,19 @@ No blob is in this repository; they are proprietary.
 ## Plan
 
 1. (done) Map the protocol, this file.
-2. A kernel test: power the sensor from the DT GPIOs, load `mafp.mbn` from an
-   out-of-tree module using qcom_scm, send 0xC8 and 0xC9, read the chip ID (0xEF).
-   Needs a new kernel, so a reboot.
-3. Listeners for the TA's file storage; then enroll and verify structures.
-4. A libfprint driver, so fprintd, PAM and the lock screen can use it.
+2. (done 2026-11-06, `qsee-probe/`, a module loaded by hand, no reboot)
+   - Lookup works under mainline: `keymaster64` is app 1, `qcom.tz.uefisecapp` app 2,
+     both loaded by the bootloader; `mafp` is not loaded.
+   - Starting `mafp` (raw QSEE OS app start, `.mdt` + `.b00`..`.b07` in a tzmem
+     buffer, SHM bridge mode) fails: status -2 (`QCOM_SCM_EINVAL_ADDR`), result -47.
+     The phone stayed up.
+3. Likely cause (inferred): `mafp` is a 32-bit app, and the vendor driver loads the
+   32-bit common library `cmnlib` into TrustZone first (`QSEOS_LOAD_SERV_IMAGE_COMMAND`,
+   cmd 7). The bootloader only loads `cmnlib64` (`qcom,commonlib64-loaded-by-uefi`).
+   On this unit the `cmnlib_a/b` and `cmnlib64_a/b` partitions are all zeros, and
+   `modem_a/image` has no cmnlib. Next: find `cmnlib.mbn` in the stock firmware
+   package, load it with cmd 7, then retry the app start.
+4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
+5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
+6. Listeners for the TA's file storage; then enroll and verify structures.
+7. A libfprint driver, so fprintd, PAM and the lock screen can use it.
