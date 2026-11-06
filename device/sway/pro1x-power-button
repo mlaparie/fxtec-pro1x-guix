@@ -70,7 +70,7 @@ done |
                   # menu when an empty workspace has the focus.
                   case "$(swaymsg -t get_tree -r |
                           jq -r '.. | objects | select(.focused? == true) | .app_id // empty')" in
-                      quickactions|launcher|windowswitcher|powermenu) menu=yes ;;
+                      quickactions|launcher|windowswitcher|powermenu|qs-tool) menu=yes ;;
                   esac
                   sleep 0.56
                   [ "$(cat "$held" 2>/dev/null)" = "$stamp" ] || exit 0

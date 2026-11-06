@@ -15,13 +15,19 @@ case "${FZF_DEFAULT_OPTS:-}" in
     *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
 esac
 
+# The volume and power keys drive the list through fzf's socket, as in
+# the menus (pro1x-menu key, window qs-tool; author, 2026-11-06); once it
+# is done, $rt/pro1x-tool.done lets a short power press close the window.
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
 err=0
 ssid=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
     --color yes device wifi list --rescan yes \
     | sed -E 's/^(BSSID +)IN-USE  /\1  /;
               s/^(\x1b\[[0-9;]*m[^\x1b]*\x1b\[0m  \x1b\[[0-9;]*m.\x1b\[0m) {6}/\1/;
               s/ Mbit\/s/ Mb\/s  /' \
-    | fzf --ansi \
+    | fzf --ansi --listen="$rt/pro1x-tool.sock" \
           --with-nth=2.. \
           --reverse \
           --cycle \
@@ -37,5 +43,6 @@ if [[ "$err" = 1 ]]; then
   printf "SSID "
   nmcli -a device wifi connect ${ssid}
 fi
+: > "$rt/pro1x-tool.done"
 printf "Press any key to close.\n" && read -n1
 

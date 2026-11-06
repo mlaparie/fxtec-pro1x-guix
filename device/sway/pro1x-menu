@@ -180,7 +180,7 @@ case "$cmd" in
         f=$(swaymsg -t get_tree -r |
                 jq -r '.. | objects | select(.focused? == true) | .app_id // empty')
         case "$f" in
-            quickactions|launcher|windowswitcher|powermenu) echo "$f"; exit 0 ;;
+            quickactions|launcher|windowswitcher|powermenu|qs-tool) echo "$f"; exit 0 ;;
             *) exit 1 ;;
         esac ;;
     hide-all)
@@ -228,6 +228,18 @@ case "$cmd" in
                 # Its Focus / Close / Cancel question, when open.
                 [ -S "$rt/pro1x-switcher-ask.sock" ] && sock="$rt/pro1x-switcher-ask.sock" ;;
             powermenu) sock="$rt/pro1x-power-menu.sock" ;;
+            # A tool from quick actions (pro1x-wifi): its fzf while the list
+            # is up.  Power held closes the window (fzf's abort would make
+            # the script connect to nothing); a short press closes it too
+            # once the tool says it is done.
+            qs-tool)
+                close() { swaymsg '[app_id="^qs-tool$"] kill' >/dev/null; exit 0; }
+                case "$id" in
+                    hide) close ;;
+                    accept) [ -e "$rt/pro1x-tool.done" ] && close ;;
+                esac
+                sock="$rt/pro1x-tool.sock"
+                [ -S "$sock" ] || exit 1 ;;
         esac
         case "$id" in
             up|down) action=$id ;;
