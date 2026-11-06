@@ -403,6 +403,14 @@
         "confidence": "confirmed",
         "date": "2026-11-06",
         "source": "phone dmesg 2026-11-06; vendor arch/arm64/configs/vendor/bengal*; LKML QSEECOM series (Maximilian Luz, 2023) and QTEE series (Amirreza Zarrabi, 2025-2026)"
+      },
+      {
+        "title": "Loading a 32-bit QSEE app needs cmnlib in TrustZone first; on this Pro¹x the cmnlib partitions are empty",
+        "general": "Qualcomm's vendor qseecom driver loads the common library into TrustZone (cmnlib for 32-bit apps, cmnlib64 for 64-bit, QSEOS_LOAD_SERV_IMAGE_COMMAND, SMC owner 50 svc 1 cmd 7, args mdt_len, img_len, pa) before the first app of that word size. A DT flag (qcom,commonlib64-loaded-by-uefi) says when the bootloader did it already. A mainline loader of a vendor TA has to do the same, or the app start fails.",
+        "instance": "Pro¹x: mafp is ELFCLASS32. Vendor DT has commonlib64-loaded-by-uefi only, so cmnlib (32-bit) is loaded by the HLOS driver on Android. The tz_a image names cmnlib, cmnlib64, libcmnlib.so, cmnlib_init. Partitions cmnlib_a/b and cmnlib64_a/b (512 KiB each) are all zeros on this unit (read 2026-11-06); keymaster_a holds an ELF. No cmnlib file in modem_a/image (228 files). Raw app start of mafp from a tzmem buffer under mainline (kernel 7.3, SHM bridge mode, no 'not supported' message) returned status -2 (QCOM_SCM_EINVAL_ADDR in mainline's mapping), result -47; phone stayed up. That the missing cmnlib causes it is inferred, not tested. The SHM bridge and the app-start arguments match the vendor driver.",
+        "confidence": "inferred",
+        "date": "2026-11-06",
+        "source": "vendor drivers/misc/qseecom.c (qseecom_load_app, qseecom_load_commonlib_image, probe) and bengal.dtsi of LineageOS android_kernel_fxtec_sm6115; phone dmesg and partition reads 2026-11-06"
       }
     ]
   }
