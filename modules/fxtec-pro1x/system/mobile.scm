@@ -68,6 +68,7 @@
              (gnu system accounts)
              (gnu system file-systems)
              (fxtec-pro1x packages firmware)
+             (fxtec-pro1x packages fingerprint)
              (fxtec-pro1x packages gnss)
              (fxtec-pro1x packages kernel)
              (fxtec-pro1x packages misc)
@@ -81,6 +82,7 @@
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
              (fxtec-pro1x services sensors)
+             (fxtec-pro1x services fingerprint)
              (fxtec-pro1x services usb-network))
 
 ;; Keyboard slider in Phosh: landscape while the keyboard is out.  Phosh
@@ -542,7 +544,9 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
   (initrd (pro1x-fde-initrd %pro1x-fde-mapped-devices))
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
-  (firmware (list linux-firmware firmware-fxtec-qx1050))
+  ;; firmware-fxtec-qx1050-mafp: the fingerprint trusted app (proprietary).
+  (firmware (list linux-firmware firmware-fxtec-qx1050
+                  firmware-fxtec-qx1050-mafp))
 
   ;; ── Bootloader ────────────────────────────────────────────────────────────
   (bootloader
@@ -640,6 +644,8 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
      (service pro1x-sensors-service-type)
+     ;; The fingerprint TA's supplicant and loader; not started at boot yet.
+     (service pro1x-fingerprint-service-type)
      (service pro1x-rootfs-resize-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
