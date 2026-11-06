@@ -18,6 +18,10 @@
  *   cmd=      once loaded, send this one command (0 = none) with an empty
  *             payload of cmd_len bytes, and dump the reply.
  *
+ *   peek=     a kernel address (from /proc/kallsyms) whose byte is printed:
+ *             e.g. qcom_tzmem_using_shm_bridge, whether mainline enabled
+ *             TrustZone's SHM bridge.  A memory read, no TrustZone call.
+ *
  * The app is shut down again when the module is removed.  Nothing is
  * written to any partition.  Load-time only: every parameter is 0444.
  *
@@ -59,6 +63,10 @@ MODULE_PARM_DESC(lib, "mdt + segments of a common library to load first (empty: 
 static uint lib_mdt_len;
 module_param(lib_mdt_len, uint, 0444);
 MODULE_PARM_DESC(lib_mdt_len, "Size of the .mdt part of lib");
+
+static unsigned long peek;
+module_param(peek, ulong, 0444);
+MODULE_PARM_DESC(peek, "Kernel address whose byte to print (0: none)");
 
 static char *app_name = "mafp";
 module_param(app_name, charp, 0444);
@@ -299,6 +307,9 @@ static int __init qsee_probe_init(void)
 
 	if (!qcom_scm_is_available())
 		return -EPROBE_DEFER;
+
+	if (peek)
+		pr_info("byte at 0x%lx: %u\n", peek, *(const u8 *)peek);
 
 	do_lookups();
 
