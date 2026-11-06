@@ -31,7 +31,11 @@ reader() {
 
 if [ -n "${SWAYSOCK:-}" ]; then
     # Sway's exec double-forks: end with its IPC socket, whole group.
-    ( while [ -S "$SWAYSOCK" ]; do sleep 10; done; kill 0 ) &
+    # A Sway that died can leave its socket behind (2026-11-06: a stale
+    # watcher of a dead Sway fought the live one over an incoming call),
+    # so also check the Sway PID in the socket name.
+    swaypid=${SWAYSOCK%.sock}; swaypid=${swaypid##*.}
+    ( while [ -S "$SWAYSOCK" ] && kill -0 "$swaypid" 2>/dev/null; do sleep 10; done; kill 0 ) &
 fi
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
