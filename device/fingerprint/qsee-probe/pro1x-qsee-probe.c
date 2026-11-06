@@ -1,0 +1,318 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * pro1x-qsee-probe: a test module for the Pro1X fingerprint reader's
+ * trusted app (QSEE "mafp", see ../README.md).
+ *
+ * Mainline's qcom_scm finds QSEECOM on this TrustZone but does not create
+ * its device on unlisted machines, and it cannot load apps.  This module
+ * finds out, step by step, whether the stock TA can run under mainline:
+ *
+ *   lookup=   app names to look up (exported qcom_scm API, read-only);
+ *   image=    a file holding mafp.mdt followed by mafp.b00..bNN: load it
+ *             (raw QSEE OS "app start" SMC, as the vendor qseecom driver);
+ *   mdt_len=  the size of the .mdt part of image;
+ *   cmd=      once loaded, send this one command (0 = none) with an empty
+ *             payload of cmd_len bytes, and dump the reply.
+ *
+ * The app is shut down again when the module is removed.  Nothing is
+ * written to any partition.  Load-time only: every parameter is 0444.
+ *
+ * SMC IDs and request layouts follow the GPL vendor driver
+ * (drivers/misc/qseecom.c, include/soc/qcom/qseecomi.h of
+ * LineageOS android_kernel_fxtec_sm6115).
+ */
+
+#include <linux/arm-smccc.h>
+#include <linux/clk.h>
+#include <linux/delay.h>
+#include <linux/firmware/qcom/qcom_scm.h>
+#include <linux/firmware/qcom/qcom_tzmem.h>
+#include <linux/kernel_read_file.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/vmalloc.h>
+
+static char *lookup = "mafp,keymaster64,keymaster,qcom.tz.uefisecapp,uefisecapp,widevine,gpqese";
+module_param(lookup, charp, 0444);
+MODULE_PARM_DESC(lookup, "Comma-separated QSEE app names to look up");
+
+static char *image;
+module_param(image, charp, 0444);
+MODULE_PARM_DESC(image, "mdt + segments of the app to load (empty: no load)");
+
+static uint mdt_len;
+module_param(mdt_len, uint, 0444);
+MODULE_PARM_DESC(mdt_len, "Size of the .mdt part of image");
+
+static char *app_name = "mafp";
+module_param(app_name, charp, 0444);
+MODULE_PARM_DESC(app_name, "Name of the app in image");
+
+static uint cmd;
+module_param(cmd, uint, 0444);
+MODULE_PARM_DESC(cmd, "TA command to send once loaded (0: none)");
+
+static uint cmd_len = 8;
+module_param(cmd_len, uint, 0444);
+MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
+
+/* QSEE OS calls (owner 50, app manager service 1). */
+#define QSEE_OWNER_QSEE_OS	50
+#define QSEE_SVC_APP_MGR	1
+#define QSEE_CMD_APP_START	1
+#define QSEE_CMD_APP_SHUTDOWN	2
+
+#define QSEE_RESULT_SUCCESS	0
+#define QSEE_RESULT_INCOMPLETE	1
+#define QSEE_RESULT_BLOCKED	2
+
+#define SCM_INTERRUPTED		1
+#define SCM_V2_EBUSY		-12
+
+/* The client library's shared buffer: [u32 cmd][u32 len][payload]. */
+#define TA_BUF_SIZE		0x20000
+
+static struct qcom_tzmem_pool *pool;
+static struct clk *ce_clk;
+static u32 loaded_app_id;
+
+/* One QSEE OS call with value arguments, as qcom_scm-smc.c does it. */
+static int qsee_os_call(u32 svc, u32 cmdid, u32 nargs, const u64 *args,
+			struct arm_smccc_res *res)
+{
+	struct arm_smccc_quirk quirk = { .id = ARM_SMCCC_QUIRK_QCOM_A6 };
+	unsigned long a0, a[4] = { 0 };
+	int retry = 0;
+	u32 i;
+
+	for (i = 0; i < nargs && i < 4; i++)
+		a[i] = args[i];
+
+	do {
+		a0 = ARM_SMCCC_CALL_VAL(ARM_SMCCC_STD_CALL, ARM_SMCCC_SMC_64,
+					QSEE_OWNER_QSEE_OS,
+					((svc & 0xff) << 8) | (cmdid & 0xff));
+		quirk.state.a6 = 0;
+		do {
+			/* arginfo: nargs values (type 0 = VAL) */
+			arm_smccc_smc_quirk(a0, nargs, a[0], a[1], a[2], a[3],
+					    quirk.state.a6, 0, res, &quirk);
+			if (res->a0 == SCM_INTERRUPTED)
+				a0 = res->a0;
+		} while (res->a0 == SCM_INTERRUPTED);
+
+		if ((long)res->a0 != SCM_V2_EBUSY)
+			break;
+		msleep(30);
+	} while (retry++ < 20);
+
+	return (long)res->a0 ? -EIO : 0;
+}
+
+static void do_lookups(void)
+{
+	char *names, *p, *name;
+	u32 id;
+	int ret;
+
+	names = kstrdup(lookup, GFP_KERNEL);
+	if (!names)
+		return;
+	p = names;
+	while ((name = strsep(&p, ",")) != NULL) {
+		if (!*name)
+			continue;
+		ret = qcom_scm_qseecom_app_get_id(name, &id);
+		if (ret)
+			pr_info("lookup %s: not loaded (%d)\n", name, ret);
+		else
+			pr_info("lookup %s: app id %u\n", name, id);
+	}
+	kfree(names);
+}
+
+static int ce_clock_on(void)
+{
+	struct device_node *np;
+	struct platform_device *pdev;
+
+	/* The crypto BAM's clock is the RPM's CE1 clock the vendor driver
+	 * voted for (QSEECOM_CE1_CLK). */
+	np = of_find_compatible_node(NULL, NULL, "qcom,bam-v1.7.4");
+	if (!np)
+		return -ENODEV;
+	pdev = of_find_device_by_node(np);
+	of_node_put(np);
+	if (!pdev)
+		return -ENODEV;
+	ce_clk = clk_get(&pdev->dev, "bam_clk");
+	put_device(&pdev->dev);
+	if (IS_ERR(ce_clk)) {
+		int ret = PTR_ERR(ce_clk);
+
+		ce_clk = NULL;
+		return ret;
+	}
+	return clk_prepare_enable(ce_clk);
+}
+
+static void ce_clock_off(void)
+{
+	if (ce_clk) {
+		clk_disable_unprepare(ce_clk);
+		clk_put(ce_clk);
+		ce_clk = NULL;
+	}
+}
+
+static int do_load(void)
+{
+	struct arm_smccc_res res;
+	void *file = NULL, *buf;
+	size_t fsize = 0;
+	ssize_t n;
+	u64 args[3];
+	u32 id;
+	int ret;
+
+	if (!qcom_scm_qseecom_app_get_id(app_name, &id)) {
+		pr_info("%s is already loaded, app id %u\n", app_name, id);
+		return 0;
+	}
+
+	n = kernel_read_file_from_path(image, 0, &file, SZ_4M, &fsize,
+				       READING_FIRMWARE);
+	if (n < 0) {
+		pr_err("reading %s: %zd\n", image, n);
+		return n;
+	}
+	if (!mdt_len || mdt_len >= fsize) {
+		pr_err("mdt_len %u does not fit image size %zu\n", mdt_len, fsize);
+		vfree(file);
+		return -EINVAL;
+	}
+
+	buf = qcom_tzmem_alloc(pool, fsize, GFP_KERNEL);
+	if (!buf) {
+		vfree(file);
+		return -ENOMEM;
+	}
+	memcpy(buf, file, fsize);
+	vfree(file);
+
+	ret = ce_clock_on();
+	if (ret)
+		pr_warn("CE clock not enabled (%d), loading anyway\n", ret);
+
+	/* QSEOS_APP_START_COMMAND, as the vendor driver for QSEE >= 4.0:
+	 * args are mdt_len, img_len, physical address. */
+	args[0] = mdt_len;
+	args[1] = fsize;
+	args[2] = qcom_tzmem_to_phys(buf);
+	pr_info("loading %s: mdt %u, image %zu bytes at %pa\n", app_name,
+		mdt_len, fsize, &args[2]);
+	ret = qsee_os_call(QSEE_SVC_APP_MGR, QSEE_CMD_APP_START, 3, args, &res);
+	pr_info("app start: status %ld, result %lu, type 0x%lx, data %lu\n",
+		(long)res.a0, res.a1, res.a2, res.a3);
+
+	ce_clock_off();
+	qcom_tzmem_free(buf);
+
+	if (ret)
+		return ret;
+	if (res.a1 == QSEE_RESULT_INCOMPLETE || res.a1 == QSEE_RESULT_BLOCKED) {
+		pr_err("the TA wants a listener during load: not supported here\n");
+		return -EOPNOTSUPP;
+	}
+	if (res.a1 != QSEE_RESULT_SUCCESS)
+		return -EIO;
+
+	loaded_app_id = res.a3;
+	pr_info("%s loaded, app id %u\n", app_name, loaded_app_id);
+	return 0;
+}
+
+static void do_cmd(u32 app_id)
+{
+	u32 *buf;
+	int ret;
+
+	if (cmd_len > TA_BUF_SIZE - 8)
+		return;
+	buf = qcom_tzmem_alloc(pool, TA_BUF_SIZE, GFP_KERNEL);
+	if (!buf)
+		return;
+	memset(buf, 0, TA_BUF_SIZE);
+	buf[0] = cmd;
+	buf[1] = cmd_len;
+	ret = qcom_scm_qseecom_app_send(app_id, buf, TA_BUF_SIZE,
+					buf, TA_BUF_SIZE);
+	pr_info("cmd 0x%x (len %u): %d\n", cmd, cmd_len, ret);
+	if (!ret)
+		print_hex_dump(KERN_INFO, "reply: ", DUMP_PREFIX_OFFSET, 16, 1,
+			       buf, min_t(u32, cmd_len + 8, 0x180), true);
+	qcom_tzmem_free(buf);
+}
+
+static int __init qsee_probe_init(void)
+{
+	struct qcom_tzmem_pool_config config = {
+		.policy = QCOM_TZMEM_POLICY_ON_DEMAND,
+		.max_size = SZ_8M,
+	};
+	u32 id;
+	int ret;
+
+	if (!qcom_scm_is_available())
+		return -EPROBE_DEFER;
+
+	do_lookups();
+
+	if (!image || !*image)
+		return 0;
+
+	pool = qcom_tzmem_pool_new(&config);
+	if (IS_ERR(pool)) {
+		ret = PTR_ERR(pool);
+		pool = NULL;
+		return ret;
+	}
+
+	ret = do_load();
+	if (ret)
+		goto out_pool;
+
+	if (cmd && !qcom_scm_qseecom_app_get_id(app_name, &id))
+		do_cmd(id);
+	return 0;
+
+out_pool:
+	qcom_tzmem_pool_free(pool);
+	pool = NULL;
+	return ret;
+}
+
+static void __exit qsee_probe_exit(void)
+{
+	struct arm_smccc_res res;
+	u64 args[1];
+
+	if (loaded_app_id) {
+		args[0] = loaded_app_id;
+		qsee_os_call(QSEE_SVC_APP_MGR, QSEE_CMD_APP_SHUTDOWN, 1, args, &res);
+		pr_info("app %u shut down: status %ld, result %lu\n",
+			loaded_app_id, (long)res.a0, res.a1);
+	}
+	if (pool)
+		qcom_tzmem_pool_free(pool);
+}
+
+module_init(qsee_probe_init);
+module_exit(qsee_probe_exit);
+
+MODULE_DESCRIPTION("Pro1X: probe the fingerprint trusted app under mainline QSEECOM");
+MODULE_LICENSE("GPL");
