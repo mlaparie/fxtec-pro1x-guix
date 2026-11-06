@@ -45,7 +45,10 @@
         ;; and SMS).
         ;; Ours on his charger: staying awake while charging (0040) as a
         ;; switch, awake_charging (config.scm charging-awake?).
-        '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"))))
+        ;; Dawid Wróbel's QSEECOM TEE driver (not upstream): loads and
+        ;; drives QSEE trusted apps, here the fingerprint TA.
+        '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
+          "qseecom-tee"))))
 
 (define-public linux-pro1x
   (package
