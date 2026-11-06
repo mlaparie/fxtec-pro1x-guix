@@ -120,24 +120,16 @@ slide_in() {
     trace=; [ -e "$rt/pro1x-menu.trace" ] && trace="$rt/pro1x-menu.trace"
     [ -n "$trace" ] && echo "$EPOCHREALTIME $1 start" >> "$trace"
     # The wait between moves: bash's read with a timeout on a FIFO nobody
-    # writes, as sleep took 22 ms to start here.  Step n is due n frames of
-    # the 60 Hz panel (16.7 ms) after the first, and only what is left is
-    # waited: a fixed 6 ms after each swaymsg put quick actions' steps 21 ms
-    # apart (its swaymsg is slower), so frames were skipped (author: jumpy,
-    # 2026-11-06; the launcher's were 17 ms apart).
+    # writes, as sleep took 22 ms to start here and swaymsg 11 ms; so each
+    # step is about a frame (11 + 6 ms).
     tick="$rt/pro1x-menu.tick"
     [ -p "$tick" ] || mkfifo "$tick"
     exec 9<>"$tick"
-    t0=${EPOCHREALTIME/./} n=0
     for step in "56 0.4" "40 0.6" "28 0.75" "18 0.88" "11 0.96" "7 1"; do
         set -- $step
         swaymsg "[con_id=$c] move $on $1 px, opacity $2" >/dev/null
         [ -n "$trace" ] && echo "$EPOCHREALTIME $c $1" >> "$trace"
-        [ "$2" = 1 ] && break
-        n=$((n + 1))
-        left=$((t0 + n * 16667 - ${EPOCHREALTIME/./}))
-        [ "$left" -gt 0 ] &&
-            read -r -t "$(printf '0.%06d' "$left")" -u 9 _ || :
+        [ "$2" = 1 ] || read -r -t 0.006 -u 9 _ || :
     done
     exec 9<&-
 }
