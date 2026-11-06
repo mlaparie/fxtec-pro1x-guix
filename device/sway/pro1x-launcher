@@ -65,11 +65,11 @@ while :; do
                    cut -f1)
         rm -f "$asksock"
         case "$pick" in ""|back) continue ;; esac   # back to the apps
-        swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+        swaymsg "[app_id=\"^launcher\$\"] opacity 0, move scratchpad" >/dev/null
         swaymsg "workspace number $pick" >/dev/null
         setsid /bin/sh -c "$cmd" >/dev/null 2>&1 </dev/null &
     else
-        swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
+        swaymsg "[app_id=\"^launcher\$\"] opacity 0, move scratchpad" >/dev/null
     fi
     sleep 0.5                   # never a busy loop, if it fails at once
 done

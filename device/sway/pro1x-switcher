@@ -36,7 +36,7 @@ if [ "${1:-}" = --close ]; then
     if ! "$0" --list | grep -q -v -e '^ws:' -e '^sov'; then   # no window left
         curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
              -d "clear-query+first" >/dev/null 2>&1 &
-        swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+        swaymsg '[app_id="^windowswitcher$"] opacity 0, move scratchpad' >/dev/null
     fi
     exit
 fi
@@ -51,7 +51,7 @@ if [ "${1:-}" = --go ]; then
     esac
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
-    swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+    swaymsg '[app_id="^windowswitcher$"] opacity 0, move scratchpad' >/dev/null
     [ "$2" = sov ] && pro1x-sov show
     exit
 fi
@@ -99,7 +99,7 @@ if [ "${1:-}" = --ask ]; then
             # Away, its query cleared (after this execute ends), then focus.
             curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
                  -d "clear-query+first" >/dev/null 2>&1 &
-            swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
+            swaymsg '[app_id="^windowswitcher$"] opacity 0, move scratchpad' >/dev/null
             swaymsg "[con_id=$2] focus" >/dev/null ;;
         Close) "$0" --close "$2" ;;
     esac
@@ -130,7 +130,7 @@ if [ "${1:-}" = --list ]; then
 fi
 
 # Hidden with its query cleared, for next time (author, 2026-10-31).
-hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] move scratchpad")'
+hide='clear-query+first+execute-silent(swaymsg "[app_id=\"^windowswitcher$\"] opacity 0, move scratchpad")'
 # On a workspace line: switch to it; on a window: its question.
 act="case {1} in
        ws:*|sov) echo \"execute-silent($self --go {1})\" ;;

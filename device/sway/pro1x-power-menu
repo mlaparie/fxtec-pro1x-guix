@@ -38,7 +38,7 @@ if [ "${1:-}" = --lines ]; then
            "Suspend" "Hibernate" "Reboot" "Power off"
     exit
 fi
-hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null; }
+hide() { swaymsg '[app_id="^powermenu$"] opacity 0, move scratchpad' >/dev/null; }
 while :; do
 choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
