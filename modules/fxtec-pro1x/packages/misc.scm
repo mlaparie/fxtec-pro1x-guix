@@ -1469,19 +1469,19 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                     "-gravity" "center" "-geometry" "+0-90" "-composite"
                     (string-append dir "/dark.png"))
             ;; Sway's: the same, with the gestures and keys in a small box
-            ;; (author, 2026-11-06).  Monospace at 24 px, under the bar's
+            ;; (author, 2026-11-06), keys the Emacs way (s- Super, C- Ctrl).  Monospace at 24 px, under the bar's
             ;; 10 pt at scale 2 (27 px); below the gnu, inside the middle
             ;; 1080 px square, the part that "fill" shows in portrait and in
             ;; landscape, and above the landscape bottom edge.
-            (invoke "convert" "-background" "#1d2021c0" "-fill" "#ebdbb2"
+            (invoke "convert" "-background" "#1d2021c0" "-fill" "#ddd0f7" ; the gnu's lilac
                     "-font" mono "-pointsize" "24" "-interline-spacing" "8"
                     (string-append
                      "label:"
-                     "Quick menu          top swipe     or Super+q\n"
-                     "Window management   left swipe    or Super+Tab\n"
-                     "App launcher        right swipe   or Super+m\n"
-                     "On-screen keyboard  bottom swipe  or Super+i\n"
-                     "Help                                 Super+Ctrl+h")
+                     "Quick menu          s-q      or top swipe\n"
+                     "Window management   s-<tab>  or left swipe\n"
+                     "App launcher        s-m      or right swipe\n"
+                     "On-screen keyboard  s-i      or bottom swipe\n"
+                     "Help                C-s-h")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
             (invoke "convert" (string-append dir "/dark.png") "help.png"
                     "-gravity" "center" "-geometry" "+0+330" "-composite"
