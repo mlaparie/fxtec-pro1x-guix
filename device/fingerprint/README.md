@@ -82,8 +82,9 @@ No blob is in this repository; they are proprietary.
    flashes the `cmnlib` partitions empty, and its vendor partition has no `cmnlib`.
    The image layout matches the vendor's. Open: the memory. The vendor loads from its
    `qseecom_mem` reserved region, registered with TrustZone as an SHM bridge at probe;
-   mainline's tzmem pool may have no bridge here (inferred, to check). The module's
-   `lib=` parameter is not needed.
+   mainline's tzmem pool is bridged too (`qcom_tzmem_using_shm_bridge` is 1 on the
+   phone), so that is not it either. Cause of the -2: open. The module's `lib=`
+   parameter is not needed.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
