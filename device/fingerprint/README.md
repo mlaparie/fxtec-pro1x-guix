@@ -88,6 +88,15 @@ No blob is in this repository; they are proprietary.
    Mainline's newer QTEE driver (`qcomtee`, object interface) is no way round:
    `qcom_scm` created no `qcomtee` device on this TrustZone (its probe call is
    refused), although the module is built.
+3b. (2026-11-06) The app loads, but does not take commands yet.
+   - Loading needs the image at a 4 MiB-aligned address (the test module got -2
+     at 0xfe200000, status 0 at 0xfe400000); Dawid Wróbel's QSEECOM TEE driver
+     (kernel patch `pro1x-qseecom-tee`) does it, and loads `mafp.mbn` whole.
+   - With that driver (branch `dev-fingerprint`, generation 27): `qsee-supplicant`
+     registers listeners 10 and 28672, `qsee-app-loader mafp` loads the app,
+     and a session opens; every command (`mafp-client 0xef 0xc`, buffers from
+     0x14 to 0x20000 bytes) fails in the send call: `scm call failed with
+     error -22`. Same with the test module. Open.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
