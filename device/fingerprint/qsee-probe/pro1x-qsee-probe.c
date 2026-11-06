@@ -36,6 +36,7 @@
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/firmware/qcom/qcom_tzmem.h>
 #include <linux/kernel_read_file.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -93,6 +94,12 @@ MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 
 #define SCM_INTERRUPTED		1
 #define SCM_V2_EBUSY		-12
+
+/* TZ maps an app image itself and wants it 4 MiB aligned (the vendor's TA
+ * heap is reserved so; Dawid Wróbel's mainline QSEECOM TEE driver,
+ * drivers/tee/qseecom/core.c, QSEECOM_TEE_IMAGE_ALIGN).  The pool only
+ * promises page alignment: an image at 0xfe200000 got status -2 here. */
+#define QSEE_IMAGE_ALIGN	SZ_4M
 
 /* The client library's shared buffer: [u32 cmd][u32 len][payload]. */
 #define TA_BUF_SIZE		0x20000
@@ -195,8 +202,9 @@ static void ce_clock_off(void)
 static int tz_load(const char *path, u32 mdt, u32 cmdid, const char *what,
 		   struct arm_smccc_res *res)
 {
-	void *file = NULL, *buf;
-	size_t fsize = 0;
+	void *file = NULL, *buf, *img;
+	phys_addr_t buf_pa, img_pa;
+	size_t fsize = 0, stage;
 	ssize_t n;
 	u64 args[3];
 	int ret;
@@ -213,12 +221,18 @@ static int tz_load(const char *path, u32 mdt, u32 cmdid, const char *what,
 		return -EINVAL;
 	}
 
-	buf = qcom_tzmem_alloc(pool, fsize, GFP_KERNEL);
+	/* A copy at the first 4 MiB boundary inside a larger buffer: the
+	 * buffer is physically contiguous, so one offset serves both. */
+	stage = PAGE_ALIGN(fsize) + QSEE_IMAGE_ALIGN;
+	buf = qcom_tzmem_alloc(pool, stage, GFP_KERNEL);
 	if (!buf) {
 		vfree(file);
 		return -ENOMEM;
 	}
-	memcpy(buf, file, fsize);
+	buf_pa = qcom_tzmem_to_phys(buf);
+	img_pa = ALIGN(buf_pa, QSEE_IMAGE_ALIGN);
+	img = buf + (img_pa - buf_pa);
+	memcpy(img, file, fsize);
 	vfree(file);
 
 	ret = ce_clock_on();
@@ -228,7 +242,7 @@ static int tz_load(const char *path, u32 mdt, u32 cmdid, const char *what,
 	/* As the vendor driver for QSEE >= 4.0: mdt_len, img_len, address. */
 	args[0] = mdt;
 	args[1] = fsize;
-	args[2] = qcom_tzmem_to_phys(buf);
+	args[2] = img_pa;
 	pr_info("loading %s: mdt %u, image %zu bytes at %pa\n", what, mdt,
 		fsize, &args[2]);
 	ret = qsee_os_call(QSEE_SVC_APP_MGR, cmdid, 3, args, res);
@@ -300,7 +314,7 @@ static int __init qsee_probe_init(void)
 {
 	struct qcom_tzmem_pool_config config = {
 		.policy = QCOM_TZMEM_POLICY_ON_DEMAND,
-		.max_size = SZ_8M,
+		.max_size = SZ_16M,
 	};
 	u32 id;
 	int ret;
