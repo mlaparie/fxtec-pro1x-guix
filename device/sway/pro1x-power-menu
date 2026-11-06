@@ -18,7 +18,10 @@
 # fzf runs its binds and previews with $SHELL -c: with fish as the login
 # shell each took 1.6 s to start, and fish cannot parse the sh in them
 # (2026-11-06).  The user's own fzf in a terminal keeps $SHELL.
-export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'"
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
 
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
 
