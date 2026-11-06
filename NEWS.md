@@ -1,5 +1,53 @@
 # Release notes
 
+## 0.3.0 — 2026-11-06
+
+0.2.0 was tagged but its release never got its root file system (over
+GitHub's 2 GiB limit even compressed); 0.3.0 has it, in parts.  Built
+with guix 8b96d76 and nonguix c241d19.
+
+### New
+
+- Full-disk encryption flashed on a phone: `flash.sh --encrypt` sends
+  `userdata` as sparse parts (Guix's fastboot sent an empty image), and
+  the boot menu keeps the plain area up to date.  A passphrase may have
+  symbols (US layout at the prompt).
+- `scripts/backup-phone.sh`: the phone's data (home, Wi-Fi, Bluetooth,
+  Tailscale, SSH host keys) to the PC before a reflash, and back after
+  (docs/install.md).
+- Stronger vibration for calls and texts; `vibration-level` in
+  `config.scm` (default 80, stock 59).  Shake to torch needs a firmer
+  shake.
+- Sway: menus slide in from their swipe's side; windows open and close
+  with a 200 ms animation; inactive windows dimmed slightly.
+- Volume keys and quick actions' volume: a step takes 30-150 ms, not
+  300 ms.
+- nvtop (GPU monitor) from quick actions' GPU line.
+- Esc to wake no longer opens the power menu.
+- U-Boot menu: "Reboot to fastboot (stock bootloader)" replaces
+  U-Boot's own fastboot, which cannot write this phone's UFS (not yet
+  tried on the phone).
+- docs/usage.md: Sway's menus and keys, passwords.
+
+### Removed
+
+- The plain Sway session (for comparing speed); the FDE prompt test;
+  the 7.1 kernel patches (tag `pre-7.3` has them).
+
+### Install
+
+Download the `rootfs.img.zst.part*` files and `SHA256SUMS`, check them
+with `sha256sum -c SHA256SUMS`, join and unpack with
+`cat rootfs.img.zst.part* | zstd -d -o rootfs.img`, then follow
+docs/install.md (`scripts/flash.sh --rootfs rootfs.img`, with
+`--encrypt` for an encrypted phone).
+
+### Known issues
+
+- Outgoing calls on 4G often fall back to 3G and take 20-40 s to ring.
+- Mute in calls has no effect; no echo cancelling.
+- Charging goes above the charge limit; no deep sleep.
+
 ## 0.2.0 — 2026-11-05
 
 Linux 7.3 (mainline, moWerk's series and this port's patches), calls on
