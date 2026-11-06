@@ -130,6 +130,7 @@ slide_in() {
 }
 
 hide_menu() {
+    rm -f "$rt/pro1x-menu-shown"
     close_sub "$1"
     curl -s -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
@@ -297,6 +298,7 @@ case "$cmd" in
         if [ -n "$first" ] &&
            swaymsg "[con_id=$first] scratchpad show, $(geometry "$id")$(slide_from "$id")" \
                >/dev/null 2>&1; then
+            : > "$rt/pro1x-menu-shown"   # pro1x-osd: maybe in a menu
             slide_in "$id" "$first"
             # Refresh the list as it shows (cheap).
             case "$id" in
@@ -324,6 +326,7 @@ case "$cmd" in
             # Start it (the Sway config puts it in the scratchpad as it
             # appears), then show it once it is there.
             hidden=1; start
+            : > "$rt/pro1x-menu-shown"
             for i in 1 2 3 4 5 6 7 8 9 10; do
                 sleep 0.3
                 swaymsg "[app_id=\"^$id\$\"] scratchpad show, $(geometry "$id")" \

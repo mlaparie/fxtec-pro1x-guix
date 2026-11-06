@@ -1024,10 +1024,10 @@ step() {                        # Right (+) and Left (-)
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
         bright-) brightnessctl -q -n1 set 2%-; pro1x-osd bright show
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
-        volume+) wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+; pro1x-osd volume show
-                 cache_put volume "$(volume_shown "$(volume)")" ;;
-        volume-) wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%-; pro1x-osd volume show
-                 cache_put volume "$(volume_shown "$(volume)")" ;;
+        # pro1x-osd steps from its remembered level and sets it in the
+        # background: two wpctl reads per step made a held key slow.
+        volume+) cache_put volume "$(volume_shown "$(pro1x-osd volume step +)")" ;;
+        volume-) cache_put volume "$(volume_shown "$(pro1x-osd volume step -)")" ;;
         feedback?) feedback_step "$2" ;;
         charge+|charge-)          # off, 80, 85, 90, 95
             set -- "$2" $CHARGE_OPTS

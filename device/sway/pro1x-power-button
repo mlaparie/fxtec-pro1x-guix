@@ -84,6 +84,7 @@ done |
                   if [ -n "$menu" ]; then
                       pro1x-menu key hide
                   else
+                      : > "$rt/pro1x-menu-shown"   # pro1x-osd: maybe in a menu
                       swaymsg '[app_id="^powermenu$"] scratchpad show, resize set 50 ppt 45 ppt, move position center' \
                           >/dev/null 2>&1 || pro1x-menu toggle powermenu
                   fi ) & ;;

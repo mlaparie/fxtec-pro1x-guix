@@ -85,7 +85,8 @@ for n in gpio-keys pm8941_resin "keyd virtual keyboard"; do reader "$n" & done |
             touch "$rt/pro1x-vol-up.fired" "$rt/pro1x-vol-down.fired"
             # Put back the volume from before the first of the two keys:
             # each key changed it as it went down (pro1x-osd notes it).
-            v=$(cat "$rt/pro1x-vol-before" 2>/dev/null)
+            # "0.45 TIME": the level, then when pro1x-osd noted it.
+            v=; read -r v _ 2>/dev/null < "$rt/pro1x-vol-before"
             [ -n "$v" ] && ( sleep 0.15; wpctl set-volume @DEFAULT_AUDIO_SINK@ "$v" ) &
             pro1x-lock --locked || pro1x-lock &
             up=0 down=0

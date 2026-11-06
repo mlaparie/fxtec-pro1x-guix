@@ -3,6 +3,8 @@
 #
 #   pro1x-osd daemon                  wob reading $XDG_RUNTIME_DIR/pro1x-wob
 #   pro1x-osd volume up|down|mute     change, then show the level
+#   pro1x-osd volume step +|-         change and show it, even in a menu, and
+#                                     print it ("46%", "46% muted"): quick actions
 #   pro1x-osd bright up|down
 #   pro1x-osd volume|bright show      only show the level (quick actions)
 #
@@ -25,18 +27,61 @@ fifo="$rt/pro1x-wob"
 # the menu's own steps (author: Volume held was slower than Brightness).
 in_menu() {
     [ -f "$rt/pro1x-vol-up" ] || [ -f "$rt/pro1x-vol-down" ] && return 0
+    # pro1x-menu marks a shown menu; without the mark, no lookup (68 ms).
+    [ -f "$rt/pro1x-menu-shown" ] || return 1
     pro1x-menu focused >/dev/null
+}
+
+# A held key repeats every 33 ms, and a press took 260-320 ms (two wpctl
+# get-volume of 110 ms, a set of 75 ms, the menu lookup), so they piled up
+# and the volume crept (author, 2026-11-06: sluggish).  Now the level is
+# read from WirePlumber once per run of presses (the file is kept 2 s), the
+# bar shows the new one at once, and a background setter applies the
+# newest wanted level, one at a time: presses that came meanwhile are one
+# wpctl call.  LEVEL is "PERCENT MUTED TIME".
+level="$rt/pro1x-volume"
+read_level() {                  # sets lv (percent) and lm (1 muted)
+    printf -v now '%(%s)T' -1
+    lt=0
+    [ -f "$level" ] && read -r lv lm lt < "$level"
+    if [ $(( now - ${lt:-0} )) -gt 2 ]; then
+        set -- $(wpctl get-volume @DEFAULT_AUDIO_SINK@ |
+                     awk '{ print int($2 * 100 + 0.5), ($3 ? 1 : 0) }')
+        lv=${1:-0} lm=${2:-0}
+    fi
+}
+vol_step() {                    # vol_step +|-: sets lv and lm
+    read_level
+    [ -n "${note:-}" ] && note_volume
+    if [ "$1" = + ]; then lv=$((lv + 2)); [ $lv -le 120 ] || lv=120
+    else lv=$((lv - 2)); [ $lv -ge 0 ] || lv=0; fi
+    printf '%s %s %s\n' "$lv" "$lm" "$now" > "$level"
+    printf '%s\n' "$lv" > "$level.want"
+    (
+        flock 9
+        read -r want < "$level.want"
+        read -r done 2>/dev/null < "$level.done" || done=
+        [ "$want" = "$done" ] && exit 0
+        wpctl set-volume @DEFAULT_AUDIO_SINK@ "$want%" &&
+            printf '%s\n' "$want" > "$level.done"
+    ) 9> "$level.lock" &
+    show_volume "$lv" "$lm"
+}
+show_volume() {                 # show_volume PERCENT MUTED
+    v=$1; [ "$v" -le 100 ] || v=100
+    if [ "$2" = 1 ]; then show "$v" muted; else show "$v"; fi
 }
 # The volume before a run of presses, for pro1x-volume-lock to put back
 # when both keys turn out to be a lock chord (author: the second key still
 # changed the volume).
-note_volume() {
+note_volume() {                 # after read_level: lv, now
     before="$rt/pro1x-vol-before"
-    if [ ! -f "$before" ] ||
-       [ $(( $(date +%s) - $(stat -c %Y "$before") )) -gt 1 ]; then
-        wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{ print $2 }' > "$before"
+    bt=0
+    [ -f "$before" ] && read -r bv bt < "$before"
+    if [ $(( now - ${bt:-0} )) -gt 1 ]; then
+        printf '%d.%02d %s\n' $((lv / 100)) $((lv % 100)) "$now" > "$before"
     else
-        touch "$before"
+        printf '%s %s\n' "$bv" "$now" > "$before"
     fi
 }
 show() {                        # show VALUE [STYLE]
@@ -52,12 +97,15 @@ case "$1 ${2:-}" in
     # With a menu focused the volume keys drive it (pro1x-volume-lock reads
     # their presses and holds); the volume stays.
     "volume up") in_menu && exit 0
-                 note_volume
-                 wpctl set-volume -l 1.2 @DEFAULT_AUDIO_SINK@ 2%+ ;;
+                 note=1 vol_step +; exit 0 ;;
     "volume down") in_menu && exit 0
-                   note_volume
-                   wpctl set-volume @DEFAULT_AUDIO_SINK@ 2%- ;;
-    "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+                   note=1 vol_step -; exit 0 ;;
+    "volume step")
+        vol_step "$3"
+        if [ "$lm" = 1 ]; then echo "$lv% muted"; else echo "$lv%"; fi
+        exit 0 ;;
+    "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+                   rm -f "$level" ;;
     "bright up") brightnessctl -q -n1 set 2%+ ;;
     "bright down") brightnessctl -q -n1 set 2%- ;;
     # Changed elsewhere (quick actions): only the bar.
