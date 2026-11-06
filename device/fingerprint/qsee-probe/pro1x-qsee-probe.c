@@ -11,6 +11,10 @@
  *   image=    a file holding mafp.mdt followed by mafp.b00..bNN: load it
  *             (raw QSEE OS "app start" SMC, as the vendor qseecom driver);
  *   mdt_len=  the size of the .mdt part of image;
+ *   lib=, lib_mdt_len=  the same for a common library to load first
+ *             (cmnlib for a 32-bit app, which mafp is: the vendor driver loads
+ *             it before the first 32-bit app; the bootloader only loads
+ *             cmnlib64).  Left loaded, as the vendor driver does;
  *   cmd=      once loaded, send this one command (0 = none) with an empty
  *             payload of cmd_len bytes, and dump the reply.
  *
@@ -48,6 +52,14 @@ static uint mdt_len;
 module_param(mdt_len, uint, 0444);
 MODULE_PARM_DESC(mdt_len, "Size of the .mdt part of image");
 
+static char *lib;
+module_param(lib, charp, 0444);
+MODULE_PARM_DESC(lib, "mdt + segments of a common library to load first (empty: none)");
+
+static uint lib_mdt_len;
+module_param(lib_mdt_len, uint, 0444);
+MODULE_PARM_DESC(lib_mdt_len, "Size of the .mdt part of lib");
+
 static char *app_name = "mafp";
 module_param(app_name, charp, 0444);
 MODULE_PARM_DESC(app_name, "Name of the app in image");
@@ -65,6 +77,7 @@ MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 #define QSEE_SVC_APP_MGR	1
 #define QSEE_CMD_APP_START	1
 #define QSEE_CMD_APP_SHUTDOWN	2
+#define QSEE_CMD_LOAD_SERV_IMAGE	7
 
 #define QSEE_RESULT_SUCCESS	0
 #define QSEE_RESULT_INCOMPLETE	1
@@ -169,29 +182,25 @@ static void ce_clock_off(void)
 	}
 }
 
-static int do_load(void)
+/* Hand an image (.mdt then its segments, in one file) to the QSEE OS:
+ * app start (cmd 1) or common library load (cmd 7), same arguments. */
+static int tz_load(const char *path, u32 mdt, u32 cmdid, const char *what,
+		   struct arm_smccc_res *res)
 {
-	struct arm_smccc_res res;
 	void *file = NULL, *buf;
 	size_t fsize = 0;
 	ssize_t n;
 	u64 args[3];
-	u32 id;
 	int ret;
 
-	if (!qcom_scm_qseecom_app_get_id(app_name, &id)) {
-		pr_info("%s is already loaded, app id %u\n", app_name, id);
-		return 0;
-	}
-
-	n = kernel_read_file_from_path(image, 0, &file, SZ_4M, &fsize,
+	n = kernel_read_file_from_path(path, 0, &file, SZ_4M, &fsize,
 				       READING_FIRMWARE);
 	if (n < 0) {
-		pr_err("reading %s: %zd\n", image, n);
+		pr_err("reading %s: %zd\n", path, n);
 		return n;
 	}
-	if (!mdt_len || mdt_len >= fsize) {
-		pr_err("mdt_len %u does not fit image size %zu\n", mdt_len, fsize);
+	if (!mdt || mdt >= fsize) {
+		pr_err("mdt length %u does not fit %s size %zu\n", mdt, path, fsize);
 		vfree(file);
 		return -EINVAL;
 	}
@@ -208,28 +217,49 @@ static int do_load(void)
 	if (ret)
 		pr_warn("CE clock not enabled (%d), loading anyway\n", ret);
 
-	/* QSEOS_APP_START_COMMAND, as the vendor driver for QSEE >= 4.0:
-	 * args are mdt_len, img_len, physical address. */
-	args[0] = mdt_len;
+	/* As the vendor driver for QSEE >= 4.0: mdt_len, img_len, address. */
+	args[0] = mdt;
 	args[1] = fsize;
 	args[2] = qcom_tzmem_to_phys(buf);
-	pr_info("loading %s: mdt %u, image %zu bytes at %pa\n", app_name,
-		mdt_len, fsize, &args[2]);
-	ret = qsee_os_call(QSEE_SVC_APP_MGR, QSEE_CMD_APP_START, 3, args, &res);
-	pr_info("app start: status %ld, result %lu, type 0x%lx, data %lu\n",
-		(long)res.a0, res.a1, res.a2, res.a3);
+	pr_info("loading %s: mdt %u, image %zu bytes at %pa\n", what, mdt,
+		fsize, &args[2]);
+	ret = qsee_os_call(QSEE_SVC_APP_MGR, cmdid, 3, args, res);
+	pr_info("%s: status %ld, result %lu, type 0x%lx, data %lu\n", what,
+		(long)res->a0, res->a1, res->a2, res->a3);
 
 	ce_clock_off();
 	qcom_tzmem_free(buf);
 
 	if (ret)
 		return ret;
-	if (res.a1 == QSEE_RESULT_INCOMPLETE || res.a1 == QSEE_RESULT_BLOCKED) {
-		pr_err("the TA wants a listener during load: not supported here\n");
+	if (res->a1 == QSEE_RESULT_INCOMPLETE || res->a1 == QSEE_RESULT_BLOCKED) {
+		pr_err("%s wants a listener during load: not supported here\n", what);
 		return -EOPNOTSUPP;
 	}
-	if (res.a1 != QSEE_RESULT_SUCCESS)
-		return -EIO;
+	return res->a1 == QSEE_RESULT_SUCCESS ? 0 : -EIO;
+}
+
+static int do_load(void)
+{
+	struct arm_smccc_res res;
+	u32 id;
+	int ret;
+
+	if (!qcom_scm_qseecom_app_get_id(app_name, &id)) {
+		pr_info("%s is already loaded, app id %u\n", app_name, id);
+		return 0;
+	}
+
+	if (lib && *lib) {
+		ret = tz_load(lib, lib_mdt_len, QSEE_CMD_LOAD_SERV_IMAGE,
+			      "common library", &res);
+		if (ret)
+			return ret;
+	}
+
+	ret = tz_load(image, mdt_len, QSEE_CMD_APP_START, app_name, &res);
+	if (ret)
+		return ret;
 
 	loaded_app_id = res.a3;
 	pr_info("%s loaded, app id %u\n", app_name, loaded_app_id);
