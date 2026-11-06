@@ -49,7 +49,8 @@ of the power key is its Enter, a long one closes it.  In quick actions:
   Bluetooth tools;
 - the Notifications line opens them, with the text beside (landscape) or
   below (portrait); Del dismisses one;
-- the GPU monitor line opens nvtop (GPU load, clock, GPU time per app).
+- the GPU monitor line opens nvtop (GPU load, clock, GPU time per app),
+  and CPU mode's choices bpytop, each in its own window.
 
 Settings changed there last until reboot (operator, CPU mode, charge
 limit) unless the line says otherwise; the lasting ones are in
