@@ -1157,6 +1157,9 @@ notif_dock() {
 case "${1:-}" in
     --lines) refresh_lines; overlay < "$cache"; exit ;;
     --cached) cached_lines; exit ;;
+    # A step, then the lines, in one run: a held key made two runs per step,
+    # about 60 ms each only to start (author, 2026-11-06: sluggish).
+    --step-cached) step "$2" "$3" >/dev/null 2>&1; cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
     --choose)
         if [ "$2" = dicts ]; then dict_choose; else choose "$2"; fi
@@ -1237,28 +1240,28 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   gpu) echo \"execute-silent($self --act {1})\" ;;
                 esac" \
         --bind="left:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
                   feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} +)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                 esac" \
         --bind="f4:transform:case {1} in
-                  bright|volume) echo \"execute-silent($self --step {1} -)+reload($self --cached)\" ;;
+                  bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
                 esac" >/dev/null

@@ -64,7 +64,8 @@ vol_step() {                    # vol_step +|-: sets lv and lm
         [ "$want" = "$done" ] && exit 0
         wpctl set-volume @DEFAULT_AUDIO_SINK@ "$want%" &&
             printf '%s\n' "$want" > "$level.done"
-    ) 9> "$level.lock" &
+    ) 9> "$level.lock" >/dev/null 2>&1 &   # not our output: quick actions
+                                            # reads it, and would wait for it
     show_volume "$lv" "$lm"
 }
 show_volume() {                 # show_volume PERCENT MUTED
@@ -85,7 +86,7 @@ note_volume() {                 # after read_level: lv, now
     fi
 }
 show() {                        # show VALUE [STYLE]
-    [ -p "$fifo" ] && printf '%s\n' "$*" > "$fifo" &
+    [ -p "$fifo" ] && printf '%s\n' "$*" > "$fifo" 2>/dev/null &
 }
 
 case "$1 ${2:-}" in
