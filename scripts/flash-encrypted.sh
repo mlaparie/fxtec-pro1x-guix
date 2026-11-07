@@ -8,7 +8,7 @@
 # US layout, no keyd: a symbol is where a US keyboard has it (the author's
 # passphrase with symbols worked, 2026-11-05).
 #
-# State: tested in QEMU.  The btrfs root (2026-11-07): not yet run.  The
+# State: tested in QEMU.  A btrfs root from CI (2026-11-08): not yet run.  The
 # first flash on the phone (2026-11-05) sent an
 # empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).
 # The system boots on either layout, and has the same image: nothing in it
@@ -22,7 +22,7 @@
 #   _UBOOT_BIN     — u-boot-nodtb.bin path in the Guix store
 #   _UBOOT_DTB     — sm6115-fxtec-pro1x.dtb path in the Guix store
 #   _DISK_IMAGE    — guix system image output (efi-raw disk image), or
-#   _ROOTFS        — the root ext4 alone (flash.sh --rootfs, a CI rootfs.img)
+#   _ROOTFS        — the root alone, btrfs or ext4 (flash.sh --rootfs, a CI rootfs.img)
 #   _OUTPUT_DIR    — optional: write the images there and stop
 
 set -euo pipefail
@@ -90,31 +90,63 @@ mkbootimg \
     --output "$TMPDIR/boot.img"
 
 # ── Extract root partition ────────────────────────────────────────────────────
+# A CI rootfs.img is btrfs (the systems declare a btrfs root, and CI builds
+# it so); an image built here, or an older CI one, has an ext4 root, for a
+# system that declares ext4.  Either goes into the container as it is.
 echo "==> Extracting root partition…"
 if [[ -n "${_ROOTFS:-}" ]]; then
-    cp --reflink=auto "$_ROOTFS" "$TMPDIR/root.ext4"
-    chmod +w "$TMPDIR/root.ext4"
+    ROOT_FS=$(blkid -o value -s TYPE "$_ROOTFS" 2>/dev/null || true)
+    [[ "$ROOT_FS" == btrfs || "$ROOT_FS" == ext4 ]] \
+        || die "$_ROOTFS is neither btrfs nor ext4 (${ROOT_FS:-unknown})"
+    ROOT="$TMPDIR/root.$ROOT_FS"
+    cp --reflink=auto "$_ROOTFS" "$ROOT"
+    chmod +w "$ROOT"
 else
+    ROOT_FS=ext4
+    ROOT="$TMPDIR/root.ext4"
     PART_INFO=$(partx -o START,SECTORS -g -n 2 "$_DISK_IMAGE")
     PART_START=$(echo "$PART_INFO" | awk '{print $1}')
     PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
     [[ -n "$PART_START" && -n "$PART_SECTORS" ]] || die "Could not read partition table"
     DD_PROGRESS=(); [[ "$VERBOSE" == true ]] && DD_PROGRESS=(status=progress)
-    dd if="$_DISK_IMAGE" of="$TMPDIR/root.ext4" \
+    dd if="$_DISK_IMAGE" of="$ROOT" \
         bs=512 skip="$PART_START" count="$PART_SECTORS" "${DD_PROGRESS[@]}"
 fi
-ROOT_MIB=$(( $(wc -c < "$TMPDIR/root.ext4") / 1048576 ))
-echo "    root.ext4: ${ROOT_MIB} MiB"
-ACTUAL=$(e2label "$TMPDIR/root.ext4" 2>/dev/null || true)
-[[ "$ACTUAL" == "guix" ]] || e2label "$TMPDIR/root.ext4" guix
+ROOT_MIB=$(( $(wc -c < "$ROOT") / 1048576 ))
+echo "    root ($ROOT_FS): ${ROOT_MIB} MiB"
+if [[ "$ROOT_FS" == ext4 ]]; then
+    ACTUAL=$(e2label "$ROOT" 2>/dev/null || true)
+    [[ "$ACTUAL" == "guix" ]] || e2label "$ROOT" guix
+fi
 
 # ── Boot files ────────────────────────────────────────────────────────────
 # The plain area as device/boot/pro1x-boot-menu keeps it on the phone: the image's
 # own entry, with its store paths under /files, at /boot/extlinux/extlinux.conf,
 # where U-Boot reads it.  From the first deploy on, the phone keeps it up to date.
+# ext4: read with debugfs; btrfs: mounted read-only (as root: sudo resets PATH,
+# the tools by their path).
 echo "==> Extracting boot files…"
-EXTLINUX_CONF=$(debugfs -R "cat /boot/extlinux/extlinux.conf" \
-    "$TMPDIR/root.ext4" 2>/dev/null || true)
+if [[ "$ROOT_FS" == btrfs ]]; then
+    MNT="$TMPDIR/root-mnt"
+    mkdir -p "$MNT"
+    sudo "$(command -v mount)" -o loop,ro "$ROOT" "$MNT"
+    unmount_root() { sudo "$(command -v umount)" "$MNT"; }
+    trap 'unmount_root 2>/dev/null; cleanup' EXIT
+    read_file() { cat "$MNT$1" 2>/dev/null; }
+    extract() {                 # extract IMAGE-PATH TARGET
+        mkdir -p "$(dirname "$2")"
+        cp "$MNT$1" "$2" 2>/dev/null
+        [[ -s "$2" ]] || die "cannot read $1 from the image"
+    }
+else
+    read_file() { debugfs -R "cat $1" "$ROOT" 2>/dev/null; }
+    extract() {                 # extract IMAGE-PATH TARGET
+        mkdir -p "$(dirname "$2")"
+        debugfs -R "dump $1 $2" "$ROOT" 2>/dev/null
+        [[ -s "$2" ]] || die "cannot read $1 from the image"
+    }
+fi
+EXTLINUX_CONF=$(read_file /boot/extlinux/extlinux.conf || true)
 [[ -n "$EXTLINUX_CONF" ]] || die "no /boot/extlinux/extlinux.conf in the image"
 
 field() { echo "$EXTLINUX_CONF" | awk -v f="$1" '$1 == f { print $2; exit }'; }
@@ -126,14 +158,13 @@ FDT_DIR=$(field FDTDIR)
 
 plain_path() { echo "$1" | sed 's|^/gnu/store/|/files/|; s|/lib/dtbs$|/dtbs|'; }
 BOOT_DIR="$TMPDIR/boot-area"
-extract() {                     # extract IMAGE-PATH TARGET
-    mkdir -p "$(dirname "$2")"
-    debugfs -R "dump $1 $2" "$TMPDIR/root.ext4" 2>/dev/null
-    [[ -s "$2" ]] || die "cannot read $1 from the image"
-}
 extract "$KERNEL_PATH" "$BOOT_DIR$(plain_path "$KERNEL_PATH")"
 extract "$INITRD_PATH" "$BOOT_DIR$(plain_path "$INITRD_PATH")"
 extract "$FDT_DIR/$DTB" "$BOOT_DIR$(plain_path "$FDT_DIR")/$DTB"
+if [[ "$ROOT_FS" == btrfs ]]; then
+    unmount_root
+    trap cleanup EXIT
+fi
 mkdir -p "$BOOT_DIR/boot/extlinux"
 # First entry only: the image has one generation.
 echo "$EXTLINUX_CONF" |
@@ -146,31 +177,6 @@ fi
 echo "==> Creating plain boot ext4 (${BOOT_MIB} MiB)…"
 mke2fs -q -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
     -d "$BOOT_DIR" "$TMPDIR/boot.ext4" "${BOOT_MIB}M"
-
-# ── Root to btrfs ─────────────────────────────────────────────────────────
-# The systems declare a btrfs root (system/common.scm), and Guix builds ext4
-# images: the image's files go into a zstd-compressed btrfs labelled guix,
-# at its smallest (the phone grows it at first boot).  As root, so owners
-# and modes are kept; the ext4 mounted read-only, its journal left alone.
-# sudo resets PATH: the tools by their path.  The btrfs keeps the ext4's
-# UUID: the image's boot configuration names the root by it (QEMU,
-# 2026-11-08: "partition-lookup-error" with a new UUID).
-echo "==> Making the root btrfs…"
-ROOT_UUID=$(tune2fs -l "$TMPDIR/root.ext4" | awk '/^Filesystem UUID:/ { print $3 }')
-[[ -n "$ROOT_UUID" ]] || die "cannot read the root's UUID"
-MNT="$TMPDIR/root-mnt"
-mkdir -p "$MNT"
-sudo "$(command -v mount)" -o loop,ro,noload "$TMPDIR/root.ext4" "$MNT"
-USED=$(sudo "$(command -v du)" -sxb "$MNT" | cut -f1)
-truncate -s "$(( USED + USED / 4 + 256 * 1024 * 1024 ))" "$TMPDIR/root.btrfs"
-if ! sudo "$(command -v mkfs.btrfs)" -q -L guix -U "$ROOT_UUID" --rootdir "$MNT" \
-         --compress zstd:3 --shrink "$TMPDIR/root.btrfs"; then
-    sudo "$(command -v umount)" "$MNT"
-    die "mkfs.btrfs failed"
-fi
-sudo "$(command -v umount)" "$MNT"
-rm -f "$TMPDIR/root.ext4"
-echo "    root.btrfs: $(( $(wc -c < "$TMPDIR/root.btrfs") / 1048576 )) MiB (ext4 files: $(( USED / 1048576 )) MiB)"
 
 # ── Passphrase ────────────────────────────────────────────────────────────────
 echo ""
@@ -194,7 +200,7 @@ XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 # The header alone goes through a small file; the encrypted root is written straight
 # into the image, so the build needs room for the root and the image, not more.
 echo "==> Creating LUKS2 header…"
-ROOT_SIZE=$(wc -c < "$TMPDIR/root.btrfs")
+ROOT_SIZE=$(wc -c < "$ROOT")
 truncate -s "$(( LUKS_PAYLOAD_MIB + 1 ))M" "$TMPDIR/luks-header.bin"
 dd if=/dev/urandom of="$TMPDIR/volkey.bin"          bs=64  count=1          2>/dev/null
 printf '%s' "$PASSPHRASE" > "$TMPDIR/passphrase.bin"
@@ -225,9 +231,9 @@ dd if="$TMPDIR/luks-header.bin" of="$TMPDIR/userdata.img" bs=1M seek="$BOOT_MIB"
 
 echo "==> Encrypting root partition…"
 "$XTS_ENC" "$TMPDIR/volkey.bin" "$TMPDIR/userdata.img" \
-    "$(( BOOT_BYTES + PAYLOAD_BYTES ))" < "$TMPDIR/root.btrfs"
+    "$(( BOOT_BYTES + PAYLOAD_BYTES ))" < "$ROOT"
 shred -u "$TMPDIR/volkey.bin"
-rm -f "$TMPDIR/root.btrfs"
+rm -f "$ROOT"
 echo "    ${TOTAL_MIB} MiB  (${BOOT_MIB} MiB plain boot + $(( TOTAL_MIB - BOOT_MIB )) MiB LUKS)"
 
 # ── vbmeta ────────────────────────────────────────────────────────────────────

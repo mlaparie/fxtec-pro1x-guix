@@ -200,16 +200,13 @@ jobs:
       - name: Build system image (mobile)
         run: |
           echo "==> disk space before build:"; df -h /
-          guix time-machine --disable-authentication -C channels-ci.scm -- \
-            system image \
-            --image-type=efi-raw \
-            --no-grafts \
-            -L modules \
-            systems/mobile.scm \
+          TM="guix time-machine --disable-authentication -C channels-ci.scm --"
+          # The system first, as the runner; a failure logs its builders.
+          $TM system build --no-grafts -L modules systems/mobile.scm \
             2>&1 | tee /tmp/image.log || true
-          IMG=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
-          if [ ! -f "$IMG" ]; then
-            echo "==> Image build failed — log:"; cat /tmp/image.log
+          SYS=$(grep '^/gnu/store' /tmp/image.log | grep -v '\.drv' | tail -1)
+          if [ ! -d "$SYS" ]; then
+            echo "==> System build failed — log:"; cat /tmp/image.log
             df -h / /tmp
             # Print the tail of each failed builder's own log.
             for drv in $(grep -o "builder for \`[^']*" /tmp/image.log | sed 's/.*`//' | sort -u); do
@@ -220,21 +217,30 @@ jobs:
             done
             exit 1
           fi
-          echo "Built: $IMG"
-          # Extract root ext4 partition (partition 2 in GPT efi-raw layout)
-          PART_INFO=$(partx -o START,SECTORS -g -n 2 "$IMG")
-          PART_START=$(echo "$PART_INFO" | awk '{print $1}')
-          PART_SECTORS=$(echo "$PART_INFO" | awk '{print $2}')
-          dd if="$IMG" of=rootfs.img bs=512 skip="$PART_START" count="$PART_SECTORS"
-          LABEL=$(e2label rootfs.img 2>/dev/null || true)
-          [ "$LABEL" = "guix" ] || e2label rootfs.img guix
-          echo "rootfs: $(( PART_SECTORS / 2048 )) MiB"
-          # Shrink to the minimum: the phone grows it back on first boot
-          # (pro1x-rootfs-resize-service-type).
-          e2fsck -fy rootfs.img || [ $? -le 1 ]
-          resize2fs -M rootfs.img
-          echo "rootfs after resize2fs -M: $(( $(stat -c %s rootfs.img) / 1048576 )) MiB"
-          echo "==> disk space after extraction:"; df -h /
+          echo "Built: $SYS"
+          # The root as btrfs (rootfs.img, the same name as before).  Guix's
+          # image builder makes ext4 only, and rewrites the root file system
+          # it declares from its partition: the system would boot on ext4
+          # only.  So guix system init into a directory, as root for the
+          # owners (the bootloader only writes /boot/extlinux/extlinux.conf),
+          # with the runner's channel cache; then a zstd btrfs of it,
+          # labelled guix, at its smallest: the phone grows it at first boot
+          # (pro1x-rootfs-resize-service-type).  Guix's mkfs.btrfs: Ubuntu's
+          # is too old for --compress with --rootdir.
+          ROOTDIR=/var/guix-tmp/rootdir
+          sudo mkdir -p /root/.cache "$ROOTDIR"
+          sudo cp -a "$HOME/.cache/guix" /root/.cache/
+          sudo env "PATH=$PATH" HOME=/root $TM system init --no-grafts \
+            -L modules systems/mobile.scm "$ROOTDIR"
+          sudo test -s "$ROOTDIR/boot/extlinux/extlinux.conf"
+          MKFS=$($TM build btrfs-progs | grep -v '\.drv' | tail -1)/bin/mkfs.btrfs
+          USED=$(sudo du -sxb "$ROOTDIR" | cut -f1)
+          rm -f rootfs.img
+          truncate -s "$(( USED + USED / 4 + 512 * 1024 * 1024 ))" rootfs.img
+          sudo "$MKFS" -q -L guix --rootdir "$ROOTDIR" --compress zstd:3 --shrink rootfs.img
+          sudo rm -rf "$ROOTDIR"
+          echo "rootfs (btrfs): $(( $(stat -c %s rootfs.img) / 1048576 )) MiB, files: $(( USED / 1048576 )) MiB"
+          echo "==> disk space after:"; df -h /
 
       # ── Export the kernel ─────────────────────────────────────────────────
       # The kernel as a signed Guix archive, so a PC can import it and deploy

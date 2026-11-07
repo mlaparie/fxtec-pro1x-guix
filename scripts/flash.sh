@@ -128,7 +128,7 @@ fastboot commands are run via sudo internally (USB device access).
 Options:
   --uboot FILE     Path to u-boot-nodtb.bin
   --dtb FILE       Path to sm6115-fxtec-pro1x.dtb (default: same dir as --uboot)
-  --rootfs FILE    Path to rootfs.img (pre-extracted ext4 partition)
+  --rootfs FILE    Path to rootfs.img (the root alone: btrfs from CI, or ext4)
   --system FILE    Guix system .scm (prompted interactively if omitted)
   --boot-only      Flash U-Boot alone (boot_a, boot_b): userdata is kept
   --encrypt        LUKS2 full-disk encryption (flash-encrypted.sh), asks for the
