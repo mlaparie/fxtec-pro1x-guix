@@ -16,6 +16,8 @@ conf="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mako.config"
 {
     echo '# Written by pro1x-mako; edit ~/.config/mako/config instead.'
     echo 'on-notify=exec pro1x-notify "$id"'
+    # Keep the last 50 in history, which quick actions lists (mako keeps 5).
+    echo 'max-history=50'
     for f in "$HOME/.mako/config" "${XDG_CONFIG_HOME:-$HOME/.config}/mako/config"; do
         if [ -r "$f" ]; then cat "$f"; break; fi
     done
