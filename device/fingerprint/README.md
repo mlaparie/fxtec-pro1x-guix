@@ -155,8 +155,16 @@ No blob is in this repository; they are proprietary.
      regulator are unused). With `gpioset -c gpiochip0 -z 108=1` held, `mafp`
      loaded (app 6) and 0xEF still failed with -22; the IRQ line (97) stayed
      inactive. Before the test, 104 and 108 showed `egpio` in debugfs and no pin
-     was claimed. Not checked yet: the TA's SPI controller (a QUP serial engine
-     TrustZone drives) and its pins under mainline.
+     was claimed.
+   - (2026-11-07) The sensor's SPI bus is most likely QUP SE5 (`spi@4a94000`,
+     pins GPIO 14-17, function `qup5`): the vendor DT declares it but disables it
+     for Linux, as for a bus TrustZone owns, and has no SPI node for the sensor.
+     Mainline leaves it alone too: the node is disabled, GPIOs 14-17 are in
+     `gpio-reserved-ranges` (`<0 4 14 4>`), unclaimed. But mainline turns off the
+     clocks no Linux driver holds: `gcc_qupv3_wrap0_s5_clk` and the wrapper's
+     `core`/`core_2x` were off. The test module's `gcc_clks=91,90,102` kept them
+     on (enable count 1), with the sensor powered, while `mafp` loaded (app 7):
+     0xEF still failed with -22. Not the cause, or not alone.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.

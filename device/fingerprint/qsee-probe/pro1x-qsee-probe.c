@@ -30,7 +30,12 @@
  *             qcom.tz.uefisecapp (loaded by the bootloader), laid out as
  *             mainline's qcom_qseecom_uefisecapp does: a read-only query,
  *             whether this TrustZone takes app commands from mainline's
- *             memory at all.  With whitelist=, command 6.
+ *             memory at all.  With whitelist=, command 6;
+ *   gcc_clks= GCC clock ids (dt-bindings/clock/qcom,gcc-sm6115.h) to keep
+ *             on while the module is loaded, e.g. 91,90,102 for the QUP
+ *             wrapper 0 core clocks and SE5, the SPI engine TrustZone
+ *             drives for the sensor: no Linux driver claims them, so mainline
+ *             turns them off at boot.
  *
  *   peek=     a kernel address (from /proc/kallsyms) whose byte is printed:
  *             e.g. qcom_tzmem_using_shm_bridge, whether mainline enabled
@@ -46,6 +51,7 @@
 
 #include <linux/arm-smccc.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/firmware/qcom/qcom_tzmem.h>
@@ -104,6 +110,12 @@ module_param(uefi, bool, 0444);
 MODULE_PARM_DESC(uefi, "Send QueryVariableInfo to qcom.tz.uefisecapp");
 
 static uint cmd_len = 8;
+
+static uint gcc_clks[8];
+static int n_gcc_clks;
+module_param_array(gcc_clks, uint, &n_gcc_clks, 0444);
+MODULE_PARM_DESC(gcc_clks, "GCC clock ids to keep enabled while loaded");
+static struct clk *held_clks[8];
 
 static uint uefi_size = PAGE_SIZE;
 module_param(uefi_size, uint, 0444);
@@ -503,6 +515,50 @@ static void do_uefi_query(void)
 	qcom_tzmem_free(buf);
 }
 
+static void gcc_clocks_on(void)
+{
+	struct of_phandle_args a = { .args_count = 1 };
+	int i, ret;
+
+	a.np = of_find_compatible_node(NULL, NULL, "qcom,gcc-sm6115");
+	if (!a.np) {
+		pr_err("no GCC node\n");
+		return;
+	}
+	for (i = 0; i < n_gcc_clks; i++) {
+		struct clk *c;
+
+		a.args[0] = gcc_clks[i];
+		c = of_clk_get_from_provider(&a);
+		if (IS_ERR(c)) {
+			pr_err("GCC clock %u: %ld\n", gcc_clks[i], PTR_ERR(c));
+			continue;
+		}
+		ret = clk_prepare_enable(c);
+		pr_info("GCC clock %u (%s) on: %d, rate %lu\n", gcc_clks[i],
+			__clk_get_name(c), ret, clk_get_rate(c));
+		if (ret) {
+			clk_put(c);
+			continue;
+		}
+		held_clks[i] = c;
+	}
+	of_node_put(a.np);
+}
+
+static void gcc_clocks_off(void)
+{
+	int i;
+
+	for (i = n_gcc_clks - 1; i >= 0; i--) {
+		if (!held_clks[i])
+			continue;
+		clk_disable_unprepare(held_clks[i]);
+		clk_put(held_clks[i]);
+		held_clks[i] = NULL;
+	}
+}
+
 static int __init qsee_probe_init(void)
 {
 	struct qcom_tzmem_pool_config config = {
@@ -517,6 +573,8 @@ static int __init qsee_probe_init(void)
 
 	if (peek)
 		pr_info("byte at 0x%lx: %u\n", peek, *(const u8 *)peek);
+
+	gcc_clocks_on();
 
 	do_lookups();
 
@@ -555,6 +613,7 @@ static int __init qsee_probe_init(void)
 out_pool:
 	qcom_tzmem_pool_free(pool);
 	pool = NULL;
+	gcc_clocks_off();
 	return ret;
 }
 
@@ -571,6 +630,7 @@ static void __exit qsee_probe_exit(void)
 	}
 	if (pool)
 		qcom_tzmem_pool_free(pool);
+	gcc_clocks_off();
 }
 
 module_init(qsee_probe_init);
