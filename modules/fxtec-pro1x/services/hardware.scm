@@ -22,7 +22,10 @@
 ;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
 ;;;     The percentage is estimated from voltage, which drops when charging
 ;;;     stops: keep the gap wider than that drop (not measured yet);
-;;;   • light or dark apps (color-scheme, default 'prefer-dark): GSettings;
+;;;   • light or dark apps: not here.  Phosh's dark style (Quick Settings or
+;;;     GNOME Settings, Appearance) stores it in the user's dconf, which Sway's
+;;;     apps read too (through the GTK portal), so there is one setting and
+;;;     Phosh's is it (author, 2026-11-07);
 ;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
 ;;;   • on-screen keyboard: word completion dictionaries (keyboard-languages),
 ;;;     English always, and layouts (keyboard-layouts), independent of them;
@@ -111,12 +114,11 @@
   ;; comes 30 s before the blank.
   (blank-after        pro1x-hardware-blank-after        (default 180))
   (lock-after         pro1x-hardware-lock-after         (default 120))
-  ;; Light or dark apps and shell: 'prefer-dark (default, author) or
-  ;; 'default (light).  A GSettings default (org.gnome.desktop.interface
-  ;; color-scheme, plus Adwaita-dark for GTK 3 apps); a choice made in GNOME
-  ;; Settings or with gsettings wins.  Sway passes it to libadwaita apps
-  ;; (Calls, Chatty) through the GTK portal.
-  (color-scheme       pro1x-hardware-color-scheme       (default 'prefer-dark))
+  ;; Light or dark apps: no field.  Set it in Phosh (dark style), in GNOME
+  ;; Settings, or with gsettings (org.gnome.desktop.interface color-scheme
+  ;; and gtk-theme); Sway follows.  The color-scheme field this replaces
+  ;; was a GSettings default, which the GTK portal did not see: LibreWolf
+  ;; stayed light in Sway (2026-11-07).
   ;; A short vibration on each on-screen keyboard key (stevia), in
   ;; feedbackd's quiet and full profiles (author).
   (keyboard-haptics?  pro1x-hardware-keyboard-haptics?  (default #t))
@@ -1175,8 +1177,7 @@ under the file names stevia looks for.")
   ;; Phosh's blank and lock delays as system-wide GSettings defaults: an
   ;; override in the system profile, compiled by Guix's glib-schemas hook.
   (let ((blank (pro1x-hardware-blank-after config))
-        (lock (pro1x-hardware-lock-after config))
-        (scheme (symbol->string (pro1x-hardware-color-scheme config))))
+        (lock (pro1x-hardware-lock-after config)))
     (package
       (name "pro1x-idle-gsettings")
       (version "0.1")
@@ -1202,16 +1203,10 @@ under the file names stevia looks for.")
                      (format port "[org.gnome.desktop.session~a]~%idle-delay=uint32 ~a~%~%[org.gnome.desktop.screensaver~a]~%lock-enabled=~a~%lock-delay=uint32 ~a~%~%"
                              suffix #$blank suffix
                              #$(if lock "true" "false") #$(or lock 0)))
-                   '("" ":Phosh"))
-                  (format port "[org.gnome.desktop.interface]~%color-scheme='~a'~%gtk-theme='~a'~%"
-                          #$scheme
-                          #$(if (string=? scheme "prefer-dark")
-                                "Adwaita-dark"
-                                "Adwaita"))))))))
+                   '("" ":Phosh"))))))))
       (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-      (synopsis "Pro1X blank and lock delays, colour scheme")
-      (description "GSettings defaults for the blank and lock delays and the
-light or dark colour scheme.")
+      (synopsis "Pro1X blank and lock delays")
+      (description "GSettings defaults for the blank and lock delays.")
       (license license:gpl3+))))
 
 (define pro1x-hardware-service-type

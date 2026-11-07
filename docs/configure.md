@@ -53,7 +53,6 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `blank-after` | `180` | idle seconds before the panel turns off |
 | hardware `lock-after` | `120` | seconds after blanking before locking; `#f` never |
 | hardware `double-tap-wake?` | `#t` | double tap on the touchscreen wakes the panel |
-| hardware `color-scheme` | `'prefer-dark` | `'default` for light apps and shell |
 | hardware `keyboard-haptics?` | `#t` | a short vibration per on-screen key |
 | hardware `vibration-level` | `80` | the vibration motor's strength, 1-127 (stock 59); every vibration, the motor warms more when higher |
 | hardware `keyboard-languages` | `'()` | word completion dictionaries besides English: `'("fr")`, any of `"fr"` `"de"` `"it"`; quick actions chooses which to combine, or off |
@@ -83,7 +82,8 @@ The starting `config.scm` lists these, commented with their defaults.
 `blank-after` and `lock-after` are the defaults of the GSettings keys that
 GNOME Settings (blank) and Phosh Mobile Settings ("Automatic screen lock
 delay") show and change; a value set there wins, in Phosh and in Sway.
-`color-scheme` too.
+Light or dark apps are not a config.scm setting: Phosh's dark style (Quick
+Settings, or GNOME Settings, Appearance) sets it, and Sway's apps follow.
 
 Keyboard: `pro1x-keyboard-configuration` in `(fxtec-pro1x services
 keyboard)`; hardware: `pro1x-hardware-configuration` in `(fxtec-pro1x

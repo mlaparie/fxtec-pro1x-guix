@@ -95,8 +95,8 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (auto-suspend #f)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
-  ;;                Light or dark apps and shell: 'prefer-dark or 'default (light).
-  ;;                (color-scheme 'prefer-dark)
+  ;;                Light or dark apps: Phosh's dark style (or GNOME Settings), not here;
+  ;;                Sway follows it.
   ;;                Rows to black out at the panel's top and bottom.
   ;;                (display-top-gap 0)
   ;;                (display-bottom-gap 0)

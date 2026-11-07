@@ -45,7 +45,7 @@ suspend, deep sleep, charging (it goes above the charge limit).
   mobile layout.  It makes the browser stand out in portrait next to
   resistFingerprinting.
 - Dim, blank and lock after idle (150 s, 180 s, +2 min; config.scm).
-- Dark apps and shell by default (color-scheme in config.scm).
+- Light or dark apps and shell from Phosh's dark style, in Phosh and Sway.
 - Charge limit (85/80 %) set in config.scm; quick actions override it until reboot.
 - Notification LED: blue for messages, purple for missed calls, white
   for the terminal bell (config.scm); breathing yellow
