@@ -127,10 +127,11 @@ ringing() {
 sms_count() { mmcli -m any --messaging-list-sms 2>/dev/null | grep -c received; }
 
 # Touches and key presses: the interrupts of the touchscreen (gt9286), the
-# keyboard and its modifier keys, the other keys and the power key, summed
-# over the CPUs.  The keyboard slide (Hall Switch) does not count.
+# keyboard and its modifier keys, the other keys (Volume Down is
+# pm8941_resin) and the power key, summed over the CPUs.  The keyboard
+# slide (Hall Switch) does not count.
 input_irqs() {
-    awk '/ (gt9286|pro1x-kbd|Home|Super Left|Super Right|Shift|Ctrl|Alt|Camera Button|Volume Up|pm8941_pwrkey)$/ {
+    awk '/ (gt9286|pro1x-kbd|Home|Super Left|Super Right|Shift|Ctrl|Alt|Camera Button|Volume Up|pm8941_pwrkey|pm8941_resin)$/ {
              for (i = 2; i <= NF && $i ~ /^[0-9]+$/; i++) n += $i }
          END { print n + 0 }' /proc/interrupts
 }
