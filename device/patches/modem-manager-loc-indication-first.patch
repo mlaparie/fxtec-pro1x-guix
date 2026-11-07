@@ -1,0 +1,317 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] shared-qmi: LOC indications may come before the response
+
+On the Qualcomm SM6115 modem over QRTR (F(x)tec Pro1X, MPSS.HA.1.1),
+the LOC service sends the indication of Get Predicted Orbits Data Source
+before the response.  ModemManager connects the indication handler in
+the response callback, so it misses the indication and gives up after
+10 s: "couldn't load supported assistance data types: Failed to receive
+indication with the predicted orbits data source", and XTRA injection
+is "unsupported".  The --debug trace shows the order (indication at
+.342776, response at .342969, same transaction).
+
+For the XTRA support probe and Inject Xtra Data: connect the handler
+before the request, and complete once both the response and the
+indication are in, in either order; on a timeout or a failed response,
+disconnect first so a late indication cannot complete the task again.
+Other LOC requests with indications (servers, NMEA types, operation
+mode) wait the same way and likely fail the same way here ("couldn't
+setup required NMEA traces"); not changed yet.
+
+Ours (fxtec-pro1x-guix, 2026-11-07), against ModemManager 1.24.0.
+---
+--- a/src/mm-shared-qmi.c
++++ b/src/mm-shared-qmi.c
+@@ -6563,10 +6563,17 @@
+ /*****************************************************************************/
+ /* Location: load supported assistance data */
+ 
++/* Some modems (Qualcomm SM6115 over QRTR) send the indication before the
++ * response: the handler is connected before the request, and the task
++ * completes once both have arrived, in either order. */
+ typedef struct {
+-    QmiClientLoc *client;
+-    glong         indication_id;
+-    guint         timeout_id;
++    QmiClientLoc                      *client;
++    glong                              indication_id;
++    guint                              timeout_id;
++    gboolean                           got_response;
++    gboolean                           got_indication;
++    GError                            *indication_error;
++    MMModemLocationAssistanceDataType  indication_value;
+ } LoadSupportedAssistanceDataContext;
+ 
+ static void
+@@ -6579,9 +6586,23 @@
+             g_signal_handler_disconnect (ctx->client, ctx->indication_id);
+         g_object_unref (ctx->client);
+     }
++    g_clear_error (&ctx->indication_error);
+     g_slice_free (LoadSupportedAssistanceDataContext, ctx);
+ }
+ 
++static void
++load_supported_assistance_data_complete (GTask *task)
++{
++    LoadSupportedAssistanceDataContext *ctx;
++
++    ctx = g_task_get_task_data (task);
++    if (ctx->indication_error)
++        g_task_return_error (task, g_steal_pointer (&ctx->indication_error));
++    else
++        g_task_return_int (task, ctx->indication_value);
++    g_object_unref (task);
++}
++
+ MMModemLocationAssistanceDataType
+ mm_shared_qmi_location_load_supported_assistance_data_finish (MMIfaceModemLocation  *self,
+                                                               GAsyncResult          *res,
+@@ -6605,6 +6626,11 @@
+ 
+     ctx = g_task_get_task_data (task);
+     ctx->timeout_id = 0;
++    /* No late indication may complete the task again */
++    if (ctx->indication_id) {
++        g_signal_handler_disconnect (ctx->client, ctx->indication_id);
++        ctx->indication_id = 0;
++    }
+ 
+     g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_ABORTED,
+                              "Failed to receive indication with the predicted orbits data source");
+@@ -6670,13 +6696,25 @@
+     }
+ 
+ out:
+-    if (error)
+-        g_task_return_error (task, error);
+-    else if (!supported)
+-        g_task_return_int (task, MM_MODEM_LOCATION_ASSISTANCE_DATA_TYPE_NONE);
+-    else
+-        g_task_return_int (task, MM_MODEM_LOCATION_ASSISTANCE_DATA_TYPE_XTRA);
+-    g_object_unref (task);
++    {
++        LoadSupportedAssistanceDataContext *ctx;
++
++        ctx = g_task_get_task_data (task);
++        if (ctx->timeout_id) {
++            g_source_remove (ctx->timeout_id);
++            ctx->timeout_id = 0;
++        }
++        g_signal_handler_disconnect (ctx->client, ctx->indication_id);
++        ctx->indication_id = 0;
++
++        ctx->got_indication = TRUE;
++        ctx->indication_error = error;
++        ctx->indication_value = supported ?
++            MM_MODEM_LOCATION_ASSISTANCE_DATA_TYPE_XTRA :
++            MM_MODEM_LOCATION_ASSISTANCE_DATA_TYPE_NONE;
++        if (ctx->got_response)
++            load_supported_assistance_data_complete (task);
++    }
+ }
+ 
+ static void
+@@ -6691,6 +6729,13 @@
+     ctx = g_task_get_task_data (task);
+ 
+     output = qmi_client_loc_get_predicted_orbits_data_source_finish (client, res, &error);
++    if (!output || !qmi_message_loc_get_predicted_orbits_data_source_output_get_result (output, &error)) {
++        /* No late indication may complete the task again */
++        if (ctx->indication_id) {
++            g_signal_handler_disconnect (ctx->client, ctx->indication_id);
++            ctx->indication_id = 0;
++        }
++    }
+     if (!output) {
+         g_prefix_error (&error, "QMI operation failed: ");
+         g_task_return_error (task, error);
+@@ -6705,17 +6750,17 @@
+         return;
+     }
+ 
+-    /* The task ownership is shared between signal and timeout; the one which is
+-     * scheduled first will cancel the other. */
+-    ctx->indication_id = g_signal_connect (ctx->client,
+-                                           "get-predicted-orbits-data-source",
+-                                           G_CALLBACK (loc_location_get_predicted_orbits_data_source_indication_cb),
+-                                           task);
++    qmi_message_loc_get_predicted_orbits_data_source_output_unref (output);
++
++    /* The indication may have come first */
++    ctx->got_response = TRUE;
++    if (ctx->got_indication) {
++        load_supported_assistance_data_complete (task);
++        return;
++    }
+     ctx->timeout_id = g_timeout_add_seconds (10,
+                                              (GSourceFunc)loc_location_get_predicted_orbits_data_source_indication_timed_out,
+                                              task);
+-
+-    qmi_message_loc_get_predicted_orbits_data_source_output_unref (output);
+ }
+ 
+ void
+@@ -6741,6 +6786,11 @@
+     ctx->client = QMI_CLIENT_LOC (g_object_ref (client));
+     g_task_set_task_data (task, ctx, (GDestroyNotify)load_supported_assistance_data_context_free);
+ 
++    /* Before the request: the indication may come before the response */
++    ctx->indication_id = g_signal_connect (ctx->client,
++                                           "get-predicted-orbits-data-source",
++                                           G_CALLBACK (loc_location_get_predicted_orbits_data_source_indication_cb),
++                                           task);
+     qmi_client_loc_get_predicted_orbits_data_source (ctx->client,
+                                                      NULL,
+                                                      10,
+@@ -6764,6 +6814,10 @@
+     guint         timeout_id;
+     goffset       i;
+     gulong        n_part;
++    /* XTRA parts: the indication may come before the response */
++    gboolean      got_response;
++    gboolean      got_indication;
++    GError       *indication_error;
+ } InjectAssistanceDataContext;
+ 
+ static void
+@@ -6776,6 +6830,7 @@
+             g_signal_handler_disconnect (ctx->client, ctx->indication_id);
+         g_object_unref (ctx->client);
+     }
++    g_clear_error (&ctx->indication_error);
+     g_free (ctx->data);
+     g_slice_free (InjectAssistanceDataContext, ctx);
+ }
+@@ -6795,6 +6850,11 @@
+ 
+     ctx = g_task_get_task_data (task);
+     ctx->timeout_id = 0;
++    /* No late indication may go on with the next part */
++    if (ctx->indication_id) {
++        g_signal_handler_disconnect (ctx->client, ctx->indication_id);
++        ctx->indication_id = 0;
++    }
+ 
+     g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_ABORTED,
+                              "Failed to receive indication with the server update result");
+@@ -6804,6 +6864,21 @@
+ 
+ static void inject_xtra_data_next (GTask *task);
+ 
++/* Both the response and the indication of a part are in */
++static void
++inject_xtra_data_part_done (GTask *task)
++{
++    InjectAssistanceDataContext *ctx;
++
++    ctx = g_task_get_task_data (task);
++    if (ctx->indication_error) {
++        g_task_return_error (task, g_steal_pointer (&ctx->indication_error));
++        g_object_unref (task);
++        return;
++    }
++    inject_xtra_data_next (task);
++}
++
+ static void
+ loc_location_inject_xtra_data_indication_cb (QmiClientLoc                         *client,
+                                              QmiIndicationLocInjectXtraDataOutput *output,
+@@ -6813,29 +6888,24 @@
+     QmiLocIndicationStatus       status;
+     GError                      *error = NULL;
+ 
+-    if (!qmi_indication_loc_inject_xtra_data_output_get_indication_status (output, &status, &error)) {
+-        g_prefix_error (&error, "QMI operation failed: ");
+-        goto out;
+-    }
+-
+-    mm_error_from_qmi_loc_indication_status (status, &error);
+-
+-out:
+-    if (error) {
+-        g_task_return_error (task, error);
+-        g_object_unref (task);
+-        return;
+-    }
+-
+     ctx = g_task_get_task_data (task);
++    /* Not for a part in flight */
++    if (ctx->got_indication)
++        return;
+ 
+-    g_source_remove (ctx->timeout_id);
+-    ctx->timeout_id = 0;
+-
+-    g_signal_handler_disconnect (ctx->client, ctx->indication_id);
+-    ctx->indication_id = 0;
++    if (qmi_indication_loc_inject_xtra_data_output_get_indication_status (output, &status, &error))
++        mm_error_from_qmi_loc_indication_status (status, &error);
++    else
++        g_prefix_error (&error, "QMI operation failed: ");
+ 
+-    inject_xtra_data_next (task);
++    if (ctx->timeout_id) {
++        g_source_remove (ctx->timeout_id);
++        ctx->timeout_id = 0;
++    }
++    ctx->got_indication = TRUE;
++    ctx->indication_error = error;
++    if (ctx->got_response)
++        inject_xtra_data_part_done (task);
+ }
+ 
+ static void
+@@ -6851,20 +6921,21 @@
+ 
+     output = qmi_client_loc_inject_xtra_data_finish (client, res, &error);
+     if (!output || !qmi_message_loc_inject_xtra_data_output_get_result (output, &error)) {
++        g_signal_handler_disconnect (ctx->client, ctx->indication_id);
++        ctx->indication_id = 0;
+         g_task_return_error (task, error);
+         g_object_unref (task);
+         goto out;
+     }
+ 
+-    /* The task ownership is shared between signal and timeout; the one which is
+-     * scheduled first will cancel the other. */
+-    ctx->indication_id = g_signal_connect (ctx->client,
+-                                           "inject-xtra-data",
+-                                           G_CALLBACK (loc_location_inject_xtra_data_indication_cb),
+-                                           task);
+-    ctx->timeout_id = g_timeout_add_seconds (10,
+-                                             (GSourceFunc)loc_location_inject_data_indication_timed_out,
+-                                             task);
++    /* The indication may have come first */
++    ctx->got_response = TRUE;
++    if (ctx->got_indication)
++        inject_xtra_data_part_done (task);
++    else
++        ctx->timeout_id = g_timeout_add_seconds (10,
++                                                 (GSourceFunc)loc_location_inject_data_indication_timed_out,
++                                                 task);
+ out:
+     if (output)
+         qmi_message_loc_inject_xtra_data_output_unref (output);
+@@ -6915,6 +6986,8 @@
+     g_array_unref (data);
+ 
+     ctx->i += count;
++    ctx->got_response = FALSE;
++    ctx->got_indication = FALSE;
+ 
+     mm_obj_dbg (self, "injecting xtra data: %" G_GSIZE_FORMAT " bytes (%u/%u)",
+                 count, (guint) ctx->n_part, (guint) ctx->total_parts);
+@@ -6941,6 +7014,12 @@
+     ctx->n_part = 0;
+     ctx->i = 0;
+ 
++    /* Connected for all parts, before the first request: the indication may
++     * come before the response.  Disconnected when the context is freed. */
++    ctx->indication_id = g_signal_connect (ctx->client,
++                                           "inject-xtra-data",
++                                           G_CALLBACK (loc_location_inject_xtra_data_indication_cb),
++                                           task);
+     inject_xtra_data_next (task);
+ }
+ 

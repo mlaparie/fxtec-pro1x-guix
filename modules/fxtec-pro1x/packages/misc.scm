@@ -658,7 +658,14 @@ Used as the compositor for the Phosh mobile shell.")
              "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
              "/-/archive/" version "/ModemManager-" version ".tar.gz"))
        (sha256
-        (base32 "1ix74pj05isl9fbyxyi4ainv5igv1n986i41xp50pc5c4jxndqah"))))
+        (base32 "1ix74pj05isl9fbyxyi4ainv5igv1n986i41xp50pc5c4jxndqah"))
+       ;; Ours: the modem's LOC service answers some requests with the
+       ;; indication before the response; ModemManager missed it, so XTRA
+       ;; was "unsupported" (2026-11-07).
+       (patches
+        (list (local-file
+               (repository-file "device/patches/modem-manager-loc-indication-first.patch")
+               "modem-manager-loc-indication-first.patch")))))
     (arguments
      (substitute-keyword-arguments (package-arguments modem-manager)
        ((#:configure-flags flags)
