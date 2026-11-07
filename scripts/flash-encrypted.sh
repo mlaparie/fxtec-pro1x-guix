@@ -152,14 +152,18 @@ mke2fs -q -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
 # images: the image's files go into a zstd-compressed btrfs labelled guix,
 # at its smallest (the phone grows it at first boot).  As root, so owners
 # and modes are kept; the ext4 mounted read-only, its journal left alone.
-# sudo resets PATH: the tools by their path.
+# sudo resets PATH: the tools by their path.  The btrfs keeps the ext4's
+# UUID: the image's boot configuration names the root by it (QEMU,
+# 2026-11-08: "partition-lookup-error" with a new UUID).
 echo "==> Making the root btrfs…"
+ROOT_UUID=$(tune2fs -l "$TMPDIR/root.ext4" | awk '/^Filesystem UUID:/ { print $3 }')
+[[ -n "$ROOT_UUID" ]] || die "cannot read the root's UUID"
 MNT="$TMPDIR/root-mnt"
 mkdir -p "$MNT"
 sudo "$(command -v mount)" -o loop,ro,noload "$TMPDIR/root.ext4" "$MNT"
 USED=$(sudo "$(command -v du)" -sxb "$MNT" | cut -f1)
 truncate -s "$(( USED + USED / 4 + 256 * 1024 * 1024 ))" "$TMPDIR/root.btrfs"
-if ! sudo "$(command -v mkfs.btrfs)" -q -L guix --rootdir "$MNT" \
+if ! sudo "$(command -v mkfs.btrfs)" -q -L guix -U "$ROOT_UUID" --rootdir "$MNT" \
          --compress zstd:3 --shrink "$TMPDIR/root.btrfs"; then
     sudo "$(command -v umount)" "$MNT"
     die "mkfs.btrfs failed"
