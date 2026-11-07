@@ -163,6 +163,11 @@
   ;; and alarms: 'calls (an incoming call), 'sms (a text message, Chatty).
   ;; Internet chats cannot: the network is not a wakeup source.
   (wake-on            pro1x-hardware-wake-on            (default '(calls sms)))
+  ;; Let the USB controller (DWC3) runtime-suspend when unplugged, so its PHY
+  ;; supplies switch off: moWerk measured system sleep at 29-32 mA instead of
+  ;; 40-42 with it (his notes/sleep.md, 2026-11-02; not every boot).  The
+  ;; driver forbids it at probe; #f keeps it so.
+  (usb-runtime-pm?    pro1x-hardware-usb-runtime-pm?    (default #t))
   ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
   ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
   ;; a string is a shell command run in the Sway session through pro1x-open
@@ -408,8 +413,9 @@ colours from the system configuration.")
 
 (define (pro1x-udev-rules config)
   ;; Returns a file-like object: the base rules, the vibration motor's drive
-  ;; level (a module parameter, set when the module loads), and a touch
-  ;; calibration matrix rule when display gaps are configured.
+  ;; level (a module parameter, set when the module loads), the USB
+  ;; controller's runtime PM, and a touch calibration matrix rule when
+  ;; display gaps are configured.
   (define (vibration-rule)
     (let ((level (pro1x-hardware-vibration-level config)))
       (unless (and (integer? level) (<= 1 level 127))
@@ -418,7 +424,14 @@ colours from the system configuration.")
                 level)))
       (string-append
        "ACTION==\"add\", SUBSYSTEM==\"module\", KERNEL==\"aw86224\","
-       " ATTR{parameters/drv2_lvl}=\"" (number->string level) "\"\n")))
+       " ATTR{parameters/drv2_lvl}=\"" (number->string level) "\"\n"
+       ;; At bind: the driver's probe resets power/control to "on" (moWerk's
+       ;; 70-qx1050-usb-runtime-pm.rules).
+       (if (pro1x-hardware-usb-runtime-pm? config)
+           (string-append
+            "ACTION==\"bind\", SUBSYSTEM==\"platform\", DRIVER==\"dwc3\","
+            " ATTR{power/control}=\"auto\"\n")
+           ""))))
   ;; The base file's text, then EXTRA: mixed-text-file would put the base
   ;; file's store path there instead (2026-11-06: generation 3 had only the
   ;; path and the vibration rule).

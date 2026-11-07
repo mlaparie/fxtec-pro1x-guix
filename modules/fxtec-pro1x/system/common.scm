@@ -126,6 +126,8 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (cpu-mode 'auto)
   ;;                What wakes the phone from suspend, besides its keys and alarms.
   ;;                (wake-on '(calls sms))
+  ;;                Let the USB controller sleep when unplugged (lower suspend draw).
+  ;;                (usb-runtime-pm? #t)
   ;;                Torch off after this many seconds (#f: never).
   ;;                (torch-timeout 60)
   ;;                Shaking twice: 'torch, or a shell command (a string).

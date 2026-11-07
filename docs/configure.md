@@ -68,6 +68,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `auto-suspend` | `#f` | seconds after blanking before suspending, locking first (Sway); `#f` never |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
+| hardware `usb-runtime-pm?` | `#t` | let the USB controller runtime-suspend when unplugged, so its supplies switch off in suspend (moWerk: 29-32 mA instead of 40-42); `#f` keeps it on |
 | hardware `cpu-mode` | `'auto` | the CPU's energy mode: `'auto` (balanced; battery while the screen is off or the battery is at 20 % or less), `'battery` (schedutil, capped at 1.31/1.40 GHz), `'balanced` (schedutil, dynamic), `'performance` (top frequency).  Quick actions (CPU mode line) override it until the next reboot, marked "(until reboot)" |
 | hardware `shake-torch?` | `#t` | shaking the phone twice runs `shake-action`, locked or not |
 | hardware `shake-action` | `'torch` | `'torch` toggles the torch; a string is a shell command, run in Sway (over the lock screen for `lock-screen-apps`) |
