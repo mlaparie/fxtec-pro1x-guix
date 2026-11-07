@@ -5,6 +5,7 @@
   #:use-module (fxtec-pro1x packages misc)
   #:use-module (gnu packages base)          ; coreutils, grep
   #:use-module (gnu packages bash)          ; bash-minimal
+  #:use-module (gnu packages curl)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages linux)         ; util-linux (mount)
@@ -26,7 +27,11 @@
   pro1x-modem-configuration?
   (verbose? pro1x-modem-verbose? (default #f))
   ;; VoLTE: 81voltd serves the IMS data connection the modem asks for.
-  (volte? pro1x-modem-volte? (default #t)))
+  (volte? pro1x-modem-volte? (default #t))
+  ;; XTRA: download the modem's predicted satellite orbits (about 50 KB, Wi-Fi
+  ;; or mobile data) once a day and inject them, so a GPS fix takes seconds
+  ;; rather than minutes.
+  (xtra? pro1x-modem-xtra? (default #t)))
 
 (define (pro1x-modem-shepherd-services config)
   (let ((verbose-flag (if (pro1x-modem-verbose? config) '("-v") '())))
@@ -303,6 +308,69 @@ exit 0
              #:log-file "/var/log/pro1x-gnss-unlock.log"))
    (stop #~(make-kill-destructor))))
 
+;;; XTRA, the modem's predicted satellite orbits: without them a first fix
+;;; waited for each satellite's own orbit data (about 7 minutes outdoors,
+;;; 2026-11-07).  ModemManager lists the servers the modem names (needs
+;;; device/patches/modem-manager-loc-indication-first.patch: the modem
+;;; answers before ModemManager listened) and injects the file; the modem
+;;; keeps it valid for 168 h.  The modem's writes do not outlive a boot
+;;; (rmtfs -r), so the file is kept in /var/lib/pro1x-xtra and injected at
+;;; each start; downloaded again once a day, from the first server that
+;;; answers, over whatever network is up; on failure, an hour later.
+;;;
+;;; State: one injection by hand on the phone (2026-11-07, a patched
+;;; ModemManager run by hand): "successfully injected", validity 168 h.
+;;; The service: build-tested only.
+(define pro1x-xtra-script
+  (mixed-text-file
+   "pro1x-xtra"
+   "#!" (file-append bash-minimal "/bin/sh") "
+PATH=" coreutils "/bin:" findutils "/bin:" grep "/bin:" sed "/bin:" curl "/bin:" modem-manager-1.24 "/bin
+dir=/var/lib/pro1x-xtra file=/var/lib/pro1x-xtra/xtra.bin
+log() { echo \"$(date '+%F %T') $*\"; }
+servers() {
+  mmcli -m any --location-status --output-keyvalue 2>/dev/null |
+    sed -n 's/^modem.location.gps.assistance-servers.value[^:]*: *//p'
+}
+inject() {
+  if mmcli -m any --location-inject-assistance-data=\"$file\" >/dev/null 2>&1; then
+    log \"injected ($(stat -c %s \"$file\") bytes, from $(date -r \"$file\" '+%F %T'))\"
+  else
+    log 'injection failed'; return 1
+  fi
+}
+download() {
+  for url in $(servers); do
+    curl -sfL -m 120 -o \"$file.new\" \"$url\" && [ -s \"$file.new\" ] &&
+      mv \"$file.new\" \"$file\" && { log \"downloaded $url\"; return 0; }
+  done
+  rm -f \"$file.new\"; log 'download failed'; return 1
+}
+mkdir -p \"$dir\"
+# ModemManager lists the servers once the modem is up.
+until [ -n \"$(servers)\" ]; do sleep 30; done
+# The cached file, if under 7 days old.
+[ -n \"$(find \"$file\" -mmin -10080 2>/dev/null)\" ] && inject
+while :; do
+  if [ -z \"$(find \"$file\" -mmin -1440 2>/dev/null)\" ]; then
+    if download && inject; then sleep 86400; else sleep 3600; fi
+  else
+    sleep 3600
+  fi
+done
+"))
+
+(define (pro1x-xtra-service config)
+  (shepherd-service
+   (provision '(pro1x-xtra))
+   (requirement '(modem-manager))
+   (documentation "Keep the modem's XTRA satellite orbit data fresh")
+   (start #~(make-forkexec-constructor
+             (list "/bin/sh" #$pro1x-xtra-script)
+             #:log-file "/var/log/pro1x-xtra.log"))
+   (stop #~(make-kill-destructor))
+   (respawn? #t)))
+
 ;;; polkit: let members of netdev use ModemManager (unlock the SIM with PIN
 ;;; or PUK, calls, SMS) and NetworkManager.  polkit's defaults allow these
 ;;; only to the active local session, which it cannot tell without logind
@@ -365,6 +433,9 @@ exit 0
                                   (list (pro1x-uim-provision-service config)
                                         (pro1x-gnss-unlock-service config)
                                         (pro1x-modem-pr-service config))
+                                  (if (pro1x-modem-xtra? config)
+                                      (list (pro1x-xtra-service config))
+                                      '())
                                   (pro1x-modem-shepherd-services config))))
      (service-extension dbus-root-service-type
                         (lambda (_) (list modem-manager-1.24)))

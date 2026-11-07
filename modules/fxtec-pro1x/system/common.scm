@@ -199,7 +199,11 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (address \"172.16.42.1\")      ; the phone over USB
   ;;                (prefix 24)))
   ;;    (pro1x-modem-service-type
-  ;;     config => (pro1x-modem-configuration (inherit config) (verbose? #f)))
+  ;;     config => (pro1x-modem-configuration
+  ;;                (inherit config)
+  ;;                (verbose? #f)
+  ;;                (volte? #t)
+  ;;                (xtra? #t)))                ; GPS orbit data, ~50 KB a day
   ;;    (pro1x-sensors-service-type
   ;;     config => (pro1x-sensors-configuration
   ;;                (inherit config)
