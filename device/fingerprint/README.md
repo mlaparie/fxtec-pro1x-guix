@@ -97,6 +97,20 @@ No blob is in this repository; they are proprietary.
      and a session opens; every command (`mafp-client 0xef 0xc`, buffers from
      0x14 to 0x20000 bytes) fails in the send call: `scm call failed with
      error -22`. Same with the test module. Open.
+   - (2026-11-07) What the -22 is: mainline prints `scm call failed` only when the
+     secure monitor's own status is an error (`qcom_scm_remap_error`: invalid
+     address, invalid argument, or an unknown code), so TrustZone refuses the call
+     before the app sees it; the app's protocol is not what fails here.
+   - Not the 4 GiB limit: the vendor driver refuses a 32-bit app's buffers above
+     4 GiB, but mainline's TZ memory keeps the platform device's default 32-bit DMA
+     mask (`qcom_scm` sets none); the test module's request and reply were at
+     `0xfe300000` and `0xfe320000` (`app_id=3 cmd=0xef cmd_len=0xc`), still -22.
+   - Not the request format: the library only uses `QSEECom_send_cmd` (no modified
+     command, no ion buffers), so no physical address goes inside the request.
+   - Left (inferred): the call itself. With the whitelist feature, the vendor
+     driver sends app commands with `TZ_APP_QSAPP_SEND_DATA_WITH_WHITELIST_ID`
+     (command 6, two more arguments: an sglist table and its size) instead of
+     command 1, which mainline uses.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.

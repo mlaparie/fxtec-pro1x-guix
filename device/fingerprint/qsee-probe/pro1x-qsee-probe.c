@@ -16,7 +16,12 @@
  *             it before the first 32-bit app; the bootloader only loads
  *             cmnlib64).  Left loaded, as the vendor driver does;
  *   cmd=      once loaded, send this one command (0 = none) with an empty
- *             payload of cmd_len bytes, and dump the reply.
+ *             payload of cmd_len bytes, and dump the reply;
+ *   app_id=   send cmd to this already loaded app (e.g. mafp loaded by
+ *             qsee-app-loader) instead of loading image.  The physical
+ *             addresses of the request and reply are printed: mafp is a
+ *             32-bit app, and the vendor driver refuses its buffers above
+ *             4 GiB.
  *
  *   peek=     a kernel address (from /proc/kallsyms) whose byte is printed:
  *             e.g. qcom_tzmem_using_shm_bridge, whether mainline enabled
@@ -76,6 +81,10 @@ MODULE_PARM_DESC(app_name, "Name of the app in image");
 static uint cmd;
 module_param(cmd, uint, 0444);
 MODULE_PARM_DESC(cmd, "TA command to send once loaded (0: none)");
+
+static uint app_id;
+module_param(app_id, uint, 0444);
+MODULE_PARM_DESC(app_id, "Loaded app to send cmd to, instead of loading image (0: none)");
 
 static uint cmd_len = 8;
 module_param(cmd_len, uint, 0444);
@@ -290,24 +299,30 @@ static int do_load(void)
 
 static void do_cmd(u32 app_id)
 {
-	u32 *buf;
+	u32 *req, *rsp;
 	int ret;
 
 	if (cmd_len > TA_BUF_SIZE - 8)
 		return;
-	buf = qcom_tzmem_alloc(pool, TA_BUF_SIZE, GFP_KERNEL);
-	if (!buf)
+	/* The request, then the reply right after it: they must not overlap
+	 * (the same buffer for both got -EINVAL from the SCM call; Wróbel's
+	 * driver lays them out this way). */
+	req = qcom_tzmem_alloc(pool, 2 * TA_BUF_SIZE, GFP_KERNEL);
+	if (!req)
 		return;
-	memset(buf, 0, TA_BUF_SIZE);
-	buf[0] = cmd;
-	buf[1] = cmd_len;
-	ret = qcom_scm_qseecom_app_send(app_id, buf, TA_BUF_SIZE,
-					buf, TA_BUF_SIZE);
+	memset(req, 0, 2 * TA_BUF_SIZE);
+	rsp = req + TA_BUF_SIZE / sizeof(*req);
+	req[0] = cmd;
+	req[1] = cmd_len;
+	pr_info("request at %pa, reply at %pa\n", &(phys_addr_t){ qcom_tzmem_to_phys(req) },
+		&(phys_addr_t){ qcom_tzmem_to_phys(rsp) });
+	ret = qcom_scm_qseecom_app_send(app_id, req, TA_BUF_SIZE,
+					rsp, TA_BUF_SIZE);
 	pr_info("cmd 0x%x (len %u): %d\n", cmd, cmd_len, ret);
 	if (!ret)
 		print_hex_dump(KERN_INFO, "reply: ", DUMP_PREFIX_OFFSET, 16, 1,
-			       buf, min_t(u32, cmd_len + 8, 0x180), true);
-	qcom_tzmem_free(buf);
+			       rsp, min_t(u32, cmd_len + 8, 0x180), true);
+	qcom_tzmem_free(req);
 }
 
 static int __init qsee_probe_init(void)
@@ -327,7 +342,7 @@ static int __init qsee_probe_init(void)
 
 	do_lookups();
 
-	if (!image || !*image)
+	if ((!image || !*image) && !(cmd && app_id))
 		return 0;
 
 	pool = qcom_tzmem_pool_new(&config);
@@ -337,11 +352,20 @@ static int __init qsee_probe_init(void)
 		return ret;
 	}
 
+	if (!image || !*image) {
+		do_cmd(app_id);
+		return 0;
+	}
+
 	ret = do_load();
 	if (ret)
 		goto out_pool;
 
-	if (cmd && !qcom_scm_qseecom_app_get_id(app_name, &id))
+	/* An app loaded from Linux is not found by lookup (Wróbel's notes):
+	 * use the id the load returned. */
+	if (cmd && loaded_app_id)
+		do_cmd(loaded_app_id);
+	else if (cmd && !qcom_scm_qseecom_app_get_id(app_name, &id))
 		do_cmd(id);
 	return 0;
 
