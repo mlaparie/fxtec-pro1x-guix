@@ -4,6 +4,16 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
+**btrfs root (2026-11-07, in progress):** the systems declare a zstd btrfs root
+(968ee81), `flash-encrypted.sh` converts the image's ext4 (bd59576), the plain
+`flash.sh` layout refuses until it gets the same root (so `systems/minimal.scm`
+cannot be flashed meanwhile).  The author's phone (generation 28) is still ext4:
+its `config.scm` pins `#:root-file-system-type "ext4"`, and deploys refuse a root
+type that differs from the phone's.  Next: CI image, `flash.sh --encrypt --output`
+test, QEMU boot, backup (`scripts/backup-phone.sh`), reflash, restore.  **After it
+works: remove the ext4 support, the type check and the pin, and drop the ext4
+releases and tags** (author: no one else installed the port).
+
 **On the phone (2026-11-06): reflashed encrypted** (2026-11-05, CI rootfs of v0.2.0,
 68bbc02, `flash.sh --encrypt`), backup restored, then generation 2 deployed from `next`
 (the author's config.scm; nvtop, the Esc fix).  The first try sent an empty userdata
