@@ -150,6 +150,13 @@ No blob is in this repository; they are proprietary.
      `madev.c` powers the sensor before the app loads, here nothing does. Next:
      power the sensor (power `tlmm 108`, `suben` `tlmm 67`, reset `tlmm 104`),
      then load `mafp` and send 0xEF.
+   - (2026-11-07) Sensor power alone is not it. The vendor driver's only power
+     step is `gpio_pwr` high then 10 ms (`qcom-settings.c`; reset and the
+     regulator are unused). With `gpioset -c gpiochip0 -z 108=1` held, `mafp`
+     loaded (app 6) and 0xEF still failed with -22; the IRQ line (97) stayed
+     inactive. Before the test, 104 and 108 showed `egpio` in debugfs and no pin
+     was claimed. Not checked yet: the TA's SPI controller (a QUP serial engine
+     TrustZone drives) and its pins under mainline.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
