@@ -8,3 +8,9 @@ CONFIG_QCOM_RPM_MASTER_STATS=m
 # sets this too).  Off here on 7.3: both sensors with 0 media links, "No camera
 # found" (2026-11-03).
 CONFIG_V4L2_FLASH_LED_CLASS=m
+# Bluetooth LE mice and keyboards (HID over GATT): BlueZ creates their input
+# devices through /dev/uhid, and without it "input-hog profile accept failed"
+# (an Elecom Relacon, 2026-11-08).  Built in, so the node exists from boot.
+CONFIG_UHID=y
+# Elecom's quirks, the Relacon's extra buttons among them.
+CONFIG_HID_ELECOM=m
