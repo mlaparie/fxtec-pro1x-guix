@@ -21,7 +21,11 @@
  *             qsee-app-loader) instead of loading image.  The physical
  *             addresses of the request and reply are printed: mafp is a
  *             32-bit app, and the vendor driver refuses its buffers above
- *             4 GiB.
+ *             4 GiB;
+ *   whitelist= send cmd as the vendor driver does when TrustZone has the
+ *             whitelist feature: TZ_APP_QSAPP_SEND_DATA_WITH_WHITELIST_ID
+ *             (command 6), with an empty sglist table.  The feature's
+ *             version is printed before the send.
  *
  *   peek=     a kernel address (from /proc/kallsyms) whose byte is printed:
  *             e.g. qcom_tzmem_using_shm_bridge, whether mainline enabled
@@ -86,12 +90,23 @@ static uint app_id;
 module_param(app_id, uint, 0444);
 MODULE_PARM_DESC(app_id, "Loaded app to send cmd to, instead of loading image (0: none)");
 
+static bool whitelist;
+module_param(whitelist, bool, 0444);
+MODULE_PARM_DESC(whitelist, "Send cmd with the whitelist variant (command 6)");
+
 static uint cmd_len = 8;
 module_param(cmd_len, uint, 0444);
 MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 
 /* QSEE OS calls (owner 50, app manager service 1). */
+#define QSEE_OWNER_SIP		2
+#define QSEE_OWNER_TZ_APPS	48
 #define QSEE_OWNER_QSEE_OS	50
+#define QSEE_SVC_APP_ID_PLACEHOLDER	0
+#define QSEE_SVC_INFO		6
+#define QSEE_CMD_GET_FEAT_VERSION	3
+#define QSEE_CMD_SEND_DATA_WHITELIST	6
+#define QSEE_FEATURE_WHITELIST	15
 #define QSEE_SVC_APP_MGR	1
 #define QSEE_CMD_APP_START	1
 #define QSEE_CMD_APP_SHUTDOWN	2
@@ -113,13 +128,25 @@ MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 /* The client library's shared buffer: [u32 cmd][u32 len][payload]. */
 #define TA_BUF_SIZE		0x20000
 
+/* The vendor driver's sglist table: 4 entries of struct sglist_info
+ * {u32 indexAndFlags; u32 sizeOrCount;}, all zero for a plain command. */
+#define SGLISTINFO_TABLE_SIZE	32
+
+/* Argument types in arginfo, as qcom_scm.h's QCOM_SCM_ARGS(). */
+#define ARG_VAL			0
+#define ARG_RW			2
+#define ARGINFO(n, types)	(((types) << 4) | ((n) & 0xf))
+#define T(i, t)			((t) << (2 * (i)))
+
 static struct qcom_tzmem_pool *pool;
 static struct clk *ce_clk;
 static u32 loaded_app_id;
 
-/* One QSEE OS call with value arguments, as qcom_scm-smc.c does it. */
-static int qsee_os_call(u32 svc, u32 cmdid, u32 nargs, const u64 *args,
-			struct arm_smccc_res *res)
+/* One SCM call, as qcom_scm-smc.c does it: four arguments in registers;
+ * with more, the fourth register holds the address of the fourth and later
+ * ones (ext, TZ memory of at least 7 u64). */
+static int scm_call(u32 owner, u32 svc, u32 cmdid, u32 arginfo, u32 nargs,
+		    const u64 *args, __le64 *ext, struct arm_smccc_res *res)
 {
 	struct arm_smccc_quirk quirk = { .id = ARM_SMCCC_QUIRK_QCOM_A6 };
 	unsigned long a0, a[4] = { 0 };
@@ -128,15 +155,20 @@ static int qsee_os_call(u32 svc, u32 cmdid, u32 nargs, const u64 *args,
 
 	for (i = 0; i < nargs && i < 4; i++)
 		a[i] = args[i];
+	if (nargs > 4) {
+		if (!ext || nargs > 10)
+			return -EINVAL;
+		for (i = 3; i < nargs; i++)
+			ext[i - 3] = cpu_to_le64(args[i]);
+		a[3] = qcom_tzmem_to_phys(ext);
+	}
 
 	do {
 		a0 = ARM_SMCCC_CALL_VAL(ARM_SMCCC_STD_CALL, ARM_SMCCC_SMC_64,
-					QSEE_OWNER_QSEE_OS,
-					((svc & 0xff) << 8) | (cmdid & 0xff));
+					owner, ((svc & 0xff) << 8) | (cmdid & 0xff));
 		quirk.state.a6 = 0;
 		do {
-			/* arginfo: nargs values (type 0 = VAL) */
-			arm_smccc_smc_quirk(a0, nargs, a[0], a[1], a[2], a[3],
+			arm_smccc_smc_quirk(a0, arginfo, a[0], a[1], a[2], a[3],
 					    quirk.state.a6, 0, res, &quirk);
 			if (res->a0 == SCM_INTERRUPTED)
 				a0 = res->a0;
@@ -148,6 +180,50 @@ static int qsee_os_call(u32 svc, u32 cmdid, u32 nargs, const u64 *args,
 	} while (retry++ < 20);
 
 	return (long)res->a0 ? -EIO : 0;
+}
+
+/* One QSEE OS call with value arguments. */
+static int qsee_os_call(u32 svc, u32 cmdid, u32 nargs, const u64 *args,
+			struct arm_smccc_res *res)
+{
+	return scm_call(QSEE_OWNER_QSEE_OS, svc, cmdid, ARGINFO(nargs, 0),
+			nargs, args, NULL, res);
+}
+
+/* The vendor driver's qseecom_check_whitelist_feature(): its version, or
+ * negative when TrustZone does not answer. */
+static long whitelist_version(void)
+{
+	struct arm_smccc_res res;
+	u64 arg = QSEE_FEATURE_WHITELIST;
+	int ret;
+
+	ret = scm_call(QSEE_OWNER_SIP, QSEE_SVC_INFO, QSEE_CMD_GET_FEAT_VERSION,
+		       ARGINFO(1, 0), 1, &arg, NULL, &res);
+	pr_info("whitelist feature: status %ld, version 0x%lx\n",
+		(long)res.a0, res.a1);
+	return ret ? ret : res.a1;
+}
+
+/* TZ_APP_QSAPP_SEND_DATA_WITH_WHITELIST_ID: app id, request, its size,
+ * reply, its size, sglist table, its size.  The table, the extra
+ * arguments and the buffers all lie in buf (TZ memory). */
+static int send_whitelist(u32 app_id, void *req, size_t req_size, void *rsp,
+			  size_t rsp_size, void *table, __le64 *ext,
+			  struct arm_smccc_res *res)
+{
+	u64 args[7] = {
+		app_id,
+		qcom_tzmem_to_phys(req), req_size,
+		qcom_tzmem_to_phys(rsp), rsp_size,
+		qcom_tzmem_to_phys(table), SGLISTINFO_TABLE_SIZE,
+	};
+	u32 types = T(0, ARG_VAL) | T(1, ARG_RW) | T(2, ARG_VAL) |
+		    T(3, ARG_RW) | T(4, ARG_VAL) | T(5, ARG_RW) | T(6, ARG_VAL);
+
+	return scm_call(QSEE_OWNER_TZ_APPS, QSEE_SVC_APP_ID_PLACEHOLDER,
+			QSEE_CMD_SEND_DATA_WHITELIST, ARGINFO(7, types), 7,
+			args, ext, res);
 }
 
 static void do_lookups(void)
@@ -306,18 +382,37 @@ static void do_cmd(u32 app_id)
 		return;
 	/* The request, then the reply right after it: they must not overlap
 	 * (the same buffer for both got -EINVAL from the SCM call; Wróbel's
-	 * driver lays them out this way). */
-	req = qcom_tzmem_alloc(pool, 2 * TA_BUF_SIZE, GFP_KERNEL);
+	 * driver lays them out this way).  Then a page for the sglist table
+	 * and the extra arguments of command 6. */
+	req = qcom_tzmem_alloc(pool, 2 * TA_BUF_SIZE + PAGE_SIZE, GFP_KERNEL);
 	if (!req)
 		return;
-	memset(req, 0, 2 * TA_BUF_SIZE);
+	memset(req, 0, 2 * TA_BUF_SIZE + PAGE_SIZE);
 	rsp = req + TA_BUF_SIZE / sizeof(*req);
 	req[0] = cmd;
 	req[1] = cmd_len;
 	pr_info("request at %pa, reply at %pa\n", &(phys_addr_t){ qcom_tzmem_to_phys(req) },
 		&(phys_addr_t){ qcom_tzmem_to_phys(rsp) });
-	ret = qcom_scm_qseecom_app_send(app_id, req, TA_BUF_SIZE,
-					rsp, TA_BUF_SIZE);
+	if (whitelist) {
+		void *table = (u8 *)req + 2 * TA_BUF_SIZE;
+		__le64 *ext = table + 64;
+		struct arm_smccc_res res;
+
+		if (whitelist_version() <= 0) {
+			pr_info("no whitelist feature: not sending command 6\n");
+			qcom_tzmem_free(req);
+			return;
+		}
+		ret = send_whitelist(app_id, req, TA_BUF_SIZE, rsp, TA_BUF_SIZE,
+				     table, ext, &res);
+		pr_info("cmd 0x%x (len %u), command 6: status %ld, result %lu, type 0x%lx, data 0x%lx\n",
+			cmd, cmd_len, (long)res.a0, res.a1, res.a2, res.a3);
+		if (!ret && res.a1 != QSEE_RESULT_SUCCESS)
+			ret = -EIO;
+	} else {
+		ret = qcom_scm_qseecom_app_send(app_id, req, TA_BUF_SIZE,
+						rsp, TA_BUF_SIZE);
+	}
 	pr_info("cmd 0x%x (len %u): %d\n", cmd, cmd_len, ret);
 	if (!ret)
 		print_hex_dump(KERN_INFO, "reply: ", DUMP_PREFIX_OFFSET, 16, 1,

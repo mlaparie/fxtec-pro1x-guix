@@ -111,6 +111,11 @@ No blob is in this repository; they are proprietary.
      driver sends app commands with `TZ_APP_QSAPP_SEND_DATA_WITH_WHITELIST_ID`
      (command 6, two more arguments: an sglist table and its size) instead of
      command 1, which mainline uses.
+   - (2026-11-07) Command 6 tried (test module, `whitelist=1`): TrustZone has the
+     whitelist feature (version 0x401000), and the call fails too, differently:
+     status -2 (`QCOM_SCM_EINVAL_ADDR`), result -19, with the request, reply and an
+     empty 32-byte sglist table in mainline TZ memory below 4 GiB. The phone stayed
+     up. So the call variant alone is not it: TrustZone rejects an address.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
