@@ -23,7 +23,10 @@ reconfigure.  `/etc/guix/home.scm` is a starting file:
 cp /etc/guix/home.scm ~/.config/guix/
 ```
 
-In `~/.config/guix/home.scm`, your packages and home files:
+In `~/.config/guix/home.scm`, your packages and home files.  The files
+below are only examples of a managed and a seeded file, not how the port
+sets them up: new accounts get the Sway and foot configs from the account
+skeleton, as small files that include the port's.
 
 ```scheme
 (define home
