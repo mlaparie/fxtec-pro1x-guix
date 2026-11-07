@@ -28,9 +28,8 @@
   (verbose? pro1x-modem-verbose? (default #f))
   ;; VoLTE: 81voltd serves the IMS data connection the modem asks for.
   (volte? pro1x-modem-volte? (default #t))
-  ;; XTRA: download the modem's predicted satellite orbits (about 50 KB, Wi-Fi
-  ;; or mobile data) once a day and inject them, so a GPS fix takes seconds
-  ;; rather than minutes.
+  ;; Download GPS orbit data (XTRA, about 50 KB) daily and give it to the
+  ;; modem, for faster GPS fixes.
   (xtra? pro1x-modem-xtra? (default #t)))
 
 (define (pro1x-modem-shepherd-services config)

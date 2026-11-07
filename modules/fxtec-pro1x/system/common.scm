@@ -95,7 +95,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (auto-suspend #f)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
-  ;;                Light or dark: Phosh's dark style; Sway follows.
+  ;;                Light or dark themes are set in Phosh, which writes into dconf; Sway reuses it.
   ;;                Rows to black out at the panel's top and bottom.
   ;;                (display-top-gap 0)
   ;;                (display-bottom-gap 0)
@@ -125,7 +125,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (cpu-mode 'auto)
   ;;                What wakes the phone from suspend, besides its keys and alarms.
   ;;                (wake-on '(calls sms))
-  ;;                USB controller off while unplugged.
+  ;;                Switch the USB controller off while unplugged, to draw less power in suspend.
   ;;                (usb-runtime-pm? #t)
   ;;                Torch off after this many seconds (#f: never).
   ;;                (torch-timeout 60)
@@ -202,7 +202,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config)
   ;;                (verbose? #f)
   ;;                (volte? #t)
-  ;;                (xtra? #t)))                ; GPS orbit data, daily
+  ;;                (xtra? #t)))     ; download GPS orbit data daily, for faster GPS fixes
   ;;    (pro1x-sensors-service-type
   ;;     config => (pro1x-sensors-configuration
   ;;                (inherit config)
