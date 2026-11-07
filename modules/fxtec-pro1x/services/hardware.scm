@@ -22,10 +22,7 @@
 ;;;     pro1x-charge-control).  USB keeps powering the phone meanwhile.
 ;;;     The percentage is estimated from voltage, which drops when charging
 ;;;     stops: keep the gap wider than that drop (not measured yet);
-;;;   • light or dark apps: not here.  Phosh's dark style (Quick Settings or
-;;;     GNOME Settings, Appearance) stores it in the user's dconf, which Sway's
-;;;     apps read too (through the GTK portal), so there is one setting and
-;;;     Phosh's is it (author, 2026-11-07);
+;;;   • light or dark apps: not here; Phosh's dark style, which Sway follows;
 ;;;   • lock screen keyboard (lock-keyboard, 'dark or 'light): /etc/pro1x/lock.conf;
 ;;;   • on-screen keyboard: word completion dictionaries (keyboard-languages),
 ;;;     English always, and layouts (keyboard-layouts), independent of them;
@@ -114,11 +111,8 @@
   ;; comes 30 s before the blank.
   (blank-after        pro1x-hardware-blank-after        (default 180))
   (lock-after         pro1x-hardware-lock-after         (default 120))
-  ;; Light or dark apps: no field.  Set it in Phosh (dark style), in GNOME
-  ;; Settings, or with gsettings (org.gnome.desktop.interface color-scheme
-  ;; and gtk-theme); Sway follows.  The color-scheme field this replaces
-  ;; was a GSettings default, which the GTK portal did not see: LibreWolf
-  ;; stayed light in Sway (2026-11-07).
+  ;; No color-scheme field: Phosh's dark style is the setting.  A GSettings
+  ;; default here was not seen by the GTK portal (LibreWolf stayed light).
   ;; A short vibration on each on-screen keyboard key (stevia), in
   ;; feedbackd's quiet and full profiles (author).
   (keyboard-haptics?  pro1x-hardware-keyboard-haptics?  (default #t))
@@ -165,10 +159,8 @@
   ;; and alarms: 'calls (an incoming call), 'sms (a text message, Chatty).
   ;; Internet chats cannot: the network is not a wakeup source.
   (wake-on            pro1x-hardware-wake-on            (default '(calls sms)))
-  ;; Let the USB controller (DWC3) runtime-suspend when unplugged, so its PHY
-  ;; supplies switch off: moWerk measured system sleep at 29-32 mA instead of
-  ;; 40-42 with it (his notes/sleep.md, 2026-11-02; not every boot).  The
-  ;; driver forbids it at probe; #f keeps it so.
+  ;; Let the USB controller runtime-suspend while unplugged, its supplies
+  ;; off (moWerk: 29-32 mA in suspend instead of 40-42, not every boot).
   (usb-runtime-pm?    pro1x-hardware-usb-runtime-pm?    (default #t))
   ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
   ;; locked or not: 'torch toggles the torch (torch-timeout still applies),

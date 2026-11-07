@@ -95,8 +95,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (auto-suspend #f)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
-  ;;                Light or dark apps: Phosh's dark style (or GNOME Settings), not here;
-  ;;                Sway follows it.
+  ;;                Light or dark: Phosh's dark style; Sway follows.
   ;;                Rows to black out at the panel's top and bottom.
   ;;                (display-top-gap 0)
   ;;                (display-bottom-gap 0)
@@ -126,7 +125,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (cpu-mode 'auto)
   ;;                What wakes the phone from suspend, besides its keys and alarms.
   ;;                (wake-on '(calls sms))
-  ;;                Let the USB controller sleep when unplugged (lower suspend draw).
+  ;;                USB controller off while unplugged.
   ;;                (usb-runtime-pm? #t)
   ;;                Torch off after this many seconds (#f: never).
   ;;                (torch-timeout 60)
@@ -203,7 +202,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config)
   ;;                (verbose? #f)
   ;;                (volte? #t)
-  ;;                (xtra? #t)))                ; GPS orbit data, ~50 KB a day
+  ;;                (xtra? #t)))                ; GPS orbit data, daily
   ;;    (pro1x-sensors-service-type
   ;;     config => (pro1x-sensors-configuration
   ;;                (inherit config)
