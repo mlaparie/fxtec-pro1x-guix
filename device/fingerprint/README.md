@@ -150,6 +150,12 @@ No blob is in this repository; they are proprietary.
      `madev.c` powers the sensor before the app loads, here nothing does. Next:
      power the sensor (power `tlmm 108`, `suben` `tlmm 67`, reset `tlmm 104`),
      then load `mafp` and send 0xEF.
+   - (2026-11-07, reported by michaelmcallister, wrobelda/qsee-supplicant#1)
+     The Moto G10 (SM4250) has the same QSEE version, 0x1402000, and commands to
+     its 64-bit TA (Chipone ICNF7332, `fngap644`) work through plain
+     `qcom_scm_qseecom_app_send()`; his driver changes were for loading (64-bit
+     MDT parsing); no cmnlib loading. Same conclusion: the platform takes the
+     send, `mafp` is refused.
    - (2026-11-07) Sensor power alone is not it. The vendor driver's only power
      step is `gpio_pwr` high then 10 ms (`qcom-settings.c`; reset and the
      regulator are unused). With `gpioset -c gpiochip0 -z 108=1` held, `mafp`
