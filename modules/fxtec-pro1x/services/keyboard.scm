@@ -155,19 +155,30 @@
 
        ;; keyd's virtual keyboard, where key presses arrive (keyd grabs the
        ;; real keyboard).  #f until keyd has created it.
+       ;; Key presses arrive on xremap's output device when xremap runs
+       ;; (it grabs keyd's), else on keyd's virtual keyboard (keyd grabs
+       ;; the real one).
+       (define (device-name event)
+         (false-if-exception
+          (call-with-input-file
+              (string-append "/sys/class/input/" event "/device/name")
+            read-line)))
+       (define (key-event)
+         (let* ((events (or (scandir "/sys/class/input"
+                                     (lambda (f) (string-prefix? "event" f)))
+                            '()))
+                (named (lambda (ok?)
+                         (find (lambda (e)
+                                 (let ((name (device-name e)))
+                                   (and name (ok? name))))
+                               events))))
+           (or (named (lambda (name) (string-prefix? "xremap" name)))
+               (named (lambda (name)
+                        (string=? name "keyd virtual keyboard"))))))
+       (define current-event #f)
        (define (open-keyboard)
-         (let ((event (find (lambda (e)
-                              (false-if-exception
-                               (string=? "keyd virtual keyboard"
-                                         (call-with-input-file
-                                             (string-append
-                                              "/sys/class/input/" e
-                                              "/device/name")
-                                           read-line))))
-                            (or (scandir "/sys/class/input"
-                                         (lambda (f)
-                                           (string-prefix? "event" f)))
-                                '()))))
+         (let ((event (key-event)))
+           (set! current-event event)
            (and event
                 (false-if-exception
                  (let ((port (open-input-file
@@ -175,6 +186,13 @@
                               #:binary #t)))
                    (setvbuf port 'none)
                    port)))))
+       ;; Opened again when xremap starts or stops.
+       (define (keyboard-for port)
+         (if (and port (equal? (key-event) current-event))
+             port
+             (begin
+               (when port (close-port port))
+               (open-keyboard))))
 
        (define (read-event port)
          ;; struct input_event on aarch64: 16-byte timeval, u16 type,
@@ -188,7 +206,7 @@
          ;; ACTIVE: time of the last key press, slide-out or panel-on.
          (let loop ((open? (slider-open?)) (last #f) (keyboard #f)
                     (active (current-time)) (panel? (panel-on?)))
-           (let* ((keyboard (or keyboard (open-keyboard)))
+           (let* ((keyboard (keyboard-for keyboard))
                   (panel-now? (panel-on?))
                   (active (if (and panel-now? (not panel?))
                               (current-time)

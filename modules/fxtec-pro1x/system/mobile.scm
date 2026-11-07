@@ -611,7 +611,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
   ;; Guix's default sudoers, plus tuigreet's power menu (F12): the greeter
   ;; runs as "greeter", and halt/reboot need root (Shepherd's socket).
   (sudoers-file
-   (plain-file "sudoers"
+   (mixed-text-file "sudoers"
                (string-append (plain-file-content %sudoers-specification)
                               "greeter ALL=(root) NOPASSWD: "
                               "/run/current-system/profile/sbin/halt, "
@@ -624,7 +624,14 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
                               ;; Its CPU mode line.
                               "/run/current-system/profile/bin/pro1x-cpu-mode, "
                               ;; Quick actions' charge limit.
-                              "/run/current-system/profile/bin/pro1x-charge-limit\n")))
+                              "/run/current-system/profile/bin/pro1x-charge-limit\n")
+               ;; xremap with the user's config, started by Sway; its
+               ;; per-window rules need the session's Wayland socket.
+               "user ALL=(root) NOPASSWD: "
+               (file-append xremap-wlroots
+                            "/bin/xremap /home/user/.config/xremap/config.yml --watch\n")
+               "Defaults!" (file-append xremap-wlroots "/bin/xremap")
+               " env_keep += \"WAYLAND_DISPLAY XDG_RUNTIME_DIR\"\n"))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services
@@ -927,6 +934,8 @@ Dracula palette, no kernel messages over the greeter.")
      yt-dlp bpytop
      ;; sensors, opened by a click on the bar's temperature (author).
      lm-sensors
+     ;; Key remapping per app, as on the author's PC (desktop.conf).
+     xremap-wlroots
      calls chatty
      ;; The camera: stills at 12 MP, tap to focus, ISO, flash (ours, on
      ;; libcamera with moWerk's patches); Snapshot stays.
