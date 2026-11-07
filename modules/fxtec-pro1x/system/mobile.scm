@@ -626,10 +626,12 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
                               ;; Quick actions' charge limit.
                               "/run/current-system/profile/bin/pro1x-charge-limit\n")
                ;; xremap with the user's config, started by Sway; its
-               ;; per-window rules need the session's Wayland socket.
+               ;; per-window rules need the session's Wayland socket.  The
+               ;; one of an earlier login is stopped first.
                "user ALL=(root) NOPASSWD: "
                (file-append xremap-wlroots
-                            "/bin/xremap /home/user/.config/xremap/config.yml --watch\n")
+                            "/bin/xremap /home/user/.config/xremap/config.yml --watch, ")
+               (file-append procps "/bin/pkill -x xremap\n")
                "Defaults!" (file-append xremap-wlroots "/bin/xremap")
                " env_keep += \"WAYLAND_DISPLAY XDG_RUNTIME_DIR\"\n"))
 
