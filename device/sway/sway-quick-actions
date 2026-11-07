@@ -11,7 +11,7 @@
 # GPU monitor (the GPU's clock; Enter or Right opens nvtop in its own
 # window; bpytop is among CPU mode's choices).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
-# operator, feedback, CPU mode, charge limit, orientation, keyboard layout, word
+# operator, feedback, CPU mode, charge limit, orientation, keyboard layout, audio output, word
 # completion (several at once), and for
 # Wi-Fi and
 # Bluetooth on, off or their tool; author: a list, not stepping); Right
@@ -459,6 +459,11 @@ choose() {
             cur=$(layout_now)
             KEYBOARD_LAYOUTS=us; . /etc/pro1x/keyboard.conf 2>/dev/null
             opts=$(for l in $KEYBOARD_LAYOUTS; do printf '%s\t%s\n' "$l" "$l"; done) ;;
+        audio)
+            # PipeWire's outputs: the speaker, a headset, Bluetooth.
+            title="audio output"
+            cur=$(audio_sinks | awk -F'\t' '$3 == "*" { print $1; exit }')
+            opts=$(audio_sinks | cut -f1,2) ;;
         orient)
             title="orientation (fixes it)"
             cur=$(orientation)
@@ -505,6 +510,8 @@ choose() {
             confirm charge "$shown" charge_set "$pick" ;;
         orient) confirm orient "$pick" orientation_to "$pick" ;;
         layout) confirm layout "$pick" layout_to "$pick" ;;
+        audio) confirm audio "$(audio_sinks | awk -F'\t' -v id="$pick" '$1 == id { print $2 }')" \
+                   audio_to "$pick" ;;
         rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
             if [ "$pick" = tool ]; then
@@ -514,6 +521,24 @@ choose() {
             else confirm "$line" "$(dim "$pick")" toggle_to "$line" "$pick"; fi ;;
     esac
 }
+
+# Audio outputs, from wpctl status: "ID<TAB>name<TAB>*" for each sink, the
+# star on the default one.
+audio_sinks() {
+    wpctl status 2>/dev/null | awk '
+        /^Audio/ { audio = 1; next }
+        /^[A-Z]/ { audio = 0 }
+        audio && /Sinks:/ { sinks = 1; next }
+        sinks && /[├└]─/ { exit }
+        sinks && match($0, /[0-9]+\. /) {
+            def = (substr($0, 1, RSTART - 1) ~ /\*/) ? "*" : ""
+            name = substr($0, RSTART + RLENGTH)
+            sub(/ *\[vol:.*$/, "", name)
+            print substr($0, RSTART, RLENGTH - 2) "\t" name "\t" def
+        }'
+}
+audio_now() { audio_sinks | awk -F'\t' '$3 == "*" { print $2; exit }'; }
+audio_to() { wpctl set-default "$1"; }
 
 layout_now() {                  # stevia's first layout
     gsettings get org.gnome.desktop.input-sources sources 2>/dev/null |
@@ -853,6 +878,7 @@ lines() {
     makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
     osk_state > "$d/osk" &
     layout_now > "$d/layout" &
+    audio_now > "$d/audio" &
     dict_shown > "$d/dicts" &
     wait
     radio=$(cat "$d/radio")           # enabled:enabled
@@ -902,6 +928,7 @@ lines() {
         "gpu         GPU monitor          $(gpu_clock)" \
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
+        "audio       Audio output         $(cat "$d/audio")" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
@@ -1285,7 +1312,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
@@ -1302,12 +1329,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
