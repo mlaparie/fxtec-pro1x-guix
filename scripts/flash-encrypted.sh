@@ -8,7 +8,8 @@
 # US layout, no keyd: a symbol is where a US keyboard has it (the author's
 # passphrase with symbols worked, 2026-11-05).
 #
-# State: tested in QEMU.  The first flash on the phone (2026-11-05) sent an
+# State: tested in QEMU.  The btrfs root (2026-11-07): not yet run.  The
+# first flash on the phone (2026-11-05) sent an
 # empty userdata (fastboot 7.1.2); now sent as sparse parts (mksparse.py).
 # The system boots on either layout, and has the same image: nothing in it
 # says encrypted (services/fde.scm).
@@ -146,6 +147,27 @@ echo "==> Creating plain boot ext4 (${BOOT_MIB} MiB)…"
 mke2fs -q -t ext4 -L guixboot -E lazy_itable_init=0,lazy_journal_init=0 \
     -d "$BOOT_DIR" "$TMPDIR/boot.ext4" "${BOOT_MIB}M"
 
+# ── Root to btrfs ─────────────────────────────────────────────────────────
+# The systems declare a btrfs root (system/common.scm), and Guix builds ext4
+# images: the image's files go into a zstd-compressed btrfs labelled guix,
+# at its smallest (the phone grows it at first boot).  As root, so owners
+# and modes are kept; the ext4 mounted read-only, its journal left alone.
+# sudo resets PATH: the tools by their path.
+echo "==> Making the root btrfs…"
+MNT="$TMPDIR/root-mnt"
+mkdir -p "$MNT"
+sudo "$(command -v mount)" -o loop,ro,noload "$TMPDIR/root.ext4" "$MNT"
+USED=$(sudo "$(command -v du)" -sxb "$MNT" | cut -f1)
+truncate -s "$(( USED + USED / 4 + 256 * 1024 * 1024 ))" "$TMPDIR/root.btrfs"
+if ! sudo "$(command -v mkfs.btrfs)" -q -L guix --rootdir "$MNT" \
+         --compress zstd:3 --shrink "$TMPDIR/root.btrfs"; then
+    sudo "$(command -v umount)" "$MNT"
+    die "mkfs.btrfs failed"
+fi
+sudo "$(command -v umount)" "$MNT"
+rm -f "$TMPDIR/root.ext4"
+echo "    root.btrfs: $(( $(wc -c < "$TMPDIR/root.btrfs") / 1048576 )) MiB (ext4 files: $(( USED / 1048576 )) MiB)"
+
 # ── Passphrase ────────────────────────────────────────────────────────────────
 echo ""
 echo "Enter disk encryption passphrase (will not echo):"
@@ -166,9 +188,9 @@ XTS_ENC="$XTS_PKG/bin/pro1x-xts-encrypt"
 
 # ── LUKS2 container, in place in userdata.img ─────────────────────────────
 # The header alone goes through a small file; the encrypted root is written straight
-# into the image, so the build needs room for root.ext4 and the image, not more.
+# into the image, so the build needs room for the root and the image, not more.
 echo "==> Creating LUKS2 header…"
-ROOT_SIZE=$(wc -c < "$TMPDIR/root.ext4")
+ROOT_SIZE=$(wc -c < "$TMPDIR/root.btrfs")
 truncate -s "$(( LUKS_PAYLOAD_MIB + 1 ))M" "$TMPDIR/luks-header.bin"
 dd if=/dev/urandom of="$TMPDIR/volkey.bin"          bs=64  count=1          2>/dev/null
 printf '%s' "$PASSPHRASE" > "$TMPDIR/passphrase.bin"
@@ -199,9 +221,9 @@ dd if="$TMPDIR/luks-header.bin" of="$TMPDIR/userdata.img" bs=1M seek="$BOOT_MIB"
 
 echo "==> Encrypting root partition…"
 "$XTS_ENC" "$TMPDIR/volkey.bin" "$TMPDIR/userdata.img" \
-    "$(( BOOT_BYTES + PAYLOAD_BYTES ))" < "$TMPDIR/root.ext4"
+    "$(( BOOT_BYTES + PAYLOAD_BYTES ))" < "$TMPDIR/root.btrfs"
 shred -u "$TMPDIR/volkey.bin"
-rm -f "$TMPDIR/root.ext4"
+rm -f "$TMPDIR/root.btrfs"
 echo "    ${TOTAL_MIB} MiB  (${BOOT_MIB} MiB plain boot + $(( TOTAL_MIB - BOOT_MIB )) MiB LUKS)"
 
 # ── vbmeta ────────────────────────────────────────────────────────────────────

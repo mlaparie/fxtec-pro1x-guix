@@ -337,6 +337,13 @@ if [[ "$OPT_ENCRYPT" == true ]]; then
     exec bash "$SCRIPT_DIR/flash-encrypted.sh"
 fi
 
+# The plain layout puts the image's ext4 root on userdata as it is, and the
+# systems declare a btrfs root now (system/common.scm): that phone would not
+# boot.  Until the plain layout gets the btrfs root too, only U-Boot alone.
+if [[ "$OPT_BOOT_ONLY" == false ]]; then
+    die "the plain layout is not ready for the btrfs root yet: use --encrypt (or --boot-only)"
+fi
+
 # ── Find rootfs ───────────────────────────────────────────────────────────────
 echo "==> Rootfs"
 ROOTFS_FLASH=""   # final path passed to fastboot
