@@ -76,7 +76,17 @@ else
     echo "No $home/.config/guix/config.scm on the phone: using /etc/guix's." >&2
 fi
 mkdir -p "$tmp$dir" "$tmp$home/.ssh"
-"${ssh_root[@]}" cat "$dir/config.scm" > "$tmp$dir/config.scm"
+# The user's whole directory, so what config.scm includes or names with
+# local-file (home.scm, files of a managed home) is there too; not
+# current (the guix pull profile) nor backups.  /etc/guix also holds
+# Guix's signing key: only its config.scm and home.scm.
+if [[ "$dir" == /etc/guix ]]; then
+    "${ssh_root[@]}" "cd $dir && tar cf - config.scm \
+            \$(test -f home.scm && echo home.scm)" | tar xf - -C "$tmp$dir"
+else
+    "${ssh_root[@]}" "cd $dir && tar cf - --exclude=./current \
+            --exclude='*.bak*' --exclude='*~' ." | tar xf - -C "$tmp$dir"
+fi
 if "${ssh_root[@]}" test -f "$dir/channels.scm"; then
     "${ssh_root[@]}" cat "$dir/channels.scm" > "$tmp$dir/channels.scm"
 else

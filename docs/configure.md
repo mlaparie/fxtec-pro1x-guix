@@ -1,11 +1,13 @@
 # Configuring
 
 The phone's system is `~/.config/guix/config.scm`, built from the
-channels in `~/.config/guix/channels.scm`.  Start from the shipped copies:
+channels in `~/.config/guix/channels.scm`; your Guix Home (your packages
+and home files) is `~/.config/guix/home.scm`, which `config.scm` includes
+([home.md](home.md)).  Start from the shipped copies:
 
 ```sh
 mkdir -p ~/.config/guix
-cp /etc/guix/config.scm /etc/guix/channels.scm ~/.config/guix/
+cp /etc/guix/config.scm /etc/guix/channels.scm /etc/guix/home.scm ~/.config/guix/
 ```
 
 Apply changes with a deploy or a reconfigure ([update.md](update.md)).

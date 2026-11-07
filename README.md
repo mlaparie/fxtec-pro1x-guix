@@ -179,11 +179,11 @@ ssh user@172.16.42.1
 
 As flashed, the phone runs the port's system unchanged.  To customise it
 beyond that (your own packages, services, users, timezone, channels),
-copy the two starting files the phone ships into `~/.config/guix/` and
-edit them there:
+copy the starting files the phone ships into `~/.config/guix/` and edit
+them there (`home.scm` is your Guix Home: your packages and home files):
 
 ```sh
-cp /etc/guix/config.scm /etc/guix/channels.scm ~/.config/guix/
+cp /etc/guix/config.scm /etc/guix/channels.scm /etc/guix/home.scm ~/.config/guix/
 guix pull                    # then log out and back in once
 sudo guix system reconfigure ~/.config/guix/config.scm
 ```
@@ -242,12 +242,14 @@ bash scripts/deploy.sh --repo          # systems/mobile.scm from this tree
 The port's Sway, bar and foot settings live outside your home and follow
 every deploy; the files in `~/.config` only add to them
 ([configure.md](docs/configure.md#files-outside-configscm)).  For other
-home files, Guix Home can manage them from `config.scm`
+home files and your own packages, Guix Home manages them from
+`~/.config/guix/home.scm`, which `config.scm` includes
 ([home.md](docs/home.md)).
 
 New accounts also get Guix's default `~/.bash_profile` (it loads your
-`guix pull` profile) and `~/guix-home-config.scm`, a ready Guix Home file
-in which you uncomment your shell; there is no `~/.bashrc` until then.
+`guix pull` profile) and `~/guix-home-config.scm`, Guix's file for a
+standalone `guix home reconfigure`; the port does not use it (Guix Home is
+part of the system here), and there is no `~/.bashrc` until you set one.
 
 ## Updates in the long run (plan, not in place yet)
 

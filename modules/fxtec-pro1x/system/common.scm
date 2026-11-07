@@ -49,7 +49,7 @@ symbol exported by MODULE, a list of symbols, returns."
    ";;; /etc/guix/config.scm — starting point for your own configuration of
 ;;; this phone, written by the fxtec-pro1x channel.  To use it:
 ;;;
-;;;   cp /etc/guix/config.scm /etc/guix/channels.scm ~/.config/guix/
+;;;   cp /etc/guix/config.scm /etc/guix/channels.scm /etc/guix/home.scm ~/.config/guix/
 ;;;   guix pull                # then log out and back in once
 ;;;   sudo guix system reconfigure ~/.config/guix/config.scm
 ;;;
@@ -68,6 +68,12 @@ symbol exported by MODULE, a list of symbols, returns."
    ;; relative to this file.
    ;; #:root-ssh-keys (list (local-file \"../../.ssh/pro1x-guix.pub\"))
    ))
+
+;; Your Guix Home (your packages and home files) is in home.scm, next to
+;; this file.  To use it: add (gnu services guix) and (fxtec-pro1x home) to
+;; use-modules, uncomment the line below, and add
+;; (service guix-home-service-type `((\"user\" ,home))) to the services.
+;; (include \"home.scm\")
 
 (operating-system
   (inherit base)
@@ -219,9 +225,27 @@ symbol exported by MODULE, a list of symbols, returns."
   )
 "))
 
+(define pro1x-user-home
+  ";;; /etc/guix/home.scm — starting point for your Guix Home on this phone:
+;;; your packages and home files.  config.scm includes it (see there), and
+;;; the system builds and activates it on each deploy or reconfigure.  Copy
+;;; it next to your config.scm.  Your packages go here rather than through
+;;; guix install, so a reflash keeps them.  Home files: docs/home.md in the
+;;; fxtec-pro1x-guix repository.
+
+(define home
+  (pro1x-home
+   ;; For example (list \"htop\" \"mosh\"):
+   #:packages (specifications->packages (list))
+   ;; Guix Home services; fish, for example, with (gnu home services shells)
+   ;; in config.scm's use-modules:
+   ;; #:services (list (service home-fish-service-type))
+   ))
+")
+
 (define (pro1x-user-config-service module procedure)
-  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE, and
-/etc/guix/channels.scm.
+  "Return a service installing /etc/guix/config.scm for PROCEDURE in MODULE,
+/etc/guix/home.scm and /etc/guix/channels.scm.
 
 Not through etc-service-type: an /etc entry under guix/ would turn the whole
 of /etc/guix into a read-only store link and hide the acl and signing keys
@@ -230,6 +254,7 @@ file in place at activation."
   (define files
     `(("config.scm" ,(plain-file "config.scm"
                                  (pro1x-user-config module procedure)))
+      ("home.scm" ,(plain-file "home.scm" pro1x-user-home))
       ("channels.scm" ,pro1x-channels-file)))
 
   (simple-service

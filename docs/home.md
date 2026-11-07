@@ -4,7 +4,7 @@ Files in your home directory come in three kinds:
 
 | kind | what Guix does | edit where |
 |---|---|---|
-| managed | symlinks it from the store, replaces it on every deploy | `config.scm` (or a file next to it) |
+| managed | symlinks it from the store, replaces it on every deploy | `home.scm` (or a file next to it) |
 | seeded | copies it once, if missing; never touches it again | on the phone, in place |
 | unmanaged | nothing | on the phone |
 
@@ -15,29 +15,49 @@ them ([configure.md](configure.md#files-outside-configscm)).
 
 ## Setting it up
 
-In `~/.config/guix/config.scm`, add to the services:
+Your Guix Home lives in `~/.config/guix/home.scm`, next to `config.scm`,
+which includes it; the system builds and activates it on every deploy or
+reconfigure.  `/etc/guix/home.scm` is a starting file:
+
+```sh
+cp /etc/guix/home.scm ~/.config/guix/
+```
+
+In `~/.config/guix/home.scm`, your packages and home files:
+
+```scheme
+(define home
+  (pro1x-home
+   #:packages (specifications->packages (list "htop" "mosh"))
+   #:managed `((".config/foot/foot.ini" ,(local-file "foot.ini")))
+   #:seeded `((".config/sway/config"
+               ,(file-append pro1x-sway-config
+                             "/share/pro1x-sway/config")))))
+```
+
+In `~/.config/guix/config.scm`, include it and add the service:
 
 ```scheme
 (use-modules (gnu services guix)              ; guix-home-service-type
              (fxtec-pro1x home)               ; pro1x-home
              (fxtec-pro1x packages misc))     ; pro1x-sway-config
 
-(service guix-home-service-type
-         `(("user"
-            ,(pro1x-home
-              #:managed `((".config/foot/foot.ini"
-                           ,(local-file "foot.ini")))
-              #:seeded `((".config/sway/config"
-                          ,(file-append pro1x-sway-config
-                                        "/share/pro1x-sway/config")))))))
+(include "home.scm")
+
+;; in the operating-system's services:
+(service guix-home-service-type `(("user" ,home)))
 ```
 
 Paths are relative to the home directory.  `local-file` paths are relative
-to `config.scm`; keep those files next to it.  `#:packages` adds packages to
-the user's home profile; `#:services` takes any Guix Home service.
+to `config.scm`; keep those files next to it (`scripts/deploy.sh` copies
+the whole `~/.config/guix`, but `current`).  `#:packages` adds packages to
+your home profile: put them here rather than through `guix install`, so a
+reflash keeps them.  `#:services` takes any Guix Home service.
 
-Deploy as usual (`scripts/deploy.sh`): the home environment is part of the
-system and is activated at boot and on each deploy.
+Deploy as usual (`scripts/deploy.sh`).  Do not run `guix home reconfigure`
+on top: it would make a second home generation, beside the system's.
+`~/guix-home-config.scm`, which Guix puts in new homes, is for that
+standalone use and is not read here.
 
 ## What happens to existing files
 
