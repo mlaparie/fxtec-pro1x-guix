@@ -9,12 +9,15 @@
 #
 # What is saved (one tar, readable only by you):
 #   /home/USER                 everything but .cache and the flatpak apps; the
-#                              list of flatpak apps goes in flatpak-apps.txt
+#                              list of flatpak apps goes in flatpak-apps.txt,
+#                              the packages installed with guix install in
+#                              guix-manifest.scm (the profile is in /var)
 #   /var/lib/NetworkManager    and /etc/NetworkManager/system-connections:
 #                              Wi-Fi networks with their passwords, APNs
 #   /var/lib/bluetooth         pairings
 #   /var/lib/tailscale         the node's identity (no new login)
 #   /var/lib/pro1x             the port's state (charge limit, CPU mode…)
+#   /var/lib/pro1x-clock       the clock's offset to the RTC
 #   /etc/ssh                   host keys (the PC keeps trusting the phone)
 #                              and root's authorized keys
 # Not saved: /etc/shadow (passwords: set them again with passwd), the store
@@ -53,7 +56,8 @@ die() { echo "error: $*" >&2; exit 1; }
 user="${PRO1X_USER:-user}"
 login="${PRO1X_LOGIN:-root}"
 paths=(home/"$user" var/lib/NetworkManager etc/NetworkManager/system-connections
-       var/lib/bluetooth var/lib/tailscale var/lib/pro1x etc/ssh)
+       var/lib/bluetooth var/lib/tailscale var/lib/pro1x var/lib/pro1x-clock
+       etc/ssh)
 
 phone() {                       # phone COMMAND: as root, with the deploy key
     ssh -i "$HOME/.ssh/pro1x-guix" -o IdentitiesOnly=yes "root@$host" "$1"
@@ -87,6 +91,8 @@ case "$cmd" in
         # user's repository, and the reinstall then failed (2026-11-06).
         phone "su - $user -c 'flatpak --user list --app --columns=application \
                    > ~/flatpak-apps.txt 2>/dev/null' || true
+               su - $user -c 'guix package --export-manifest \
+                   > ~/guix-manifest.scm 2>/dev/null' || true
                ok=; for p in ${paths[*]}; do [ -e /\$p ] && ok=\"\$ok \$p\"; done
                tar -C / --exclude=home/$user/.cache \
                    --exclude=home/$user/.local/share/flatpak -cf - \$ok" > "$out"
@@ -118,8 +124,12 @@ Done.  Next:
        flatpak remote-add --user --if-not-exists flathub \\
            https://dl.flathub.org/repo/flathub.flatpakrepo
        xargs -r flatpak install --user -y flathub < ~/flatpak-apps.txt
-  3. passwd                            (the password is still the default)
-  4. log out and in, or reboot
+  3. on the phone, the packages installed with guix install:
+       guix package -m ~/guix-manifest.scm
+     and Guix Home, if there is a config for it:
+       guix home reconfigure ~/guix-home-config.scm
+  4. passwd                            (the password is still the default)
+  5. log out and in, or reboot
 EOF
         ;;
     *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
