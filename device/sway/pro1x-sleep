@@ -7,9 +7,11 @@
 #   - the power key, the keyboard, gpio-keys (camera, volume up), the RTC
 #     alarm, the charger: stays awake, the panel lit;
 #   - the modem (qrtr-modem: our kernel patch, a message from it): waits
-#     up to 5 s for ModemManager; a ringing call or a new SMS keeps it
-#     awake, as allowed by WAKE_ON (/etc/pro1x/sleep.conf, wake-on in
-#     config.scm: calls, sms), anything else sleeps again;
+#     up to 10 s for ModemManager; a ringing call or a new SMS lights the
+#     panel, as allowed by WAKE_ON (/etc/pro1x/sleep.conf, wake-on in
+#     config.scm: calls, sms), anything else sleeps again.  Then it sleeps
+#     again unless a key or the screen is touched: an SMS after 30 s, a call
+#     30 s after it stopped ringing, unless answered (author, 2026-11-07);
 #   - the ADSP alone (fastrpc's "adsp" wakeup source: a sensor call for
 #     hexagonrpcd, answered in a moment): sleeps again.
 # The panel goes off before sleeping.  Measured 2026-11-01:
@@ -124,6 +126,32 @@ ringing() {
 # Received SMS stored on the modem (ModemManager's list).
 sms_count() { mmcli -m any --messaging-list-sms 2>/dev/null | grep -c received; }
 
+# Touches and key presses: the interrupts of the touchscreen (gt9286), the
+# keyboard and its modifier keys, the other keys and the power key, summed
+# over the CPUs.  The keyboard slide (Hall Switch) does not count.
+input_irqs() {
+    awk '/ (gt9286|pro1x-kbd|Home|Super Left|Super Right|Shift|Ctrl|Alt|Camera Button|Volume Up|pm8941_pwrkey)$/ {
+             for (i = 2; i <= NF && $i ~ /^[0-9]+$/; i++) n += $i }
+         END { print n + 0 }' /proc/interrupts
+}
+
+# After a call or an SMS woke the phone: true (sleep again) when nothing was
+# touched.  A call: wait while it rings; answered, stay awake; else, as for
+# an SMS, GRACE seconds without a touch or key.
+GRACE=30
+back_to_sleep() {               # back_to_sleep call|sms
+    n=$(input_irqs)
+    if [ "$1" = call ]; then
+        while ringing; do sleep 1; done
+        mmcli -m any --voice-list-calls 2>/dev/null | grep -q '(active)' && return 1
+    fi
+    i=0
+    while [ $i -lt $GRACE ]; do
+        [ "$(input_irqs)" = "$n" ] || return 1
+        sleep 1; i=$((i + 1))
+    done
+}
+
 # The ADSP crashed: restart it once, then what talks to it.
 adsp_recover() {
     [ -n "$adsp" ] && [ "$(cat "$adsp/state")" = crashed ] || return 0
@@ -162,7 +190,7 @@ suspend_loop() {
     fi
     before=$(mktemp) after=$(mktemp)
     sms=$(sms_count)
-    tries=0
+    tries=0 woke=
     while :; do
         counts > "$before"
         if ! echo mem > /sys/power/state 2>/dev/null; then
@@ -183,9 +211,10 @@ suspend_loop() {
             *" qrtr-modem "*)
                 # Wait for ModemManager to tell a call from the rest.
                 i=0
-                while [ $i -lt 10 ]; do
-                    ringing && break 2
-                    allowed sms && [ "$(sms_count)" -gt "$sms" ] && break 2
+                while [ $i -lt 20 ]; do
+                    ringing && { woke=call; break 2; }
+                    allowed sms && [ "$(sms_count)" -gt "$sms" ] &&
+                        { woke=sms; break 2; }
                     sleep 0.5; i=$((i + 1))
                 done
                 # Nothing for the user: but a key pressed meanwhile counts.
@@ -203,28 +232,36 @@ suspend_loop() {
 
 case "${1:-}" in
     suspend)
-        herd stop pro1x-shake-torch >/dev/null 2>&1
-        panel off
-        [ -n "$uart" ] && echo disabled > "$uart"
-        [ -n "$ipa" ] && echo disabled > "$ipa"
-        [ -w "$gpiokeys" ] && echo disabled > "$gpiokeys"
-        led_asleep
-        alarm_wake
-        suspend_loop
-        [ -w "$rtcwake" ] && echo 0 > "$rtcwake"
-        [ -n "$uart" ] && echo enabled > "$uart"
-        [ -n "$ipa" ] && echo enabled > "$ipa"
-        [ -w "$gpiokeys" ] && echo enabled > "$gpiokeys"
-        led_awake
-        sleep 1                                  # a crash shows by then
-        adsp_recover
-        # After a resume iio-sensor-proxy kept its sensors but proximity
-        # changes no longer came (no blanking, also on the lock screen;
-        # 2026-11-01): the sensor services start again.
-        herd restart iio-sensor-proxy >/dev/null 2>&1
-        herd start pro1x-pocket >/dev/null 2>&1
-        herd restart pro1x-shake-torch >/dev/null 2>&1
-        panel on ;;
+        while :; do
+            herd stop pro1x-shake-torch >/dev/null 2>&1
+            panel off
+            [ -n "$uart" ] && echo disabled > "$uart"
+            [ -n "$ipa" ] && echo disabled > "$ipa"
+            [ -w "$gpiokeys" ] && echo disabled > "$gpiokeys"
+            led_asleep
+            alarm_wake
+            suspend_loop
+            [ -w "$rtcwake" ] && echo 0 > "$rtcwake"
+            [ -n "$uart" ] && echo enabled > "$uart"
+            [ -n "$ipa" ] && echo enabled > "$ipa"
+            [ -w "$gpiokeys" ] && echo enabled > "$gpiokeys"
+            led_awake
+            sleep 1                              # a crash shows by then
+            adsp_recover
+            # After a resume iio-sensor-proxy kept its sensors but proximity
+            # changes no longer came (no blanking, also on the lock screen;
+            # 2026-11-01): the sensor services start again.
+            herd restart iio-sensor-proxy >/dev/null 2>&1
+            herd start pro1x-pocket >/dev/null 2>&1
+            herd restart pro1x-shake-torch >/dev/null 2>&1
+            panel on
+            case "$woke" in
+                call|sms)
+                    back_to_sleep "$woke" || break
+                    logger -t pro1x-sleep "$woke, nothing touched: sleeping again" ;;
+                *) break ;;
+            esac
+        done ;;
     hibernate) echo disk > /sys/power/state ;;
     *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
 esac
