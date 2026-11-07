@@ -126,6 +126,11 @@ No blob is in this repository; they are proprietary.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.
+   - No `cmnlib` to load: `cmnlib_a/b` and `cmnlib64_a/b` are all zeros on the
+     phone (read only), the vendor tree has no image, yet the 64-bit apps run;
+     `tz.mbn` holds the strings `cmnlib`, `cmnlib64`, `cmnlib_init`, so both are
+     most likely built into this TrustZone (inferred). Open: what result -19
+     means, and whether Linux-loaded or 32-bit apps take commands here at all.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
