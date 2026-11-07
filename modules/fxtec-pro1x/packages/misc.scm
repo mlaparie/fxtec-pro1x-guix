@@ -1298,7 +1298,20 @@ screen, for entering the password without a hardware keyboard.")
 (define with-json-c/pro1x
   (package-input-rewriting `((,json-c . ,json-c/pro1x)) #:deep? #f))
 
-(define-public swayfx/pro1x (with-json-c/pro1x swayfx))
+;; Ours: Super and a finger drag move floating windows, as with a mouse
+;; (the touch went to the app).
+(define-public swayfx/pro1x
+  (with-json-c/pro1x
+   (package
+     (inherit swayfx)
+     (source
+      (origin
+        (inherit (package-source swayfx))
+        (patches
+         (cons (local-file
+                (repository-file "device/patches/swayfx-touch-floating-modifier.patch")
+                "swayfx-touch-floating-modifier.patch")
+               (origin-patches (package-source swayfx)))))))))
 (define-public sway/pro1x (with-json-c/pro1x sway))
 
 ;;; ---------------------------------------------------------------------------

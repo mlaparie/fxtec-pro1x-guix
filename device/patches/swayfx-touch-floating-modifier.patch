@@ -1,0 +1,30 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] seatop_default: the floating modifier and a touch move windows
+
+A touch goes to the client as touch whenever the client accepts it, so
+holding the floating modifier (Super) and dragging with a finger did
+nothing over most GTK and Qt windows; only a mouse or the touchpad
+could move a floating window.  With the modifier held, take the
+pointer-simulation path instead: the touch is the left button, and
+handle_button starts the move (or a tiling drag) as for a mouse.
+
+Ours (fxtec-pro1x-guix, 2026-11-07), against swayfx 0.6 (sway 1.12).
+---
+--- a/sway/input/seatop_default.c
++++ b/sway/input/seatop_default.c
+@@ -665,7 +665,14 @@
+ 	double sx, sy;
+ 	node_at_coords(seat, seat->touch_x, seat->touch_y, &surface, &sx, &sy);
+ 
+-	if (surface && wlr_surface_accepts_touch(surface, wlr_seat)) {
++	// With the floating modifier held, a touch acts as the pointer's left
++	// button, so it can move a floating window (or drag a tiled one) as the
++	// modifier and a mouse do, also over clients that accept touch.
++	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(wlr_seat);
++	bool mod_pressed = keyboard &&
++		(wlr_keyboard_get_modifiers(keyboard) & config->floating_mod);
++
++	if (surface && !mod_pressed && wlr_surface_accepts_touch(surface, wlr_seat)) {
+ 		if (seat_is_input_allowed(seat, surface)) {
+ 			cursor->simulating_pointer_from_touch = false;
+ 			seatop_begin_touch_down(seat, surface, event, sx, sy, lx, ly);
