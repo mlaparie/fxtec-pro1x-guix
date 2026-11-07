@@ -20,9 +20,20 @@ Left out:
 - 0028, which only undoes 0012's keyboard backlight inversion;
 - 0035 goodix touch scanning through suspend (double-tap wakes it from
   sleep): not wanted (author, 2026-11-02);
-- 0050, 0051, 0056: experimental in his tree (system power domain under the
-  MPM, SPMI through the MPM, UFS power-down needed with them), not in his
-  daily kernel.  The deep-sleep step, after this base works.
+- 0058-0062 (newer than the copy): his modem wake (every packet from the
+  modem wakes the system) and Wi-Fi wake-on-WLAN fixes.  Ours,
+  qrtr-modem-wake, wakes only on the ports config.scm's wake-on lists; his
+  would change the wake triggers (author, 2026-11-07: they stay as they are).
+
+Added on 2026-11-07 from his tree: 0050 (a system power domain above the
+clusters, under the MPM: the SoC reaches RPM vmin in suspend), 0051 (the
+SPMI interrupt, so the power key, RTC and USB-C, through the MPM, which 0050
+needs) and 0056 (UFS powered down in suspend, else hibern8 exit crashed
+after a system-level sleep).  In his daily kernel since 2026-11-02; with
+0054-0057, he measured 37-45 mA in suspend against 56-60 without the system
+domain (his notes/sleep.md).  Open on ours: whether qrtr-modem-wake still
+wakes the phone for calls and SMS with 0050 (his notes: the modem's glink
+interrupt is still handled in s2idle, but reports no wakeup itself).
 
 Ours on top (`../patches/`): panelgap, dpugap (NixOS port, module
 parameters, off by default), qrtr-modem-wake (v4).  Dropped from our 7.1
