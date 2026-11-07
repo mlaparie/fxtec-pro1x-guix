@@ -10,8 +10,8 @@
 #     up to 10 s for ModemManager; a ringing call or a new SMS lights the
 #     panel, as allowed by WAKE_ON (/etc/pro1x/sleep.conf, wake-on in
 #     config.scm: calls, sms), anything else sleeps again.  Then it sleeps
-#     again unless a key or the screen is touched: an SMS after 30 s, a call
-#     30 s after it stopped ringing, unless answered (author, 2026-11-07);
+#     again unless a key or the screen is touched: an SMS after 10 s, a call
+#     10 s after it stopped ringing, unless answered (author, 2026-11-07);
 #   - the ADSP alone (fastrpc's "adsp" wakeup source: a sensor call for
 #     hexagonrpcd, answered in a moment): sleeps again.
 # The panel goes off before sleeping.  Measured 2026-11-01:
@@ -138,7 +138,7 @@ input_irqs() {
 # After a call or an SMS woke the phone: true (sleep again) when nothing was
 # touched.  A call: wait while it rings; answered, stay awake; else, as for
 # an SMS, GRACE seconds without a touch or key.
-GRACE=30
+GRACE=10
 back_to_sleep() {               # back_to_sleep call|sms
     n=$(input_irqs)
     if [ "$1" = call ]; then
