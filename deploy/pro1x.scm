@@ -135,9 +135,11 @@ left out of the provenance~%"))
         (actual (getenv "PRO1X_ROOT_FSTYPE")))
     (when (and actual (not (string-null? actual))
                (not (string=? declared actual)))
-      (leave "the system's root is ~a but the phone's is ~a: it would not boot.
+      (format (current-error-port)
+              "error: the system's root is ~a but the phone's is ~a: it would not boot.
 Set #:root-file-system-type \"~a\" in config.scm (pro1x-mobile-operating-system).~%"
-             declared actual actual))
+              declared actual actual)
+      (exit 1))
     os))
 
 (list
