@@ -567,7 +567,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
          %base-file-systems))
 
   ;; ── Home skeleton for new accounts ────────────────────────────────────
-  ;; Sway and foot: small files that include the port's, which follow
+  ;; Sway, foot and mpv: small files that include the port's, which follow
   ;; deploys (copies would go stale).  The bar has none: pro1x-bar uses
   ;; the port's block lists unless ~/.config/i3status-rust/ has its own.
   (skeletons
@@ -576,6 +576,8 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
        ,(file-append pro1x-sway-config "/share/pro1x-sway/config"))
       (".config/foot/foot.ini"
        ,(file-append pro1x-sway-config "/share/pro1x-sway/foot-user.ini"))
+      (".config/mpv/mpv.conf"
+       ,(file-append pro1x-sway-config "/share/pro1x-sway/mpv-user.conf"))
       ;; XDG user directories, set when the account is created (first boot
       ;; after flashing), as xdg-user-dirs-update would write them: Snapshot
       ;; saves into XDG_PICTURES_DIR and failed without it (2026-10-30).

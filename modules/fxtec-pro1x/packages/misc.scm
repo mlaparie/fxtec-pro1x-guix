@@ -1740,6 +1740,9 @@ window opened by a sway key binding.")
 ;;;   share/pro1x-sway/foot.ini            the port's foot settings
 ;;;   share/pro1x-sway/foot-user.ini       ~/.config/foot/foot.ini (skeleton:
 ;;;                                        includes foot.ini)
+;;;   share/pro1x-sway/mpv.conf            the port's mpv settings
+;;;   share/pro1x-sway/mpv-user.conf       ~/.config/mpv/mpv.conf (skeleton:
+;;;                                        includes mpv.conf)
 ;;;   share/pro1x-sway/i3status-*.toml     bar blocks, landscape and portrait
 ;;;                                        (pro1x-bar; ~/.config/i3status-rust/
 ;;;                                        overrides)
@@ -1794,6 +1797,8 @@ window opened by a sway key binding.")
           ("desktop.conf" "share/pro1x-sway/")
           ("effects-swayfx.conf" "share/pro1x-sway/")
           ("foot-user.ini" "share/pro1x-sway/")
+          ("mpv.conf" "share/pro1x-sway/")
+          ("mpv-user.conf" "share/pro1x-sway/")
           ("pro1x.conf" "share/pro1x-sway/")
           ("i3status-rust.toml" "share/pro1x-sway/")
           ("i3status-portrait.toml" "share/pro1x-sway/")
