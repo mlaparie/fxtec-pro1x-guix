@@ -116,6 +116,16 @@ No blob is in this repository; they are proprietary.
      status -2 (`QCOM_SCM_EINVAL_ADDR`), result -19, with the request, reply and an
      empty 32-byte sglist table in mainline TZ memory below 4 GiB. The phone stayed
      up. So the call variant alone is not it: TrustZone rejects an address.
+   - (2026-11-07) Mainline's call and memory do work on this TrustZone: the test
+     module's `uefi=1` sends QueryVariableInfo to `qcom.tz.uefisecapp` (app 2,
+     loaded by the bootloader) with command 1, laid out as mainline's
+     `qcom_qseecom_uefisecapp`, and gets a proper reply (status 0, storage 20480,
+     free 20024), from a one-page block at 0x67b4b000 and from two pages at
+     0xfe300000 alike. `mafp` with the same small layout (`buf_size=0x20`, at
+     0xfe300000) still fails. So it is `mafp`, not the call or the memory.
+   - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
+     non-existent app id (99) result -2 (both status -2; with command 1 both
+     -22). `mafp` is still not found by name lookup.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.

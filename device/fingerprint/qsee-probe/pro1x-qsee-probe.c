@@ -25,7 +25,12 @@
  *   whitelist= send cmd as the vendor driver does when TrustZone has the
  *             whitelist feature: TZ_APP_QSAPP_SEND_DATA_WITH_WHITELIST_ID
  *             (command 6), with an empty sglist table.  The feature's
- *             version is printed before the send.
+ *             version is printed before the send;
+ *   uefi=     instead of a fingerprint command, send QueryVariableInfo to
+ *             qcom.tz.uefisecapp (loaded by the bootloader), laid out as
+ *             mainline's qcom_qseecom_uefisecapp does: a read-only query,
+ *             whether this TrustZone takes app commands from mainline's
+ *             memory at all.  With whitelist=, command 6.
  *
  *   peek=     a kernel address (from /proc/kallsyms) whose byte is printed:
  *             e.g. qcom_tzmem_using_shm_bridge, whether mainline enabled
@@ -94,7 +99,19 @@ static bool whitelist;
 module_param(whitelist, bool, 0444);
 MODULE_PARM_DESC(whitelist, "Send cmd with the whitelist variant (command 6)");
 
+static bool uefi;
+module_param(uefi, bool, 0444);
+MODULE_PARM_DESC(uefi, "Send QueryVariableInfo to qcom.tz.uefisecapp");
+
 static uint cmd_len = 8;
+
+static uint uefi_size = PAGE_SIZE;
+module_param(uefi_size, uint, 0444);
+MODULE_PARM_DESC(uefi_size, "Size of the block for uefi= (more than a page comes from elsewhere)");
+
+static uint buf_size = 0x20000;
+module_param(buf_size, uint, 0444);
+MODULE_PARM_DESC(buf_size, "Request and reply size for cmd (the library's: 0x20000)");
 module_param(cmd_len, uint, 0444);
 MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 
@@ -378,23 +395,23 @@ static void do_cmd(u32 app_id)
 	u32 *req, *rsp;
 	int ret;
 
-	if (cmd_len > TA_BUF_SIZE - 8)
+	if (buf_size < 16 || buf_size > TA_BUF_SIZE || cmd_len > buf_size - 8)
 		return;
 	/* The request, then the reply right after it: they must not overlap
 	 * (the same buffer for both got -EINVAL from the SCM call; Wróbel's
 	 * driver lays them out this way).  Then a page for the sglist table
 	 * and the extra arguments of command 6. */
-	req = qcom_tzmem_alloc(pool, 2 * TA_BUF_SIZE + PAGE_SIZE, GFP_KERNEL);
+	req = qcom_tzmem_alloc(pool, PAGE_ALIGN(2 * buf_size) + PAGE_SIZE, GFP_KERNEL);
 	if (!req)
 		return;
-	memset(req, 0, 2 * TA_BUF_SIZE + PAGE_SIZE);
-	rsp = req + TA_BUF_SIZE / sizeof(*req);
+	memset(req, 0, PAGE_ALIGN(2 * buf_size) + PAGE_SIZE);
+	rsp = req + ALIGN(buf_size, 8) / sizeof(*req);
 	req[0] = cmd;
 	req[1] = cmd_len;
 	pr_info("request at %pa, reply at %pa\n", &(phys_addr_t){ qcom_tzmem_to_phys(req) },
 		&(phys_addr_t){ qcom_tzmem_to_phys(rsp) });
 	if (whitelist) {
-		void *table = (u8 *)req + 2 * TA_BUF_SIZE;
+		void *table = (u8 *)req + PAGE_ALIGN(2 * buf_size);
 		__le64 *ext = table + 64;
 		struct arm_smccc_res res;
 
@@ -403,21 +420,87 @@ static void do_cmd(u32 app_id)
 			qcom_tzmem_free(req);
 			return;
 		}
-		ret = send_whitelist(app_id, req, TA_BUF_SIZE, rsp, TA_BUF_SIZE,
+		ret = send_whitelist(app_id, req, buf_size, rsp, buf_size,
 				     table, ext, &res);
 		pr_info("cmd 0x%x (len %u), command 6: status %ld, result %lu, type 0x%lx, data 0x%lx\n",
 			cmd, cmd_len, (long)res.a0, res.a1, res.a2, res.a3);
 		if (!ret && res.a1 != QSEE_RESULT_SUCCESS)
 			ret = -EIO;
 	} else {
-		ret = qcom_scm_qseecom_app_send(app_id, req, TA_BUF_SIZE,
-						rsp, TA_BUF_SIZE);
+		ret = qcom_scm_qseecom_app_send(app_id, req, buf_size,
+						rsp, buf_size);
 	}
 	pr_info("cmd 0x%x (len %u): %d\n", cmd, cmd_len, ret);
 	if (!ret)
 		print_hex_dump(KERN_INFO, "reply: ", DUMP_PREFIX_OFFSET, 16, 1,
 			       rsp, min_t(u32, cmd_len + 8, 0x180), true);
 	qcom_tzmem_free(req);
+}
+
+/* mainline's qsee_req/rsp_uefi_query_variable_info */
+struct uefi_query_req {
+	u32 command_id;
+	u32 length;
+	u32 attributes;
+} __packed;
+
+struct uefi_query_rsp {
+	u32 command_id;
+	u32 length;
+	u32 status;
+	u32 pad;
+	u64 storage_space;
+	u64 remaining_space;
+	u64 max_variable_size;
+} __packed;
+
+#define UEFI_CMD_QUERY_VARIABLE_INFO	0x8003
+#define UEFI_ATTR_NV_BS_RT		7
+
+static void do_uefi_query(void)
+{
+	struct uefi_query_req *req;
+	struct uefi_query_rsp *rsp;
+	struct arm_smccc_res res;
+	size_t rsp_offs = ALIGN(sizeof(*req), 8);
+	void *buf;
+	u32 id;
+	int ret;
+
+	ret = qcom_scm_qseecom_app_get_id("qcom.tz.uefisecapp", &id);
+	if (ret) {
+		pr_info("uefisecapp not found (%d)\n", ret);
+		return;
+	}
+	/* One block for both, as mainline (separate ones crashed laptops);
+	 * the sglist table and extra arguments of command 6 after them. */
+	if (uefi_size < PAGE_SIZE || uefi_size > SZ_1M)
+		return;
+	buf = qcom_tzmem_alloc(pool, uefi_size, GFP_KERNEL);
+	if (!buf)
+		return;
+	memset(buf, 0, uefi_size);
+	req = buf;
+	rsp = buf + rsp_offs;
+	req->command_id = UEFI_CMD_QUERY_VARIABLE_INFO;
+	req->length = sizeof(*req);
+	req->attributes = UEFI_ATTR_NV_BS_RT;
+	pr_info("uefisecapp is app %u; request at %pa\n", id,
+		&(phys_addr_t){ qcom_tzmem_to_phys(buf) });
+
+	if (whitelist) {
+		ret = send_whitelist(id, req, sizeof(*req), rsp, sizeof(*rsp),
+				     buf + 2048, buf + 2048 + 64, &res);
+		pr_info("uefi query, command 6: status %ld, result %lu, type 0x%lx, data 0x%lx\n",
+			(long)res.a0, res.a1, res.a2, res.a3);
+	} else {
+		ret = qcom_scm_qseecom_app_send(id, req, sizeof(*req), rsp,
+						sizeof(*rsp));
+	}
+	pr_info("uefi query: %d; reply cmd 0x%x len %u status 0x%x, storage %llu, free %llu, max %llu\n",
+		ret, rsp->command_id, rsp->length, rsp->status,
+		rsp->storage_space, rsp->remaining_space, rsp->max_variable_size);
+	qcom_tzmem_free(buf);
 }
 
 static int __init qsee_probe_init(void)
@@ -437,7 +520,7 @@ static int __init qsee_probe_init(void)
 
 	do_lookups();
 
-	if ((!image || !*image) && !(cmd && app_id))
+	if ((!image || !*image) && !(cmd && app_id) && !uefi)
 		return 0;
 
 	pool = qcom_tzmem_pool_new(&config);
@@ -445,6 +528,11 @@ static int __init qsee_probe_init(void)
 		ret = PTR_ERR(pool);
 		pool = NULL;
 		return ret;
+	}
+
+	if (uefi) {
+		do_uefi_query();
+		return 0;
 	}
 
 	if (!image || !*image) {
