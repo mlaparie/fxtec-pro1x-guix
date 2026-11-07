@@ -611,7 +611,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
   ;; Guix's default sudoers, plus tuigreet's power menu (F12): the greeter
   ;; runs as "greeter", and halt/reboot need root (Shepherd's socket).
   (sudoers-file
-   (mixed-text-file "sudoers"
+   (plain-file "sudoers"
                (string-append (plain-file-content %sudoers-specification)
                               "greeter ALL=(root) NOPASSWD: "
                               "/run/current-system/profile/sbin/halt, "
@@ -624,16 +624,7 @@ plain or encrypted: it finds out which from the disk (services/fde.scm)."
                               ;; Its CPU mode line.
                               "/run/current-system/profile/bin/pro1x-cpu-mode, "
                               ;; Quick actions' charge limit.
-                              "/run/current-system/profile/bin/pro1x-charge-limit\n")
-               ;; xremap with the user's config, started by Sway; its
-               ;; per-window rules need the session's Wayland socket.  The
-               ;; one of an earlier login is stopped first.
-               "user ALL=(root) NOPASSWD: "
-               (file-append xremap-wlroots
-                            "/bin/xremap /home/user/.config/xremap/config.yml --watch, ")
-               (file-append procps "/bin/pkill -x xremap\n")
-               "Defaults!" (file-append xremap-wlroots "/bin/xremap")
-               " env_keep += \"WAYLAND_DISPLAY XDG_RUNTIME_DIR\"\n"))
+                              "/run/current-system/profile/bin/pro1x-charge-limit\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services

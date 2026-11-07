@@ -15,3 +15,7 @@ KERNEL=="rmnet_ipa*", SUBSYSTEM=="net", ENV{ID_MM_CANDIDATE}="1", ENV{ID_MM_PHYS
 # logind there are no per-seat ACLs, and gsd-rfkill (Phosh's Bluetooth and
 # airplane-mode state) could not switch radios as the user.
 KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="netdev", MODE="0664"
+
+# xremap, started by Sway as the user: virtual input devices for members of
+# input, as on the author's PC (they can already read every input device).
+KERNEL=="uinput", GROUP="input", MODE="0660"
