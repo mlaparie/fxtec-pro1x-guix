@@ -140,6 +140,16 @@ No blob is in this repository; they are proprietary.
      `libcmnlib.so` too (it has a "Failure in cmnlib_init()" message), yet loads
      here: another sign that this TrustZone has cmnlib built in (inferred).
      Asked: wrobelda/qsee-supplicant#2.
+   - (2026-11-07) Linux-loaded 32-bit apps do take commands: Qualcomm's sample
+     apps from the modem partition (`image/smplap32.*`, `smplap64.*`, both linking
+     `libcmnlib.so`), loaded by the test module (`image=`, `.mdt` + segments) as
+     apps 5 and 4, accept command 1 through mainline's send with status 0;
+     `smplap32` replies 0x50 to data 8 (×10). So neither the 32-bit class, cmnlib,
+     loading from Linux nor mainline's send is the cause: it is `mafp`. Lead
+     (inferred): -19 is ENODEV, and `mafp` owns the sensor's SPI bus; on Android
+     `madev.c` powers the sensor before the app loads, here nothing does. Next:
+     power the sensor (power `tlmm 108`, `suben` `tlmm 67`, reset `tlmm 104`),
+     then load `mafp` and send 0xEF.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
