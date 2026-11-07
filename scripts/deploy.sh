@@ -104,7 +104,12 @@ if grep -q "$srht" "$tmp$dir/channels.scm" &&
     sed -i "s|$srht|$mirror|" "$tmp$dir/channels.scm"
 fi
 
+# The root's type, which the system must declare (deploy/pro1x.scm checks).
+root_type=$("${ssh_root[@]}" findmnt -no FSTYPE /) ||
+    { echo "error: cannot read the phone's root type" >&2; exit 1; }
+
 echo "Configuration: $dir/config.scm, channels: $dir/channels.scm (phone)"
+PRO1X_ROOT_FSTYPE="$root_type" \
 PRO1X_SYSTEM="$tmp$dir/config.scm" \
 PRO1X_HOST="$host" \
 PRO1X_PHONE_CHANNELS=1 \

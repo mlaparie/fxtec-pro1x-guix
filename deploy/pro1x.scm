@@ -50,6 +50,7 @@
              (gnu services base)
              (gnu services ssh)
              (gnu system)
+             (gnu system file-systems)  ; file-system-type
              (guix channels)
              (guix gexp)
              (guix ui)                  ; load*
@@ -126,12 +127,26 @@ left out of the provenance~%"))
                           (openssh-configuration-authorized-keys
                            config)))))))))
 
+;; The root's declared type must be the phone's: a btrfs system on an ext4
+;; root, or the other way round, does not boot.  PRO1X_ROOT_FSTYPE is what
+;; scripts/deploy.sh read on the phone.
+(define (with-root-type-check os)
+  (let ((declared (file-system-type (operating-system-root-file-system os)))
+        (actual (getenv "PRO1X_ROOT_FSTYPE")))
+    (when (and actual (not (string-null? actual))
+               (not (string=? declared actual)))
+      (leave "the system's root is ~a but the phone's is ~a: it would not boot.
+Set #:root-file-system-type \"~a\" in config.scm (pro1x-mobile-operating-system).~%"
+             declared actual actual))
+    os))
+
 (list
  (machine
   (operating-system
-   (with-root-ssh-key
-    (with-host-signing-key
-     (load* (canonicalize-path %system-file) '()))))
+   (with-root-type-check
+    (with-root-ssh-key
+     (with-host-signing-key
+      (load* (canonicalize-path %system-file) '())))))
   (environment managed-host-environment-type)
   (configuration
    (machine-ssh-configuration

@@ -176,13 +176,18 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
    (shepherd-service
     (provision '(pro1x-rootfs-resize))
     (requirement '(file-systems))
-    (documentation "Expand the root ext4 filesystem to fill its partition if needed")
+    (documentation "Expand the root file system to fill its partition if needed")
     (one-shot? #t)
     (start
      #~(make-forkexec-constructor
         (list "/bin/sh" "-c"
               (string-append
-               ;; Locate root device.
+               ;; btrfs grows online, and not at all when it fills the
+               ;; device already.
+               "if [ \"$(awk '$2==\"/\" {print $3; exit}' /proc/mounts)\" = btrfs ]; then "
+               "exec " #$(file-append btrfs-progs "/bin/btrfs")
+               " filesystem resize max /; fi; "
+               ;; ext4: locate root device.
                "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) || exit 1; "
                ;; /dev/mapper/pro1x-crypt is dm-0 in /proc/partitions.
                "dev=$(readlink -f \"$dev\"); "
@@ -209,6 +214,7 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
      (service-extension shepherd-root-service-type
                         pro1x-rootfs-resize-shepherd-services)))
    (default-value #f)
-   (description "Expand the root ext4 filesystem to fill its partition when
-the gap between partition size and filesystem size exceeds ~40 MiB.  Mirrors
-the resize_userdata_if_needed logic from Droidian's initramfs-tools-halium.")))
+   (description "Expand the root file system to fill its partition: btrfs
+always (a no-op once full), ext4 when the gap between partition size and
+filesystem size exceeds ~40 MiB, as the resize_userdata_if_needed logic from
+Droidian's initramfs-tools-halium.")))

@@ -22,8 +22,10 @@
   #:use-module (gnu packages linux)        ; procps
   #:use-module (gnu packages glib)         ; dbus
   #:use-module (gnu services)
+  #:use-module (gnu system file-systems)
   #:use-module (guix gexp)
-  #:export (pro1x-root-authorized-keys
+  #:export (pro1x-root-file-system
+            pro1x-root-authorized-keys
             pro1x-root-key-skeletons
             pro1x-user-config-service
             pro1x-reload-bus-service))
@@ -41,6 +43,18 @@ of public key files."
   (if (null? keys)
       '()
       `((".ssh/pro1x-guix.pub" ,(car keys)))))
+
+(define* (pro1x-root-file-system #:optional (type "btrfs"))
+  "Return the root file system, labelled guix, of TYPE: \"btrfs\" (zstd
+compression; the images and flash scripts make it) or \"ext4\" (phones
+flashed before 2026-11-07)."
+  (file-system
+    (device (file-system-label "guix"))
+    (mount-point "/")
+    (type type)
+    (flags '(no-atime))
+    ;; Level 1: cheap on this SoC's CPU, most of zstd's gain.
+    (options (and (string=? type "btrfs") "compress=zstd:1"))))
 
 (define (pro1x-user-config module procedure)
   "Return the text of /etc/guix/config.scm for the system that PROCEDURE, a
