@@ -131,6 +131,15 @@ No blob is in this repository; they are proprietary.
      `tz.mbn` holds the strings `cmnlib`, `cmnlib64`, `cmnlib_init`, so both are
      most likely built into this TrustZone (inferred). Open: what result -19
      means, and whether Linux-loaded or 32-bit apps take commands here at all.
+   - (2026-11-07) Other mainline QSEECOM fingerprint ports (reported): Wróbel's
+     Xiaomi (Goodix), samcday's Pixel 3a (sargo, FPC, a 64-bit TA;
+     samcday/pocketfed#116, samcday/sargo-bible#1), michaelmcallister's Moto G10
+     (SM4250; wrobelda/qsee-supplicant#1, RPMB listener). On the Pixel the TA
+     declares `DT_NEEDED libcmnlib.so` and its load fails unless Linux first loads
+     `cmnlib64` (from `/vendor/firmware`, APP_MGR command 7). `mafp` declares
+     `libcmnlib.so` too (it has a "Failure in cmnlib_init()" message), yet loads
+     here: another sign that this TrustZone has cmnlib built in (inferred).
+     Asked: wrobelda/qsee-supplicant#2.
 4. Power the sensor from the DT GPIOs and check its IRQ on a touch (no TrustZone).
 5. Send 0xC8, 0xC9 and read the chip ID (0xEF).
 6. Listeners for the TA's file storage; then enroll and verify structures.
