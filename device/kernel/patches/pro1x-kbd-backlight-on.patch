@@ -1,0 +1,22 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] arm64: dts: qcom: sm6115-pro1x: keyboard backlight on at boot
+
+Light the keyboard from the LED's probe, so the full-disk encryption
+passphrase can be typed in the dark (author, 2026-11-07).  The
+pro1x-kbd-backlight service sets it on its first pass once the system
+is up (on while slid out with the panel on, off after a minute without
+a key).
+
+Ours (fxtec-pro1x-guix, 2026-11-07), on moWerk's 0007-pro1x-leds.
+---
+--- a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
++++ b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+@@ -201,7 +201,7 @@
+ 			function = LED_FUNCTION_KBD_BACKLIGHT;
+ 			color = <LED_COLOR_ID_WHITE>;
+ 			gpios = <&tlmm 103 GPIO_ACTIVE_HIGH>;
+-			default-state = "off";
++			default-state = "on";
+ 			pinctrl-names = "default";
+ 			pinctrl-0 = <&kbd_backlight_default>;
+ 		};
