@@ -543,9 +543,12 @@ audio_name() {                  # node.name, which the combination takes
 }
 audio_outputs() { audio_sinks | awk -F'\t' '$2 != "Combined"'; }
 audio_combined_on() {
-    [ -s "$combined" ] || return 1
-    def=$(audio_sinks | awk -F'\t' '$3 == "*" { print $2; exit }')
-    [ "$def" = Combined ]
+    [ -s "$combined" ] && [ "$(audio_name @DEFAULT_AUDIO_SINK@)" = pro1x_combined ]
+}
+audio_combined_id() {           # wpctl lists it under Filters, not Sinks
+    wpctl status 2>/dev/null |
+        awk '/ pro1x_combined +\[Audio\/Sink\]/ && match($0, /[0-9]+\./) {
+                 print substr($0, RSTART, RLENGTH - 1); exit }'
 }
 audio_ticked() {                # IDs, one per line
     if audio_combined_on; then
@@ -571,7 +574,7 @@ audio_apply() {                 # audio_apply ID...
     printf '%s\n%s\n' "$mod" "$*" > "$combined"
     i=0
     while [ $i -lt 10 ]; do     # it appears a moment later
-        id=$(audio_sinks | awk -F'\t' '$2 == "Combined" { print $1; exit }')
+        id=$(audio_combined_id)
         [ -n "$id" ] && { wpctl set-default "$id"; return; }
         sleep 0.2; i=$((i + 1))
     done
