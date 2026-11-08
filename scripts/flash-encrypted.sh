@@ -287,9 +287,12 @@ fastboot flash vbmeta_b "$TMPDIR/vbmeta.img"
 echo "==> Erasing userdata…"
 fastboot erase userdata
 
+# -u: fastboot 7.1.2 otherwise erases the whole partition before each part
+# (it reports ext4), so only the last part stayed (2026-11-08: U-Boot found
+# no /boot/extlinux/extlinux.conf).  It is erased once above.
 echo "==> Flashing userdata (${#PARTS[@]} parts)…"
 for p in "${PARTS[@]}"; do
-    fastboot flash userdata "$p" || die "flashing $p failed"
+    fastboot -u flash userdata "$p" || die "flashing $p failed"
 done
 
 echo "==> Setting active slot to A…"
