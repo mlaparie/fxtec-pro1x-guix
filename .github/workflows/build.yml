@@ -223,7 +223,7 @@ jobs:
           # it declares from its partition: the system would boot on ext4
           # only.  So guix system init into a directory, as root for the
           # owners (the bootloader only writes /boot/extlinux/extlinux.conf),
-          # with the runner's channel cache; then a zstd btrfs of it,
+          # with the runner's channel cache; then a btrfs of it,
           # labelled guix, at its smallest: the phone grows it at first boot
           # (pro1x-rootfs-resize-service-type).  Guix's mkfs.btrfs: Ubuntu's
           # is too old for --compress with --rootdir.
@@ -242,9 +242,23 @@ jobs:
           USED=$(sudo du -sxb "$ROOTDIR" | cut -f1)
           rm -f rootfs.img
           truncate -s "$(( USED + USED / 4 + 512 * 1024 * 1024 ))" rootfs.img
+          # Uncompressed: with --compress zstd:3, run 42443465546's image had
+          # extents the kernel could not decompress ("zstd decompression
+          # failed", in the kernel's Image).  The phone compresses what it
+          # writes later (compress=zstd:1).
           sudo "$MKFS" -q -L guix --rootdir "$ROOTDIR" --subvol rw:home \
-            --compress zstd:3 --shrink rootfs.img
+            --shrink rootfs.img
           sudo rm -rf "$ROOTDIR"
+          # Read every file through the kernel: btrfs check does not.
+          sudo mkdir -p /mnt/rootfs
+          sudo mount -o loop,ro rootfs.img /mnt/rootfs
+          # (tar skips reading when it writes to /dev/null itself.)
+          ( set -o pipefail; sudo tar -C /mnt/rootfs -cf - . | wc -c )
+          sudo umount /mnt/rootfs
+          if sudo dmesg | grep -q 'BTRFS error'; then
+            sudo dmesg | grep 'BTRFS' | tail -20
+            echo "rootfs.img: the kernel could not read it"; exit 1
+          fi
           echo "rootfs (btrfs): $(( $(stat -c %s rootfs.img) / 1048576 )) MiB, files: $(( USED / 1048576 )) MiB"
           echo "==> disk space after:"; df -h /
 
