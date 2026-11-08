@@ -114,6 +114,19 @@ case "$cmd" in
         else
             scp "$in" "$login@$host:$tmp"
         fi
+        # On a btrfs root, the cache and the Flatpak apps as subvolumes of
+        # their own: btrbk's snapshots of /home leave nested subvolumes out
+        # (services/snapshots.scm).  An existing directory only if empty.
+        echo "==> Subvolumes for the cache and the Flatpak apps (btrfs)…"
+        phone_sudo "[ \"\$(findmnt -no FSTYPE /)\" = btrfs ] || exit 0
+                    for d in .cache .local/share/flatpak; do
+                      p=/home/$user/\$d
+                      btrfs -q subvolume show \"\$p\" >/dev/null 2>&1 && continue
+                      [ -d \"\$p\" ] && { rmdir \"\$p\" 2>/dev/null || continue; }
+                      mkdir -p \"\$(dirname \"\$p\")\"
+                      btrfs -q subvolume create \"\$p\" &&
+                        chown $user:users \"\$p\" && chmod 700 \"\$p\"
+                    done"
         echo "==> Unpacking it over /…"
         phone_sudo "chmod 600 $tmp; tar -C / --same-owner -xpf $tmp; s=\$?; \
                   shred -u $tmp; nmcli connection reload 2>/dev/null; exit \$s"

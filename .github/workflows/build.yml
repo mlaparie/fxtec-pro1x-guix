@@ -234,11 +234,15 @@ jobs:
           sudo env "PATH=$PATH" HOME=/root $TM system init --no-grafts --skip-checks \
             -L modules systems/mobile.scm "$ROOTDIR"
           sudo test -s "$ROOTDIR/boot/extlinux/extlinux.conf"
+          # /home its own subvolume, which btrbk snapshots
+          # (pro1x-snapshots-service-type) without the system.
+          sudo mkdir -p "$ROOTDIR/home"
           MKFS=$($TM build btrfs-progs | grep -v '\.drv' | tail -1)/bin/mkfs.btrfs
           USED=$(sudo du -sxb "$ROOTDIR" | cut -f1)
           rm -f rootfs.img
           truncate -s "$(( USED + USED / 4 + 512 * 1024 * 1024 ))" rootfs.img
-          sudo "$MKFS" -q -L guix --rootdir "$ROOTDIR" --compress zstd:3 --shrink rootfs.img
+          sudo "$MKFS" -q -L guix --rootdir "$ROOTDIR" --subvol rw:home \
+            --compress zstd:3 --shrink rootfs.img
           sudo rm -rf "$ROOTDIR"
           echo "rootfs (btrfs): $(( $(stat -c %s rootfs.img) / 1048576 )) MiB, files: $(( USED / 1048576 )) MiB"
           echo "==> disk space after:"; df -h /

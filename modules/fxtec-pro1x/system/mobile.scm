@@ -79,6 +79,7 @@
              (fxtec-pro1x services channels)
              (fxtec-pro1x services camera)
              (fxtec-pro1x services hardware)
+             (fxtec-pro1x services snapshots)
              (fxtec-pro1x services keyboard)
              (fxtec-pro1x services modem)
              (fxtec-pro1x services sensors)
@@ -648,6 +649,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      ;; The fingerprint TA's supplicant and loader; not started at boot yet.
      (service pro1x-fingerprint-service-type)
      (service pro1x-rootfs-resize-service-type)
+     ;; Snapshots of /home with btrbk, on a btrfs root.
+     (service pro1x-snapshots-service-type)
      (service pro1x-boot-success-service-type)
      (service pro1x-boot-menu-service-type
               (pro1x-boot-menu-configuration
