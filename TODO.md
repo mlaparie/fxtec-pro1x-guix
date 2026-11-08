@@ -4,10 +4,18 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**btrfs root (2026-11-07, in progress):** the systems declare a zstd btrfs root
-(968ee81), `flash-encrypted.sh` converts the image's ext4 (bd59576), the plain
-`flash.sh` layout refuses until it gets the same root (so `systems/minimal.scm`
-cannot be flashed meanwhile).  The author's phone (generation 28) is still ext4:
+**btrfs root (2026-11-08, in progress):** CI builds the btrfs root itself (`guix system
+init`, then `mkfs.btrfs --rootdir --subvol rw:home`), so `flash-encrypted.sh` takes it as
+is; the plain `flash.sh` layout still refuses (so `systems/minimal.scm` cannot be flashed
+meanwhile).  `/home` is a subvolume, snapshotted by btrbk (`services/snapshots.scm`:
+hourly when it changed, 1 day of all, 7 daily, 3 weekly).  **Workaround to remove:** CI's
+`mkfs.btrfs --compress zstd:3` on aarch64 wrote extents the kernel could not decompress
+(run 42443465546, the kernel's Image from 39 MB; the PC's mkfs, same file and level, was
+fine), so the image is uncompressed and `pro1x-rootfs-compress` (`services/boot.scm`)
+compresses `/gnu` and `/home` once at first boot; snapshots wait for its mark.  Next:
+reproduce on the phone (aarch64 mkfs, read back through the kernel), report to btrfs-progs
+after the author's review; once compression works in CI, drop that service and the wait,
+keep CI's read-back check.  The author's phone (generation 28) is still ext4:
 its `config.scm` pins `#:root-file-system-type "ext4"`, and deploys refuse a root
 type that differs from the phone's.  Next: CI image, `flash.sh --encrypt --output`
 test, QEMU boot, backup (`scripts/backup-phone.sh`), reflash, restore.  **After it
