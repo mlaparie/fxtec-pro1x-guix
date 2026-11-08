@@ -530,12 +530,11 @@ audio_sinks() {
             print substr($0, RSTART, RLENGTH - 2) "\t" name "\t" def
         }'
 }
-# Several at once (author, 2026-11-08): two or more ticked play through a
-# combined output (pipewire-pulse's module-combine-sink over them), which is
-# the default; one ticked is the default itself.  The combination is in
-# $XDG_RUNTIME_DIR/pro1x-audio-combined: the module's index, then the
-# outputs' IDs.  Enter ticks or unticks at once, as the dictionaries; the
-# last one stays ticked.
+# Enter: this output only.  Tab: add or remove one, to play on several at
+# once (author, 2026-11-08): two or more play through a combined output
+# (pipewire-pulse's module-combine-sink over them), made the default; the
+# last one stays.  The combination is in $XDG_RUNTIME_DIR/pro1x-audio-combined:
+# the module's index, then the outputs' IDs.  ● marks those playing.
 combined="${XDG_RUNTIME_DIR:-/tmp}/pro1x-audio-combined"
 audio_name() {                  # node.name, which the combination takes
     wpctl inspect "$1" 2>/dev/null |
@@ -604,10 +603,15 @@ audio_choose() {
         fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
             --prompt="audio outputs > " --layout=reverse-list --no-info --cycle \
             --no-sort --margin=1,2 --color=16,gutter:-1 \
+            --header="Enter: this one only   Tab: add or remove one, to play on several" \
             --bind="load:$sync_end" \
             --bind="esc:$sync_begin+abort" \
             --bind="enter:transform:case {1} in
                       back) echo \"$sync_begin+accept\" ;;
+                      *) echo \"execute-silent($self --audio-only {1})+reload-sync($self --audio-lines)\" ;;
+                    esac" \
+            --bind="tab:transform:case {1} in
+                      back) ;;
                       *) echo \"execute-silent($self --audio-toggle {1})+reload-sync($self --audio-lines)\" ;;
                     esac" >/dev/null
     rm -f "$asksock"
@@ -1321,6 +1325,7 @@ case "${1:-}" in
     --dict-toggle) dict_toggle "$2"; exit ;;
     --audio-lines) audio_lines; exit ;;
     --audio-toggle) audio_toggle "$2"; exit ;;
+    --audio-only) audio_apply "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
