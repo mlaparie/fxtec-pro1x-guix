@@ -20,6 +20,7 @@ The disk stays next to the image (DISK.raw), so a second run with --keep boots
 what a deploy left there; without it the disk is made anew.
 """
 import argparse
+import fcntl
 import os
 import pathlib
 import re
@@ -27,6 +28,7 @@ import socket
 import subprocess
 import sys
 import threading
+import struct
 import time
 
 BOOT_CONF = "/boot/extlinux/extlinux.conf"
@@ -37,14 +39,27 @@ def run(*args, **kw):
     return subprocess.run(args, check=True, **kw)
 
 
+FICLONERANGE = 0x4020940D
+
+
 def make_disk(image, disk, gib):
     size = gib * 1024 * MIB
     with open(disk, "wb") as f:
         f.truncate(size)
     run("sfdisk", "-q", str(disk),
         input=b"label: gpt\nstart=2048, name=userdata\n")
-    run("dd", f"if={image}", f"of={disk}", "bs=1M", "seek=1", "conv=notrunc,sparse",
-        "status=none")
+    # On btrfs or XFS, clone the image's blocks (no space taken until the
+    # machine writes); elsewhere, copy.  The clone is whole blocks, the tail
+    # copied after it.
+    length = image.stat().st_size // 4096 * 4096
+    try:
+        with open(image, "rb") as src, open(disk, "r+b") as dst:
+            fcntl.ioctl(dst.fileno(), FICLONERANGE,
+                        struct.pack("qQQQ", src.fileno(), 0, length, MIB))
+    except OSError:
+        length = 0
+    run("dd", f"if={image}", f"of={disk}", "bs=4096", f"skip={length // 4096}",
+        f"seek={(MIB + length) // 4096}", "conv=notrunc,sparse", "status=none")
 
 
 def debugfs_read(disk, path, out=None, area_mib=512):
