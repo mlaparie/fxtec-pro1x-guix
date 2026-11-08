@@ -11,6 +11,8 @@
 ;;; ~/.cache and ~/.local/share/flatpak subvolumes (scripts/backup-phone.sh),
 ;;; so the cache's churn and the Flatpak apps (reinstallable) take no
 ;;; snapshot space.  On an ext4 root, or without the /home subvolume: nothing.
+;;; The first snapshot waits for the root's one-time compression after the
+;;; flash (pro1x-rootfs-compress in services/boot.scm), which rewrites /home.
 ;;;
 ;;; A file from a snapshot: /.snapshots/home.YYYYMMDDTHHMM/user/...
 ;;; The list: sudo btrbk -c /etc/btrbk/btrbk.conf list snapshots
@@ -63,8 +65,10 @@ volume /
                 (text (read-line port)))
            (close-pipe port)
            (if (eof-object? text) "" text)))
-       ;; Only on a btrfs root whose /home is a subvolume.
-       (when (and (string=? "btrfs"
+       ;; Only on a btrfs root whose /home is a subvolume, once it is
+       ;; compressed.
+       (when (and (file-exists? "/var/lib/pro1x/rootfs-compressed")
+                  (string=? "btrfs"
                             (output #$(file-append util-linux "/bin/findmnt")
                                     "-no" "FSTYPE" "/"))
                   (zero? (system* #$(file-append btrfs-progs "/bin/btrfs")

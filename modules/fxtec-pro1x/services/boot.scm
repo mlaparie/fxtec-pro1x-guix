@@ -207,13 +207,16 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
     (stop #~(make-kill-destructor)))
    ;; The image's files are uncompressed (CI's mkfs.btrfs --compress wrote
    ;; extents the kernel could not read), and the phone only compresses what
-   ;; it writes.  So compress the store once, at low priority, through a
-   ;; second mount of the volume: Guix mounts /gnu/store read-only.  Not
-   ;; /home: after a snapshot, rewriting it would take the space twice.
+   ;; it writes.  So compress the store and /home once, at low priority,
+   ;; through a second mount of the volume: Guix mounts /gnu/store read-only.
+   ;; /home is a subvolume, which -r does not enter, hence its own pass.
+   ;; Snapshots wait for the mark (services/snapshots.scm): rewriting /home
+   ;; after one would take the space twice.  The mark is set however it
+   ;; ends, so they do not wait forever; the log has the status.
    (shepherd-service
     (provision '(pro1x-rootfs-compress))
     (requirement '(file-systems))
-    (documentation "Compress the store of a btrfs root once, after the flash")
+    (documentation "Compress a btrfs root once, after the flash")
     (one-shot? #t)
     (start
      #~(make-forkexec-constructor
@@ -225,13 +228,14 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
                "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts); "
                "m=/run/pro1x-rootfs-compress; mkdir -p $m; "
                #$(file-append util-linux "/bin/mount")
-               " -o subvolid=5 \"$dev\" $m || exit 1; "
+               " -o subvolid=5 \"$dev\" $m"
+               " || { mkdir -p ${done%/*}; echo mount-failed > $done; exit 1; }; "
                #$(file-append coreutils "/bin/nice") " -n 19 "
                #$(file-append util-linux "/bin/ionice") " -c 3 "
                #$(file-append btrfs-progs "/bin/btrfs")
-               " filesystem defragment -r -czstd $m/gnu/store; s=$?; "
+               " filesystem defragment -r -czstd $m/gnu $m/home; s=$?; "
                #$(file-append util-linux "/bin/umount") " $m; rmdir $m; "
-               "[ $s -eq 0 ] && mkdir -p ${done%/*} && touch $done; "
+               "mkdir -p ${done%/*}; echo $s > $done; "
                "exit $s"))
         #:log-file "/var/log/pro1x-rootfs-compress.log"))
     (stop #~(make-kill-destructor)))))
