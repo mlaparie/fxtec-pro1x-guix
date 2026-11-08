@@ -532,8 +532,8 @@ audio_sinks() {
 }
 # Enter: this output only.  Tab: add or remove one, to play on several at
 # once (author, 2026-11-08): two or more play through a combined output
-# (pipewire-pulse's module-combine-sink over them), made the default; the
-# last one stays.  The combination is in $XDG_RUNTIME_DIR/pro1x-audio-combined:
+# (pipewire-pulse's module-combine-sink over them), made the current default
+# but not the remembered one; the last one stays.  The combination is in $XDG_RUNTIME_DIR/pro1x-audio-combined:
 # the module's index, then the outputs' IDs.  ● marks those playing;
 # "(default)" the one WirePlumber remembers (default-nodes state), and
 # switches back to whenever it is connected again.
@@ -573,11 +573,23 @@ audio_apply() {                 # audio_apply ID...
     mod=$(pactl load-module module-combine-sink sink_name=pro1x_combined \
               slaves="$slaves" sink_properties=device.description=Combined) || return
     printf '%s\n%s\n' "$mod" "$*" > "$combined"
-    i=0
-    while [ $i -lt 10 ]; do     # it appears a moment later
-        id=$(audio_combined_id)
-        [ -n "$id" ] && { wpctl set-default "$id"; return; }
-        sleep 0.2; i=$((i + 1))
+    # The current default only (not wpctl set-default): WirePlumber keeps
+    # remembering the single output, and goes back to it when the
+    # combination goes, a reboot included.
+    # WirePlumber picks the default again once the new output is ready,
+    # undoing an early choice: set it until it holds for half a second.
+    i=0 held=0
+    while [ $i -lt 25 ] && [ $held -lt 2 ]; do
+        if [ -n "$(audio_combined_id)" ]; then
+            if [ "$(audio_name @DEFAULT_AUDIO_SINK@)" = pro1x_combined ]; then
+                held=$((held + 1))
+            else
+                held=0
+                pw-metadata 0 default.audio.sink '{ "name": "pro1x_combined" }' \
+                    Spa:String:JSON >/dev/null
+            fi
+        fi
+        sleep 0.25; i=$((i + 1))
     done
 }
 audio_toggle() {                # audio_toggle ID
