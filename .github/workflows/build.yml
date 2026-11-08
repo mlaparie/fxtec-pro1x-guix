@@ -230,7 +230,8 @@ jobs:
           ROOTDIR=/var/guix-tmp/rootdir
           sudo mkdir -p /root/.cache "$ROOTDIR"
           sudo cp -a "$HOME/.cache/guix" /root/.cache/
-          sudo env "PATH=$PATH" HOME=/root $TM system init --no-grafts \
+          # --skip-checks: the root's label is on the phone, not here.
+          sudo env "PATH=$PATH" HOME=/root $TM system init --no-grafts --skip-checks \
             -L modules systems/mobile.scm "$ROOTDIR"
           sudo test -s "$ROOTDIR/boot/extlinux/extlinux.conf"
           MKFS=$($TM build btrfs-progs | grep -v '\.drv' | tail -1)/bin/mkfs.btrfs
