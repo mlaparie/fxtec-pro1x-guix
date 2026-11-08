@@ -534,7 +534,9 @@ audio_sinks() {
 # once (author, 2026-11-08): two or more play through a combined output
 # (pipewire-pulse's module-combine-sink over them), made the default; the
 # last one stays.  The combination is in $XDG_RUNTIME_DIR/pro1x-audio-combined:
-# the module's index, then the outputs' IDs.  "(default)" marks those playing.
+# the module's index, then the outputs' IDs.  ● marks those playing;
+# "(default)" the one WirePlumber remembers (default-nodes state), and
+# switches back to whenever it is connected again.
 combined="${XDG_RUNTIME_DIR:-/tmp}/pro1x-audio-combined"
 audio_name() {                  # node.name, which the combination takes
     wpctl inspect "$1" 2>/dev/null |
@@ -589,12 +591,18 @@ audio_toggle() {                # audio_toggle ID
     # shellcheck disable=SC2086
     audio_apply $new
 }
+audio_remembered() {            # node.name of WirePlumber's choice
+    pw-metadata 0 default.configured.audio.sink 2>/dev/null |
+        sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' | head -n 1
+}
 audio_lines() {
     printf 'back\t← back\n'
     t=" $(audio_ticked | tr '\n' ' ') "
+    r=$(audio_remembered)
     audio_outputs | while IFS="$(printf '\t')" read -r id name _; do
-        case "$t" in *" $id "*) m=" (default)" ;; *) m= ;; esac
-        printf '%s\t%s%s\n' "$id" "$name" "$m"
+        case "$t" in *" $id "*) m="●" ;; *) m=" " ;; esac
+        [ -n "$r" ] && [ "$(audio_name "$id")" = "$r" ] && d=" (default)" || d=
+        printf '%s\t%s %s%s\n' "$id" "$m" "$name" "$d"
     done
 }
 audio_choose() {
@@ -603,7 +611,7 @@ audio_choose() {
         fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
             --prompt="audio outputs > " --layout=reverse-list --no-info --cycle \
             --no-sort --margin=1,2 --color=16,gutter:-1 \
-            --header="Enter: this one only   Tab: add or remove one, to play on several" \
+            --header="Return: select single    Tab: multi-select" \
             --bind="load:$sync_end" \
             --bind="esc:$sync_begin+abort" \
             --bind="enter:transform:case {1} in
