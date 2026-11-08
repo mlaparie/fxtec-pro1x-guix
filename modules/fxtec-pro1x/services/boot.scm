@@ -204,6 +204,36 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
                #$(file-append e2fsprogs "/sbin/resize2fs") " -f \"$dev\"; "
                "fi"))
         #:log-file "/var/log/pro1x-rootfs-resize.log"))
+    (stop #~(make-kill-destructor)))
+   ;; The image's files are uncompressed (CI's mkfs.btrfs --compress wrote
+   ;; extents the kernel could not read), and the phone only compresses what
+   ;; it writes.  So compress the store once, at low priority, through a
+   ;; second mount of the volume: Guix mounts /gnu/store read-only.  Not
+   ;; /home: after a snapshot, rewriting it would take the space twice.
+   (shepherd-service
+    (provision '(pro1x-rootfs-compress))
+    (requirement '(file-systems))
+    (documentation "Compress the store of a btrfs root once, after the flash")
+    (one-shot? #t)
+    (start
+     #~(make-forkexec-constructor
+        (list "/bin/sh" "-c"
+              (string-append
+               "done=/var/lib/pro1x/rootfs-compressed; "
+               "[ -e $done ] && exit 0; "
+               "[ \"$(awk '$2==\"/\" {print $3; exit}' /proc/mounts)\" = btrfs ] || exit 0; "
+               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts); "
+               "m=/run/pro1x-rootfs-compress; mkdir -p $m; "
+               #$(file-append util-linux "/bin/mount")
+               " -o subvolid=5 \"$dev\" $m || exit 1; "
+               #$(file-append coreutils "/bin/nice") " -n 19 "
+               #$(file-append util-linux "/bin/ionice") " -c 3 "
+               #$(file-append btrfs-progs "/bin/btrfs")
+               " filesystem defragment -r -czstd $m/gnu/store; s=$?; "
+               #$(file-append util-linux "/bin/umount") " $m; rmdir $m; "
+               "[ $s -eq 0 ] && mkdir -p ${done%/*} && touch $done; "
+               "exit $s"))
+        #:log-file "/var/log/pro1x-rootfs-compress.log"))
     (stop #~(make-kill-destructor)))))
 
 (define pro1x-rootfs-resize-service-type
