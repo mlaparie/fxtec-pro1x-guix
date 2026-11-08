@@ -237,7 +237,8 @@ jobs:
           # /home its own subvolume, which btrbk snapshots
           # (pro1x-snapshots-service-type) without the system.
           sudo mkdir -p "$ROOTDIR/home"
-          MKFS=$($TM build btrfs-progs | grep -v '\.drv' | tail -1)/bin/mkfs.btrfs
+          # The first output: the static one's binaries are named *.static.
+          MKFS=$($TM build btrfs-progs | grep -v -e '\.drv$' -e '-static$' | tail -1)/bin/mkfs.btrfs
           USED=$(sudo du -sxb "$ROOTDIR" | cut -f1)
           rm -f rootfs.img
           truncate -s "$(( USED + USED / 4 + 512 * 1024 * 1024 ))" rootfs.img
