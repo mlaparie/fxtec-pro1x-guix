@@ -534,7 +534,7 @@ audio_sinks() {
 # once (author, 2026-11-08): two or more play through a combined output
 # (pipewire-pulse's module-combine-sink over them), made the default; the
 # last one stays.  The combination is in $XDG_RUNTIME_DIR/pro1x-audio-combined:
-# the module's index, then the outputs' IDs.  ● marks those playing.
+# the module's index, then the outputs' IDs.  "(default)" marks those playing.
 combined="${XDG_RUNTIME_DIR:-/tmp}/pro1x-audio-combined"
 audio_name() {                  # node.name, which the combination takes
     wpctl inspect "$1" 2>/dev/null |
@@ -593,8 +593,8 @@ audio_lines() {
     printf 'back\t← back\n'
     t=" $(audio_ticked | tr '\n' ' ') "
     audio_outputs | while IFS="$(printf '\t')" read -r id name _; do
-        case "$t" in *" $id "*) m="●" ;; *) m=" " ;; esac
-        printf '%s\t%s %s\n' "$id" "$m" "$name"
+        case "$t" in *" $id "*) m=" (default)" ;; *) m= ;; esac
+        printf '%s\t%s%s\n' "$id" "$name" "$m"
     done
 }
 audio_choose() {
