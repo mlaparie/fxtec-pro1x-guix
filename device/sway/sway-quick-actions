@@ -459,11 +459,6 @@ choose() {
             cur=$(layout_now)
             KEYBOARD_LAYOUTS=us; . /etc/pro1x/keyboard.conf 2>/dev/null
             opts=$(for l in $KEYBOARD_LAYOUTS; do printf '%s\t%s\n' "$l" "$l"; done) ;;
-        audio)
-            # PipeWire's outputs: the speaker, a headset, Bluetooth.
-            title="audio output"
-            cur=$(audio_sinks | awk -F'\t' '$3 == "*" { print $1; exit }')
-            opts=$(audio_sinks | cut -f1,2) ;;
         orient)
             title="orientation (fixes it)"
             cur=$(orientation)
@@ -510,8 +505,6 @@ choose() {
             confirm charge "$shown" charge_set "$pick" ;;
         orient) confirm orient "$pick" orientation_to "$pick" ;;
         layout) confirm layout "$pick" layout_to "$pick" ;;
-        audio) confirm audio "$(audio_sinks | awk -F'\t' -v id="$pick" '$1 == id { print $2 }')" \
-                   audio_to "$pick" ;;
         rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
             if [ "$pick" = tool ]; then
@@ -537,8 +530,86 @@ audio_sinks() {
             print substr($0, RSTART, RLENGTH - 2) "\t" name "\t" def
         }'
 }
-audio_now() { audio_sinks | awk -F'\t' '$3 == "*" { print $2; exit }'; }
-audio_to() { wpctl set-default "$1"; }
+# Several at once (author, 2026-11-08): two or more ticked play through a
+# combined output (pipewire-pulse's module-combine-sink over them), which is
+# the default; one ticked is the default itself.  The combination is in
+# $XDG_RUNTIME_DIR/pro1x-audio-combined: the module's index, then the
+# outputs' IDs.  Enter ticks or unticks at once, as the dictionaries; the
+# last one stays ticked.
+combined="${XDG_RUNTIME_DIR:-/tmp}/pro1x-audio-combined"
+audio_name() {                  # node.name, which the combination takes
+    wpctl inspect "$1" 2>/dev/null |
+        sed -n 's/.*node\.name = "\(.*\)".*/\1/p' | head -n 1
+}
+audio_outputs() { audio_sinks | awk -F'\t' '$2 != "Combined"'; }
+audio_combined_on() {
+    [ -s "$combined" ] || return 1
+    def=$(audio_sinks | awk -F'\t' '$3 == "*" { print $2; exit }')
+    [ "$def" = Combined ]
+}
+audio_ticked() {                # IDs, one per line
+    if audio_combined_on; then
+        sed -n 2p "$combined" | tr ' ' '\n' | grep .
+    else
+        audio_sinks | awk -F'\t' '$3 == "*" { print $1; exit }'
+    fi
+}
+audio_now() {                   # "MX3 + Built-in Audio Speakers"
+    t=" $(audio_ticked | tr '\n' ' ') "
+    audio_outputs | awk -F'\t' -v t="$t" 'index(t, " " $1 " ") { printf "%s%s", sep, $2; sep = " + " }'
+}
+audio_uncombine() {
+    [ -s "$combined" ] && pactl unload-module "$(head -n 1 "$combined")" 2>/dev/null
+    rm -f "$combined"
+}
+audio_apply() {                 # audio_apply ID...
+    audio_uncombine
+    if [ $# -eq 1 ]; then wpctl set-default "$1"; return; fi
+    slaves=$(for id in "$@"; do audio_name "$id"; done | paste -sd,)
+    mod=$(pactl load-module module-combine-sink sink_name=pro1x_combined \
+              slaves="$slaves" sink_properties=device.description=Combined) || return
+    printf '%s\n%s\n' "$mod" "$*" > "$combined"
+    i=0
+    while [ $i -lt 10 ]; do     # it appears a moment later
+        id=$(audio_sinks | awk -F'\t' '$2 == "Combined" { print $1; exit }')
+        [ -n "$id" ] && { wpctl set-default "$id"; return; }
+        sleep 0.2; i=$((i + 1))
+    done
+}
+audio_toggle() {                # audio_toggle ID
+    t=$(audio_ticked | tr '\n' ' ')
+    case " $t " in
+        *" $1 "*)
+            new=$(for i in $t; do [ "$i" = "$1" ] || printf '%s ' "$i"; done)
+            [ -n "$new" ] || return ;;
+        *) new="$t $1" ;;
+    esac
+    # shellcheck disable=SC2086
+    audio_apply $new
+}
+audio_lines() {
+    printf 'back\t← back\n'
+    t=" $(audio_ticked | tr '\n' ' ') "
+    audio_outputs | while IFS="$(printf '\t')" read -r id name _; do
+        case "$t" in *" $id "*) m="●" ;; *) m=" " ;; esac
+        printf '%s\t%s %s\n' "$id" "$m" "$name"
+    done
+}
+audio_choose() {
+    asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
+    audio_lines |
+        fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
+            --prompt="audio outputs > " --layout=reverse-list --no-info --cycle \
+            --no-sort --margin=1,2 --color=16,gutter:-1 \
+            --bind="load:$sync_end" \
+            --bind="esc:$sync_begin+abort" \
+            --bind="enter:transform:case {1} in
+                      back) echo \"$sync_begin+accept\" ;;
+                      *) echo \"execute-silent($self --audio-toggle {1})+reload-sync($self --audio-lines)\" ;;
+                    esac" >/dev/null
+    rm -f "$asksock"
+    cache_put audio "$(audio_now)"
+}
 
 layout_now() {                  # stevia's first layout
     gsettings get org.gnome.desktop.input-sources sources 2>/dev/null |
@@ -1237,10 +1308,16 @@ case "${1:-}" in
     --step-cached) step "$2" "$3" >/dev/null 2>&1; cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
     --choose)
-        if [ "$2" = dicts ]; then dict_choose; else choose "$2"; fi
+        case "$2" in
+            dicts) dict_choose ;;
+            audio) audio_choose ;;
+            *) choose "$2" ;;
+        esac
         exit ;;
     --dict-lines) dict_lines; exit ;;
     --dict-toggle) dict_toggle "$2"; exit ;;
+    --audio-lines) audio_lines; exit ;;
+    --audio-toggle) audio_toggle "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
