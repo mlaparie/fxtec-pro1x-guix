@@ -123,6 +123,15 @@ No blob is in this repository; they are proprietary.
      free 20024), from a one-page block at 0x67b4b000 and from two pages at
      0xfe300000 alike. `mafp` with the same small layout (`buf_size=0x20`, at
      0xfe300000) still fails. So it is `mafp`, not the call or the memory.
+   - (2026-11-09, reported by moWerk from the blobs, not checked here) The app
+     registers in TrustZone as `fingerprint`, not `mafp` (`n=fingerprint` in its
+     metadata), so a lookup of `mafp` fails even while it runs.  It is a copy of
+     Qualcomm's `smplap32` sample (same UUID), so the two may clash if both load
+     in one boot.  Android sends 0xC8 and 0xC9 first, and our tests began with
+     0xEF: the app may fault on an uninitialised sensor context, which would
+     show as the SCM error and make "TrustZone refuses the call" above wrong.
+     There is no clock or bandwidth vote in the stock stack.  To try here: 0xC8,
+     0xC9, 0xEF in that order.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.

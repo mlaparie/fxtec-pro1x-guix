@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # pro1x-hotspot — share mobile data over Wi-Fi: on or off, the network name and
-# password, a QR code for others to join, and the connected devices, which can
-# be expelled or banned.  Opened by Enter or Right on the Hotspot line of
+# password, the band, a hidden name, auto-off when idle, the data used, a QR
+# code for others to join, and the connected devices, which can be expelled or
+# banned.  Opened by Enter or Right on the Hotspot line of
 # sway-quick-actions.
 #
 # It is a NetworkManager connection in shared mode.  wlan0 cannot be a client
@@ -9,7 +10,8 @@
 # internet it shares comes from mobile data.
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
-# The device list, expel and ban are not yet run on the phone.
+# The device list, expel, ban, band, hidden, auto-off and data used are not yet
+# run on the phone.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -22,12 +24,30 @@ con=pro1x-hotspot
 iface=wlan0
 leases=/var/lib/NetworkManager/dnsmasq-$iface.leases
 banned=/var/lib/pro1x-hotspot/banned
+statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
+idle_file="$statedir/hotspot-idle"      # minutes without a device, 0 for never
+watch_pid="$rt/pro1x-hotspot-watch.pid"
+data_base="$rt/pro1x-hotspot-data"      # the byte count when it started
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 
 state() { nmcli -g GENERAL.STATE connection show "$con" 2>/dev/null; }
 exists() { nmcli -t -f NAME connection show | grep -qx "$con"; }
 ssid() { nmcli -e no -g 802-11-wireless.ssid connection show "$con"; }
 psk() { nmcli -s -e no -g 802-11-wireless-security.psk connection show "$con"; }
+band() { nmcli -e no -g 802-11-wireless.band connection show "$con"; }
+hidden() { nmcli -e no -g 802-11-wireless.hidden connection show "$con"; }
+idle_minutes() { cat "$idle_file" 2>/dev/null || echo 0; }
+stations() { iw dev "$iface" station dump 2>/dev/null | grep -c '^Station'; }
+
+bytes_now() {
+    n=/sys/class/net/$iface/statistics
+    echo $(($(cat "$n/rx_bytes") + $(cat "$n/tx_bytes")))
+}
+
+data_used() {                   # since this start, or - when off
+    [ "$(state)" = activated ] && [ -f "$data_base" ] || { echo -; return; }
+    numfmt --to=iec --suffix=B $(($(bytes_now) - $(cat "$data_base")))
+}
 
 menu_lines() {
     case "$(state)" in
@@ -40,6 +60,10 @@ menu_lines() {
         toggle "Hotspot:   $s" \
         name "Name:      $(ssid)" \
         password "Password:  $(psk)" \
+        band "Band:      $(if [ "$(band)" = a ]; then echo 5 GHz; else echo 2.4 GHz; fi)" \
+        hidden "Hidden:    $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
+        idle "Auto-off:  $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
+        data "Data used: $(data_used)" \
         qr "Show QR code" \
         clients "Connected devices"
 }
@@ -78,7 +102,27 @@ start() {
     nmcli connection up "$con" || {
         notify-send -u critical Hotspot "Could not start"; return 1; }
     $admin apply
+    bytes_now > "$data_base"
+    # The old watcher ends with the old connection; this makes sure of it.
+    [ -f "$watch_pid" ] && kill "$(cat "$watch_pid")" 2>/dev/null
+    setsid "$0" --watch > /dev/null 2>&1 < /dev/null &
     notify-send Hotspot "On: $(ssid)"
+}
+
+# Turns the hotspot off after the set minutes with no device connected.
+watch_idle() {
+    echo $$ > "$watch_pid"
+    idle=0
+    while [ "$(state)" = activated ]; do
+        if [ "$(stations)" = 0 ]; then idle=$((idle + 1)); else idle=0; fi
+        limit=$(idle_minutes)
+        if [ "$limit" != 0 ] && [ "$idle" -ge "$limit" ]; then
+            stop
+            break
+        fi
+        sleep 60
+    done
+    rm -f "$watch_pid"
 }
 
 stop() { nmcli connection down "$con"; notify-send Hotspot Off; }
@@ -101,6 +145,7 @@ case "${1:-}" in
     --start) start; exit ;;
     --stop) stop; exit ;;
     --restart) restart; exit ;;
+    --watch) watch_idle; exit ;;
 esac
 
 set_name() {
@@ -121,13 +166,35 @@ set_password() {
     nmcli connection modify "$con" wifi-sec.psk "$v" && restart_if_active
 }
 
+toggle_band() {
+    if [ "$(band)" = a ]; then b=bg; else b=a; fi
+    nmcli connection modify "$con" 802-11-wireless.band "$b" && restart_if_active
+}
+
+toggle_hidden() {
+    if [ "$(hidden)" = yes ]; then h=no; else h=yes; fi
+    nmcli connection modify "$con" 802-11-wireless.hidden "$h" && restart_if_active
+}
+
+cycle_idle() {                  # never, 5, 15, 30 minutes
+    case "$(idle_minutes)" in
+        0) next=5 ;;
+        5) next=15 ;;
+        15) next=30 ;;
+        *) next=0 ;;
+    esac
+    mkdir -p "$statedir"
+    echo "$next" > "$idle_file"
+}
+
 show_qr() {
     # The WIFI: format escapes these characters with a backslash.
     esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
     s=$(ssid) p=$(psk)
     clear_screen
     # The lowest error correction and margin make the smallest code.
-    qrencode -t ANSIUTF8 -l L -m 1 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");;"
+    h=; [ "$(hidden)" = yes ] && h="H:true;"
+    qrencode -t ANSIUTF8 -l L -m 1 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;"
     printf '%s  %s\n' "$s" "$p"
     read -rsn1
 }
@@ -181,6 +248,10 @@ while :; do
         toggle) toggle ;;
         name) set_name ;;
         password) set_password ;;
+        band) toggle_band ;;
+        hidden) toggle_hidden ;;
+        idle) cycle_idle ;;
+        data) ;;                  # redrawn by the loop
         qr) show_qr ;;
         clients) show_clients ;;
         *) break ;;
