@@ -93,6 +93,10 @@ symbol exported by MODULE, a list of symbols, returns."
   (inherit base)
   ;; Your changes, for example:
   ;; (timezone \"Europe/Paris\")
+  ;; The keyboard's scan interval while a key is held, in ms (default 5):
+  ;; shorter catches quicker taps, longer avoids doubled letters.
+  ;; (kernel-arguments (cons \"pro1x_aw9523_kbd.poll_ms=5\"
+  ;;                         (operating-system-user-kernel-arguments base)))
   ;; (packages (cons (specification->package \"htop\")
   ;;                 (operating-system-packages base)))
   ;; (services (cons (service some-service-type)

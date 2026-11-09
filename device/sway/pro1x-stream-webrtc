@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""pro1x-stream-webrtc PORT COMMAND... -- serve an H.264 stream by WebRTC.
+
+COMMAND writes H.264 (constrained baseline) to its standard output.  It runs
+while a viewer is connected.  A browser gets a page from http://ADDRESS:PORT/
+and plays the video with no application; one viewer at a time, and a new one
+replaces the last.
+
+The Pro1x makes the WebRTC offer and the browser answers, both by plain HTTP.
+This way the browser takes the payload type GStreamer chose, and no signalling
+server is needed.  ICE uses local addresses only.
+
+State: played by a GStreamer WebRTC client (2026-11-10), not yet by a browser.
+"""
+
+import signal
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import gi
+
+gi.require_version("Gst", "1.0")
+gi.require_version("GstSdp", "1.0")
+gi.require_version("GstWebRTC", "1.0")
+from gi.repository import GLib, Gst, GstSdp, GstWebRTC  # noqa: E402
+
+PAGE = b"""<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pro1x screen</title>
+<style>html,body{margin:0;height:100%;background:#000}
+video{width:100%;height:100%;object-fit:contain}</style>
+<video id="v" autoplay muted playsinline controls></video>
+<script>
+const pc = new RTCPeerConnection();
+pc.ontrack = e => {
+  document.getElementById("v").srcObject =
+    e.streams[0] || new MediaStream([e.track]);
+};
+(async () => {
+  const offer = await (await fetch("/offer")).text();
+  await pc.setRemoteDescription({type: "offer", sdp: offer});
+  await pc.setLocalDescription(await pc.createAnswer());
+  // All the local addresses go in the answer: there is no later exchange.
+  await new Promise(done => {
+    if (pc.iceGatheringState === "complete") return done();
+    pc.onicegatheringstatechange = () =>
+      pc.iceGatheringState === "complete" && done();
+    setTimeout(done, 2000);
+  });
+  await fetch("/answer", {method: "POST", body: pc.localDescription.sdp});
+})();
+</script>
+"""
+
+
+class Session:
+    """One viewer: the capture command, the pipeline, and its offer."""
+
+    def __init__(self, command):
+        self.offer_ready = threading.Event()
+        self.offer = None
+        self.proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        self.pipeline = Gst.parse_launch(
+            f"fdsrc fd={self.proc.stdout.fileno()} ! "
+            "h264parse config-interval=-1 ! "
+            "rtph264pay config-interval=-1 pt=96 ! "
+            "application/x-rtp,media=video,encoding-name=H264,payload=96 ! "
+            "webrtcbin name=w bundle-policy=max-bundle latency=0"
+        )
+        self.webrtc = self.pipeline.get_by_name("w")
+        self.webrtc.connect("on-negotiation-needed", self.negotiate)
+        self.webrtc.connect("notify::ice-gathering-state", self.gathering)
+        self.webrtc.connect("notify::ice-connection-state", self.connection)
+        self.pipeline.set_state(Gst.State.PLAYING)
+
+    def negotiate(self, _element):
+        promise = Gst.Promise.new_with_change_func(self.offered, None)
+        self.webrtc.emit("create-offer", None, promise)
+
+    def offered(self, promise, _data):
+        # The reply owns the offer: it has to outlive this call's use of it.
+        reply = promise.get_reply()
+        offer = reply.get_value("offer")
+        self.webrtc.emit("set-local-description", offer, Gst.Promise.new())
+
+    def gathering(self, _element, _spec):
+        state = self.webrtc.get_property("ice-gathering-state")
+        if state == GstWebRTC.WebRTCICEGatheringState.COMPLETE:
+            local = self.webrtc.get_property("local-description")
+            self.offer = local.sdp.as_text()
+            self.offer_ready.set()
+
+    def connection(self, _element, _spec):
+        state = self.webrtc.get_property("ice-connection-state")
+        if state in (
+            GstWebRTC.WebRTCICEConnectionState.FAILED,
+            GstWebRTC.WebRTCICEConnectionState.CLOSED,
+        ):
+            GLib.idle_add(end_session, self)
+
+    def answer(self, text):
+        _result, sdp = GstSdp.SDPMessage.new_from_text(text)
+        answer = GstWebRTC.WebRTCSessionDescription.new(
+            GstWebRTC.WebRTCSDPType.ANSWER, sdp
+        )
+        self.webrtc.emit("set-remote-description", answer, Gst.Promise.new())
+
+    def stop(self):
+        self.pipeline.set_state(Gst.State.NULL)
+        self.proc.terminate()
+        try:
+            self.proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+        self.proc.stdout.close()
+
+
+session = None
+session_lock = threading.Lock()
+
+
+def end_session(old):
+    global session
+    with session_lock:
+        if session is old:
+            session = None
+    old.stop()
+    return GLib.SOURCE_REMOVE
+
+
+def new_session(command, created):
+    """Runs in the main loop, where GStreamer's signals are handled."""
+    global session
+    with session_lock:
+        old, session = session, Session(command)
+        created["session"] = session
+    if old:
+        old.stop()
+    created["done"].set()
+    return GLib.SOURCE_REMOVE
+
+
+class Handler(BaseHTTPRequestHandler):
+    # Not "command": the HTTP request's method goes there.
+    capture = []
+
+    def reply(self, body, kind="text/plain", code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/":
+            self.reply(PAGE, "text/html; charset=utf-8")
+        elif self.path == "/offer":
+            created = {"done": threading.Event()}
+            GLib.idle_add(new_session, self.capture, created)
+            if (
+                created["done"].wait(10)
+                and created["session"].offer_ready.wait(15)
+            ):
+                self.reply(created["session"].offer.encode())
+            else:
+                self.reply(b"no offer", code=500)
+        else:
+            self.reply(b"not found", code=404)
+
+    def do_POST(self):
+        if self.path != "/answer":
+            self.reply(b"not found", code=404)
+            return
+        text = self.rfile.read(int(self.headers["Content-Length"])).decode()
+        with session_lock:
+            current = session
+        if current:
+            GLib.idle_add(lambda: current.answer(text) or GLib.SOURCE_REMOVE)
+            self.reply(b"ok")
+        else:
+            self.reply(b"no session", code=409)
+
+    def log_message(self, *_args):
+        pass
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(__doc__.splitlines()[0])
+    Gst.init(None)
+    Handler.capture = sys.argv[2:]
+    server = ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    loop = GLib.MainLoop()
+
+    def quit_loop(*_args):
+        loop.quit()
+
+    signal.signal(signal.SIGTERM, quit_loop)
+    signal.signal(signal.SIGINT, quit_loop)
+    GLib.timeout_add(500, lambda: GLib.SOURCE_CONTINUE)  # lets Python see signals
+    try:
+        loop.run()
+    finally:
+        with session_lock:
+            current = session
+        if current:
+            current.stop()
+
+
+if __name__ == "__main__":
+    main()

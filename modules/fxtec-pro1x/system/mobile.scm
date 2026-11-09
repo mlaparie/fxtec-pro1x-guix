@@ -948,7 +948,7 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Screen recording (author).
      wf-recorder
      ;; The quick actions' Stream line.
-     catt gnome-network-displays
+     catt gnome-network-displays pro1x-stream-webrtc
      ;; File manager (author): Nautilus, adaptive (libadwaita), fits the
      ;; phone in portrait.
      nautilus

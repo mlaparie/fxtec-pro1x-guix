@@ -11,7 +11,8 @@
 # Also opens catt and GNOME Network Displays, for Chromecast and Miracast.
 #
 # State: the MJPEG pipeline, and wf-recorder sending UDP, tested on the phone
-# 2026-11-10 without a second device.  This menu is not yet run.
+# 2026-11-10 without a second device; WebRTC against a GStreamer client.  This
+# menu is not yet run.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -25,6 +26,7 @@ to_file="$rt/pro1x-stream.to"           # what the menus show
 leases=/var/lib/NetworkManager/dnsmasq-wlan0.leases
 udp_port=5000
 http_port=8080
+webrtc_port=8081
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
@@ -73,7 +75,7 @@ pick_source() {
 # This phone's addresses, for a link that others open.
 own_address() {
     list=$(ip -4 -o addr show scope global |
-        awk '$2 != "usb0" { sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
+        awk '$2 != "usb0" && $2 != "lo" { sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
     if [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
         printf '%s\n' "$list" | cut -f1
     else
@@ -146,6 +148,28 @@ send_mjpeg() {
     read -rsn1
 }
 
+# The capture starts when a viewer connects, and stops when it leaves.
+send_webrtc() {
+    pick_source || return
+    ip=$(own_address)
+    [ -n "$ip" ] || { echo "No network."; pause; return; }
+    stop_stream
+    setsid pro1x-stream-webrtc "$webrtc_port" wf-recorder "${area[@]}" -m h264 \
+        -c libx264 -x yuv420p -p preset=ultrafast -p tune=zerolatency \
+        -p profile=baseline -p keyint=30 -f pipe:1 \
+        >/dev/null 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    url="http://$ip:$webrtc_port/"
+    echo "browser, $url" > "$to_file"
+    sleep 1
+    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    clear_screen
+    printf 'Open in a browser on the other device:  %s\n' "$url"
+    printf 'One viewer at a time.  Press a key to go back; it keeps running.\n\n'
+    show_qr "$url"
+    read -rsn1
+}
+
 try_catt() {
     clear_screen
     echo "Looking for Chromecasts…"
@@ -176,7 +200,7 @@ while :; do
         printf '%s\t%s\n' \
             udp "VLC (UDP)         needs VLC there, ~1 s delay, one device" \
             mjpeg "Browser (MJPEG)   no app, any browser; heavy on bandwidth, no sound" \
-            webrtc "Browser (WebRTC)  no app, under 1 s: not built yet" \
+            webrtc "Browser (WebRTC)  no app, under 1 s delay, one viewer" \
             catt "Chromecast (catt) sends a video or file; the TV plays it itself" \
             miracast "Network Displays  mirrors to a Miracast or Chromecast display")
     choice=$(printf '%s\n' "$lines" | pick "stream")
@@ -184,10 +208,7 @@ while :; do
         stop) stop_stream ;;
         udp) send_udp ;;
         mjpeg) send_mjpeg ;;
-        webrtc)
-            clear_screen
-            echo "WebRTC is not built yet."
-            pause ;;
+        webrtc) send_webrtc ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;

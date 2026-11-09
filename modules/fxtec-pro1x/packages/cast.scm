@@ -4,6 +4,7 @@
 ;;; GNOME Network Displays mirrors the screen.
 
 (define-module (fxtec-pro1x packages cast)
+  #:use-module (fxtec-pro1x files)
   #:use-module (gnu packages avahi)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gettext)
@@ -12,13 +13,16 @@
   #:use-module (gnu packages gstreamer)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages networking)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages protobuf)
   #:use-module (gnu packages pulseaudio)
+  #:use-module (gnu packages python)
   #:use-module (gnu packages python-build)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages video)
+  #:use-module (guix build-system copy)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system pyproject)
   #:use-module (guix build-system python)
@@ -159,4 +163,46 @@ or a local file, to a Chromecast, and controls its playback.")
     (synopsis "Mirror the screen to a Miracast or Chromecast display")
     (description "GNOME Network Displays streams the desktop to Miracast and
 Chromecast receivers.")
+    (license license:gpl3+)))
+
+;; Stream's WebRTC method (device/sway/pro1x-stream-webrtc).  Its own package:
+;; GStreamer's Python typelibs and plugins are found through its wrapper.
+(define-public pro1x-stream-webrtc
+  (package
+    (name "pro1x-stream-webrtc")
+    (version "0.1")
+    (source (local-file (repository-file "device/sway/pro1x-stream-webrtc")))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:install-plan ''(("pro1x-stream-webrtc" "bin/"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'wrap
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((bin (string-append #$output "/bin/pro1x-stream-webrtc"))
+                    (in (lambda (dir names)
+                          (map (lambda (p)
+                                 (string-append (assoc-ref inputs p) dir))
+                               names))))
+                (chmod bin #o755)
+                (patch-shebang bin (list (string-append
+                                          (assoc-ref inputs "python") "/bin")))
+                (wrap-program bin
+                  `("GUIX_PYTHONPATH" prefix (,(getenv "GUIX_PYTHONPATH")))
+                  `("GI_TYPELIB_PATH" ":" prefix
+                    ,(in "/lib/girepository-1.0"
+                         '("glib" "gobject-introspection" "gstreamer"
+                           "gst-plugins-base" "gst-plugins-bad")))
+                  `("GST_PLUGIN_SYSTEM_PATH" ":" prefix
+                    ,(in "/lib/gstreamer-1.0"
+                         '("gstreamer" "gst-plugins-base" "gst-plugins-good"
+                           "gst-plugins-bad" "libnice"))))))))))
+    (inputs
+     (list glib gobject-introspection gst-plugins-bad gst-plugins-base
+           gst-plugins-good gstreamer libnice python python-pygobject))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Serve an H.264 stream to a browser by WebRTC")
+    (description "This package serves a web page, and sends the H.264 video of
+a command to the browser that opens it, by WebRTC.")
     (license license:gpl3+)))
