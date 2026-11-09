@@ -471,6 +471,11 @@ screen-keyboard-enabled=true
         (setenv "PRO1X_SWAY" #$flavour)
         (setenv "WLR_BACKENDS" "drm,libinput")
         (setenv "MOZ_ENABLE_WAYLAND" "1")
+        ;; XWayland sets DISPLAY.  These toolkits could then pick X11, so
+        ;; they try Wayland first and keep X11 for apps without it.
+        (setenv "ELECTRON_OZONE_PLATFORM_HINT" "auto")
+        (setenv "QT_QPA_PLATFORM" "wayland;xcb")
+        (setenv "SDL_VIDEODRIVER" "wayland,x11")
         ;; xdg-desktop-portal picks its back ends by desktop name
         ;; (sway-portals.conf, pro1x-sway-config); without one, libadwaita
         ;; apps got no colour scheme and stayed light (Calls, Chatty).
