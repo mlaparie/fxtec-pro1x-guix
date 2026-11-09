@@ -140,6 +140,15 @@ No blob is in this repository; they are proprietary.
      reply is all zeros, including the chip id from 0xEF, so the sensor has not
      been shown to answer: the zero payloads may not be a valid init.  Not tested:
      which of 0xC8 and 0xC9 is needed.  The name `mafp` opened a session here.
+   - (2026-11-09, confirmed, `qsee-probe same_buf=1`) The app answers in place, as
+     Android's single buffer implies: with one buffer for request and reply the
+     send works in the 0xC8, 0xC9, 0xEF order, and 0xC9 leaves status 0xfffff382
+     (-3198) at payload offset 0x150, the field `ma_tac_service_init` checks.
+     Separate buffers (the TEE driver's layout) lost this, so the replies read
+     as zeros.  The git tag at 0x154 stays empty.  -3198 is not yet explained:
+     blank payloads and the unpowered sensor are the candidates.  From the
+     library: 0xC8's payload is `[g_driver_version][length][bytes of length]`,
+     and 0xC9's is a 0x14c-byte config passed by the caller.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.

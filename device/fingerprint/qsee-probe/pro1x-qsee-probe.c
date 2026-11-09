@@ -127,6 +127,10 @@ MODULE_PARM_DESC(buf_size, "Request and reply size for cmd (the library's: 0x200
 module_param(cmd_len, uint, 0444);
 MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 
+static bool same_buf;
+module_param(same_buf, bool, 0444);
+MODULE_PARM_DESC(same_buf, "One buffer for request and reply, as Android's library");
+
 /* QSEE OS calls (owner 50, app manager service 1). */
 #define QSEE_OWNER_SIP		2
 #define QSEE_OWNER_TZ_APPS	48
@@ -410,14 +414,15 @@ static void do_cmd(u32 app_id)
 	if (buf_size < 16 || buf_size > TA_BUF_SIZE || cmd_len > buf_size - 8)
 		return;
 	/* The request, then the reply right after it: they must not overlap
-	 * (the same buffer for both got -EINVAL from the SCM call; Wróbel's
-	 * driver lays them out this way).  Then a page for the sglist table
+	 * (Wróbel's driver lays them out this way; same_buf=1 uses one buffer,
+	 * as the Android library does: tried before 0xC8 and 0xC9 were sent, it
+	 * got -EINVAL).  Then a page for the sglist table
 	 * and the extra arguments of command 6. */
 	req = qcom_tzmem_alloc(pool, PAGE_ALIGN(2 * buf_size) + PAGE_SIZE, GFP_KERNEL);
 	if (!req)
 		return;
 	memset(req, 0, PAGE_ALIGN(2 * buf_size) + PAGE_SIZE);
-	rsp = req + ALIGN(buf_size, 8) / sizeof(*req);
+	rsp = same_buf ? req : req + ALIGN(buf_size, 8) / sizeof(*req);
 	req[0] = cmd;
 	req[1] = cmd_len;
 	pr_info("request at %pa, reply at %pa\n", &(phys_addr_t){ qcom_tzmem_to_phys(req) },

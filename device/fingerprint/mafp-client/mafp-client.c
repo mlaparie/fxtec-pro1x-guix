@@ -115,13 +115,32 @@ static int open_session(int fd, uint32_t *session)
 	return buf.arg.ret ? -1 : 0;
 }
 
+/* Rows of 16 bytes with their offsets, leaving out the all-zero ones. */
 static void dump(const uint8_t *p, size_t n)
 {
-	size_t i;
+	size_t i, j;
+	int shown = 0;
 
-	for (i = 0; i < n; i++)
-		printf("%s%02x%s", i % 16 ? "" : "  ", p[i],
-		       i % 16 == 15 || i == n - 1 ? "\n" : " ");
+	for (i = 0; i < n; i += 16) {
+		size_t row = n - i < 16 ? n - i : 16;
+		int zero = 1;
+
+		for (j = 0; j < row; j++)
+			if (p[i + j])
+				zero = 0;
+		if (zero)
+			continue;
+		shown = 1;
+		printf("  %05zx:", i);
+		for (j = 0; j < row; j++)
+			printf(" %02x", p[i + j]);
+		printf("  ");
+		for (j = 0; j < row; j++)
+			putchar(p[i + j] >= 0x20 && p[i + j] < 0x7f ? p[i + j] : '.');
+		putchar('\n');
+	}
+	if (!shown)
+		printf("  (all zero)\n");
 }
 
 int main(int argc, char **argv)
@@ -172,10 +191,11 @@ int main(int argc, char **argv)
 	}
 	printf("cmd 0x%x len 0x%x size 0x%zx: ret 0x%x, origin %u\n", cmd, len,
 	       size, buf.arg.ret, buf.arg.ret_origin);
-	shown = len + 8 < 0x100 ? len + 8 : 0x100;
-	if (shown > size)
-		shown = size;
-	printf("reply (first 0x%zx bytes):\n", shown);
+	shown = len + 8 < size ? len + 8 : size;
+	printf("response buffer (0x%zx bytes, non-zero rows):\n", shown);
 	dump(rsp.va, shown);
+	/* Android passes one buffer for both, so the app may answer in place. */
+	printf("request buffer after the call:\n");
+	dump(req.va, shown);
 	return buf.arg.ret ? 1 : 0;
 }
