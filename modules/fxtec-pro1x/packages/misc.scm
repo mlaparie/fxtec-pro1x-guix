@@ -1892,7 +1892,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("curl" "libnotify" "qrencode")))))
+                            '("curl" "imagemagick" "libnotify" "qrencode")))))
                 ;; Run by sudo, with a bare environment.
                 (let ((hotspot-admin
                        (string-append #$output "/bin/pro1x-hotspot-admin")))

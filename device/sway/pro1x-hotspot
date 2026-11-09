@@ -86,8 +86,10 @@ print_qr() {
     esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
     s=$(ssid) p=$(psk)
     h=; [ "$(hidden)" = yes ] && h="H:true;"
-    qrencode -t ANSIUTF8 -l L -m 1 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;"
-    printf '%s  %s\n' "$s" "$p"
+    # As an image: in block characters this font makes the code 15% too tall.
+    # A preview line is about 44 pixels high.
+    qrencode -t PNG -s 8 -m 2 -l L -o - "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;" |
+        convert png:- -filter point -resize "x$((FZF_PREVIEW_LINES * 40))" sixel:-
 }
 
 # fzf reloads the menu after a background start or stop, and asks for the QR
