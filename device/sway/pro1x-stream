@@ -5,8 +5,9 @@
 # Hotspot > Connected devices with --to ADDRESS.
 #
 # Networks that keep their clients apart, as in many hotels, block all of this;
-# the hotspot gets around that.  wf-recorder copies an area of the display, so a
-# window on another workspace, or what covers it, cannot be separated.
+# the hotspot gets around that.  wf-recorder copies an area of the display, so
+# what is sent is what is there: starting a window's stream goes to it, and
+# switching workspace afterwards sends the other workspace.
 #
 # Also opens catt and GNOME Network Displays, for Chromecast and Miracast.
 #
@@ -55,21 +56,34 @@ show_qr() {
     echo
 }
 
-# What can be sent: the windows on screen, with the area each one covers.
+# What can be sent: every window, with its Sway id and the area it covers.
 sources() {
     printf 'full\tFull screen\n'
     swaymsg -t get_tree -r | jq -r '
-        .. | objects
-        | select(.pid? != null and .visible == true
-                 and .app_id != "quickactions")
-        | "\(.rect.x),\(.rect.y) \(.rect.width - .rect.width % 2)x\(.rect.height - .rect.height % 2)\t\(.app_id // .window_properties.class // "window"): \(.name)"'
+        .. | objects | select(.type? == "workspace" and .name != "__i3_scratch")
+        | .name as $ws
+        | recurse(.nodes[]?, .floating_nodes[]?)
+        | select(.pid? != null and .app_id != "quickactions")
+        | "\(.id) \(.rect.x),\(.rect.y) \(.rect.width - .rect.width % 2)x\(.rect.height - .rect.height % 2)\t\($ws): \(.app_id // .window_properties.class // "window"): \(.name)"'
 }
 
-# Sets source, and area for wf-recorder; false if nothing was picked.
+# Sets area for wf-recorder and target, the window; false if nothing was picked.
 pick_source() {
     source=$(sources | pick "send") || return 1
     [ -n "$source" ] || return 1
-    if [ "$source" = full ]; then area=(); else area=(-g "$source"); fi
+    if [ "$source" = full ]; then
+        area=() target=
+    else
+        target=${source%% *}
+        area=(-g "${source#* }")
+    fi
+}
+
+# Hides this menu and brings the window on screen, for it to be captured.
+go_to_source() {
+    [ -n "$target" ] || return 0
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
+    swaymsg "[con_id=$target] focus" >/dev/null
 }
 
 # This phone's addresses, for a link that others open.
@@ -112,6 +126,7 @@ send_udp() {                    # send_udp [ADDRESS]
     show_qr "$url"
     read -rsn1
     stop_stream
+    go_to_source
     setsid wf-recorder "${area[@]}" -m mpegts -c libx264 -p preset=ultrafast \
         -p tune=zerolatency -f "udp://$ip:$udp_port" \
         >/dev/null 2>&1 </dev/null &
@@ -143,9 +158,10 @@ send_mjpeg() {
     echo "browser, $url" > "$to_file"
     clear_screen
     printf 'Open in a browser on the other device:  %s\n' "$url"
-    printf 'One viewer at a time.  Press a key to go back; it keeps running.\n\n'
+    printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
     show_qr "$url"
     read -rsn1
+    go_to_source
 }
 
 # The capture starts when a viewer connects, and stops when it leaves.
@@ -165,9 +181,10 @@ send_webrtc() {
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
     clear_screen
     printf 'Open in a browser on the other device:  %s\n' "$url"
-    printf 'One viewer at a time.  Press a key to go back; it keeps running.\n\n'
+    printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
     show_qr "$url"
     read -rsn1
+    go_to_source
 }
 
 try_catt() {
