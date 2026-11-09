@@ -149,6 +149,13 @@ No blob is in this repository; they are proprietary.
      blank payloads and the unpowered sensor are the candidates.  From the
      library: 0xC8's payload is `[g_driver_version][length][bytes of length]`,
      and 0xC9's is a 0x14c-byte config passed by the caller.
+   - (2026-11-09, confirmed) The sensor answers.  With `gpioset -c gpiochip2 -z
+     108=1` held, the app loaded, `qsee-probe same_buf=1 gcc_clks=91,90,102`, and
+     0xC8, 0xC9, 0xEF sent in that order with blank payloads, 0xEF replies 0x24
+     (36) in its first payload word: the chip id, and the library lists E36
+     among its sensors.  Not yet separated: whether the power, the QUP5 clocks
+     or both are needed.  The -22s and all-zero replies before were 0xEF first
+     and the separate reply buffer.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.
