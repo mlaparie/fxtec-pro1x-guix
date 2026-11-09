@@ -58,6 +58,9 @@ esac
 torch=/sys/class/leds/white:flash-0/brightness
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
+airplane_state="$statedir/airplane"     # on or off
+airplane_saved="$statedir/airplane-saved"   # lines: RADIO BEFORE AT-ENTRY
+airplane_keep="$statedir/airplane-keep"     # Wi-Fi and Bluetooth set in flight
 self=$0
 # No blank frame between a list and its sub-list (author, 2026-11-03): the
 # terminal holds its drawing (synchronized output) from just before fzf
@@ -275,6 +278,8 @@ mobile_cycle() {                # mobile_cycle + | -
 mobile_set() {                  # mobile_set off|234|34|23|3
     f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
     opt=$1
+    # Not in flight: the modem stays off until airplane mode ends.
+    if [ "$opt" != off ] && [ "$(airplane_now)" = on ]; then return 1; fi
     case "$opt" in
         off) nmcli radio wwan off ;;
         234|34|23|3)
@@ -982,11 +987,7 @@ lines() {
     radio=$(cat "$d/radio")           # enabled:enabled
     wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
     kv=$(cat "$d/kv")
-    if [ "$wifi" = off ] && [ "$wwan" = off ] && [ "$bt" = off ]; then
-        plane=on
-    else
-        plane=off
-    fi
+    plane=$(airplane_now)
     rot=$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)
     # Forced orientation; greyed while auto-rotation decides (author).
     orient=$(orientation)
@@ -1031,16 +1032,70 @@ lines() {
     rm -rf "$d"
 }
 
+airplane_now() { cat "$airplane_state" 2>/dev/null || echo off; }
+
+radio_now() {                   # radio_now wifi|wwan|bluetooth: on or off
+    case "$1" in
+        bluetooth) blocked bluetooth ;;
+        *) onoff "$(nmcli radio "$1")" ;;
+    esac
+}
+
+radio_set() {                   # radio_set wifi|wwan|bluetooth on|off
+    case "$1:$2" in
+        bluetooth:on) rfkill unblock bluetooth ;;
+        bluetooth:off) rfkill block bluetooth ;;
+        *) nmcli radio "$1" "$2" ;;
+    esac
+}
+
+# What Wi-Fi or Bluetooth is set to in flight: off, unless turned on in an
+# earlier flight (as on Android).
+airplane_kept() {
+    sed -n "s/^$1 //p" "$airplane_keep" 2>/dev/null | grep . || echo off
+}
+
+airplane_remember() {           # airplane_remember wifi|bluetooth on|off
+    mkdir -p "$statedir"
+    { grep -v "^$1 " "$airplane_keep" 2>/dev/null; echo "$1 $2"; } \
+        > "$airplane_keep.new"
+    mv "$airplane_keep.new" "$airplane_keep"
+}
+
+# Entering saves each radio, then switches off all but what is kept on.
+airplane_enter() {
+    [ "$(airplane_now)" = on ] && return
+    mkdir -p "$statedir"
+    for r in wifi wwan bluetooth; do
+        if [ "$r" = wwan ]; then entry=off; else entry=$(airplane_kept "$r"); fi
+        echo "$r $(radio_now "$r") $entry"
+    done > "$airplane_saved"
+    while read -r r _ entry; do radio_set "$r" "$entry"; done < "$airplane_saved"
+    echo on > "$airplane_state"
+}
+
+# Leaving restores each radio, except Wi-Fi or Bluetooth changed in flight.
+airplane_leave() {
+    [ "$(airplane_now)" = off ] && return
+    while read -r r before entry; do
+        if [ "$r" = wwan ] || [ "$(radio_now "$r")" = "$entry" ]; then
+            radio_set "$r" "$before"
+        fi
+    done < "$airplane_saved"
+    echo off > "$airplane_state"
+}
+
 # set <setting> <on|off>: what Enter toggles between (and a held volume key).
 set_to() {
     case "$1" in
-        wifi|wwan) nmcli radio "$1" "$2" ;;
-        bluetooth)
-            if [ "$2" = on ]; then rfkill unblock bluetooth
-            else rfkill block bluetooth; fi ;;
-        airplane)                 # on: every radio off
-            if [ "$2" = on ]; then nmcli radio all off; rfkill block bluetooth
-            else nmcli radio all on; rfkill unblock bluetooth; fi ;;
+        wifi|bluetooth)
+            radio_set "$1" "$2"
+            [ "$(airplane_now)" = on ] && airplane_remember "$1" "$2" ;;
+        wwan)                     # the modem stays off in flight
+            if [ "$2" = on ] && [ "$(airplane_now)" = on ]; then return 1; fi
+            radio_set wwan "$2" ;;
+        airplane)
+            if [ "$2" = on ]; then airplane_enter; else airplane_leave; fi ;;
         rotation) sway-autorotate "$2" ;;
         caffeine)
             [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
@@ -1086,10 +1141,7 @@ state_of() {                    # state_of <setting>: on or off
         wifi) onoff "$(nmcli radio wifi)" ;;
         wwan) onoff "$(nmcli radio wwan)" ;;
         bluetooth) blocked bluetooth ;;
-        airplane)
-            if [ "$(onoff "$(nmcli radio wifi)")" = off ] &&
-               [ "$(onoff "$(nmcli radio wwan)")" = off ] &&
-               [ "$(blocked bluetooth)" = off ]; then echo on; else echo off; fi ;;
+        airplane) airplane_now ;;
         rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
@@ -1160,11 +1212,10 @@ act() {                         # Enter
                 *) shown=$(dim "$want") ;;
             esac
             QS_ALSO=
-            if [ "$1" = airplane ]; then  # every radio with it
-                if [ "$want" = on ]; then radios=off; else radios=on; fi
+            if [ "$1" = airplane ]; then  # the radios follow, as refreshed
                 QS_ALSO="wifi wwan bluetooth"
                 mkdir -p "$pending"
-                for k in $QS_ALSO; do dim "$radios" > "$pending/$k"; done
+                for k in $QS_ALSO; do : > "$pending/$k"; done
             fi
             confirm "$1" "$shown" toggle_to "$1" "$want" ;;
     esac
