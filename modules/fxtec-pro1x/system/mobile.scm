@@ -26,6 +26,7 @@
              (fxtec-pro1x system common)
              (guix gexp)
              (fxtec-pro1x packages audio)   ; libcallaudio/pro1x
+             (fxtec-pro1x packages cast)
              (fxtec-pro1x packages bootloader)
              (gnu packages bash)
              (gnu packages fonts)
@@ -946,6 +947,8 @@ Dracula palette, no kernel messages over the greeter.")
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Screen recording (author).
      wf-recorder
+     ;; The quick actions' Stream line.
+     catt gnome-network-displays
      ;; File manager (author): Nautilus, adaptive (libadwaita), fits the
      ;; phone in portrait.
      nautilus

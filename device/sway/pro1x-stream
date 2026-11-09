@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# pro1x-stream — send the screen, or a window, to another device on any local
+# network: the Pro¹x's hotspot, or a Wi-Fi network both are on.  Opened by Enter
+# or Right on the Stream line of sway-quick-actions, inside its window, or from
+# Hotspot > Connected devices with --to ADDRESS.
+#
+# Networks that keep their clients apart, as in many hotels, block all of this;
+# the hotspot gets around that.  wf-recorder copies an area of the display, so a
+# window on another workspace, or what covers it, cannot be separated.
+#
+# Also opens catt and GNOME Network Displays, for Chromecast and Miracast.
+#
+# State: the MJPEG pipeline, and wf-recorder sending UDP, tested on the phone
+# 2026-11-10 without a second device.  This menu is not yet run.
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
+pid_file="$rt/pro1x-stream.pid"
+to_file="$rt/pro1x-stream.to"           # what the menus show
+leases=/var/lib/NetworkManager/dnsmasq-wlan0.leases
+udp_port=5000
+http_port=8080
+
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+clear_screen() { printf '\033[H\033[2J\033[3J'; }
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+
+streaming() { [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; }
+
+stop_stream() {
+    streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
+    rm -f "$pid_file" "$to_file"
+}
+
+# pick PROMPT: one line of "key<TAB>shown" from stdin, its key on stdout.
+pick() {
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        --layout=reverse-list --no-info --cycle --margin=1,2 \
+        --color=16,gutter:-1 | cut -f1
+}
+
+# An image, as block characters come out too tall in this font.
+show_qr() {
+    rows=$(stty size 2>/dev/null | cut -d' ' -f1)
+    qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
+        convert png:- -filter point -resize "x$(( (${rows:-20} - 7) * 40 ))" sixel:-
+    echo
+}
+
+# What can be sent: the windows on screen, with the area each one covers.
+sources() {
+    printf 'full\tFull screen\n'
+    swaymsg -t get_tree -r | jq -r '
+        .. | objects
+        | select(.pid? != null and .visible == true
+                 and .app_id != "quickactions")
+        | "\(.rect.x),\(.rect.y) \(.rect.width - .rect.width % 2)x\(.rect.height - .rect.height % 2)\t\(.app_id // .window_properties.class // "window"): \(.name)"'
+}
+
+# Sets source, and area for wf-recorder; false if nothing was picked.
+pick_source() {
+    source=$(sources | pick "send") || return 1
+    [ -n "$source" ] || return 1
+    if [ "$source" = full ]; then area=(); else area=(-g "$source"); fi
+}
+
+# This phone's addresses, for a link that others open.
+own_address() {
+    list=$(ip -4 -o addr show scope global |
+        awk '$2 != "usb0" { sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
+    if [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
+        printf '%s\n' "$list" | cut -f1
+    else
+        printf '%s\n' "$list" | pick "on network"
+    fi
+}
+
+# The devices seen on the local networks: hotspot clients by name.
+devices() {
+    for ip in $(ip -4 neigh show | awk '/lladdr/ && !/FAILED/ { print $1 }' | sort -uV); do
+        name=$(awk -v i="$ip" '$3 == i { print $4 }' "$leases" 2>/dev/null)
+        [ -n "$name" ] && [ "$name" != "*" ] || name=device
+        printf '%s\t%-20s %s\n' "$ip" "$name" "$ip"
+    done
+    printf 'type\tType an address\n'
+}
+
+send_udp() {                    # send_udp [ADDRESS]
+    ip=${1:-}
+    pick_source || return
+    if [ -z "$ip" ]; then
+        ip=$(devices | pick "to")
+        [ -n "$ip" ] || return
+        if [ "$ip" = type ]; then
+            clear_screen
+            read -rp "Address: " ip
+            [ -n "$ip" ] || return
+        fi
+    fi
+    url="udp://@:$udp_port"
+    clear_screen
+    printf 'In VLC on the other device, open:  %s\n' "$url"
+    printf 'Then press a key to start sending to %s.\n\n' "$ip"
+    show_qr "$url"
+    read -rsn1
+    stop_stream
+    setsid wf-recorder "${area[@]}" -m mpegts -c libx264 -p preset=ultrafast \
+        -p tune=zerolatency -f "udp://$ip:$udp_port" \
+        >/dev/null 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    echo "VLC to $ip" > "$to_file"
+    sleep 1
+    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; }
+}
+
+# ffmpeg serves one viewer at a time, and stops when that one leaves: the loop
+# is ready for the next.  15 images a second keep the bandwidth bearable.
+send_mjpeg() {
+    pick_source || return
+    ip=$(own_address)
+    [ -n "$ip" ] || { echo "No network."; pause; return; }
+    stop_stream
+    setsid bash -c '
+        port=$1; shift
+        while :; do
+            wf-recorder "$@" -m mjpeg -c mjpeg -x yuvj420p -r 15 -f pipe:1 2>/dev/null |
+                ffmpeg -nostdin -loglevel quiet -probesize 100000 \
+                    -analyzeduration 0 -f mjpeg -i pipe:0 -c copy -f mpjpeg \
+                    -content_type "multipart/x-mixed-replace;boundary=ffmpeg" \
+                    -listen 1 "http://0.0.0.0:$port/"
+            sleep 1
+        done' _ "$http_port" "${area[@]}" >/dev/null 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    url="http://$ip:$http_port/"
+    echo "browser, $url" > "$to_file"
+    clear_screen
+    printf 'Open in a browser on the other device:  %s\n' "$url"
+    printf 'One viewer at a time.  Press a key to go back; it keeps running.\n\n'
+    show_qr "$url"
+    read -rsn1
+}
+
+try_catt() {
+    clear_screen
+    echo "Looking for Chromecasts…"
+    names=$(catt scan 2>/dev/null | awk -F' - ' 'NF >= 2 { print $2 "\t" $2 }')
+    if [ -z "$names" ]; then
+        echo "None found on this network."
+        pause
+        return
+    fi
+    name=$(printf '%s\n' "$names" | pick "chromecast")
+    [ -n "$name" ] || return
+    clear_screen
+    read -rp "Video URL or file: " what
+    [ -n "$what" ] || return
+    catt -d "$name" cast "$what" || pause
+}
+
+network_displays() {
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
+    swaymsg exec gnome-network-displays >/dev/null
+}
+
+[ "${1:-}" = --to ] && { send_udp "${2:-}"; exit; }
+
+while :; do
+    lines=$(
+        if streaming; then printf 'stop\tStop: %s\n' "$(cat "$to_file")"; fi
+        printf '%s\t%s\n' \
+            udp "VLC (UDP)         needs VLC there, ~1 s delay, one device" \
+            mjpeg "Browser (MJPEG)   no app, any browser; heavy on bandwidth, no sound" \
+            webrtc "Browser (WebRTC)  no app, under 1 s: not built yet" \
+            catt "Chromecast (catt) sends a video or file; the TV plays it itself" \
+            miracast "Network Displays  mirrors to a Miracast or Chromecast display")
+    choice=$(printf '%s\n' "$lines" | pick "stream")
+    case "$choice" in
+        stop) stop_stream ;;
+        udp) send_udp ;;
+        mjpeg) send_mjpeg ;;
+        webrtc)
+            clear_screen
+            echo "WebRTC is not built yet."
+            pause ;;
+        catt) try_catt ;;
+        miracast) network_displays; break ;;
+        *) break ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

@@ -1779,6 +1779,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
 ;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
+;;;   bin/pro1x-stream                   send the screen to another device
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
@@ -1804,7 +1805,7 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
+    (inputs (list bash coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
                   mobile-broadband-provider-info qrencode sed slurp swayidle
                   tzdata wl-clipboard
@@ -1844,6 +1845,7 @@ window opened by a sway key binding.")
           ("pro1x-switcher" "bin/")
           ("pro1x-wifi" "bin/")
           ("pro1x-hotspot" "bin/")
+          ("pro1x-stream" "bin/")
           ("pro1x-hotspot-admin" "bin/")
           ("pro1x-timezone" "bin/")
           ("pro1x-timezone-admin" "bin/")
@@ -1906,6 +1908,13 @@ window opened by a sway key binding.")
                         (map (lambda (p)
                                (string-append (assoc-ref inputs p) "/sbin"))
                              '("iw" "nftables"))))))
+                (let ((stream (string-append #$output "/bin/pro1x-stream")))
+                  (chmod stream #o755)
+                  (wrap-program stream
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("ffmpeg" "imagemagick" "qrencode")))))
                 (let ((zoneinfo (string-append (assoc-ref inputs "tzdata")
                                                "/share/zoneinfo")))
                   (chmod (string-append #$output "/bin/pro1x-timezone") #o755)

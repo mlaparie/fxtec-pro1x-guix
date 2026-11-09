@@ -1020,6 +1020,7 @@ lines() {
         "camera      Camera" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
+        "stream      Stream               $(stream_state)" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "operator    Operator             $(operator_shown "$kv")" \
@@ -1050,6 +1051,12 @@ airplane_now() { cat "$airplane_state" 2>/dev/null || echo off; }
 hotspot_state() {               # pro1x-hotspot's connection: on or off
     nmcli -t -f NAME connection show --active | grep -qx pro1x-hotspot &&
         echo on || echo off
+}
+
+stream_state() {                # what pro1x-stream is sending, or off
+    [ -f "$rt/pro1x-stream.pid" ] &&
+        kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
+        cat "$rt/pro1x-stream.to" || echo off
 }
 
 timezone_now() { readlink -f /etc/localtime | sed 's|.*/zoneinfo/||'; }
@@ -1488,14 +1495,14 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  hotspot|timezone) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
+                  hotspot|timezone|stream) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  hotspot|timezone) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
+                  hotspot|timezone|stream) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;

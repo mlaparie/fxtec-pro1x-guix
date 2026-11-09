@@ -29,9 +29,6 @@ statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
 idle_file="$statedir/hotspot-idle"      # minutes without a device, 0 for never
 watch_pid="$rt/pro1x-hotspot-watch.pid"
 data_base="$rt/pro1x-hotspot-data"      # the byte count when it started
-stream_pid="$rt/pro1x-hotspot-stream.pid"
-stream_to="$rt/pro1x-hotspot-stream.to"   # what is shown in the menu
-stream_port=5000
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 
 state() { nmcli -g GENERAL.STATE connection show "$con" 2>/dev/null; }
@@ -53,13 +50,6 @@ data_used() {                   # since this start, or - when off
     numfmt --to=iec --suffix=B $(($(bytes_now) - $(cat "$data_base")))
 }
 
-streaming() { [ -f "$stream_pid" ] && kill -0 "$(cat "$stream_pid")" 2>/dev/null; }
-
-stop_stream() {
-    streaming && kill -INT "$(cat "$stream_pid")"
-    rm -f "$stream_pid" "$stream_to"
-}
-
 menu_lines() {
     case "$(state)" in
         activated) s=on ;;
@@ -75,7 +65,6 @@ menu_lines() {
         hidden "Hidden:    $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
         idle "Auto-off:  $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
         data "Data used: $(data_used)" \
-        stream "Stream:    $(if streaming; then cat "$stream_to"; else echo "off (from Connected devices)"; fi)" \
         qr "QR code to join" \
         clients "Connected devices"
 }
@@ -162,7 +151,7 @@ watch_idle() {
     rm -f "$watch_pid"
 }
 
-stop() { stop_stream; nmcli connection down "$con"; notify-send Hotspot Off; }
+stop() { nmcli connection down "$con"; notify-send Hotspot Off; }
 
 restart() { nmcli connection down "$con"; start; }
 
@@ -249,46 +238,6 @@ client_lines() {
 
 ip_of() { awk -v m="$1" '$2 == m { print $3 }' "$leases" 2>/dev/null; }
 
-# The windows on screen: wf-recorder copies an area of the display, so a window
-# on another workspace, or what covers it, cannot be separated.
-stream_sources() {
-    printf 'full\tFull screen\n'
-    swaymsg -t get_tree -r | jq -r '
-        .. | objects
-        | select(.pid? != null and .visible == true
-                 and .app_id != "quickactions")
-        | "\(.rect.x),\(.rect.y) \(.rect.width - .rect.width % 2)x\(.rect.height - .rect.height % 2)\t\(.app_id // .window_properties.class // "window"): \(.name)"'
-}
-
-# Sends the screen to the device with VLC waiting.  The QR code opens VLC's
-# stream there; the same address can be typed.
-stream_to_device() {            # stream_to_device MAC
-    ip=$(ip_of "$1")
-    src=$(stream_sources |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='stream > ' \
-            --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 | cut -f1)
-    [ -n "$src" ] || return
-    clear_screen
-    qrencode -t ANSIUTF8 -l L -m 1 "udp://@:$stream_port"
-    printf 'In VLC on the other device, open:  udp://@:%s\n' "$stream_port"
-    printf 'Then press a key to start sending to %s.\n' "$ip"
-    read -rsn1
-    stop_stream
-    if [ "$src" = full ]; then
-        area=(); shown="$ip, full screen"
-    else
-        area=(-g "$src"); shown="$ip, $src"
-    fi
-    setsid wf-recorder "${area[@]}" -m mpegts -c libx264 -p preset=ultrafast \
-        -p tune=zerolatency -f "udp://$ip:$stream_port" \
-        >/dev/null 2>&1 </dev/null &
-    echo $! > "$stream_pid"
-    echo "$shown" > "$stream_to"
-    sleep 1
-    streaming || { echo "Could not start the stream."; rm -f "$stream_pid" "$stream_to"; pause; }
-}
-
 client_action() {               # client_action MAC
     if grep -qxF "$1" "$banned" 2>/dev/null; then
         actions=unban
@@ -302,7 +251,7 @@ client_action() {               # client_action MAC
             --color='16,gutter:-1' --header="$1")
     [ -n "$a" ] || return
     if [ "$a" = stream ]; then
-        stream_to_device "$1"
+        PRO1X_TOOL_SOCK="$sock" pro1x-stream --to "$(ip_of "$1")"
     else
         $admin "$a" "$1" || pause
     fi
@@ -347,7 +296,6 @@ while :; do
         hidden) toggle_hidden ;;
         idle) cycle_idle ;;
         data) ;;                  # redrawn by the loop
-        stream) stop_stream ;;    # Enter on it stops it
         qr) ;;                    # in the preview
         clients) show_clients ;;
         *) break ;;
