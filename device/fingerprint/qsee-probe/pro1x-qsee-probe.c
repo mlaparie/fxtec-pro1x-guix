@@ -127,6 +127,10 @@ MODULE_PARM_DESC(buf_size, "Request and reply size for cmd (the library's: 0x200
 module_param(cmd_len, uint, 0444);
 MODULE_PARM_DESC(cmd_len, "Payload length for cmd");
 
+static char *words;
+module_param(words, charp, 0444);
+MODULE_PARM_DESC(words, "u32 values to write in the payload: OFFSET:VALUE,OFFSET:VALUE");
+
 static bool same_buf;
 module_param(same_buf, bool, 0444);
 MODULE_PARM_DESC(same_buf, "One buffer for request and reply, as Android's library");
@@ -425,6 +429,19 @@ static void do_cmd(u32 app_id)
 	rsp = same_buf ? req : req + ALIGN(buf_size, 8) / sizeof(*req);
 	req[0] = cmd;
 	req[1] = cmd_len;
+	if (words) {
+		char *s = kstrdup(words, GFP_KERNEL), *p = s, *w;
+
+		while (s && (w = strsep(&p, ","))) {
+			unsigned int off, val;
+
+			if (sscanf(w, "%i:%i", &off, &val) != 2 || off & 3 ||
+			    off + 12 > cmd_len + 8)
+				continue;
+			req[2 + off / 4] = val;
+		}
+		kfree(s);
+	}
 	pr_info("request at %pa, reply at %pa\n", &(phys_addr_t){ qcom_tzmem_to_phys(req) },
 		&(phys_addr_t){ qcom_tzmem_to_phys(rsp) });
 	if (whitelist) {
