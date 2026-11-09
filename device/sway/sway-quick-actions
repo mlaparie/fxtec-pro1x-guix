@@ -151,6 +151,13 @@ qs_show() {
 
 case "${1:-}" in
     --hide) qs_hide; exit ;;
+    # A menu of its own, in this window: Esc comes back to this list, and
+    # pro1x-menu key drives it on the sublists' socket.
+    --tool)
+        export PRO1X_TOOL_SOCK="$rt/pro1x-quick-actions-ask.sock"
+        "pro1x-$2"
+        rm -f "$PRO1X_TOOL_SOCK"
+        exit ;;
     --resident)                 # Sway config, at login: start it hidden
         [ "$(qs_state)" = none ] && qs_start hidden
         exit ;;
@@ -1199,8 +1206,6 @@ act() {                         # Enter
             swaymsg exec pro1x-lock >/dev/null ;;
         camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
         gpu) open_app nvtop ;;    # load, clock, GPU time per app
-        hotspot) open_tool pro1x-hotspot ;;
-        timezone) open_tool pro1x-timezone ;;
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
@@ -1244,7 +1249,7 @@ step() {                        # Right (+) and Left (-)
         wwan-) mobile_cycle - ;;
         orient+) set_orientation landscape ;;
         orient-) set_orientation portrait ;;
-        lock+|camera+|gpu+|hotspot+|timezone+) act "$1" ;;
+        lock+|camera+|gpu+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
         bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
@@ -1483,12 +1488,14 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
+                  hotspot|timezone) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
+                  hotspot|timezone) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;

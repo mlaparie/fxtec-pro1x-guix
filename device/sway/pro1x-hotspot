@@ -3,7 +3,7 @@
 # password, the band, a hidden name, auto-off when idle, the data used, a QR
 # code for others to join, and the connected devices, which can be expelled or
 # banned.  Opened by Enter or Right on the Hotspot line of
-# sway-quick-actions.
+# sway-quick-actions, inside its window.
 #
 # It is a NetworkManager connection in shared mode.  wlan0 cannot be a client
 # at the same time here, so starting it drops the Wi-Fi network in use, and the
@@ -20,7 +20,7 @@ case "${FZF_DEFAULT_OPTS:-}" in
 esac
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-sock="$rt/pro1x-tool.sock"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 con=pro1x-hotspot
 iface=wlan0
 leases=/var/lib/NetworkManager/dnsmasq-$iface.leases
@@ -65,12 +65,24 @@ menu_lines() {
         hidden "Hidden:    $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
         idle "Auto-off:  $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
         data "Data used: $(data_used)" \
-        qr "Show QR code" \
+        qr "QR code to join" \
         clients "Connected devices"
 }
 
-# fzf reloads this after a background start or stop.
+# The QR code to join: the WIFI: format escapes these with a backslash.  The
+# lowest error correction and margin make the smallest code.
+print_qr() {
+    esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
+    s=$(ssid) p=$(psk)
+    h=; [ "$(hidden)" = yes ] && h="H:true;"
+    qrencode -t ANSIUTF8 -l L -m 1 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;"
+    printf '%s  %s\n' "$s" "$p"
+}
+
+# fzf reloads the menu after a background start or stop, and asks for the QR
+# code for its preview.
 [ "${1:-}" = --menu ] && { menu_lines; exit; }
+[ "${1:-}" = --qr ] && { print_qr; exit; }
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
@@ -209,18 +221,6 @@ cycle_idle() {                  # never, 5, 15, 30 minutes
     echo "$next" > "$idle_file"
 }
 
-show_qr() {
-    # The WIFI: format escapes these characters with a backslash.
-    esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
-    s=$(ssid) p=$(psk)
-    clear_screen
-    # The lowest error correction and margin make the smallest code.
-    h=; [ "$(hidden)" = yes ] && h="H:true;"
-    qrencode -t ANSIUTF8 -l L -m 1 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;"
-    printf '%s  %s\n' "$s" "$p"
-    read -rsn1
-}
-
 # One line per device, connected or banned: MAC, tab, what is shown.
 client_lines() {
     macs=$(iw dev "$iface" station dump 2>/dev/null | awk '/^Station/ { print $2 }')
@@ -261,10 +261,22 @@ show_clients() {
 
 ensure || { echo "Could not create the hotspot connection."; pause; exit 1; }
 
+# The QR code beside the list in landscape, below it in portrait.
+qr_pane='[ {1} = qr ] || { echo hide-preview; exit; }
+         if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
+             echo "change-preview-window(right,60%)+show-preview"
+         else
+             echo "change-preview-window(down,60%)+show-preview"
+         fi'
+
 while :; do
     choice=$(menu_lines |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 \
-            --reverse --cycle --margin='1,2,1,2' --color='16,gutter:-1' |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='hotspot > ' \
+            --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 --ansi \
+            --preview="$0 --qr" --preview-window=hidden \
+            --bind="focus:transform:$qr_pane" \
+            --bind="resize:transform:$qr_pane" |
         cut -f1)
     case "$choice" in
         toggle) toggle ;;
@@ -274,7 +286,7 @@ while :; do
         hidden) toggle_hidden ;;
         idle) cycle_idle ;;
         data) ;;                  # redrawn by the loop
-        qr) show_qr ;;
+        qr) ;;                    # in the preview
         clients) show_clients ;;
         *) break ;;
     esac

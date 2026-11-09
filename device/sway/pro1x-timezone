@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # pro1x-timezone — the timezone: pick one, find it from the network now, or
 # follow the network at each new connection.  Opened by Enter or Right on the
-# Timezone line of sway-quick-actions.  pro1x-timezone-admin does the root part.
+# Timezone line of sway-quick-actions, inside its window.  pro1x-timezone-admin
+# does the root part.  It also shows the Wi-Fi rules of the country applied.
 #
 # State: not yet run on the phone.
 
@@ -11,7 +12,7 @@ case "${FZF_DEFAULT_OPTS:-}" in
 esac
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-sock="$rt/pro1x-tool.sock"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 auto=/var/lib/pro1x/timezone-auto
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-timezone-admin"
 
@@ -19,6 +20,9 @@ trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
 current() { readlink -f /etc/localtime | sed 's|.*/zoneinfo/||'; }
 auto_state() { cat "$auto" 2>/dev/null || echo off; }
+country() {                     # the country of the Wi-Fi rules in force
+    iw reg get | awk '/^country/ { sub(":", "", $2); print $2; exit }'
+}
 pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
 
 pick_zone() {
@@ -37,6 +41,24 @@ detect_now() {
     $admin detect || pause
 }
 
+show_rules() {
+    printf '\033[H\033[2J\033[3J'
+    iw reg get | awk '
+        /^phy#/ { exit }
+        /^country/ { sub(":", "", $2); print "Wi-Fi rules: " $2 ", " $3 "\n"; next }
+        /^\t\(/ {
+            gsub(/[(),]/, " ")
+            flags = ""
+            for (i = 9; i <= NF; i++) flags = flags " " $i
+            printf "%s-%s MHz, up to %s MHz wide, %s dBm%s\n", $1, $3, $5, $7, flags
+        }'
+    if iw phy | grep -E '^[[:space:]]+\* 5[0-9]{3} MHz' | grep -qvE 'disabled|no IR'
+    then echo; echo "5 GHz hotspot: possible"
+    else echo; echo "5 GHz hotspot: not available in this region"
+    fi
+    pause
+}
+
 toggle_auto() {
     if [ "$(auto_state)" = on ]; then
         $admin auto off
@@ -50,14 +72,17 @@ while :; do
     choice=$(printf '%s\t%s\n' \
         pick "Zone:      $(current), $(date '+%H:%M %Z')" \
         auto "Automatic: $(auto_state)" \
-        detect "Detect now" |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 \
-            --reverse --cycle --margin='1,2,1,2' --color='16,gutter:-1' |
+        detect "Detect now" \
+        rules "Wi-Fi rules: $(country)" |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='timezone > ' \
+            --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 |
         cut -f1)
     case "$choice" in
         pick) pick_zone ;;
         auto) toggle_auto ;;
         detect) detect_now ;;
+        rules) show_rules ;;
         *) break ;;
     esac
 done
