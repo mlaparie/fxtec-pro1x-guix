@@ -108,7 +108,7 @@ band_5ghz_usable() {
 start() {
     if [ "$(band)" = a ] && ! band_5ghz_usable; then
         notify-send -u critical Hotspot \
-            "5 GHz is not allowed on this phone: set the band to 2.4 GHz"
+            "5 GHz is not available in this region: set the band to 2.4 GHz"
         return 1
     fi
     nmcli connection up "$con" || {
@@ -185,8 +185,8 @@ toggle_band() {
         b=a
     else
         clear_screen
-        echo "5 GHz is not available: the Wi-Fi driver keeps all its channels"
-        echo "closed to access points here."
+        echo "5 GHz is not available in this region: the Wi-Fi driver keeps"
+        echo "all its channels closed to access points."
         pause
         return
     fi

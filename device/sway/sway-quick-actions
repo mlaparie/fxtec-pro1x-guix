@@ -1013,7 +1013,6 @@ lines() {
         "camera      Camera" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
-        "timezone    Timezone             $(timezone_now)" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "operator    Operator             $(operator_shown "$kv")" \
@@ -1034,6 +1033,7 @@ lines() {
         "bright      Brightness           $(cat "$d/br")" \
         "volume      Volume               $vol" \
         "audio       Audio output         $(cat "$d/audio")" \
+        "timezone    Timezone             $(timezone_now)" \
         "charge      Charge limit         $(charge_limit)"
     rm -rf "$d"
 }
