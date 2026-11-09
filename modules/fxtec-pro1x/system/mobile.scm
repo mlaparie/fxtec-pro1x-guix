@@ -386,6 +386,9 @@ output DSI-1 scale 2 transform normal bg #282a36 solid_color
 input type:touch map_to_output DSI-1
 default_border none
 seat * hide_cursor 1
+# XWayland here would leave /tmp/.X11-unix owned by the greeter, and the
+# session's Sway refuses that directory.
+xwayland disable
 # Not fullscreen: Sway hides the top layer, stevia, over a fullscreen
 # window.  The only tiled window fills the screen anyway, above stevia.
 # stevia (pro1x-greeter lets it show: screen-keyboard-enabled).
