@@ -64,11 +64,23 @@ cmd = '''pro1x-term --app-id=qs-tool -e sh -c '[ -x "$HOME/.config/nnn/plugins/n
 [[block]]
 block = "net"
 device = "wlan0"
-format = " $icon $signal_strength "
-format_alt = " $icon $ssid $ip "
+# In braces, or the bar shows an error when there is no signal to report:
+# with no connection, or as a hotspot, which the block below shows.
+format = "{ $icon $signal_strength |}"
+format_alt = "{ $icon $ssid $ip |}"
 interval = 2
 inactive_format = ""
 missing_format = ""
+
+# The hotspot, in green, while it is on.
+[[block]]
+block = "custom"
+shell = "sh"
+command = "pro1x-status hotspot"
+json = true
+interval = 5
+hide_when_empty = true
+format = " \uf1eb $text "
 
 # Mobile data: access technology and signal (ModemManager).
 [[block]]

@@ -44,6 +44,15 @@ case "${1:-}" in
                   sed -n 's/^modem.generic.signal-quality.value *: //p')
         [ -n "$tech" ] && [ "$tech" != -- ] &&
             echo "$(gen "$tech") ${sig}%" ;;
+    hotspot)                    # JSON: its name, while wlan0 is an access point
+        info=$(iw dev wlan0 info 2>/dev/null)
+        case "$info" in
+            *"type AP"*)
+                jq -nc --arg t "$(printf '%s\n' "$info" |
+                                      sed -n 's/^[[:space:]]*ssid //p')" \
+                   '{text: $t, state: "Good"}' ;;
+            *) echo '{"text": ""}' ;;
+        esac ;;
     bt)                         # JSON: the bar's Bluetooth icon, coloured when on
         # (Pango colours on the glyph picked a fallback font: a blob.)
         if rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes"; then
