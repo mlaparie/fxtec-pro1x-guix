@@ -180,6 +180,14 @@ modules`); `--repo` deploys `systems/*.scm` instead.
 
 ---
 
+**On the phone (2026-11-09):** system generation 6, from `dev-fingerprint` (local,
+not pushed), kernel 7.3.0; Guix Home is out of the system (`deploy.sh --home`, home
+generation 5 or later) and Nyxt 5 comes from the private channel (f48826e): it starts
+as far as loading CEF and the config, its window has not been opened yet.  New and
+not yet confirmed: airplane mode as a real state, the hotspot's device list, expel,
+ban, band, hidden name, auto-off and data used.  The fingerprint sensor answers
+(chip id 36, device/fingerprint/README.md); touch is not proven.
+
 ## State, 2026-11-02 night
 
 - Phone: generation 142 (userspace of c1324fa minus the last pro1x-osk
