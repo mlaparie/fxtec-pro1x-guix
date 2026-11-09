@@ -623,6 +623,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/sbin/halt, "
                               "/run/current-system/profile/sbin/reboot, "
                               "/run/current-system/profile/bin/pro1x-sleep, "
+                              ;; Quick actions' hotspot: expel, ban.
+                              "/run/current-system/profile/bin/pro1x-hotspot-admin, "
                               ;; Its CPU mode line.
                               "/run/current-system/profile/bin/pro1x-cpu-mode, "
                               ;; Quick actions' charge limit.

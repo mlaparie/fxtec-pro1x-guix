@@ -1778,6 +1778,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
+;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
@@ -1802,8 +1803,8 @@ window opened by a sway key binding.")
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
-                  grim guile-3.0 imagemagick jq lisgd procps qrencode sed slurp
-                  swayidle wl-clipboard (list glib "bin")))
+                  grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
+                  qrencode sed slurp swayidle wl-clipboard (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1839,6 +1840,7 @@ window opened by a sway key binding.")
           ("pro1x-switcher" "bin/")
           ("pro1x-wifi" "bin/")
           ("pro1x-hotspot" "bin/")
+          ("pro1x-hotspot-admin" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
           ("pro1x-camera-button" "bin/")
@@ -1882,7 +1884,22 @@ window opened by a sway key binding.")
                   (chmod hotspot #o755)
                   (wrap-program hotspot
                     `("PATH" ":" prefix
-                      (,(string-append (assoc-ref inputs "qrencode") "/bin")))))
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("curl" "libnotify" "qrencode")))))
+                ;; Run by sudo, with a bare environment.
+                (let ((hotspot-admin
+                       (string-append #$output "/bin/pro1x-hotspot-admin")))
+                  (chmod hotspot-admin #o755)
+                  (wrap-program hotspot-admin
+                    `("PATH" ":" prefix
+                      ,(append
+                        (map (lambda (p)
+                               (string-append (assoc-ref inputs p) "/bin"))
+                             '("coreutils" "grep"))
+                        (map (lambda (p)
+                               (string-append (assoc-ref inputs p) "/sbin"))
+                             '("iw" "nftables"))))))
                 (let ((idle (string-append #$output "/bin/pro1x-idle")))
                   (chmod idle #o755)
                   (wrap-program idle

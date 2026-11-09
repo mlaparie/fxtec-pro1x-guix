@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# pro1x-hotspot-admin — what pro1x-hotspot needs root for, allowed without a
+# password in sudoers (system/mobile.scm).  Its arguments are checked here.
+#
+#   expel MAC   disconnect a device; it may join again
+#   ban MAC     expel it and drop everything it sends
+#   unban MAC
+#   apply       set the rules from the saved list (at each hotspot start)
+#
+# A banned device can still associate, since NetworkManager has no access list
+# for an access point.  Its traffic is dropped by nftables, matched on its MAC;
+# the kernel has no netdev family, so this is an inet table.
+#
+# State: not yet run on the phone.
+
+set -eu
+
+iface=wlan0
+dir=/var/lib/pro1x-hotspot
+banned=$dir/banned
+
+check_mac() {
+    [[ "$1" =~ ^[0-9a-f]{2}(:[0-9a-f]{2}){5}$ ]] ||
+        { echo "not a MAC address: $1" >&2; exit 2; }
+}
+
+apply() {
+    nft delete table inet pro1x_hotspot 2>/dev/null || true
+    [ -s "$banned" ] || return 0
+    elements=$(paste -sd, "$banned")
+    nft -f - <<EOF
+table inet pro1x_hotspot {
+    set banned { type ether_addr; elements = { $elements } }
+    chain input { type filter hook input priority -300; ether saddr @banned drop }
+    chain forward { type filter hook forward priority -300; ether saddr @banned drop }
+}
+EOF
+}
+
+mkdir -p "$dir"
+case "${1:-}" in
+    expel)
+        check_mac "${2:-}"
+        iw dev "$iface" station del "$2" ;;
+    ban)
+        check_mac "${2:-}"
+        grep -qxF "$2" "$banned" 2>/dev/null || echo "$2" >> "$banned"
+        apply
+        iw dev "$iface" station del "$2" 2>/dev/null || true ;;
+    unban)
+        check_mac "${2:-}"
+        grep -vxF "$2" "$banned" > "$banned.new" || true
+        mv "$banned.new" "$banned"
+        apply ;;
+    apply) apply ;;
+    *) echo "usage: pro1x-hotspot-admin expel|ban|unban MAC, or apply" >&2; exit 2 ;;
+esac
