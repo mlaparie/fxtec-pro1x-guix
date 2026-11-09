@@ -633,6 +633,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-sleep, "
                               ;; Quick actions' hotspot: expel, ban.
                               "/run/current-system/profile/bin/pro1x-hotspot-admin, "
+                              ;; Quick actions' timezone.
+                              "/run/current-system/profile/bin/pro1x-timezone-admin, "
                               ;; Its CPU mode line.
                               "/run/current-system/profile/bin/pro1x-cpu-mode, "
                               ;; Quick actions' charge limit.
@@ -738,6 +740,23 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      ;; 28x56, about 77x19 cells in landscape (author: bigger; it was
      ;; sun12x22 doubled, 24x44, and 16x32 before that).  Guix's
      ;; console-font-service-type needs mingetty's term-ttyN, removed here.
+     ;; Each activation remakes /etc/localtime from the timezone field: the
+     ;; zone chosen in the quick actions is put back after it.
+     (simple-service 'pro1x-timezone activation-service-type
+       #~(system* #$(file-append pro1x-sway-config
+                                 "/bin/pro1x-timezone-admin")
+                  "apply"))
+     ;; Finds the zone at each new connection, if Automatic is on.
+     (simple-service 'pro1x-timezone-watch shepherd-root-service-type
+       (list (shepherd-service
+              (provision '(pro1x-timezone-watch))
+              (requirement '(networking))
+              (documentation "Update the timezone when the network changes.")
+              (start #~(make-forkexec-constructor
+                        (list #$(file-append pro1x-sway-config
+                                             "/bin/pro1x-timezone-admin")
+                              "watch")))
+              (stop #~(make-kill-destructor)))))
      (simple-service 'pro1x-console-font shepherd-root-service-type
        (list (shepherd-service
               (provision '(pro1x-console-font))

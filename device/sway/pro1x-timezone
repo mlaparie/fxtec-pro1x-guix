@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# pro1x-timezone — the timezone: pick one, find it from the network now, or
+# follow the network at each new connection.  Opened by Enter or Right on the
+# Timezone line of sway-quick-actions.  pro1x-timezone-admin does the root part.
+#
+# State: not yet run on the phone.
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="$rt/pro1x-tool.sock"
+auto=/var/lib/pro1x/timezone-auto
+admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-timezone-admin"
+
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+current() { readlink -f /etc/localtime | sed 's|.*/zoneinfo/||'; }
+auto_state() { cat "$auto" 2>/dev/null || echo off; }
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+
+pick_zone() {
+    zone=$(awk '!/^#/ { print $3 }' "$TZDIR/zone.tab" | sort |
+        fzf --listen="$sock" --reverse --margin='1,2,1,2' --color='16,gutter:-1' \
+            --prompt='Zone: ')
+    [ -n "$zone" ] || return
+    # A zone picked by hand should not be replaced at the next connection.
+    $admin auto off
+    $admin set "$zone" || pause
+}
+
+detect_now() {
+    printf '\033[H\033[2J\033[3J'
+    echo "Asking the network…"
+    $admin detect || pause
+}
+
+toggle_auto() {
+    if [ "$(auto_state)" = on ]; then
+        $admin auto off
+    else
+        $admin auto on
+        detect_now
+    fi
+}
+
+while :; do
+    choice=$(printf '%s\t%s\n' \
+        pick "Zone:      $(current), $(date '+%H:%M %Z')" \
+        auto "Automatic: $(auto_state)" \
+        detect "Detect now" |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 \
+            --reverse --cycle --margin='1,2,1,2' --color='16,gutter:-1' |
+        cut -f1)
+    case "$choice" in
+        pick) pick_zone ;;
+        auto) toggle_auto ;;
+        detect) detect_now ;;
+        *) break ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

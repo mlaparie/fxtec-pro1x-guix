@@ -1779,6 +1779,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
 ;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
 ;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
+;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
+;;;   bin/pro1x-timezone-admin           its root part (sudoers)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
@@ -1804,7 +1806,8 @@ window opened by a sway key binding.")
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
-                  qrencode sed slurp swayidle wl-clipboard (list glib "bin")))
+                  qrencode sed slurp swayidle tzdata wl-clipboard
+                  (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1841,6 +1844,8 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-hotspot" "bin/")
           ("pro1x-hotspot-admin" "bin/")
+          ("pro1x-timezone" "bin/")
+          ("pro1x-timezone-admin" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
           ("pro1x-camera-button" "bin/")
@@ -1900,6 +1905,21 @@ window opened by a sway key binding.")
                         (map (lambda (p)
                                (string-append (assoc-ref inputs p) "/sbin"))
                              '("iw" "nftables"))))))
+                (let ((zoneinfo (string-append (assoc-ref inputs "tzdata")
+                                               "/share/zoneinfo")))
+                  (chmod (string-append #$output "/bin/pro1x-timezone") #o755)
+                  (wrap-program (string-append #$output "/bin/pro1x-timezone")
+                    `("TZDIR" = (,zoneinfo)))
+                  ;; Run by sudo and Shepherd, with a bare environment.
+                  (chmod (string-append #$output "/bin/pro1x-timezone-admin")
+                         #o755)
+                  (wrap-program
+                      (string-append #$output "/bin/pro1x-timezone-admin")
+                    `("TZDIR" = (,zoneinfo))
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "curl")))))
                 (let ((idle (string-append #$output "/bin/pro1x-idle")))
                   (chmod idle #o755)
                   (wrap-program idle

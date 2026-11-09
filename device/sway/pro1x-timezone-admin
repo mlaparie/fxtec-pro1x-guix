@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# pro1x-timezone-admin — what pro1x-timezone needs root for, allowed without a
+# password in sudoers (system/mobile.scm).  Its arguments are checked here.
+#
+#   set ZONE      use ZONE and keep it, over the timezone field of config.scm
+#   detect        find the zone from the public IP address, and use it
+#   auto on|off   detect at each new connection
+#   apply         restore the kept zone (at each activation)
+#   watch         the service behind auto (pro1x-timezone-watch)
+#
+# The lookup sends the IP address to ipinfo.io, or ipapi.co if that fails.  A
+# VPN or Tailscale exit node gives the zone of its exit.  The modem is not
+# used: it reports a UTC offset, not a zone with its daylight saving rules.
+#
+# State: not yet run on the phone.
+
+set -eu
+
+dir=/var/lib/pro1x
+saved=$dir/timezone
+auto=$dir/timezone-auto
+minimum_gap=600                 # seconds between two automatic lookups
+
+valid() {
+    [[ "$1" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] && [ -f "$TZDIR/$1" ]
+}
+
+use_zone() { ln -sfn "$TZDIR/$1" /etc/localtime; }
+
+keep_zone() {
+    valid "$1" || { echo "not a timezone: $1" >&2; return 2; }
+    mkdir -p "$dir"
+    echo "$1" > "$saved"
+    use_zone "$1"
+}
+
+lookup() {
+    curl -fs -m 10 --cacert /etc/ssl/certs/ca-certificates.crt "$1"
+}
+
+detect() {
+    zone=$(lookup https://ipinfo.io/timezone || lookup https://ipapi.co/timezone) ||
+        { echo "no answer from the lookup services" >&2; return 1; }
+    keep_zone "$zone"
+    echo "$zone"
+}
+
+# Connecting raises several of these events: the gap keeps it to one lookup.
+watch_network() {
+    last=0
+    LC_ALL=C /run/current-system/profile/bin/nmcli monitor |
+        while read -r line; do
+            case "$line" in
+                *"is now the primary connection"*|*": connected"*) ;;
+                *) continue ;;
+            esac
+            [ "$(cat "$auto" 2>/dev/null)" = on ] || continue
+            now=$(date +%s)
+            [ $((now - last)) -ge "$minimum_gap" ] || continue
+            sleep 5             # DNS may not be set up yet
+            if detect; then last=$now; fi
+        done
+}
+
+case "${1:-}" in
+    set) keep_zone "${2:-}" ;;
+    detect) detect ;;
+    auto)
+        case "${2:-}" in
+            on|off) mkdir -p "$dir"; echo "$2" > "$auto" ;;
+            *) echo "usage: pro1x-timezone-admin auto on|off" >&2; exit 2 ;;
+        esac ;;
+    apply)
+        if [ -r "$saved" ] && valid "$(cat "$saved")"; then
+            use_zone "$(cat "$saved")"
+        fi ;;
+    watch) watch_network ;;
+    *) echo "usage: pro1x-timezone-admin set ZONE, detect, auto on|off, apply or watch" >&2
+       exit 2 ;;
+esac

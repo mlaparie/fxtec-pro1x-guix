@@ -1009,6 +1009,7 @@ lines() {
         "camera      Camera" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
+        "timezone    Timezone             $(timezone_now)" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "operator    Operator             $(operator_shown "$kv")" \
@@ -1039,6 +1040,8 @@ hotspot_state() {               # pro1x-hotspot's connection: on or off
     nmcli -t -f NAME connection show --active | grep -qx pro1x-hotspot &&
         echo on || echo off
 }
+
+timezone_now() { readlink -f /etc/localtime | sed 's|.*/zoneinfo/||'; }
 
 radio_now() {                   # radio_now wifi|wwan|bluetooth: on or off
     case "$1" in
@@ -1193,6 +1196,7 @@ act() {                         # Enter
         camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
         gpu) open_app nvtop ;;    # load, clock, GPU time per app
         hotspot) open_tool pro1x-hotspot ;;
+        timezone) open_tool pro1x-timezone ;;
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
@@ -1236,7 +1240,7 @@ step() {                        # Right (+) and Left (-)
         wwan-) mobile_cycle - ;;
         orient+) set_orientation landscape ;;
         orient-) set_orientation portrait ;;
-        lock+|camera+|gpu+|hotspot+) act "$1" ;;
+        lock+|camera+|gpu+|hotspot+|timezone+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
         bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
