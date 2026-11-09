@@ -120,10 +120,14 @@ qs_state() {                    # shown, hidden or none
 
 qs_hide() {
     pro1x-menu close-sub quickactions
-    # Its query cleared, for next time (in the background: called from
-    # inside fzf's execute, which answers only afterwards).
-    curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
-         -d "clear-query+first" >/dev/null 2>&1 &
+    # Its query cleared, for next time.  In the background and repeated:
+    # this is called from inside fzf's execute, and a request that waits
+    # through a long execute and reload is lost.
+    ( for _ in 1 2 3 4 5 6 7 8; do
+          curl -sf -m 3 --unix-socket "$sock" -X POST http://localhost \
+               -d "clear-query+first" >/dev/null 2>&1 && break
+          sleep 1
+      done ) &
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
     if [ -f "$osk_flag" ]; then rm -f "$osk_flag"; osk false; fi
 }
