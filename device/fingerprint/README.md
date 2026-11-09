@@ -156,6 +156,11 @@ No blob is in this repository; they are proprietary.
      among its sensors.  Power is what matters: GPIO 108 alone gives the same
      result, and the QUP5 clocks without it still give -3198.  The -22s and all-zero replies before were 0xEF first
      and the separate reply buffer.
+   - (2026-11-09, confirmed) With a finger held on the sensor, 0xD2 detect_touch
+     (0x16808) and 0xD3 press_test (0x3c0c) after 0xC8, 0xC9, 0xEF return ret 0
+     and no data, and the IRQ line 97 read inactive before them.  No comparison
+     without a finger yet.  Android's `bio_init` does more first (config, active
+     group, calibration), and our 0xC9 config is blank.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.
