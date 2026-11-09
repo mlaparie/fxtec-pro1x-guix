@@ -940,6 +940,8 @@ Dracula palette, no kernel messages over the greeter.")
      i3status-rust font-awesome
      ;; foot's font (skeleton foot.ini).
      font-iosevka-term
+     ;; Chinese, Japanese and Korean, which no other font here has.
+     font-google-noto-sans-cjk
      grim slurp wl-clipboard brightnessctl playerctl
      ;; Screen recording (author).
      wf-recorder
