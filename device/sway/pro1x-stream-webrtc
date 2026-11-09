@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc PORT COMMAND... -- serve an H.264 stream by WebRTC.
+"""pro1x-stream-webrtc PORT H264-COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 
-COMMAND writes H.264 (constrained baseline) to its standard output.  It runs
-while a viewer is connected.  A browser gets a page from http://ADDRESS:PORT/
-and plays the video with no application; one viewer at a time, and a new one
-replaces the last.
+H264-COMMAND writes H.264 (constrained baseline) to its standard output, and
+VP8-COMMAND writes VP8 in IVF.  One of them runs while a viewer is connected.
+A browser gets a page from http://ADDRESS:PORT/ and plays the video with no
+application; one viewer at a time, and a new one replaces the last.
+
+The page picks the codec.  LibreWolf accepts H.264 but ships without its
+decoder, and CEF (Nyxt) has none, so both get VP8; browsers with H.264 get that,
+which costs the phone less.
 
 The Pro1x makes the WebRTC offer and the browser answers, both by plain HTTP.
 This way the browser takes the payload type GStreamer chose, and no signalling
 server is needed.  ICE uses local addresses only.
 
-State: played by a GStreamer WebRTC client (2026-11-10), not yet by a browser.
+State: played by a GStreamer WebRTC client (2026-11-10).  A browser showed black
+with H.264 in LibreWolf and Nyxt; VP8 is not yet seen in one.
 """
 
 import signal
@@ -40,7 +45,10 @@ pc.ontrack = e => {
     e.streams[0] || new MediaStream([e.track]);
 };
 (async () => {
-  const offer = await (await fetch("/offer")).text();
+  const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
+  const h264 = !/Firefox/.test(navigator.userAgent)
+    && codecs.some(c => /h264/i.test(c.mimeType));
+  const offer = await (await fetch("/offer?codec=" + (h264 ? "h264" : "vp8"))).text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
   await pc.setLocalDescription(await pc.createAnswer());
   // All the local addresses go in the answer: there is no later exchange.
@@ -59,15 +67,19 @@ pc.ontrack = e => {
 class Session:
     """One viewer: the capture command, the pipeline, and its offer."""
 
-    def __init__(self, command):
+    def __init__(self, command, codec):
         self.offer_ready = threading.Event()
         self.offer = None
         self.proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        payload = {
+            "h264": "h264parse config-interval=-1 ! "
+                    "rtph264pay config-interval=-1 pt=96 ! "
+                    "application/x-rtp,media=video,encoding-name=H264,payload=96",
+            "vp8": "ivfparse ! rtpvp8pay pt=96 ! "
+                   "application/x-rtp,media=video,encoding-name=VP8,payload=96",
+        }[codec]
         self.pipeline = Gst.parse_launch(
-            f"fdsrc fd={self.proc.stdout.fileno()} ! "
-            "h264parse config-interval=-1 ! "
-            "rtph264pay config-interval=-1 pt=96 ! "
-            "application/x-rtp,media=video,encoding-name=H264,payload=96 ! "
+            f"fdsrc fd={self.proc.stdout.fileno()} ! {payload} ! "
             "webrtcbin name=w bundle-policy=max-bundle latency=0"
         )
         self.webrtc = self.pipeline.get_by_name("w")
@@ -131,11 +143,11 @@ def end_session(old):
     return GLib.SOURCE_REMOVE
 
 
-def new_session(command, created):
+def new_session(command, codec, created):
     """Runs in the main loop, where GStreamer's signals are handled."""
     global session
     with session_lock:
-        old, session = session, Session(command)
+        old, session = session, Session(command, codec)
         created["session"] = session
     if old:
         old.stop()
@@ -145,7 +157,7 @@ def new_session(command, created):
 
 class Handler(BaseHTTPRequestHandler):
     # Not "command": the HTTP request's method goes there.
-    capture = []
+    capture = {}
 
     def reply(self, body, kind="text/plain", code=200):
         self.send_response(code)
@@ -158,9 +170,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self.reply(PAGE, "text/html; charset=utf-8")
-        elif self.path == "/offer":
+        elif self.path.startswith("/offer"):
+            codec = "h264" if self.path.endswith("=h264") else "vp8"
             created = {"done": threading.Event()}
-            GLib.idle_add(new_session, self.capture, created)
+            GLib.idle_add(new_session, self.capture[codec], codec, created)
             if (
                 created["done"].wait(10)
                 and created["session"].offer_ready.wait(15)
@@ -189,10 +202,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if len(sys.argv) < 3:
+    if "--" not in sys.argv[2:]:
         sys.exit(__doc__.splitlines()[0])
     Gst.init(None)
-    Handler.capture = sys.argv[2:]
+    split = sys.argv.index("--", 2)
+    Handler.capture = {"h264": sys.argv[2:split], "vp8": sys.argv[split + 1:]}
     server = ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     loop = GLib.MainLoop()
