@@ -130,8 +130,16 @@ No blob is in this repository; they are proprietary.
      in one boot.  Android sends 0xC8 and 0xC9 first, and our tests began with
      0xEF: the app may fault on an uninitialised sensor context, which would
      show as the SCM error and make "TrustZone refuses the call" above wrong.
-     There is no clock or bandwidth vote in the stock stack.  To try here: 0xC8,
-     0xC9, 0xEF in that order.
+     There is no clock or bandwidth vote in the stock stack.
+   - (2026-11-09, confirmed on this phone, kernel 7.3.0) The order is what matters.
+     With 0xC8 (len 0x408), then 0xC9 (0x180), then 0xEF (0xc), each from a new
+     `mafp-client` process and with all-zero payloads, all three return ret 0,
+     with no SCM error.  After reloading the app, 0xEF first fails with -22 as
+     before.  So the "TrustZone refuses the call before the app sees it" reading
+     above was wrong: the -22 comes from the app's uninitialised state.  Every
+     reply is all zeros, including the chip id from 0xEF, so the sensor has not
+     been shown to answer: the zero payloads may not be a valid init.  Not tested:
+     which of 0xC8 and 0xC9 is needed.  The name `mafp` opened a session here.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.
