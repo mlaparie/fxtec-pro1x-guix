@@ -3,22 +3,31 @@
 # password in sudoers (system/mobile.scm).  Its arguments are checked here.
 #
 #   set ZONE      use ZONE and keep it, over the timezone field of config.scm
-#   detect        find the zone from the public IP address, and use it
+#   detect        find the country and zone from the network, and use them
 #   auto on|off   detect at each new connection
 #   apply         restore the kept zone (at each activation)
 #   watch         the service behind auto (pro1x-timezone-watch)
 #
-# The lookup sends the IP address to ipinfo.io, or ipapi.co if that fails.  A
-# VPN or Tailscale exit node gives the zone of its exit.  The modem is not
-# used: it reports a UTC offset, not a zone with its daylight saving rules.
+# The country comes from the cell network, which needs no data: the modem's
+# operator code holds the country code (MCC), named in NetworkManager's list of
+# operators.  This modem reports no network time, so a country with several
+# zones needs the IP lookup, or falls back to the zone kept if it is in that
+# country, else the first listed.  The IP lookup sends the address to ipinfo.io,
+# or ipapi.co if that fails, and is skipped for a country with one zone.  Without
+# a cell network the IP lookup decides alone; a VPN then gives its exit's zone.
 #
-# State: not yet run on the phone.
+# The country also sets the Wi-Fi rules.  5 GHz channels stay "no IR" here even
+# with a country set (2026-11-10), so no 5 GHz hotspot.
+#
+# State: detection by IP confirmed by the author 2026-11-10, and the zone was
+# kept over a reboot.  The cell network path is not yet run.
 
 set -eu
 
 dir=/var/lib/pro1x
 saved=$dir/timezone
 auto=$dir/timezone-auto
+country_kept=$dir/country
 minimum_gap=600                 # seconds between two automatic lookups
 
 valid() {
@@ -38,15 +47,73 @@ lookup() {
     curl -fs -m 10 --cacert /etc/ssl/certs/ca-certificates.crt "$1"
 }
 
+ip_zone() {
+    lookup https://ipinfo.io/timezone || lookup https://ipapi.co/timezone
+}
+
+# The country of the cell network the modem sees, in capitals.
+cell_country() {
+    code=$(/run/current-system/profile/bin/mmcli -m any -K 2>/dev/null |
+               sed -n 's/^modem\.3gpp\.operator-code *: *//p')
+    [ "${#code}" -ge 5 ] || return 1
+    awk -v mcc="${code:0:3}" '
+        /<country code=/ { match($0, /code="[a-z]+"/); c = substr($0, RSTART + 6, 2) }
+        index($0, "network-id mcc=\"" mcc "\"") { print toupper(c); found = 1; exit }
+        END { exit !found }' "$MBPI_FILE"
+}
+
+zones_of() { awk -F'\t' -v c="$1" '$1 == c { print $3 }' "$TZDIR/zone.tab"; }
+country_of() { awk -F'\t' -v z="$1" '$3 == z { print $1; exit }' "$TZDIR/zone.tab"; }
+
+set_country() {
+    iw reg set "$1" 2>/dev/null || true
+    mkdir -p "$dir"
+    echo "$1" > "$country_kept"
+}
+
 detect() {
-    zone=$(lookup https://ipinfo.io/timezone || lookup https://ipapi.co/timezone) ||
-        { echo "no answer from the lookup services" >&2; return 1; }
+    country=$(cell_country || true)
+    zone=
+    if [ -n "$country" ] && [ "$(zones_of "$country" | wc -l)" = 1 ]; then
+        zone=$(zones_of "$country")
+    else
+        found=$(ip_zone || true)
+        if valid "$found"; then
+            if [ -z "$country" ]; then
+                zone=$found country=$(country_of "$found")
+            elif [ "$(country_of "$found")" = "$country" ]; then
+                zone=$found
+            fi
+        fi
+        if [ -z "$zone" ] && [ -n "$country" ]; then
+            now=$(cat "$saved" 2>/dev/null || true)
+            if zones_of "$country" | grep -qxF "$now"; then
+                zone=$now
+            else
+                zone=$(zones_of "$country" | head -n1)
+            fi
+        fi
+    fi
+    [ -n "$zone" ] || { echo "no cell network, and no answer online" >&2; return 1; }
     keep_zone "$zone"
+    [ -z "$country" ] || set_country "$country"
     echo "$zone"
+}
+
+# The modem can register, or change country, with no connection changing.
+watch_cell() {
+    while sleep 300; do
+        [ "$(cat "$auto" 2>/dev/null)" = on ] || continue
+        country=$(cell_country || true)
+        [ -n "$country" ] || continue
+        [ "$country" = "$(cat "$country_kept" 2>/dev/null)" ] || detect || true
+    done
 }
 
 # Connecting raises several of these events: the gap keeps it to one lookup.
 watch_network() {
+    [ ! -r "$country_kept" ] || set_country "$(cat "$country_kept")"
+    watch_cell &
     last=0
     LC_ALL=C /run/current-system/profile/bin/nmcli monitor |
         while read -r line; do

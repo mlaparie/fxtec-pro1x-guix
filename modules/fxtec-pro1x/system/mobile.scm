@@ -557,8 +557,9 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
 
   ;; ── Firmware ──────────────────────────────────────────────────────────────
   ;; firmware-fxtec-qx1050-mafp: the fingerprint trusted app (proprietary).
+  ;; wireless-regdb: the Wi-Fi rules of each country (regulatory.db).
   (firmware (list linux-firmware firmware-fxtec-qx1050
-                  firmware-fxtec-qx1050-mafp))
+                  firmware-fxtec-qx1050-mafp wireless-regdb))
 
   ;; ── Bootloader ────────────────────────────────────────────────────────────
   (bootloader

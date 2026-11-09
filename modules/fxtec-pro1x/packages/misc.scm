@@ -1806,7 +1806,8 @@ window opened by a sway key binding.")
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
-                  qrencode sed slurp swayidle tzdata wl-clipboard
+                  mobile-broadband-provider-info qrencode sed slurp swayidle
+                  tzdata wl-clipboard
                   (list glib "bin")))
     (arguments
      (list
@@ -1916,10 +1917,17 @@ window opened by a sway key binding.")
                   (wrap-program
                       (string-append #$output "/bin/pro1x-timezone-admin")
                     `("TZDIR" = (,zoneinfo))
+                    `("MBPI_FILE" =
+                      (,(search-input-file
+                         inputs
+                         "share/mobile-broadband-provider-info/serviceproviders.xml")))
                     `("PATH" ":" prefix
-                      ,(map (lambda (p)
-                              (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "curl")))))
+                      ,(append
+                        (map (lambda (p)
+                               (string-append (assoc-ref inputs p) "/bin"))
+                             '("coreutils" "curl" "gawk" "grep" "sed"))
+                        (list (string-append (assoc-ref inputs "iw")
+                                             "/sbin"))))))
                 (let ((idle (string-append #$output "/bin/pro1x-idle")))
                   (chmod idle #o755)
                   (wrap-program idle

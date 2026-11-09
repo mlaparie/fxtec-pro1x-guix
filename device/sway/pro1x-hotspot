@@ -10,6 +10,7 @@
 # internet it shares comes from mobile data.
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
+# A 5 GHz hotspot fails here: every 5 GHz channel is "no IR" (2026-11-09).
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
 # run on the phone.
 
@@ -98,7 +99,18 @@ in_background() {
     ' "$0" "$@" > /dev/null 2>&1 < /dev/null &
 }
 
+# Whether the rules let this phone start a network on some 5 GHz channel.
+band_5ghz_usable() {
+    iw phy | grep -E '^[[:space:]]+\* 5[0-9]{3} MHz' |
+        grep -qvE 'disabled|no IR'
+}
+
 start() {
+    if [ "$(band)" = a ] && ! band_5ghz_usable; then
+        notify-send -u critical Hotspot \
+            "5 GHz is not allowed on this phone: set the band to 2.4 GHz"
+        return 1
+    fi
     nmcli connection up "$con" || {
         notify-send -u critical Hotspot "Could not start"; return 1; }
     $admin apply
@@ -167,7 +179,17 @@ set_password() {
 }
 
 toggle_band() {
-    if [ "$(band)" = a ]; then b=bg; else b=a; fi
+    if [ "$(band)" = a ]; then
+        b=bg
+    elif band_5ghz_usable; then
+        b=a
+    else
+        clear_screen
+        echo "5 GHz is not available: the Wi-Fi driver keeps all its channels"
+        echo "closed to access points here."
+        pause
+        return
+    fi
     nmcli connection modify "$con" 802-11-wireless.band "$b" && restart_if_active
 }
 
