@@ -2,11 +2,21 @@
 # scripts/deploy.sh — update the phone over USB Ethernet without reflashing
 #
 # Usage:
-#   bash scripts/deploy.sh [host]                    the phone's own configuration
-#   bash scripts/deploy.sh --repo [system-file] [host]   a system from this tree
-#   defaults: host 172.16.42.1, system-file systems/mobile.scm
+#   bash scripts/deploy.sh [--system] [--home] [host]   the phone's own configuration
+#   bash scripts/deploy.sh --repo [system-file] [host]  a system from this tree
+#   bash scripts/deploy.sh --help                       this text
+#   defaults: --system, host 172.16.42.1, system-file systems/mobile.scm
 #
-# By default it builds what `sudo guix system reconfigure
+# --system deploys ~/.config/guix/config.scm and --home ~/.config/guix/home.scm.
+# With both, the system goes first.  They are separate: a system deploy leaves
+# the home alone.  On the phone, the same home is
+# `guix home reconfigure ~/.config/guix/home.scm'.
+#
+# --home builds home.scm for aarch64 on this host with the phone's channels,
+# copies what the phone lacks as root over SSH, then makes it a new generation
+# and activates it as the phone's user, like guix home reconfigure.
+#
+# --system builds what `sudo guix system reconfigure
 # ~/.config/guix/config.scm' would build on the phone, with the phone's
 # own channels, but on this host's CPU: it copies the phone user's
 # ~/.config/guix/config.scm and channels.scm (or /etc/guix's when the user
@@ -30,7 +40,8 @@
 # does not answer.
 #
 # Environment: PRO1X_USER, the phone account whose configuration is used
-# (default user).
+# (default user).  PRO1X_GUIX_FLAGS, extra options for guix deploy and guix
+# build, such as --fallback.
 #
 # After a reflash the phone has a new SSH host key and guix deploy stops
 # with "known-changed".  Refresh it (USB link to your own phone):
@@ -46,7 +57,25 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# --help prints the comment at the top of this file.
+usage() { sed -n '2,/^$/{/^$/d;s/^# \?//;p}' scripts/deploy.sh; }
+
+want_system=
+want_home=
+while [[ "${1:-}" == -* ]]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        --system) want_system=1 ;;
+        --home) want_home=1 ;;
+        --repo) break ;;
+        *) echo "error: unknown option $1 (see --help)" >&2; exit 1 ;;
+    esac
+    shift
+done
+[[ -n "$want_system$want_home" ]] || want_system=1
+
 if [[ "${1:-}" == "--repo" ]]; then
+    [[ -z "$want_home" ]] || { echo "error: --repo deploys a system, not a home" >&2; exit 1; }
     shift
     PRO1X_SYSTEM="${1:-systems/mobile.scm}" \
     PRO1X_HOST="${2:-172.16.42.1}" \
@@ -104,16 +133,59 @@ if grep -q "$srht" "$tmp$dir/channels.scm" &&
     sed -i "s|$srht|$mirror|" "$tmp$dir/channels.scm"
 fi
 
-# The root's type, which the system must declare (deploy/pro1x.scm checks).
-root_type=$("${ssh_root[@]}" findmnt -no FSTYPE /) ||
-    { echo "error: cannot read the phone's root type" >&2; exit 1; }
+deploy_system() {
+    # The root's type, which the system must declare (deploy/pro1x.scm checks).
+    local root_type
+    root_type=$("${ssh_root[@]}" findmnt -no FSTYPE /) ||
+        { echo "error: cannot read the phone's root type" >&2; exit 1; }
 
-echo "Configuration: $dir/config.scm, channels: $dir/channels.scm (phone)"
-PRO1X_ROOT_FSTYPE="$root_type" \
-PRO1X_SYSTEM="$tmp$dir/config.scm" \
-PRO1X_HOST="$host" \
-PRO1X_PHONE_CHANNELS=1 \
-    guix time-machine -C "$tmp$dir/channels.scm" -- \
-    deploy -L "$PWD/modules" deploy/pro1x.scm
+    echo "Configuration: $dir/config.scm, channels: $dir/channels.scm (phone)"
+    PRO1X_ROOT_FSTYPE="$root_type" \
+    PRO1X_SYSTEM="$tmp$dir/config.scm" \
+    PRO1X_HOST="$host" \
+    PRO1X_PHONE_CHANNELS=1 \
+        guix time-machine -C "$tmp$dir/channels.scm" -- \
+        deploy ${PRO1X_GUIX_FLAGS:-} -L "$PWD/modules" deploy/pro1x.scm
 
-echo "Deployed.  Reboot the phone if the kernel, initrd or firmware changed."
+    echo "Deployed.  Reboot the phone if the kernel, initrd or firmware changed."
+}
+
+deploy_home() {
+    [[ -f "$tmp$dir/home.scm" ]] ||
+        { echo "error: no $dir/home.scm on the phone" >&2; exit 1; }
+
+    echo "Home: $dir/home.scm, channels: $dir/channels.scm (phone)"
+    local new_home missing
+    new_home=$(guix time-machine -C "$tmp$dir/channels.scm" -- \
+        build ${PRO1X_GUIX_FLAGS:-} --system=aarch64-linux -L "$PWD/modules" \
+        -f "$tmp$dir/home.scm" | tail -1)
+
+    # A phone's own reconfigure rewrites its ACL without this host's key.
+    "${ssh_root[@]}" guix archive --authorize < /etc/guix/signing-key.pub
+    missing=$(guix gc -R "$new_home" | "${ssh_root[@]}" \
+        'while read -r p; do test -e "$p" || echo "$p"; done')
+    if [[ -n "$missing" ]]; then
+        guix archive --export $missing |
+            "${ssh_root[0]}" -C "${ssh_root[@]:1}" guix archive --import
+    fi
+
+    # What guix home reconfigure does.  The login shell may be fish: use bash.
+    "${ssh_root[@]}" "su -s /run/current-system/profile/bin/bash - $user -c 'bash -s'" <<EOF
+set -e
+cd /var/guix/profiles/per-user/$user
+if [ "\$(readlink -f guix-home 2>/dev/null)" = "$new_home" ]; then
+    echo "Home unchanged."
+    exit 0
+fi
+n=\$(ls -d guix-home-*-link 2>/dev/null | sed 's/guix-home-//;s/-link//' | sort -n | tail -1)
+n=\$((\${n:-0} + 1))
+ln -sfn "$new_home" guix-home-\$n-link
+ln -sfn guix-home-\$n-link guix-home
+GUIX_NEW_HOME="$new_home" "$new_home/activate"
+EOF
+
+    echo "Home deployed: $new_home"
+}
+
+[[ -z "$want_system" ]] || deploy_system
+[[ -z "$want_home" ]] || deploy_home
