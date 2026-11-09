@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# pro1x-hotspot — share mobile data over Wi-Fi: on or off, the network name and
+# password, a QR code for others to join, and the connected devices.  Opened
+# by Enter or Right on the Hotspot line of sway-quick-actions.
+#
+# It is a NetworkManager connection in shared mode.  wlan0 cannot be a client
+# at the same time here, so starting it drops the Wi-Fi network in use, and the
+# internet it shares comes from mobile data.
+#
+# State: written 2026-11-09, never run on the phone.
+
+# As in pro1x-wifi: fzf runs its binds with $SHELL, and fish cannot parse them.
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+con=pro1x-hotspot
+iface=wlan0
+leases=/var/lib/NetworkManager/dnsmasq-$iface.leases
+
+active() { nmcli -t -f NAME connection show --active | grep -qx "$con"; }
+exists() { nmcli -t -f NAME connection show | grep -qx "$con"; }
+ssid() { nmcli -e no -g 802-11-wireless.ssid connection show "$con"; }
+psk() { nmcli -s -e no -g 802-11-wireless-security.psk connection show "$con"; }
+
+# The first start makes the connection, with a random password.
+ensure() {
+    exists && return
+    nmcli connection add type wifi ifname "$iface" con-name "$con" \
+        autoconnect no ssid Pro1x wifi.mode ap wifi.band bg \
+        ipv4.method shared ipv6.method ignore \
+        wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn \
+        wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+        wifi-sec.psk "$(LC_ALL=C tr -dc 'a-km-z2-9' < /dev/urandom | head -c 14)" \
+        > /dev/null
+}
+
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+
+toggle() {
+    if active; then
+        nmcli connection down "$con" > /dev/null
+        return
+    fi
+    nmcli -t -f TYPE connection show --active | grep -q gsm ||
+        echo "Mobile data is off: others will connect, without internet."
+    if nmcli -t -f TYPE connection show --active | grep -q 802-11-wireless; then
+        read -rp "This drops the Wi-Fi network in use.  Continue? [y/N] " a
+        [ "$a" = y ] || return
+    fi
+    nmcli connection up "$con" > /dev/null || pause
+}
+
+# restart_if_active: a changed name or password applies on the next start.
+restart_if_active() {
+    active || return
+    nmcli connection down "$con" > /dev/null
+    nmcli connection up "$con" > /dev/null || pause
+}
+
+set_name() {
+    read -rp "Network name: " v
+    [ -n "$v" ] || return
+    nmcli connection modify "$con" 802-11-wireless.ssid "$v" && restart_if_active
+}
+
+set_password() {
+    read -rp "Password (8 characters or more): " v
+    if [ "${#v}" -lt 8 ]; then
+        echo "Too short: not changed."
+        pause
+        return
+    fi
+    nmcli connection modify "$con" wifi-sec.psk "$v" && restart_if_active
+}
+
+show_qr() {
+    # The WIFI: format escapes these characters with a backslash.
+    esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
+    s=$(ssid) p=$(psk)
+    qrencode -t ANSIUTF8 -m 2 "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");;"
+    printf '%s\n%s\n' "$s" "$p"
+    pause
+}
+
+show_clients() {
+    # Associated stations; the neighbour table if iw cannot tell.
+    macs=$(iw dev "$iface" station dump 2>/dev/null | awk '/^Station/ { print $2 }')
+    [ -n "$macs" ] || macs=$(ip neigh show dev "$iface" 2>/dev/null |
+        awk '/REACHABLE|STALE|DELAY/ { print $3 }')
+    if [ -z "$macs" ]; then
+        echo "No device connected."
+    else
+        for m in $macs; do
+            # A lease line: expiry MAC IP name client-id.
+            awk -v m="$m" '$2 == m { name = $4; ip = $3 }
+                END { printf "%-17s  %-15s  %s\n", m, ip, (name == "*" ? "" : name) }' \
+                "$leases" 2>/dev/null || echo "$m"
+        done
+    fi
+    pause
+}
+
+ensure || { echo "Could not create the hotspot connection."; pause; exit 1; }
+
+while :; do
+    if active; then state=on; else state=off; fi
+    choice=$(printf '%s\t%s\n' \
+        toggle "Hotspot:   $state" \
+        name "Name:      $(ssid)" \
+        password "Password:  $(psk)" \
+        qr "Show QR code" \
+        clients "Connected devices" |
+        fzf --listen="$rt/pro1x-tool.sock" --delimiter='\t' --with-nth=2 \
+            --reverse --cycle --margin='1,2,1,2' --color='16,gutter:-1' |
+        cut -f1)
+    case "$choice" in
+        toggle) toggle ;;
+        name) set_name ;;
+        password) set_password ;;
+        qr) show_qr ;;
+        clients) show_clients ;;
+        *) break ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

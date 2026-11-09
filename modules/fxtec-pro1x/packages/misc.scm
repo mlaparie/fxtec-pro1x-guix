@@ -1777,6 +1777,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-menu                     resident menus, toggled from the scratchpad
 ;;;   bin/pro1x-switcher                 the window switcher (fzf)
 ;;;   bin/pro1x-wifi                     Wi-Fi picker (the author's nmcli-fzf)
+;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
@@ -1801,8 +1802,8 @@ window opened by a sway key binding.")
                         #:recursive? #t))
     (build-system copy-build-system)
     (inputs (list bash coreutils curl evtest font-dejavu foot fzf gawk grep
-                  grim guile-3.0 imagemagick jq lisgd procps sed slurp swayidle
-                  wl-clipboard (list glib "bin")))
+                  grim guile-3.0 imagemagick jq lisgd procps qrencode sed slurp
+                  swayidle wl-clipboard (list glib "bin")))
     (arguments
      (list
       #:install-plan
@@ -1837,6 +1838,7 @@ window opened by a sway key binding.")
           ("pro1x-menu" "bin/")
           ("pro1x-switcher" "bin/")
           ("pro1x-wifi" "bin/")
+          ("pro1x-hotspot" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
           ("pro1x-camera-button" "bin/")
@@ -1876,6 +1878,11 @@ window opened by a sway key binding.")
                   `("PATH" ":" prefix
                     (,(string-append (assoc-ref inputs "coreutils")
                                      "/bin"))))
+                (let ((hotspot (string-append #$output "/bin/pro1x-hotspot")))
+                  (chmod hotspot #o755)
+                  (wrap-program hotspot
+                    `("PATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "qrencode") "/bin")))))
                 (let ((idle (string-append #$output "/bin/pro1x-idle")))
                   (chmod idle #o755)
                   (wrap-program idle
