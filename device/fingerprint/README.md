@@ -153,8 +153,8 @@ No blob is in this repository; they are proprietary.
      108=1` held, the app loaded, `qsee-probe same_buf=1 gcc_clks=91,90,102`, and
      0xC8, 0xC9, 0xEF sent in that order with blank payloads, 0xEF replies 0x24
      (36) in its first payload word: the chip id, and the library lists E36
-     among its sensors.  Not yet separated: whether the power, the QUP5 clocks
-     or both are needed.  The -22s and all-zero replies before were 0xEF first
+     among its sensors.  Power is what matters: GPIO 108 alone gives the same
+     result, and the QUP5 clocks without it still give -3198.  The -22s and all-zero replies before were 0xEF first
      and the separate reply buffer.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
