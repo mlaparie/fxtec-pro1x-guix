@@ -161,6 +161,11 @@ No blob is in this repository; they are proprietary.
      and no data, and the IRQ line 97 read inactive before them.  No comparison
      without a finger yet.  Android's `bio_init` does more first (config, active
      group, calibration), and our 0xC9 config is blank.
+   - (2026-11-09, confirmed) With the config decoded from `init_properties`
+     (`qsee-probe words=`), 0xC9 echoes it and returns status 0.  0xD9 calibrate,
+     0xD2 and 0xD3 return ret 0, with and without a finger, and read the same.
+     Inconclusive: the probe prints only the first 0x180 bytes of the reply, and
+     the data of 0xD2 (0x16808 bytes) may be past that.  0xCA was not sent.
    - App 3 exists for TrustZone: with command 6, `mafp` gets result -19 and a
      non-existent app id (99) result -2 (both status -2; with command 1 both
      -22). `mafp` is still not found by name lookup.
