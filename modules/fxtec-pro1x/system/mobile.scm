@@ -997,7 +997,7 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Portals: libadwaita apps read dark/light from the Settings portal
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).
-     xdg-desktop-portal xdg-desktop-portal-gtk
+     xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr
      ;; feedbackd: vibration and event feedback for Phosh, Calls, Chatty.
      ;; It was only a dependency, not in the profile, so its D-Bus session
      ;; service was not found and nothing vibrated.  fbcli to test.
