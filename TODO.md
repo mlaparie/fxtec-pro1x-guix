@@ -4,6 +4,19 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
+**On the phone (2026-11-10): generation 20**, from `dev-fingerprint`, kernel from CI run
+42684587630 (built from 9745bbd).  New since generation 6: keyboard scan fix (author: much
+better; `poll_ms`, default 5), XWayland, Compose on Caps, CJK font, Timezone (cell country, then
+IP; kept over a reboot), wireless-regdb, Stream (VLC UDP, MJPEG and WebRTC, catt, Network
+Displays), Hotspot and Timezone as sublists, hotspot QR as an image.  Nyxt 5 with CEF on native
+Wayland, in the private channel.
+Not yet confirmed by the author: a Stream to another device from the menu (WebRTC showed black in
+LibreWolf and Nyxt with H.264, VP8 added since), mirroring with Network Displays, catt on a real
+Chromecast, the QR image.  A 5 GHz hotspot is impossible: ath10k keeps a world-regulatory chip's
+5 GHz channels "no IR" whatever the country, unless `ATH_REG_DYNAMIC_USER_REG_HINTS` is set
+(author declined).  keyd segfaulted once (2026-11-09, cause unknown); xremap now only takes keyd's
+device, so the keymap survives it.
+
 **btrfs root (2026-11-08, in progress):** CI builds the btrfs root itself (`guix system
 init`, then `mkfs.btrfs --rootdir --subvol rw:home`), so `flash-encrypted.sh` takes it as
 is; the plain `flash.sh` layout still refuses (so `systems/minimal.scm` cannot be flashed
