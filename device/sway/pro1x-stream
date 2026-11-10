@@ -178,12 +178,15 @@ send_webrtc() {
     stop_stream
     # -D -r 30: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
-    # black.  VP8 in software keeps up at 720p, not at this screen's size.
+    # black.  VP8 in software keeps up at 720p, not at this screen's size.  The
+    # filter runs before wf-recorder turns the picture, so it limits both sides.
     setsid pro1x-stream-webrtc "$webrtc_port" \
         wf-recorder "${area[@]}" -D -r 30 -m h264 -c libx264 -x yuv420p \
             -p preset=ultrafast -p tune=zerolatency -p profile=baseline \
             -p keyint=30 -f pipe:1 -- \
-        wf-recorder "${area[@]}" -D -r 30 -F scale=1280:-2 -m ivf -c libvpx \
+        wf-recorder "${area[@]}" -D -r 30 \
+            -F "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2" \
+            -m ivf -c libvpx \
             -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \
             -p b=4000000 -p g=30 -f pipe:1 \
         >/dev/null 2>&1 </dev/null &
