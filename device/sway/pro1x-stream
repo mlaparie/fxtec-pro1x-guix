@@ -250,10 +250,10 @@ send_webrtc() {
     stop_stream
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
-    mapfile -t vp8_scale < <(scale_args "$(limited "$(out_size)" 1280)")
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
-    # black.  VP8 in software keeps up at 1280, not at this screen's size.
+    # black.  VP8 in software keeps up at 1280, not at this screen's size: pick
+    # the size in Output size.
     if [ -n "${use_hw:-}" ]; then
         hw_source
         first=(--raw "$hw_size" "$webrtc_port" wf-recorder "${area[@]}" "${hw_capture[@]}")
@@ -263,7 +263,7 @@ send_webrtc() {
             -p profile=baseline -p keyint="$rate" -f pipe:1)
     fi
     setsid pro1x-stream-webrtc "${first[@]}" -- \
-        wf-recorder "${area[@]}" "${vp8_scale[@]}" -D -r "$rate" \
+        wf-recorder "${area[@]}" "${scale[@]}" -D -r "$rate" \
             -m ivf -c libvpx \
             -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \
             -p b=4000000 -p g="$rate" -f pipe:1 \
