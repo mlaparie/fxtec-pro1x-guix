@@ -2,7 +2,7 @@
 # pro1x-wifi — pick a Wi-Fi network with fzf and connect, asking for the
 # password of a new one (nmcli -a).  The author's nmcli-fzf script
 # (mlaparie's guix-config, .config/sway/scripts/nmcli-fzf), opened by
-# Right on the Wi-Fi line of sway-quick-actions.  Cosmetic changes only
+# Right on the Wi-Fi line of sway-quick-actions, inside its window.  Changes
 # (author, 2026-11-02): the SSID right after the in-use mark, the IN-USE
 # header and its padding gone (the * alone marks the active network),
 # Mbit/s shortened to Mb/s (padded, columns stay aligned).
@@ -19,15 +19,17 @@ esac
 # the menus (pro1x-menu key, window qs-tool; author, 2026-11-06); once it
 # is done, $rt/pro1x-tool.done lets a short power press close the window.
 rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
 err=0
-ssid=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
+picked=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
     --color yes device wifi list --rescan yes \
     | sed -E 's/^(BSSID +)IN-USE  /\1  /;
               s/^(\x1b\[[0-9;]*m[^\x1b]*\x1b\[0m  \x1b\[[0-9;]*m.\x1b\[0m) {6}/\1/;
-              s/ Mbit\/s/ Mb\/s  /' \
-    | fzf --ansi --listen="$rt/pro1x-tool.sock" \
+              s/ Mbit\/s/ Mb\/s  /
+              1a back  ← back' \
+    | fzf --ansi --listen="$sock" \
           --with-nth=2.. \
           --reverse \
           --cycle \
@@ -35,8 +37,12 @@ ssid=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
           --header-lines=1 \
 	  --margin='1,2,1,2' \
           --color='16,gutter:-1' \
+          --bind='load:pos(2)' \
     | sed 's/^ *\*//' \
     | awk '{print $1}')
+# After --print-query's line: the line picked, or what was typed if none.
+ssid=${picked##*$'\n'}
+case "$ssid" in ""|back) exit ;; esac
 echo "Please wait while connecting to network $ssid…"
 nmcli device wifi connect ${ssid} 2> /dev/null || err=1
 if [[ "$err" = 1 ]]; then
@@ -44,5 +50,5 @@ if [[ "$err" = 1 ]]; then
   nmcli -a device wifi connect ${ssid}
 fi
 : > "$rt/pro1x-tool.done"
-printf "Press any key to close.\n" && read -n1
+printf "Press any key to go back.\n" && read -n1
 

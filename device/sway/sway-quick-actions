@@ -526,7 +526,12 @@ choose() {
             if [ "$pick" = tool ]; then
                 # Its networks or devices need it on (author, 2026-11-02).
                 [ "$(state_of "$line")" = on ] || set_to "$line" on
-                step "$line" +
+                if [ "$line" = wifi ]; then
+                    # In this window, and back to this list after it.
+                    printf '\033[?2026l'
+                    "$self" --tool wifi
+                    choose wifi
+                else step "$line" +; fi
             else confirm "$line" "$(dim "$pick")" toggle_to "$line" "$pick"; fi ;;
     esac
 }
@@ -1250,7 +1255,6 @@ act() {                         # Enter
 
 step() {                        # Right (+) and Left (-)
     case "$1$2" in
-        wifi+) open_tool pro1x-wifi ;;
         bluetooth+) open_tool bluetuith ;;
         wwan+) mobile_cycle + ;;
         wwan-) mobile_cycle - ;;
