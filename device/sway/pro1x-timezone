@@ -26,10 +26,12 @@ country() {                     # the country of the Wi-Fi rules in force
 pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
 
 pick_zone() {
-    zone=$(awk '!/^#/ { print $3 }' "$TZDIR/zone.tab" | sort |
+    zones=$(printf '← back\n'; awk '!/^#/ { print $3 }' "$TZDIR/zone.tab" | sort)
+    at=$(printf '%s\n' "$zones" | grep -nxF "$(current)" | cut -d: -f1)
+    zone=$(printf '%s\n' "$zones" |
         fzf --listen="$sock" --reverse --margin='1,2,1,2' --color='16,gutter:-1' \
-            --prompt='Zone: ')
-    [ -n "$zone" ] || return
+            --prompt='Zone: ' --bind="load:pos(${at:-1})")
+    case "$zone" in ""|"← back") return ;; esac
     # A zone picked by hand should not be replaced at the next connection.
     $admin auto off
     $admin set "$zone" || pause
@@ -70,13 +72,14 @@ toggle_auto() {
 
 while :; do
     choice=$(printf '%s\t%s\n' \
+        back "← back" \
         pick "Zone:      $(current), $(date '+%H:%M %Z')" \
         auto "Automatic: $(auto_state)" \
         detect "Detect now" \
         rules "Wi-Fi rules: $(country)" |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='timezone > ' \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 |
+            --color=16,gutter:-1 --bind='load:pos(2)' |
         cut -f1)
     case "$choice" in
         pick) pick_zone ;;

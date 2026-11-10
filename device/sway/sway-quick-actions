@@ -1293,6 +1293,7 @@ step() {                        # Right (+) and Left (-)
 # kind id urgency app summary (tab-separated); kind new = still shown by
 # mako (actions possible), old = history (read-only).
 notif_lines() {
+    printf 'back\t-\t← back\n'
     sway-notifications list 2>/dev/null |
         awk -F'\t' '{ printf "%s\t%s\t%s  %-8s %s: %s\n", $1, $2,
                       ($1 == "new" ? "•" : " "),
@@ -1370,10 +1371,11 @@ notif_dock() {
     # The preview right in landscape, below in portrait (author), as the
     # main list's; it follows a rotation.
     layout='if test "$FZF_COLUMNS" -gt $((FZF_LINES * 2)); then
-                echo "change-preview-window(right,45%,wrap)"
+                printf "change-preview-window(right,45%%,wrap)"
             else
-                echo "change-preview-window(down,60%,wrap)"
-            fi'
+                printf "change-preview-window(down,60%%,wrap)"
+            fi
+            test "$FZF_POS" -gt 1 || printf "+pos(2)"'
     notif_lines |
         fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
             --prompt="notifications > " --layout=reverse --no-sort --cycle \
@@ -1384,7 +1386,10 @@ notif_dock() {
             --bind="load:transform~$layout~+$sync_end" \
             --bind="resize:transform:$layout" \
             --bind="esc:$sync_begin+abort" \
-            --bind="enter:execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)" \
+            --bind="enter:transform:case {1} in
+                      back) echo \"$sync_begin+accept\" ;;
+                      *) echo \"execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)\" ;;
+                    esac" \
             --bind="tab:execute($self --notif-pick {1} {2})+reload($self --notif-lines)" \
             --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
             --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \

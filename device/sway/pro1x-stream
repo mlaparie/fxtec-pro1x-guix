@@ -41,11 +41,14 @@ stop_stream() {
     rm -f "$pid_file" "$to_file"
 }
 
-# pick PROMPT: one line of "key<TAB>shown" from stdin, its key on stdout.
+# pick PROMPT: lines of "key<TAB>shown" from stdin, the key picked on stdout;
+# nothing for the back line, as for Esc.
 pick() {
-    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
-        --layout=reverse-list --no-info --cycle --margin=1,2 \
-        --color=16,gutter:-1 | cut -f1
+    { printf 'back\t← back\n'; cat; } |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+            --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 --bind='load:pos(2)' |
+        cut -f1 | sed '/^back$/d'
 }
 
 # An image, as block characters come out too tall in this font.
@@ -90,7 +93,9 @@ go_to_source() {
 own_address() {
     list=$(ip -4 -o addr show scope global |
         awk '$2 != "usb0" && $2 != "lo" { sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
-    if [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
+    if [ -z "$list" ]; then
+        { echo "No network."; pause; } >&2
+    elif [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
         printf '%s\n' "$list" | cut -f1
     else
         printf '%s\n' "$list" | pick "on network"
@@ -141,7 +146,7 @@ send_udp() {                    # send_udp [ADDRESS]
 send_mjpeg() {
     pick_source || return
     ip=$(own_address)
-    [ -n "$ip" ] || { echo "No network."; pause; return; }
+    [ -n "$ip" ] || return
     stop_stream
     setsid bash -c '
         port=$1; shift
@@ -168,7 +173,7 @@ send_mjpeg() {
 send_webrtc() {
     pick_source || return
     ip=$(own_address)
-    [ -n "$ip" ] || { echo "No network."; pause; return; }
+    [ -n "$ip" ] || return
     stop_stream
     # -D -r 30: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays

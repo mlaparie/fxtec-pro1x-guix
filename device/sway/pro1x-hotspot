@@ -58,6 +58,7 @@ menu_lines() {
         *) s=off ;;
     esac
     printf '%s\t%s\n' \
+        back "← back" \
         toggle "Hotspot:   $s" \
         name "Name:      $(ssid)" \
         password "Password:  $(psk)" \
@@ -240,16 +241,16 @@ ip_of() { awk -v m="$1" '$2 == m { print $3 }' "$leases" 2>/dev/null; }
 
 client_action() {               # client_action MAC
     if grep -qxF "$1" "$banned" 2>/dev/null; then
-        actions=unban
+        actions=$'← back\nunban'
     elif [ -n "$(ip_of "$1")" ]; then
-        actions=$'stream\nexpel\nban'
+        actions=$'← back\nstream\nexpel\nban'
     else
-        actions=$'expel\nban'
+        actions=$'← back\nexpel\nban'
     fi
     a=$(printf '%s\n' "$actions" |
         fzf --listen="$sock" --reverse --cycle --margin='1,2,1,2' \
             --color='16,gutter:-1' --header="$1")
-    [ -n "$a" ] || return
+    case "$a" in ""|"← back") return ;; esac
     if [ "$a" = stream ]; then
         PRO1X_TOOL_SOCK="$sock" pro1x-stream --to "$(ip_of "$1")"
     else
@@ -259,12 +260,13 @@ client_action() {               # client_action MAC
 
 show_clients() {
     while :; do
-        pick=$(client_lines |
+        pick=$({ printf 'back\t← back\n'; client_lines; } |
             fzf --listen="$sock" --delimiter='\t' --with-nth=2 --reverse \
                 --cycle --margin='1,2,1,2' --color='16,gutter:-1' \
-                --header="Name                 IP              MAC" |
+                --header="Name                 IP              MAC" \
+                --bind='load:pos(2)' |
             cut -f1)
-        [ -n "$pick" ] || return
+        case "$pick" in ""|back) return ;; esac
         client_action "$pick"
     done
 }
@@ -285,6 +287,7 @@ while :; do
             --layout=reverse-list --no-info --cycle --margin=1,2 \
             --color=16,gutter:-1 --ansi \
             --preview="$0 --qr" --preview-window=hidden \
+            --bind='load:pos(2)' \
             --bind="focus:transform:$qr_pane" \
             --bind="resize:transform:$qr_pane" |
         cut -f1)
