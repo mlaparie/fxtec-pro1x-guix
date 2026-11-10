@@ -25,6 +25,7 @@ sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 pid_file="$rt/pro1x-stream.pid"
 to_file="$rt/pro1x-stream.to"           # what the menus show
 fps_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-fps"
+size_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-size"
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 udp_port=5000
 http_port=8080
@@ -54,6 +55,28 @@ pick_fps() {
     mkdir -p "$(dirname "$fps_file")"
     echo "$rate" > "$fps_file"
 }
+
+out_size() { cat "$size_file" 2>/dev/null || echo native; }
+
+# The longest side of the picture sent, in pixels, or native.
+pick_size() {
+    size=$(printf '%s\n' native 1920 1280 960 640 |
+        awk -v cur="$(out_size)" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $1 }' |
+        pick "output size")
+    [ -n "$size" ] || return
+    mkdir -p "$(dirname "$size_file")"
+    echo "$size" > "$size_file"
+}
+
+# wf-recorder's arguments for a long side of at most $1; none for native.  The
+# filter runs before it turns the picture, so it limits both sides.
+scale_args() {
+    [ "$1" = native ] || printf '%s\n' -F \
+        "scale='min($1,iw)':'min($1,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+}
+
+# $1, or the most a method can take, $2, if $1 is more or native.
+limited() { if [ "$1" = native ] || [ "$1" -gt "$2" ]; then echo "$2"; else echo "$1"; fi; }
 
 # pick PROMPT: lines of "key<TAB>shown" from stdin, the key picked on stdout;
 # nothing for the back line, as for Esc.
@@ -97,9 +120,9 @@ pick_source() {
 }
 
 # Sets hw_size and hw_capture, for the hardware encoder: raw frames of at most
-# 1280 on the long side.  It manages about 26 a second at that size, 16 at
-# 1920, and refuses the full 2160.  wf-recorder's rate label is 90000 in its
-# other formats, which the encoder also refuses.
+# 1920 on the long side, its limit.  It manages about 26 a second at 1280 and
+# 16 at 1920.  wf-recorder's rate label is 90000 in its other formats, which
+# the encoder also refuses.
 hw_source() {
     read -r scale turn sw sh < <(swaymsg -t get_outputs -r | jq -r '
         [.[] | select(.active)][0]
@@ -108,8 +131,9 @@ hw_source() {
         geometry=${area[1]#* }
         sw=${geometry%x*} sh=${geometry#*x}
     fi
-    read -r w h < <(awk -v w="$sw" -v h="$sh" -v s="$scale" 'BEGIN {
-        w *= s; h *= s; m = w > h ? w : h; f = m > 1280 ? 1280 / m : 1
+    read -r w h < <(awk -v w="$sw" -v h="$sh" -v s="$scale" \
+                        -v l="$(limited "$(out_size)" 1920)" 'BEGIN {
+        w *= s; h *= s; m = w > h ? w : h; f = m > l ? l / m : 1
         w = int(w * f + 0.5); h = int(h * f + 0.5); print w - w % 2, h - h % 2 }')
     rate=$(fps)
     hw_size=${w}x$h@$rate
@@ -177,7 +201,8 @@ send_udp() {                    # send_udp [ADDRESS]
         setsid pro1x-stream-webrtc udp "$ip" "$udp_port" "$hw_size" \
             wf-recorder "${area[@]}" "${hw_capture[@]}" >/dev/null 2>&1 </dev/null &
     else
-        setsid wf-recorder "${area[@]}" -r "$(fps)" -m mpegts -c libx264 \
+        mapfile -t scale < <(scale_args "$(out_size)")
+        setsid wf-recorder "${area[@]}" "${scale[@]}" -r "$(fps)" -m mpegts -c libx264 \
             -p preset=ultrafast -p tune=zerolatency -f "udp://$ip:$udp_port" \
             >/dev/null 2>&1 </dev/null &
     fi
@@ -195,6 +220,7 @@ send_mjpeg() {
     [ -n "$ip" ] || return
     stop_stream
     rate=$(fps); [ "$rate" -le 15 ] || rate=15
+    mapfile -t scale < <(scale_args "$(out_size)")
     setsid bash -c '
         port=$1 rate=$2; shift 2
         while :; do
@@ -204,7 +230,7 @@ send_mjpeg() {
                     -content_type "multipart/x-mixed-replace;boundary=ffmpeg" \
                     -listen 1 "http://0.0.0.0:$port/"
             sleep 1
-        done' _ "$http_port" "$rate" "${area[@]}" >/dev/null 2>&1 </dev/null &
+        done' _ "$http_port" "$rate" "${area[@]}" "${scale[@]}" >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
     url="http://$ip:$http_port/"
     echo "browser, $url" > "$to_file"
@@ -223,21 +249,21 @@ send_webrtc() {
     [ -n "$ip" ] || return
     stop_stream
     rate=$(fps)
+    mapfile -t scale < <(scale_args "$(out_size)")
+    mapfile -t vp8_scale < <(scale_args "$(limited "$(out_size)" 1280)")
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
-    # black.  VP8 in software keeps up at 720p, not at this screen's size.  The
-    # filter runs before wf-recorder turns the picture, so it limits both sides.
+    # black.  VP8 in software keeps up at 1280, not at this screen's size.
     if [ -n "${use_hw:-}" ]; then
         hw_source
         first=(--raw "$hw_size" "$webrtc_port" wf-recorder "${area[@]}" "${hw_capture[@]}")
     else
-        first=("$webrtc_port" wf-recorder "${area[@]}" -D -r "$rate" -m h264 \
+        first=("$webrtc_port" wf-recorder "${area[@]}" "${scale[@]}" -D -r "$rate" -m h264 \
             -c libx264 -x yuv420p -p preset=ultrafast -p tune=zerolatency \
             -p profile=baseline -p keyint="$rate" -f pipe:1)
     fi
     setsid pro1x-stream-webrtc "${first[@]}" -- \
-        wf-recorder "${area[@]}" -D -r "$rate" \
-            -F "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2" \
+        wf-recorder "${area[@]}" "${vp8_scale[@]}" -D -r "$rate" \
             -m ivf -c libvpx \
             -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \
             -p b=4000000 -p g="$rate" -f pipe:1 \
@@ -283,14 +309,15 @@ while :; do
     lines=$(
         if streaming; then printf 'stop\tStop: %s\n' "$(cat "$to_file")"; fi
         printf '%s\t%s\n' \
-            udp "VLC (UDP)         native size, software; needs VLC there" \
-            udphw "VLC, hardware     720p, a little less CPU" \
+            udp "VLC (UDP)         software; needs VLC there" \
+            udphw "VLC, hardware     a little less CPU, 1920 at most" \
             mjpeg "Browser (MJPEG)   no app, any browser; heavy on bandwidth, no sound" \
             webrtc "Browser (WebRTC)  no app, one viewer, software" \
-            webrtchw "WebRTC, hardware  720p, a little less CPU" \
+            webrtchw "WebRTC, hardware  a little less CPU, 1920 at most" \
             catt "Chromecast (catt) sends a video or file; the TV plays it itself" \
             miracast "Network Displays  mirrors to a Miracast or Chromecast display" \
-            fps "Capture rate      $(fps) fps, lower saves CPU")
+            fps "Capture rate      $(fps) fps, lower saves CPU" \
+            size "Output size       $(out_size), long side")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
         stop) stop_stream ;;
@@ -300,6 +327,7 @@ while :; do
         webrtc) send_webrtc ;;
         webrtchw) use_hw=1 send_webrtc ;;
         fps) pick_fps ;;
+        size) pick_size ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;
