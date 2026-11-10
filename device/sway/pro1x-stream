@@ -24,7 +24,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 pid_file="$rt/pro1x-stream.pid"
 to_file="$rt/pro1x-stream.to"           # what the menus show
-leases=/var/lib/NetworkManager/dnsmasq-wlan0.leases
+admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 udp_port=5000
 http_port=8080
 webrtc_port=8081
@@ -104,8 +104,9 @@ own_address() {
 
 # The devices seen on the local networks: hotspot clients by name.
 devices() {
+    leases=$($admin leases 2>/dev/null)
     for ip in $(ip -4 neigh show | awk '/lladdr/ && !/FAILED/ { print $1 }' | sort -uV); do
-        name=$(awk -v i="$ip" '$3 == i { print $4 }' "$leases" 2>/dev/null)
+        name=$(printf '%s\n' "$leases" | awk -v i="$ip" '$3 == i { print $4 }')
         [ -n "$name" ] && [ "$name" != "*" ] || name=device
         printf '%s\t%-20s %s\n' "$ip" "$name" "$ip"
     done
@@ -229,7 +230,7 @@ while :; do
         printf '%s\t%s\n' \
             udp "VLC (UDP)         needs VLC there, ~1 s delay, one device" \
             mjpeg "Browser (MJPEG)   no app, any browser; heavy on bandwidth, no sound" \
-            webrtc "Browser (WebRTC)  no app, under 1 s delay, one viewer" \
+            webrtc "Browser (WebRTC)  no app, several seconds' delay, one viewer" \
             catt "Chromecast (catt) sends a video or file; the TV plays it itself" \
             miracast "Network Displays  mirrors to a Miracast or Chromecast display")
     choice=$(printf '%s\n' "$lines" | pick "stream")

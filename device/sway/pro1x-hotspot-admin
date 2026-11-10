@@ -6,6 +6,7 @@
 #   ban MAC     expel it and drop everything it sends
 #   unban MAC
 #   apply       set the rules from the saved list (at each hotspot start)
+#   leases      print the devices' DHCP leases, in a directory only root reads
 #
 # A banned device can still associate, since NetworkManager has no access list
 # for an access point.  Its traffic is dropped by nftables, matched on its MAC;
@@ -53,5 +54,6 @@ case "${1:-}" in
         mv "$banned.new" "$banned"
         apply ;;
     apply) apply ;;
-    *) echo "usage: pro1x-hotspot-admin expel|ban|unban MAC, or apply" >&2; exit 2 ;;
+    leases) cat "/var/lib/NetworkManager/dnsmasq-$iface.leases" 2>/dev/null || true ;;
+    *) echo "usage: pro1x-hotspot-admin expel|ban|unban MAC, apply, or leases" >&2; exit 2 ;;
 esac

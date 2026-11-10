@@ -23,7 +23,6 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 con=pro1x-hotspot
 iface=wlan0
-leases=/var/lib/NetworkManager/dnsmasq-$iface.leases
 banned=/var/lib/pro1x-hotspot/banned
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
 idle_file="$statedir/hotspot-idle"      # minutes without a device, 0 for never
@@ -227,8 +226,9 @@ cycle_idle() {                  # never, 5, 15, 30 minutes
 # One line per device, connected or banned: MAC, tab, what is shown.
 client_lines() {
     macs=$(iw dev "$iface" station dump 2>/dev/null | awk '/^Station/ { print $2 }')
+    leases=$($admin leases)
     for m in $(printf '%s\n' $macs $(cat "$banned" 2>/dev/null) | sort -u); do
-        lease=$(awk -v m="$m" '$2 == m { print $3, $4 }' "$leases" 2>/dev/null)
+        lease=$(printf '%s\n' "$leases" | awk -v m="$m" '$2 == m { print $3, $4 }')
         ip=${lease%% *} name=${lease##* }
         [ -n "$lease" ] || { ip=-; name=-; }
         [ "$name" != "*" ] || name=-
@@ -237,7 +237,7 @@ client_lines() {
     done
 }
 
-ip_of() { awk -v m="$1" '$2 == m { print $3 }' "$leases" 2>/dev/null; }
+ip_of() { $admin leases | awk -v m="$1" '$2 == m { print $3 }'; }
 
 client_action() {               # client_action MAC
     if grep -qxF "$1" "$banned" 2>/dev/null; then
