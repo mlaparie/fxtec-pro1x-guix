@@ -35,10 +35,22 @@ critical_mem = 95
 [[block]]
 block = "net"
 device = "wlan0"
-format = " $icon $signal_strength "
+# In braces, or the bar shows an error when there is no signal to report:
+# with no connection, or as a hotspot, which the block below shows.
+format = "{ $icon $signal_strength |}"
 interval = 2
 inactive_format = ""
 missing_format = ""
+
+# The hotspot, in green, while it is on.  Without its name: portrait is narrow.
+[[block]]
+block = "custom"
+shell = "sh"
+command = "pro1x-status hotspot"
+json = true
+interval = 5
+hide_when_empty = true
+format = "  "
 
 [[block]]
 block = "custom"
