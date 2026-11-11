@@ -1,5 +1,55 @@
 # Release notes
 
+## 0.4.0 — 2026-11-11
+
+A btrfs root with snapshots of `/home`, a Stream menu to send the screen to
+another device, a Wi-Fi hotspot, and many quick actions.  Built with guix
+8b96d76 and nonguix c241d19.
+
+### New
+
+- btrfs root by default, zstd-compressed, `/home` a subvolume with btrbk
+  snapshots (hourly when it changed, 1 day of all, 7 daily, 3 weekly).
+  The image is written uncompressed and compressed once at first boot
+  (CI's aarch64 `mkfs.btrfs --compress` wrote extents the kernel could not
+  read).  Only `flash.sh --encrypt` takes it for now.
+- Stream (quick actions): the screen or a window to VLC over UDP, to a
+  browser over WebRTC (H.264 or VP8), as MJPEG, to a Chromecast (catt), or
+  mirrored with Network Displays.  Hardware H.264 (Venus) beside the software
+  encoders; Capture rate and Output size settings.
+- Hotspot (quick actions): QR code, band, hidden name, auto-off when idle,
+  data used, connected devices with expel and ban, and streaming to one.
+- Quick actions: Wi-Fi networks, Timezone (from the cell network, then the
+  IP), Audio output (several at once), all as sublists with a back line;
+  airplane mode as a real state.
+- XWayland for apps without a Wayland mode; Caps Lock is the Compose key; a
+  font for Chinese, Japanese and Korean; wireless-regdb.
+- Keyboard: a key pressed during the last scan is no longer lost.
+- Guix Home in its own file (`home.scm`), deployed with `deploy.sh --home`.
+- Kernel: RPM vmin in suspend (moWerk's 0050, 0051, 0056); UHID and the Elecom
+  driver for Bluetooth LE mice; the keyboard backlight on at boot, for the
+  passphrase prompt.
+- Modem: XTRA orbit data kept fresh; GNSS engine unlocked at every boot;
+  Satellite, a GPS app.
+- `backup-phone.sh` also saves the `guix install` packages and the clock
+  offset; `PRO1X_EXCLUDE` leaves paths out of the home.
+- Fingerprint reader: the trusted app answers (chip id 0x24) through the
+  QSEECOM driver; no enrolment or unlock yet.
+
+### Install
+
+Download the `rootfs.img.zst.part*` files and `SHA256SUMS`, check them
+with `sha256sum -c SHA256SUMS`, join and unpack with
+`cat rootfs.img.zst.part* | zstd -d -o rootfs.img`, then follow
+docs/install.md (`scripts/flash.sh --encrypt --rootfs rootfs.img`).
+
+### Known issues
+
+- Outgoing calls on 4G often fall back to 3G and take 20-40 s to ring.
+- Mute in calls has no effect; no echo cancelling.
+- A 5 GHz hotspot is impossible (the Wi-Fi chip's regulatory domain).
+- Wi-Fi takes about 100 s to connect after a boot.
+
 ## 0.3.0 — 2026-11-06
 
 0.2.0 was tagged but its release never got its root file system (over
