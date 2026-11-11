@@ -20,6 +20,8 @@
 #   /var/lib/pro1x-clock       the clock's offset to the RTC
 #   /etc/ssh                   host keys (the PC keeps trusting the phone)
 #                              and root's authorized keys
+# PRO1X_EXCLUDE leaves more of the home out: paths relative to it, separated by
+# spaces (PRO1X_EXCLUDE=.mail: mail that can be synced again from the PC).
 # Not saved: /etc/shadow (passwords: set them again with passwd), the store
 # (the system comes back with a deploy), generations.
 #
@@ -43,7 +45,7 @@
 # new key) needs a separate known_hosts entry, or `ssh-keygen -R HOST` first.
 #
 # Environment: PRO1X_USER (default user), PRO1X_LOGIN (default root),
-# PRO1X_FORCE.
+# PRO1X_FORCE, PRO1X_EXCLUDE.
 #
 # State: the same commands, by hand, backed up and restored the author's
 # phone across the first encrypted flash (2026-11-05).  The script's backup
@@ -85,6 +87,8 @@ case "$cmd" in
                       pgrep -x -u $user -l \$n && r=0; done; exit \$r"; then
             die "close the browser on the phone first (PRO1X_FORCE=1 to go on)"
         fi
+        excludes=
+        for e in ${PRO1X_EXCLUDE:-}; do excludes+=" --exclude=home/$user/${e#/}"; done
         umask 077
         echo "==> Saving the phone's data to $out…"
         # As the user: run as root, flatpak made root-owned files in the
@@ -95,7 +99,7 @@ case "$cmd" in
                    > ~/guix-manifest.scm 2>/dev/null' || true
                ok=; for p in ${paths[*]}; do [ -e /\$p ] && ok=\"\$ok \$p\"; done
                tar -C / --exclude=home/$user/.cache \
-                   --exclude=home/$user/.local/share/flatpak -cf - \$ok" > "$out"
+                   --exclude=home/$user/.local/share/flatpak$excludes -cf - \$ok" > "$out"
         list=$(tar -tf "$out")
         echo "    $(wc -l <<< "$list") entries, $(du -h "$out" | cut -f1)."
         for p in home/"$user"/.config etc/ssh; do
