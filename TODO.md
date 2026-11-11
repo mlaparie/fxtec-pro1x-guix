@@ -4,36 +4,47 @@ State file (AGENTS.md §5).  Rewritten 2026-10-29: the 2026-10-27/28 notes
 were mostly about an image that predated about 60 commits.  Older details
 are in git history (TODO.md before this commit) and in `rag-notes/`.
 
-**On the phone (2026-11-10): generation 20**, from `dev-fingerprint`, kernel from CI run
-42684587630 (built from 9745bbd).  New since generation 6: keyboard scan fix (author: much
-better; `poll_ms`, default 5), XWayland, Compose on Caps, CJK font, Timezone (cell country, then
-IP; kept over a reboot), wireless-regdb, Stream (VLC UDP, MJPEG and WebRTC, catt, Network
-Displays), Hotspot and Timezone as sublists, hotspot QR as an image.  Nyxt 5 with CEF on native
-Wayland, in the private channel.
-Not yet confirmed by the author: a Stream to another device from the menu (WebRTC showed black in
-LibreWolf and Nyxt with H.264, VP8 added since), mirroring with Network Displays, catt on a real
-Chromecast, the QR image.  A 5 GHz hotspot is impossible: ath10k keeps a world-regulatory chip's
-5 GHz channels "no IR" whatever the country, unless `ATH_REG_DYNAMIC_USER_REG_HINTS` is set
-(author declined).  keyd segfaulted once (2026-11-09, cause unknown); xremap now only takes keyd's
-device, so the keymap survives it.
+**On the phone (2026-11-11): generation 27**, from `main` 1efc6f3, kernel 7.3.0 from CI run
+42684587630 (built from 9745bbd).  Encrypted btrfs root since the reflash of 2026-11-08
+(generation 1 there): `/home` a subvolume, hourly btrbk snapshots, `pro1x-rootfs-compress`
+done (`/var/lib/pro1x/rootfs-compressed`), mounted `compress=zstd:1`.  Backup of 2026-11-11
+on the PC (`backup-phone.sh`, without `~/.mail`, which syncs again from the PC).
 
-**btrfs root (2026-11-08, in progress):** CI builds the btrfs root itself (`guix system
-init`, then `mkfs.btrfs --rootdir --subvol rw:home`), so `flash-encrypted.sh` takes it as
-is; the plain `flash.sh` layout still refuses (so `systems/minimal.scm` cannot be flashed
-meanwhile).  `/home` is a subvolume, snapshotted by btrbk (`services/snapshots.scm`:
-hourly when it changed, 1 day of all, 7 daily, 3 weekly).  **Workaround to remove:** CI's
-`mkfs.btrfs --compress zstd:3` on aarch64 wrote extents the kernel could not decompress
-(run 42443465546, the kernel's Image from 39 MB; the PC's mkfs, same file and level, was
-fine), so the image is uncompressed and `pro1x-rootfs-compress` (`services/boot.scm`)
-compresses `/gnu` and `/home` once at first boot; snapshots wait for its mark.  Next:
-reproduce on the phone (aarch64 mkfs, read back through the kernel), report to btrfs-progs
-after the author's review; once compression works in CI, drop that service and the wait,
-keep CI's read-back check.  The author's phone (generation 28) is still ext4:
-its `config.scm` pins `#:root-file-system-type "ext4"`, and deploys refuse a root
-type that differs from the phone's.  Next: CI image, `flash.sh --encrypt --output`
-test, QEMU boot, backup (`scripts/backup-phone.sh`), reflash, restore.  **After it
-works: remove the ext4 support, the type check and the pin, and drop the ext4
-releases and tags** (author: no one else installed the port).
+Since generation 20, waiting for the author's test:
+- Stream: VLC (UDP) and WebRTC in software (x264, VP8) and in hardware (Venus H.264, raw
+  NV12 from wf-recorder, a keyframe each second); Capture rate (30/20/15/10) and Output size
+  (native or a long side of 1920/1280/960/640), kept in `~/.local/state`.  Measured with the
+  screen on: idle 10% CPU, capture alone 35%, hardware H.264 at 30 fps 41-43%, VP8 at 1280
+  49%; the capture is most of the cost.  Hardware at 1920 makes about 16 fps.  Not seen yet:
+  the menu end to end, hardware H.264 in a browser (LibreWolf needs
+  `media.gmp-gmpopenh264.enabled`), VP8's delay since its fix, catt on a Chromecast, Network
+  Displays.
+- Hotspot: connected devices with IP and name (leases read as root through
+  `pro1x-hotspot-admin leases`), stream to a device from its line; expel, ban, band, hidden
+  name, auto-off and data used.  A 5 GHz hotspot is impossible: ath10k keeps a
+  world-regulatory chip's 5 GHz channels "no IR" (`ATH_REG_DYNAMIC_USER_REG_HINTS`, declined).
+- Quick actions: a back line first in every sublist; Wi-Fi networks a sublist; portrait bar
+  without an error while the hotspot is on; the hotspot QR as an image.
+- After the reflash: VoLTE, a reboot test, the new U-Boot entry.
+
+keyd segfaulted once (2026-11-09, cause unknown); xremap only takes keyd's device, so the
+keymap survives it.  Nyxt 5 with CEF on native Wayland, in the private channel.
+
+**Fingerprint (2026-11-11):** moWerk has it working on SailfishOS (enrol, unlock), with the
+QSEECOM driver from this port plus three fixes (his `kernel/patches-fp/` 0002-0004, notes in
+`notes/fingerprint.md`).  0002 (qcom_tzmem) and 0003 (qcom_scm) are built into the kernel:
+without them, a set_active_group with several templates on file hangs the phone hard.  Plan
+on `dev-fingerprint`: the fixes in the kernel (needs a reboot, so the author's passphrase),
+a daemon over the TA, an enrol and manage tool, and unlocking gtklock, polling the sensor only
+while gtklock runs with the screen on.
+
+**btrfs root, still open:** CI's `mkfs.btrfs --compress zstd:3` on aarch64 wrote extents the
+kernel could not decompress (run 42443465546), so the image is uncompressed and
+`pro1x-rootfs-compress` compresses `/gnu` and `/home` at first boot.  Next: reproduce on the
+phone, report to btrfs-progs after the author's review, then drop that service.  The plain
+`flash.sh` layout refuses a btrfs root (`systems/minimal.scm` cannot be flashed meanwhile).
+**Now that the phone runs btrfs: remove the ext4 support, the root-type check and the pin,
+and drop the ext4 releases and tags** (author: no one else installed the port).
 
 **On the phone (2026-11-06): reflashed encrypted** (2026-11-05, CI rootfs of v0.2.0,
 68bbc02, `flash.sh --encrypt`), backup restored, then generation 2 deployed from `next`
