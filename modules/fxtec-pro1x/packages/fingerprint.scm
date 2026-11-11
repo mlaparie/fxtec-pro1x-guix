@@ -1,13 +1,15 @@
 ;;; fxtec-pro1x/packages/fingerprint.scm — fingerprint reader experiments
 ;;;
 ;;; The sensor runs inside a QSEE trusted app (device/fingerprint/README.md).
-;;; Nothing here is in the system yet: build the module and insmod it by
-;;; hand on the phone.
+;;; pro1x-fpd and gtklock-fingerprint-module are what the system uses; the
+;;; rest are test tools (pro1x-qsee-probe: build it and insmod it by hand).
 ;;;   guix build --system=aarch64-linux -L modules pro1x-qsee-probe
 
 (define-module (fxtec-pro1x packages fingerprint)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages kernel)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages pkg-config)
   #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system linux-module)
@@ -147,4 +149,74 @@ Qualcomm QSEE on the F(x)tec Pro1X.")
     (description
      "A test tool: sends one command to the MicroArray fingerprint trusted
 application (mafp) through the Linux QSEECOM TEE driver and prints the reply.")
+    (license license:gpl3+)))
+
+;;; pro1x-fpd: the fingerprint daemon over the mafp TA, and its client
+;;; (device/fingerprint/pro1x-fpd).  The TA protocol is moWerk's
+;;; sailfish-fpd-mafp (GPL-3.0-or-later), rewritten in C.
+;;; State: build-tested only.
+(define-public pro1x-fpd
+  (package
+    (name "pro1x-fpd")
+    (version "0.1")
+    (source (local-file (repository-file "device/fingerprint/pro1x-fpd")
+                        "pro1x-fpd"
+                        #:recursive? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:tests? #f
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (replace 'build
+                 (lambda _
+                   (invoke #$(cc-for-target) "-O2" "-Wall" "-Wextra"
+                           "-o" "pro1x-fpd" "pro1x-fpd.c")))
+               (replace 'install
+                 (lambda _
+                   (install-file "pro1x-fpd"
+                                 (string-append #$output "/bin")))))))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Fingerprint daemon for the Pro1X")
+    (description
+     "pro1x-fpd enrols, lists, removes and matches fingerprints on the
+F(x)tec Pro1X's sensor, through its stock trusted application in Qualcomm
+QSEE, and serves them on a Unix socket; the same program is its client.")
+    (license license:gpl3+)))
+
+;;; gtklock-fingerprint-module: unlocks gtklock with a finger, through
+;;; pro1x-fpd (device/fingerprint/gtklock-fingerprint).
+;;; State: build-tested only.
+(define-public gtklock-fingerprint-module
+  (package
+    (name "gtklock-fingerprint-module")
+    (version "0.1")
+    (source (local-file (repository-file "device/fingerprint/gtklock-fingerprint")
+                        "gtklock-fingerprint"
+                        #:recursive? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:tests? #f
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (replace 'build
+                 (lambda _
+                   (invoke "sh" "-c"
+                           (string-append
+                            #$(cc-for-target) " -std=c11 -fPIC -shared -O2 -Wall"
+                            " -o fingerprint-module.so fingerprint.c"
+                            " $(pkg-config --cflags --libs gtk+-3.0"
+                            " gmodule-export-2.0 gio-unix-2.0)"))))
+               (replace 'install
+                 (lambda _
+                   (install-file "fingerprint-module.so"
+                                 (string-append #$output "/lib/gtklock")))))))
+    (native-inputs (list pkg-config))
+    (inputs (list gtk+))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Fingerprint unlock for gtklock")
+    (description
+     "This gtklock module unlocks the screen when pro1x-fpd matches an
+enrolled finger; the password keeps working.")
     (license license:gpl3+)))
