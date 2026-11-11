@@ -234,7 +234,7 @@ read and write modemst1/2, fsg and fsc storage without a full Android userspace.
         (base32 "0q8q76pk343xj45g5zfi537hrap17ph3wvfyrcf4zpy0b8rzharj"))
        (patches
         (list
-         (local-file (repository-file "packages/hexagonrpc-sns-registry.patch")
+         (local-file (repository-file "device/patches/hexagonrpc-sns-registry.patch")
                      "hexagonrpc-sns-registry.patch")))))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
@@ -1241,7 +1241,7 @@ sends a power-key press when it sees two quick taps close together.")
          ;; on the right in landscape, a digit row in portrait.
          (patches
           (list (local-file
-                 (repository-file "device/phosh/gtklock-virtkb-digits.patch")
+                 (repository-file "device/patches/gtklock-virtkb-digits.patch")
                  "gtklock-virtkb-digits.patch")))))
       (build-system gnu-build-system)
       (arguments

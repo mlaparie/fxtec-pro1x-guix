@@ -71,24 +71,38 @@ Full-disk encryption             Working    flash.sh --encrypt (first flashed 20
 
 ```
 modules/                     The channel's Guile modules (.guix-channel: directory)
-modules/fxtec-pro1x/packages/  kernel, u-boot, firmware, audio, misc, sxmo
-modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels,
-                             fde, hardware, keyboard, modem, sensors, usb-network
+modules/fxtec-pro1x/packages/  kernel, u-boot, bootloader, firmware, audio, sensors, gnss,
+                             cast, fingerprint, power-tools (debug), misc, sxmo
+modules/fxtec-pro1x/services/  Shepherd services: audio, boot, camera, channels, fde,
+                             fingerprint, hardware, keyboard, modem, sensors,
+                             snapshots, usb-network
+modules/fxtec-pro1x/system/  The systems: common, minimal, mobile
+modules/fxtec-pro1x/home.scm The default Guix Home environment (docs/home.md)
 systems/minimal.scm          Console + SSH system (baseline)
 systems/mobile.scm           Sway, Phosh and Sxmo sessions (greetd/tuigreet)
+deploy/pro1x.scm             guix deploy's machine (scripts/deploy.sh)
 device/                      Distro-independent: kernel patches + config, UCM2 profiles,
                              libcamera patches + tuning, hexagonfs, keyd, udev rules,
-                             FDE helpers (xts-encrypt.c)
+                             FDE helpers (xts-encrypt.c), the Sway session's scripts,
+                             fingerprint daemon, package patches (device/patches)
 scripts/backup-stock.sh      Back up modem EFS and boot partitions before flashing
 scripts/backup-phone.sh      Save the phone's data to the PC before a reflash, restore it after
 scripts/flash.sh             Initial flash (plain)
 scripts/flash-encrypted.sh   Initial flash with LUKS2 (flash.sh --encrypt)
 scripts/mksparse.py          Sparse parts for fastboot (the encrypted flash's userdata)
 scripts/deploy.sh            Update the phone from the PC (guix deploy)
-tools/                       On-device diagnostics (haptics-tune, cam-focus, sensors-check)
+scripts/check-private.sh     Refuse commits that look like they leak device identity
+scripts/gen-kernel-config.sh Regenerate device/kernel/config.aarch64
+scripts/debug/               On the phone: DAPM logger, greetd login client
+tools/                       On-device diagnostics: haptics (tune, check), camera focus,
+                             sensors (check, collect), charger status, fuel gauge
+                             probe; fde-qemu-test.py (an image in QEMU, on the PC)
+docs/                        Install, configure, use, update, troubleshoot
+rag-notes/                   Findings (hardware, guix, nixos→guix; README.md)
+NEWS.md, TODO.md             Release notes; the state file
 channels.scm                 Channel descriptor (unpinned)
 channels-lock.scm            Pinned channel commits for reproducible local builds
-channels-ci.scm              Pinned guix+nonguix for CI (fxtec-pro1x loaded via -L .)
+channels-ci.scm              Pinned guix+nonguix for CI (fxtec-pro1x loaded via -L modules)
 manifest.scm                 Flash tooling: fastboot, mkbootimg, util-linux, e2fsprogs
 .guix-channel                Channel descriptor for use as a Guix channel
 ```

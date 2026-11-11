@@ -30,7 +30,7 @@
        (inherit (package-source libcallaudio))
        (patches
         (list
-         (local-file (repository-file "packages/callaudiod-voice-profile.patch")
+         (local-file (repository-file "device/patches/callaudiod-voice-profile.patch")
                      "callaudiod-voice-profile.patch")))))))
 
 (define-public pro1x-audio
