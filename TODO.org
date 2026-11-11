@@ -60,8 +60,14 @@ Built; not deployed.
 *** TODO [#C] Menu slides jump at the start (what is ruled out: History, Smaller things)
 *** TODO [#C] keyd segfaulted once (2026-11-09), cause unknown
 ** Boot, storage, release
-*** TODO [#B] btrfs: reproduce CI's broken compressed extents on the phone, report to btrfs-progs
-Then drop =pro1x-rootfs-compress= and its wait; keep CI's read-back check.
+*** WAIT [#B] btrfs: a compressed root from CI again
+Cause found (2026-11-11): btrfs-progs 7.0's mkfs writes an extent that did not compress
+as plain data still marked zstd (kdave/btrfs-progs#1135, fixed in 7.1 by 6a877fb).
+Reproduced on the phone with a test root: 1770 bad extents, 1786 unreadable files; with
+the fix (=btrfs-progs/pro1x=) 0, every file identical.  CI's mkfs now uses it with
+=--compress zstd:3=; =pro1x-rootfs-compress= and the snapshots' wait are gone.  Waiting:
+a CI image read back through the kernel, then a flash when the author has time.  Drop
+=btrfs-progs/pro1x= once the pinned Guix has 7.1.
 *** TODO [#B] Drop the ext4 support, the root-type check, the ext4 pin, the ext4 releases and tags
 The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 *** TODO [#B] Plain =flash.sh= with a btrfs root (=systems/minimal.scm= cannot be flashed)
