@@ -48,8 +48,16 @@
         ;; The keyboard backlight on at boot, for the passphrase prompt.
         ;; Dawid Wróbel's QSEECOM TEE driver (not upstream): loads and
         ;; drives QSEE trusted apps, here the fingerprint TA.
+        ;; moWerk's fixes for it (sailfishos-pro1x-mainline 05b2d7b,
+        ;; kernel/patches-fp 0002-0004, GPL-2.0): a firmware status from the
+        ;; SHM bridge call no longer passes as a pointer (an oops), the
+        ;; listener loop gives up after 16 failed rounds, not 256 served ones
+        ;; (the template store needs more), and an INOUT request is copied
+        ;; back (the TA answers in place).  Without the first two, reading a
+        ;; store of several templates hangs the phone.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
-          "kbd-backlight-on" "qseecom-tee"))))
+          "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
+          "qseecom-listener-rounds" "qseecom-inout"))))
 
 (define-public linux-pro1x
   (package
