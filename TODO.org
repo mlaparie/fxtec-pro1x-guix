@@ -15,7 +15,7 @@ TODO.md before 2026-11-11 is in git history.
   1 there): =/home= a subvolume, hourly btrbk snapshots, =pro1x-rootfs-compress= done,
   mounted =compress=zstd:1=.
 - Release: v0.4.0 (=main= 5719006), CI run 43050723557.
-- Branches: =main=; =dev-fingerprint= (to be renamed =dev=) with the fingerprint work, the
+- Branches: =main=; =dev= with the fingerprint work, the
   Auto-sleep quick action and the tree cleanup, not yet on the phone.
 - Backup on the PC: =~/pro1x-backup-2026-11-11.tar= (=backup-phone.sh=, without =~/.mail=,
   which syncs again from the PC).
@@ -25,7 +25,7 @@ TODO.md before 2026-11-11 is in git history.
 * Tasks
 ** Fingerprint
 *** NEXT [#A] Fingerprint reader: enrol, unlock gtklock
-On =dev-fingerprint=: moWerk's three QSEECOM fixes in the kernel (CI run 43053817403),
+On =dev=: moWerk's three QSEECOM fixes in the kernel (CI run 43053817403),
 =pro1x-fpd= (daemon and client), =gtklock-fingerprint-module=, quick actions'
 Fingerprints, services at boot on the generation's own kernel only.  The sensor is read
 only during an enrolment, or while gtklock is up with the panel on (every 250 ms; a read
@@ -80,7 +80,7 @@ The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 *** TODO [#C] Wi-Fi takes about 100 s to connect after a boot
 *** TODO [#C] Drop json-c/pro1x's leak patch once the pinned Guix has c4a2ab4
 Guix fixed it upstream on 2026-11-09 (PR 12277); keep our locale patch.
-*** TODO [#C] Rename =dev-fingerprint= to =dev= (author, 2026-11-11)
+*** DONE Rename =dev-fingerprint= to =dev= (2026-11-11)
 ** Camera
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
