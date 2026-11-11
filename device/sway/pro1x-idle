@@ -23,6 +23,12 @@
 # stops and starts it when the setting changes.  Not kept across reboots,
 # on purpose (author, 2026-10-30).
 #
+# Auto-sleep (Sway): $XDG_RUNTIME_DIR/pro1x-autosleep, from quick actions,
+# replaces config.scm's auto-suspend until reboot: "off", or MINUTES to
+# suspend after that long locked.  swayidle counts idle time, not locked
+# time, so two timeouts check for the lock: MINUTES (a lock by hand starts
+# the idle time) and LOCK_AFTER + BLANK_AFTER + MINUTES (the lock by idle).
+#
 # State: dimming tested 2026-10-30; Phosh blank and lock tested by hand with
 # the same SetActive call (author); Sway lock untested.
 
@@ -58,6 +64,18 @@ if [ -z "$sway" ] && [ -n "$BLANK_AFTER" ]; then
 fi
 # AUTO_SUSPEND seconds after blanking (config.scm auto-suspend; empty for
 # never): locked if not yet, then suspended (author, 2026-11-03).
+autosleep=$(cat "${XDG_RUNTIME_DIR:-/tmp}/pro1x-autosleep" 2>/dev/null)
+[ -n "$sway" ] && [ -n "$autosleep" ] && AUTO_SUSPEND=
+case "$autosleep" in
+    *[!0-9]*|"") ;;
+    *)  if [ -n "$sway" ]; then
+            sleep_cmd='pro1x-lock --locked && sudo -n /run/current-system/profile/bin/pro1x-sleep suspend'
+            set -- timeout $((autosleep * 60)) "$sleep_cmd" "$@"
+            if [ -n "$BLANK_AFTER" ] && [ -n "$LOCK_AFTER" ]; then
+                set -- timeout $((BLANK_AFTER + LOCK_AFTER + autosleep * 60)) "$sleep_cmd" "$@"
+            fi
+        fi ;;
+esac
 if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ] && [ -n "${AUTO_SUSPEND:-}" ]; then
     set -- timeout $((BLANK_AFTER + AUTO_SUSPEND)) \
         'pro1x-lock --locked || pro1x-lock; sleep 1; sudo -n /run/current-system/profile/bin/pro1x-sleep suspend' \
