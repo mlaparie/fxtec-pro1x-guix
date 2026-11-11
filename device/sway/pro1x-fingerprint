@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# pro1x-fingerprint — the enrolled fingers: add one, rename or remove one.
+# Opened by Enter or Right on the Fingerprints line of sway-quick-actions,
+# inside its window.  pro1x-fpd does the work (device/fingerprint); the lock
+# screen unlocks with any finger listed here.
+#
+# State: not yet run on the phone (needs the kernel with the QSEECOM fixes).
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
+
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+clear_screen() { printf '\033[H\033[2J\033[3J'; }
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+
+menu() {                        # menu PROMPT: tab-separated lines on stdin
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        --layout=reverse-list --no-info --cycle --margin=1,2 \
+        --color=16,gutter:-1 --bind='load:pos(2)' | cut -f1
+}
+
+ask_name() {                    # ask_name DEFAULT: a name, typed
+    local name
+    read -r -e -p "Name: " -i "$1" name
+    printf '%s' "${name:-$1}" | tr -d '\t\n'
+}
+
+enroll() {
+    clear_screen
+    name=$(ask_name "finger $(( $(pro1x-fpd list | grep -c '^finger') + 1 ))")
+    clear_screen
+    echo "Put the finger on the sensor, lift it, and again, until 14 of 14."
+    echo "Move it a little between touches.  Ctrl+C stops."
+    echo
+    pro1x-fpd enroll "$name" | while read -r word rest; do
+        case "$word" in
+            touch) printf '\r\033[KTouch the sensor…' ;;
+            lift) printf '\r\033[KLift the finger.' ;;
+            sample) printf '\r\033[K%s accepted.\n' "$rest" ;;
+            retry) printf '\r\033[KNot read (%s), touch again.\n' "$rest" ;;
+            enrolled) printf '\r\033[KDone: %s.\n' "$name" ;;
+            error) printf '\r\033[K%s.\n' "${rest^}" ;;
+        esac
+    done
+    pause
+}
+
+finger() {                      # finger ID NAME
+    choice=$(printf '%s\t%s\n' \
+        back "← back" \
+        rename "Rename" \
+        remove "Remove" | menu "$2")
+    case "$choice" in
+        rename)
+            clear_screen
+            name=$(ask_name "$2")
+            pro1x-fpd rename "$1" "$name" >/dev/null || pause ;;
+        remove)
+            pro1x-fpd remove "$1" >/dev/null || { clear_screen; echo "Not removed."; pause; } ;;
+    esac
+}
+
+while :; do
+    if ! fingers=$(pro1x-fpd list 2>&1); then
+        clear_screen
+        printf '%s\n' "${fingers#error }"
+        echo "The fingerprint service is not running (sudo herd status pro1x-fpd)."
+        pause
+        break
+    fi
+    choice=$({
+        printf 'back\t← back\n'
+        printf '%s\n' "$fingers" | awk '$1 == "finger" {
+            id = $2; $1 = $2 = ""; sub(/^  /, ""); print id "\t" $0 }'
+        [ "$(printf '%s\n' "$fingers" | grep -c '^finger')" -lt 5 ] &&
+            printf 'add\t+ add a finger\n'
+    } | menu fingerprints)
+    case "$choice" in
+        add) enroll ;;
+        ""|back) break ;;
+        *) finger "$choice" "$(printf '%s\n' "$fingers" |
+               awk -v id="$choice" '$1 == "finger" && $2 == id {
+                   $1 = $2 = ""; sub(/^  /, ""); print }')" ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

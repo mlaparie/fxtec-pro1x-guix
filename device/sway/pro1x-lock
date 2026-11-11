@@ -492,6 +492,11 @@ else
     echo none > "$rt/pro1x-lock-osk"
 fi
 
+# Unlocking with a finger, while pro1x-fpd runs: the module asks it for a
+# match as long as this gtklock is up, and it reads the sensor only then.
+fingerprint=$(ls /run/current-system/profile/lib/gtklock/fingerprint-module.so 2>/dev/null)
+[ -S /run/pro1x-fpd.sock ] && [ -n "$fingerprint" ] && set -- -m "$fingerprint" "$@"
+
 # When it was drawn, for pro1x-blank-led (no redraw within 30 s of one), and
 # for which orientation.
 date +%s > "$rt/pro1x-lock-drawn"

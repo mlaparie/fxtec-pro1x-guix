@@ -4,12 +4,18 @@
 ;;; README.md).  The kernel's QSEECOM TEE driver (patch pro1x-qseecom-tee,
 ;;; module qseecomtee) loads it and carries its commands; qsee-supplicant
 ;;; answers the app's file system listener requests (its templates live
-;;; under /var/lib/qsee-supplicant); qsee-app-loader keeps mafp loaded.
+;;; under /var/lib/qsee-supplicant); qsee-app-loader keeps mafp loaded;
+;;; pro1x-fpd talks to it and serves enrolment and matching on
+;;; /run/pro1x-fpd.sock (quick actions' Fingerprints, the lock screen).
 ;;;
-;;; Neither service starts at boot (autostart? #f) until loading the app
-;;; has been tried by hand on this kernel: herd start qsee-app-loader-mafp.
+;;; None of them starts at boot (autostart? #f) until the kernel with the
+;;; QSEECOM fixes (pro1x-tzmem-bridge-errno, pro1x-qseecom-listener-rounds,
+;;; pro1x-qseecom-inout) runs: without them, pro1x-fpd's first command
+;;; with several templates on file hangs the phone (moWerk, 2026-11-09).
+;;; By hand: herd start pro1x-fpd.
 ;;;
-;;; State: build-tested only.
+;;; State: supplicant and loader run on the phone (2026-11-09); pro1x-fpd
+;;; build-tested only.
 
 (define-module (fxtec-pro1x services fingerprint)
   #:use-module (fxtec-pro1x packages fingerprint)
@@ -58,6 +64,19 @@
                 "mafp")
           #:log-file "/var/log/qsee-app-loader-mafp.log"))
       (stop #~(make-kill-destructor))
+      (respawn? #f))
+     (shepherd-service
+      (provision '(pro1x-fpd))
+      (requirement '(qsee-app-loader-mafp))
+      (documentation "Enrol and match fingerprints on the mafp app")
+      (auto-start? autostart?)
+      (start
+       #~(make-forkexec-constructor
+          (list #$(file-append pro1x-fpd "/bin/pro1x-fpd") "--daemon")
+          #:log-file "/var/log/pro1x-fpd.log"))
+      (stop #~(make-kill-destructor))
+      ;; INIT must be the first command of an app instance: after a crash,
+      ;; restart qsee-app-loader-mafp first.
       (respawn? #f)))))
 
 (define pro1x-fingerprint-service-type
@@ -67,6 +86,7 @@
     (list (service-extension shepherd-root-service-type
                              pro1x-fingerprint-shepherd-services)
           (service-extension profile-service-type
-                             (const (list qsee-supplicant)))))
+                             (const (list qsee-supplicant pro1x-fpd
+                                          gtklock-fingerprint-module)))))
    (default-value (pro1x-fingerprint-configuration))
    (description "Services for the Pro1X's fingerprint trusted app.")))
