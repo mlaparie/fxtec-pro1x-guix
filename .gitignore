@@ -11,3 +11,6 @@ keys/*.pub   # old location of the deploy key, now ~/.ssh/pro1x-guix.pub
 
 # Python bytecode
 __pycache__/
+
+# Drafts for the author (messages to send, debriefs, reviews): local only
+drafts/

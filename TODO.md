@@ -238,7 +238,7 @@ ban, band, hidden name, auto-off and data used.  The fingerprint sensor answers
 ## State, 2026-11-03 night
 
 - Phone: generation 179 (next e476eb7: everything of 2026-11-02/03, see
-  DEBRIEF-2026-11-03.md), kernel wiqj3i9r (7.1, modem wake v4,
+  drafts/DEBRIEF-2026-11-03.md), kernel wiqj3i9r (7.1, modem wake v4,
   dw9800-soft), time zone Europe/Paris.
 - 7.3 trial: branch kernel-7.3-trial, kernel n9iv2m73 (CI 41551104730)
   in /tmp/cik73t, path checked; full image run 41564798402.  Not booted.
@@ -252,7 +252,7 @@ ban, band, hidden name, auto-off and data used.  The fingerprint sensor answers
 - To import (author's sudo): 7.1 kernel wiqj3i9r (CI 41378484852, modem
   wake v4 + dw9800-soft) in /tmp/cik; 7.3 kernel i5n6m4fc (CI 41388196979,
   branch kernel-7.3 with next merged) in /tmp/cik73.  Neither booted.
-- Debrief for the author: DEBRIEF-2026-11-02.md (untracked).
+- Debrief for the author: drafts/DEBRIEF-2026-11-02.md (untracked).
 
 ## Camera exposure: libcamera never lengthens the frame (plan, 2026-11-02)
 
