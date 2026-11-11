@@ -28,11 +28,14 @@ TODO.md before 2026-11-11 is in git history.
 On =dev-fingerprint=: moWerk's three QSEECOM fixes in the kernel (CI run 43053817403),
 =pro1x-fpd= (daemon and client), =gtklock-fingerprint-module=, quick actions'
 Fingerprints, services at boot on the generation's own kernel only.  The sensor is read
-only during an enrolment, or while gtklock is up with the panel on.  Built for aarch64,
-not run.  Steps: hand test of the daemon with the rebuilt module (no reboot); then the
-author reboots into the new kernel (passphrase); enrol, unlock.  Details:
-device/fingerprint/README.md.
-*** TODO [#B] Sensor interrupt (TLMM 97) instead of polling, sensor power off when idle
+only during an enrolment, or while gtklock is up with the panel on (every 250 ms; a read
+costs about 60 ms of CPU in TrustZone).  2026-11-11, on the phone without a reboot (0004
+as a module): daemon up, status, list, permissions, a cancelled enrolment, a TA reload.
+Next, with the author: import the CI kernel (=sudo guix archive --authorize= with the run's
+key), deploy, reboot into it (passphrase), enrol in quick actions, lock and unlock.
+Details: device/fingerprint/README.md.
+*** TODO [#A] Sensor interrupt (TLMM 97) instead of polling, sensor power off when idle
+Polling a lit lock screen keeps about a fifth of a core busy.
 *** TODO [#B] Recover a dead TA instance (restart the loader, then pro1x-fpd) by itself
 *** TODO [#C] Match rate (moWerk: about one touch in three)
 ** Calls and modem
