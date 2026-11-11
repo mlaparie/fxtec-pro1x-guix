@@ -154,7 +154,8 @@ application (mafp) through the Linux QSEECOM TEE driver and prints the reply.")
 ;;; pro1x-fpd: the fingerprint daemon over the mafp TA, and its client
 ;;; (device/fingerprint/pro1x-fpd).  The TA protocol is moWerk's
 ;;; sailfish-fpd-mafp (GPL-3.0-or-later), rewritten in C.
-;;; State: build-tested only.
+;;; State: runs on the phone (status, list, a cancelled enrolment; 2026-11-11);
+;;; enrolment and identify with a finger not tried yet.
 (define-public pro1x-fpd
   (package
     (name "pro1x-fpd")

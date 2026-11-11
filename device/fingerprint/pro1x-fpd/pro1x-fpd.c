@@ -74,7 +74,13 @@
 #define BUF_SIZE 0x20000
 #define ENROLL_SAMPLES 14       /* persist.vendor.fp.enroll.times */
 #define POLL_MS 30              /* detect_touch, as the Android HAL's loops */
-#define IDLE_POLL_MS 100        /* waiting for a finger to unlock */
+/*
+ * Waiting for a finger to unlock.  Each detect_touch keeps a core busy about
+ * 60 ms inside TrustZone (2 s of CPU in 3 s of polling at 30 ms, 2026-11-11):
+ * at 250 ms that is about a fifth of a core, while the lock screen is lit.
+ * The sensor's interrupt (TLMM 97) would avoid it; not tried yet.
+ */
+#define IDLE_POLL_MS 250
 #define ENROLL_TIMEOUT 90       /* s without a finger before enrol gives up */
 #define LIFT_TIMEOUT 5          /* s for the finger to leave */
 
@@ -862,12 +868,23 @@ out:
 	client = -1;
 }
 
+/* Stopped (herd stop): no socket left behind, which would tell the lock
+ * screen and quick actions that the daemon runs. */
+static void on_term(int sig)
+{
+	(void)sig;
+	unlink(SOCKET);
+	_exit(0);
+}
+
 static int daemon_main(void)
 {
 	struct sockaddr_un sa = { .sun_family = AF_UNIX };
 	int power, lfd;
 
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGTERM, on_term);
+	signal(SIGINT, on_term);
 	power = power_on();
 	if (power < 0) {
 		logf_("cannot hold the sensor's power line: %s", strerror(errno));

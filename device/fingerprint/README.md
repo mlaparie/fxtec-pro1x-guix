@@ -1,6 +1,11 @@
 # Fingerprint reader: what Android does, mapped for a mainline driver
 
-State (2026-11-11): **the pieces are written, not yet run on the phone.** moWerk has
+State (2026-11-11): **the daemon runs on the phone; enrolment and unlock not tried yet**
+(they need the author's finger).  With moWerk's driver fix 0004 as a module in the running
+kernel (no reboot), pro1x-fpd brought the TA up (keymaster key, INIT, chip id 0x24, service
+init, set_active_group with an empty store), answered status and list, refused a client
+outside the users group, ended an enrolment cancelled after 3 s cleanly, and came up again on
+a reloaded TA (app 4). moWerk has
 enrolment and unlock working on SailfishOS with the same driver and three kernel fixes
 (sailfishos-pro1x-mainline, `notes/fingerprint.md`); this port now carries those fixes and a
 daemon of its own (below).  The rest of this file is the map that got there, read from the
@@ -20,7 +25,9 @@ android_kernel_fxtec_sm6115).  No blob is in this repository; they are proprieta
 
 Not reading the sensor all the time: nothing polls it but an identify or an enrolment.  The
 lock screen's identify lasts as long as gtklock, and pauses while the panel is off (DPMS), so
-the sensor is read only on a lit lock screen, every 100 ms until a touch.  Open: the sensor
+the sensor is read only on a lit lock screen, every 250 ms until a touch.  A read costs
+about 60 ms of CPU inside TrustZone (measured 2026-11-11: 2 s of CPU in 3 s of polling
+at 30 ms during an enrolment), so a lit lock screen keeps about a fifth of a core busy.  Open: the sensor
 interrupt (TLMM 97) instead of polling; the sensor's power stays on while the daemon runs;
 recovering a dead TA instance (moWerk saw one once: restart `qsee-app-loader-mafp`, then
 `pro1x-fpd`); the match rate (about one touch in three on his phone).
