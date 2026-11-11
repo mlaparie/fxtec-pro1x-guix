@@ -115,8 +115,8 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (blank-after 180)
   ;;                Lock this many seconds after blanking (0: at once; #f: never).
   ;;                (lock-after 120)
-  ;;                Suspend this many seconds after blanking, locking first (#f: never; Sway).
-  ;;                (auto-suspend #f)
+  ;;                Suspend after this many minutes locked (#f: never; Sway).
+  ;;                (auto-sleep #f)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
   ;;                Light or dark themes are set in Phosh, which writes into dconf; Sway reuses it.

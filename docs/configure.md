@@ -66,7 +66,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `low-battery-led`, `low-battery-level` | `"#FF4000"`, `15` | a short blip every 4 s at or below that % |
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  Quick actions (Charge limit line) override it until the next reboot, marked "(until reboot)" |
 | hardware `charging-awake?` | `#t` | stay awake while charging, so the limit is seen in time (Linux 7.3); `#f` lets it sleep |
-| hardware `auto-suspend` | `#f` | seconds after blanking before suspending, locking first (Sway); `#f` never |
+| hardware `auto-sleep` | `#f` | minutes locked before suspending (Sway); `#f` never.  Quick actions (Auto-sleep line) override it until the next reboot |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
 | hardware `usb-runtime-pm?` | `#t` | let the USB controller runtime-suspend when unplugged, so its supplies switch off in suspend (moWerk: 29-32 mA instead of 40-42); `#f` keeps it on |

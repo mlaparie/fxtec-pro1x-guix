@@ -479,9 +479,9 @@ choose() {
         autosleep)
             title="auto-sleep when locked (until reboot)"
             cur=$(cat "$autosleep" 2>/dev/null || echo default)
-            AUTO_SUSPEND=; . /etc/pro1x/dim.conf 2>/dev/null
+            AUTO_SLEEP=; . /etc/pro1x/dim.conf 2>/dev/null
             opts=$(printf 'default\tconfig.scm: %s\noff\toff\n' \
-                          "$( [ -n "$AUTO_SUSPEND" ] && echo "$((AUTO_SUSPEND / 60)) min after dark" || echo off)"
+                          "$( [ -n "$AUTO_SLEEP" ] && echo "$AUTO_SLEEP min locked" || echo off)"
                    for m in 1 5 10 15 30 60; do printf '%s\t%s min locked\n' "$m" "$m"; done) ;;
         orient)
             title="orientation (fixes it)"
@@ -858,13 +858,13 @@ cpu_mode() {
     pro1x-cpu-mode temporary && until_reboot
 }
 
-# Sleep after so long locked (this boot's choice, pro1x-idle), or
-# config.scm's auto-suspend, counted from the panel going dark.
+# Sleep after so long locked (pro1x-idle): this boot's choice, or
+# config.scm's auto-sleep.
 autosleep_now() {
     case "$(cat "$autosleep" 2>/dev/null)" in
-        "") AUTO_SUSPEND=; . /etc/pro1x/dim.conf 2>/dev/null
-            if [ -n "$AUTO_SUSPEND" ]; then
-                printf '%s min after dark' $((AUTO_SUSPEND / 60))
+        "") AUTO_SLEEP=; . /etc/pro1x/dim.conf 2>/dev/null
+            if [ -n "$AUTO_SLEEP" ]; then
+                printf '%s min locked' "$AUTO_SLEEP"
             else dim off; fi ;;
         off) dim off; until_reboot ;;
         *) printf '%s min locked' "$(cat "$autosleep")"; until_reboot ;;

@@ -145,9 +145,9 @@
   ;; suspend (kernels with the awake_charging switch: 7.3 with moWerk's
   ;; charger patches); #f lets the phone sleep while it charges.
   (charging-awake?    pro1x-hardware-charging-awake?    (default #t))
-  ;; Suspend this many seconds after the screen blanked (locking first if
-  ;; not locked yet); #f: never on its own (Sway).
-  (auto-suspend       pro1x-hardware-auto-suspend       (default #f))
+  ;; Suspend after this many minutes locked; #f: never on its own (Sway).
+  ;; Quick actions (Auto-sleep) override it until reboot.
+  (auto-sleep         pro1x-hardware-auto-sleep         (default #f))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -1062,8 +1062,8 @@ under the file names stevia looks for.")
                      (let ((lock (pro1x-hardware-lock-after config)))
                        (if lock (number->string lock) ""))
                      "\n"
-                     "AUTO_SUSPEND="
-                     (let ((s (pro1x-hardware-auto-suspend config)))
+                     "AUTO_SLEEP="
+                     (let ((s (pro1x-hardware-auto-sleep config)))
                        (if s (number->string s) ""))
                      "\n")))
       ;; /etc/pro1x/browser.conf: for pro1x-browser-fit.
