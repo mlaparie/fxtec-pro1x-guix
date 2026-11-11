@@ -238,16 +238,16 @@ jobs:
           # (pro1x-snapshots-service-type) without the system.
           sudo mkdir -p "$ROOTDIR/home"
           # The first output: the static one's binaries are named *.static.
-          MKFS=$($TM build btrfs-progs | grep -v -e '\.drv$' -e '-static$' | tail -1)/bin/mkfs.btrfs
+          # Ours: 7.0 with its fix for files that do not compress, which it
+          # wrote as plain data marked zstd (run 42443465546: "zstd
+          # decompression failed" on the phone; misc.scm btrfs-progs/pro1x).
+          MKFS=$($TM build -L modules -e '(@ (fxtec-pro1x packages misc) btrfs-progs/pro1x)' \
+                 | grep -v -e '\.drv$' -e '-static$' | tail -1)/bin/mkfs.btrfs
           USED=$(sudo du -sxb "$ROOTDIR" | cut -f1)
           rm -f rootfs.img
           truncate -s "$(( USED + USED / 4 + 512 * 1024 * 1024 ))" rootfs.img
-          # Uncompressed: with --compress zstd:3, run 42443465546's image had
-          # extents the kernel could not decompress ("zstd decompression
-          # failed", in the kernel's Image).  The phone compresses what it
-          # writes later (compress=zstd:1).
-          sudo "$MKFS" -q -L guix --rootdir "$ROOTDIR" --subvol rw:home \
-            --shrink rootfs.img
+          sudo "$MKFS" -q -L guix --compress zstd:3 --rootdir "$ROOTDIR" \
+            --subvol rw:home --shrink rootfs.img
           sudo rm -rf "$ROOTDIR"
           # Read every file through the kernel: btrfs check does not.
           sudo mkdir -p /mnt/rootfs

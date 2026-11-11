@@ -1,0 +1,63 @@
+From 6a877fba1f4dfc697c1e8c29d3076b483f55de71 Mon Sep 17 00:00:00 2001
+From: Qu Wenruo <wqu@suse.com>
+Date: Sat, 27 Jun 2026 20:43:55 +0930
+Subject: [PATCH] btrfs-progs: fix the incorrectly set compression
+
+[BUG]
+The following script will lead to an incorrectly created file extent:
+
+ # mkdir rootdir
+ # xfs_io -f -c "pwrite -i /dev/urandom 0 32k" rootdir/foobar
+ # mkfs.btrfs -f -r rootdir --compress zstd test.img
+ # btrfs ins dump-tree -t 5 test.img
+ [...]
+ 	item 6 key (257 EXTENT_DATA 0) itemoff 15810 itemsize 53
+		generation 6 type 1 (regular)
+		extent data disk byte 13631488 nr 32768
+		extent data offset 0 nr 32768 ram 32768
+		extent compression 3 (zstd)
+
+Note that file extent has the same num_bytes/ram_bytes as
+disk_num_bytes.
+
+Normally this means an uncompressed extent, but it still has the
+compression value set to zstd.
+
+This will make zstd decomprssion to fail, and end users will be unable
+to read that file.
+
+[CAUSE]
+Inside add_file_item_extent(), if the compression failed with -E2BIG, we
+set the INODE_NOCOMPRESS flag, and fallback to the uncompressed path.
+
+But in the uncompressed path, we still check if @do_comp is set.
+And if it's set, we set the file extent compression value meanwhile the
+fallback path should not go through compression at all.
+
+The file extent compression set is a left-over from the old fallback
+behavior, before the proper try_compressed_write() refactor.
+
+[FIX]
+Remove the @do_comp check and compression value set completely.
+
+Fixes: c9c8d64acd17 ("btrfs-progs: mkfs/rootdir: factor out compressed write path from add_file_item_extent()")
+Issue: #1135
+Signed-off-by: Qu Wenruo <wqu@suse.com>
+---
+ mkfs/rootdir.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/mkfs/rootdir.c b/mkfs/rootdir.c
+index e2303ba119..c4932b59be 100644
+--- a/mkfs/rootdir.c
++++ b/mkfs/rootdir.c
+@@ -1164,9 +1164,6 @@ static int add_file_item_extent(struct btrfs_trans_handle *trans,
+ 	btrfs_set_stack_file_extent_num_bytes(&stack_fi, round_up(to_read, sectorsize));
+ 	btrfs_set_stack_file_extent_ram_bytes(&stack_fi, round_up(to_read, sectorsize));
+ 
+-	if (do_comp)
+-		btrfs_set_stack_file_extent_compression(&stack_fi, g_compression);
+-
+ 	ret = insert_reserved_file_extent(trans, root, objectid, btrfs_inode,
+ 					  file_pos, &stack_fi);
+ 	if (ret)

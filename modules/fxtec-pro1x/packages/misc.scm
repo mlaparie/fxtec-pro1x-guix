@@ -2088,3 +2088,26 @@ switcher, and pro1x-idle and pro1x-dim, which dim the panel when idle.")
     (arguments
      (substitute-keyword-arguments (package-arguments sov)
        ((#:tests? _ #t) #f)))))
+
+;;; ---------------------------------------------------------------------------
+;;; btrfs-progs 7.0 with its compressed-rootdir fix
+;;; mkfs.btrfs --rootdir --compress 7.0 writes an extent that did not
+;;; compress as plain data but still marks it compressed, so the kernel cannot
+;;; read the file ("zstd decompression failed, error 10").  Seen in CI's root
+;;; (run 42443465546), then reproduced on the phone: 1770 of 10000 extents of
+;;; a test root (2026-11-11).  Fixed upstream in 7.1 (kdave/btrfs-progs#1135,
+;;; commit 6a877fb, Qu Wenruo).  For CI's image only; drop it once the pinned
+;;; Guix has btrfs-progs 7.1 or later.
+;;; ---------------------------------------------------------------------------
+(define-public btrfs-progs/pro1x
+  (package
+    (inherit btrfs-progs)
+    (source
+     (origin
+       (inherit (package-source btrfs-progs))
+       (patches
+        (cons (local-file
+               (repository-file
+                "device/patches/btrfs-progs-7.0-uncompressed-extent.patch")
+               "btrfs-progs-7.0-uncompressed-extent.patch")
+              (origin-patches (package-source btrfs-progs))))))))
