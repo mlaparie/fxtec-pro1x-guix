@@ -660,7 +660,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      (service pro1x-audio-service-type)
      (service pro1x-camera-service-type)
      (service pro1x-sensors-service-type)
-     ;; The fingerprint TA's supplicant and loader; not started at boot yet.
+     ;; Fingerprints: the TA's supplicant and loader, pro1x-fpd; at boot,
+     ;; on the generation's own kernel only.
      (service pro1x-fingerprint-service-type)
      (service pro1x-rootfs-resize-service-type)
      ;; Snapshots of /home with btrbk, on a btrfs root.
