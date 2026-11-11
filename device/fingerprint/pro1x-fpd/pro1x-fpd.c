@@ -544,7 +544,8 @@ static void say(const char *fmt, ...)
 
 /*
  * Wait ms milliseconds; false once the client has gone (closed, or sent
- * anything: the only thing it may send during an operation is "cancel").
+ * anything: the only thing it may send during an operation is "cancel"),
+ * and from then on.
  */
 static int still_wanted(int ms)
 {
@@ -552,8 +553,11 @@ static int still_wanted(int ms)
 
 	if (client < 0)
 		return 0;
-	if (poll(&p, 1, ms) > 0)
+	if (poll(&p, 1, ms) > 0) {
+		close(client);  /* the operation ends with it */
+		client = -1;
 		return 0;
+	}
 	return 1;
 }
 
@@ -643,7 +647,7 @@ static void do_enroll(const char *name)
 
 		say("touch");
 		t = wait_touch(1, 1, ENROLL_TIMEOUT, POLL_MS);
-		if (t <= 0) {
+		if (t <= 0 || client < 0) {
 			simple(CMD_CANCEL);
 			simple(CMD_ENROLL_FINISH);
 			say(t < 0 ? "error the sensor did not answer"
@@ -667,7 +671,8 @@ static void do_enroll(const char *name)
 			say("retry %d", r[2] ? r[2] : r[1]);
 		}
 		say("lift");
-		if (wait_touch(1, 0, LIFT_TIMEOUT, POLL_MS) == 0 && client < 0)
+		wait_touch(1, 0, LIFT_TIMEOUT, POLL_MS);
+		if (client < 0)
 			break;
 	}
 	if (accepted < ENROLL_SAMPLES) {
@@ -763,7 +768,7 @@ static void do_identify(void)
 		}
 		say("nomatch");
 		retry++;
-		if (wait_touch(0, 0, LIFT_TIMEOUT, POLL_MS) < 0)
+		if (wait_touch(0, 0, LIFT_TIMEOUT, POLL_MS) < 0 || client < 0)
 			return;
 	}
 }
