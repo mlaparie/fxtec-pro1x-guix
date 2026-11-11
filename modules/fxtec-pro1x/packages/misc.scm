@@ -889,7 +889,7 @@ It runs on top of the Phoc compositor.")
     (inherit phosh)
     (name "phosh-pro1x")
     ;; The power key wakes the screen only through gnome-session's presence
-    ;; interface; this session has no gnome-session (TODO.md).
+    ;; interface; this session has no gnome-session (TODO.org).
     (source
      (origin
        (inherit (package-source phosh))

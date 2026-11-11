@@ -171,15 +171,17 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
    came from when you repeat it. Code carried over from NixOS is an inherited claim too
    (commands like `switch-to-system` do not exist on Guix).
 7. **Label confidence**: confirmed (observed on the device or read in source), handover
-   (from a commit message, TODO.md or another session, not re-checked), reported (someone
+   (from a commit message, TODO.org or another session, not re-checked), reported (someone
    else said it, named), inferred. Full list in `rag-notes/README.md`. Never present an
    inference as a measurement.
 8. **One change at a time on the device**, each reversible (a generation), each written down.
 
 ## 5. Writing it down
 
-- `TODO.md` is the **state file**: what works, what is installed on the device, what is
-  pending, with the commit the last image was built from. `rag-notes/` is the **findings corpus**.
+- `TODO.org` is the **state file**: what works, what is installed on the device, what is
+  pending, with the commit the last image was built from; an Org file, one heading per task
+  with a state (TODO, NEXT, WAIT, DONE, CANCELLED) and a priority ([#A] to [#C]).
+  `rag-notes/` is the **findings corpus**.
   Append to both as you go, not at the end.
 - One finding = `title`, `general` (the lesson for any mainline port), `instance` (this device,
   kernel, Guix commit, numbers), `confidence`, `date`, `source` (commit, file, log).

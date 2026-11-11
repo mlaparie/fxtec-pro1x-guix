@@ -58,7 +58,7 @@ Strongest first.
 
 - `confirmed`: observed on the device, or read in the source, by the session that
   wrote the entry. Say which in `source`.
-- `handover`: taken from a commit message, `TODO.md` or another session's summary
+- `handover`: taken from a commit message, `TODO.org` or another session's summary
   and not re-checked. Most entries seeded from the git history start here.
   Re-check one before building on it, then raise it to `confirmed`.
 - `reported`: someone else said it, and they are named (sailfish-rag, NixOS port,

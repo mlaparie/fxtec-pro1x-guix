@@ -100,7 +100,7 @@ suspend, deep sleep, charging (it goes above the charge limit).
 
 LTE, GPS, speakerphone and mute in calls, headphones, light sensor,
 suspend.  Details: [README](../README.md#port-status),
-[TODO.md](../TODO.md).
+[TODO.org](../TODO.org).
 
 ## How it is run
 

@@ -296,7 +296,7 @@ jobs:
       # Here it reuses the guix the image step built.
       # Running natively on aarch64.  The build is non-blocking (continue-on-error)
       # because the current uboot.scm produces a derivation that fails to build
-      # from source in CI (see TODO.md §6).  The system-image step must not be
+      # from source in CI (see TODO.org, History, CI).  The system-image step must not be
       # gated on u-boot until that is fixed.
       #
       # guix time-machine handles channel module loading (including nonguix)
@@ -316,7 +316,7 @@ jobs:
             cp "$UBOOT/libexec/sm6115-fxtec-pro1x.dtb"     sm6115-fxtec-pro1x.dtb
             echo "Built: $UBOOT"
           else
-            echo "WARNING: u-boot-pro1x build failed (see TODO.md §6); skipping u-boot artifacts"
+            echo "WARNING: u-boot-pro1x build failed (see TODO.org, History, CI); skipping u-boot artifacts"
             tail -50 /tmp/uboot.log
             # Print the tail of each failed builder's own log.
             for drv in $(grep -o "builder for \`[^']*" /tmp/uboot.log | sed 's/.*`//' | sort -u); do

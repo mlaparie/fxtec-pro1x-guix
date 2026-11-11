@@ -276,7 +276,7 @@
 
 ;; Sxmo on sway, for greetd.  Logs to /tmp/sxmo-UID.log (greetd discards
 ;; session output).  Sxmo also needs superd, its user service manager, not
-;; packaged yet: its start hook waits for `superctl status' (TODO.md).
+;; packaged yet: its start hook waits for `superctl status' (TODO.org).
 ;; Same session bus and audio as the Sway session (Sxmo would start
 ;; PipeWire through superd); the device settings come from
 ;; /etc/sway/config.d/pro1x.conf, which Sxmo's sway template includes.

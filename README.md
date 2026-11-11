@@ -62,7 +62,7 @@ Battery                          Working    UPower: level and charging state in 
 Screen dimming, blank, lock      Working    dim at 150 s, off at 180 s, locked 2 min later (configurable)
 Double tap to wake               Working    not in a pocket (configurable)
 Suspend                          Untested
-GPS                              Not yet    modem's location service gives no NMEA (see TODO.md)
+GPS                              Not yet    modem's location service gives no NMEA (see TODO.org)
 NFC, video codecs                Untested
 Full-disk encryption             Working    flash.sh --encrypt (first flashed 2026-11-05)
 ```
@@ -99,7 +99,7 @@ tools/                       On-device diagnostics: haptics (tune, check), camer
                              probe; fde-qemu-test.py (an image in QEMU, on the PC)
 docs/                        Install, configure, use, update, troubleshoot
 rag-notes/                   Findings (hardware, guix, nixos→guix; README.md)
-NEWS.md, TODO.md             Release notes; the state file
+NEWS.md, TODO.org            Release notes; the state file (Org: tasks, states, priorities)
 channels.scm                 Channel descriptor (unpinned)
 channels-lock.scm            Pinned channel commits for reproducible local builds
 channels-ci.scm              Pinned guix+nonguix for CI (fxtec-pro1x loaded via -L modules)
