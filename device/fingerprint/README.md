@@ -1,10 +1,33 @@
 # Fingerprint reader: what Android does, mapped for a mainline driver
 
-State: **not working on Guix**. This file is the map for making it work. It was read
-from the stock vendor blobs (as extracted by LineageOS into
-TheMuppets/proprietary_vendor_fxtec_pro1x, branch `lineage-21`) with radare2 and
-r2ghidra, and from the GPL vendor kernel (LineageOS android_kernel_fxtec_sm6115).
-No blob is in this repository; they are proprietary.
+State (2026-11-11): **the pieces are written, not yet run on the phone.** moWerk has
+enrolment and unlock working on SailfishOS with the same driver and three kernel fixes
+(sailfishos-pro1x-mainline, `notes/fingerprint.md`); this port now carries those fixes and a
+daemon of its own (below).  The rest of this file is the map that got there, read from the
+stock vendor blobs (as extracted by LineageOS into TheMuppets/proprietary_vendor_fxtec_pro1x,
+branch `lineage-21`) with radare2 and r2ghidra, and from the GPL vendor kernel (LineageOS
+android_kernel_fxtec_sm6115).  No blob is in this repository; they are proprietary.
+
+## On Guix
+
+| piece | what |
+|---|---|
+| kernel | `pro1x-qseecom-tee` (Dawid Wróbel's driver, module `qseecomtee`) and moWerk's fixes `pro1x-tzmem-bridge-errno`, `pro1x-qseecom-listener-rounds`, `pro1x-qseecom-inout` |
+| services | `qsee-supplicant`, `qsee-app-loader-mafp`, `pro1x-fpd` (`services/fingerprint.scm`, not started at boot until that kernel runs) |
+| daemon | `pro1x-fpd/`: the TA protocol of moWerk's sailfish-fpd-mafp in C; `/run/pro1x-fpd.sock`, line protocol in the file's header; the same binary is the client (`pro1x-fpd list`) |
+| lock screen | `gtklock-fingerprint/`, a gtklock module loaded by `pro1x-lock` while the daemon runs: one identify while gtklock is up, gtklock quits on a match |
+| enrolment | quick actions' Fingerprints (`device/sway/pro1x-fingerprint`): add (14 touches), rename, remove; up to five fingers |
+
+Not reading the sensor all the time: nothing polls it but an identify or an enrolment.  The
+lock screen's identify lasts as long as gtklock, and pauses while the panel is off (DPMS), so
+the sensor is read only on a lit lock screen, every 100 ms until a touch.  Open: the sensor
+interrupt (TLMM 97) instead of polling; the sensor's power stays on while the daemon runs;
+recovering a dead TA instance (moWerk saw one once: restart `qsee-app-loader-mafp`, then
+`pro1x-fpd`); the match rate (about one touch in three on his phone).
+
+**Never run `pro1x-fpd` on a kernel without the tzmem and listener fixes** once more than
+one finger is on file: set_active_group then reads past 256 listener rounds and the phone
+hangs hard (moWerk's three hangs of 2026-11-09).
 
 ## The stack on Android
 
