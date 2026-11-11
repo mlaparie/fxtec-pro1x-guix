@@ -99,7 +99,12 @@ case "$cmd" in
                    > ~/guix-manifest.scm 2>/dev/null' || true
                ok=; for p in ${paths[*]}; do [ -e /\$p ] && ok=\"\$ok \$p\"; done
                tar -C / --exclude=home/$user/.cache \
-                   --exclude=home/$user/.local/share/flatpak$excludes -cf - \$ok" > "$out"
+                   --exclude=home/$user/.local/share/flatpak$excludes -cf - \$ok" > "$out" ||
+            rc=$?
+        # tar's 1 is a warning: a file changed while read (an app still
+        # running); the archive is complete.  ssh's own failures are 255.
+        if [[ "${rc:-0}" -gt 1 ]]; then die "tar failed ($rc); $out is incomplete"; fi
+        [[ "${rc:-0}" -eq 1 ]] && echo "    [warn] files changed while read: see above" >&2
         list=$(tar -tf "$out")
         echo "    $(wc -l <<< "$list") entries, $(du -h "$out" | cut -f1)."
         for p in home/"$user"/.config etc/ssh; do
