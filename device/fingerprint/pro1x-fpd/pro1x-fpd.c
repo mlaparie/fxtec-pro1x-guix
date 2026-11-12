@@ -13,7 +13,7 @@
  *   status          -> "ready chip 0x24 fingers N"
  *   list            -> "finger ID NAME"..., then "ok"
  *   identify        -> "nomatch"... until "match ID NAME"
- *   enroll NAME     -> "touch", "sample N/14" or "retry CODE", ... "enrolled ID"
+ *   enroll NAME     -> "touch", "sample N/14" or "retry REASON", ... "enrolled ID"
  *   remove ID       -> "ok"
  *   rename ID NAME  -> "ok"
  *
@@ -624,6 +624,22 @@ static void do_list(void)
 	say("ok");
 }
 
+/* What enroll_work in the Android HAL logs for a do_enroll status. */
+static const char *enrol_reason(int status)
+{
+	static char other[32];
+
+	switch (status) {
+	case -2987: return "partial touch, cover the whole sensor";
+	case -2988: return "same area as before, move the finger a little";
+	case -2989: return "this finger is enrolled already";
+	case -3187: return "finger dirty";
+	case -3189: return "image not readable";
+	}
+	snprintf(other, sizeof(other), "code %d", status);
+	return other;
+}
+
 /*
  * As enroll_work in the Android HAL: calibrate if asked, pre_enroll,
  * enroll_start with a zero auth token (this TA accepts it), then per sample
@@ -680,9 +696,8 @@ static void do_enroll(const char *name)
 			accepted++;
 			say("sample %d/%d", accepted, ENROLL_SAMPLES);
 		} else {
-			/* -2988 is the one rejection seen so far; the codes are not mapped. */
 			logf_("enrol sample %d: status %d err %d", tries, r[1], r[2]);
-			say("retry %d", r[2] ? r[2] : r[1]);
+			say("retry %s", enrol_reason(r[2] ? r[2] : r[1]));
 		}
 		say("lift");
 		wait_touch(1, 0, LIFT_TIMEOUT, POLL_MS);

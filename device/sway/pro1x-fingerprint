@@ -36,14 +36,15 @@ enroll() {
     name=$(ask_name "finger $(( $(pro1x-fpd list | grep -c '^finger') + 1 ))")
     clear_screen
     echo "Put the finger on the sensor, lift it, and again, until 14 of 14."
-    echo "Move it a little between touches.  Ctrl+C stops."
+    echo "Cover the whole sensor; shift the finger a little between touches."
+    echo "Ctrl+C stops."
     echo
     pro1x-fpd enroll "$name" | while read -r word rest; do
         case "$word" in
             touch) printf '\r\033[KTouch the sensor…' ;;
             lift) printf '\r\033[KLift the finger.' ;;
             sample) printf '\r\033[K%s accepted.\n' "$rest" ;;
-            retry) printf '\r\033[KNot read (%s), touch again.\n' "$rest" ;;
+            retry) printf '\r\033[KNot taken: %s.\n' "$rest" ;;
             enrolled) printf '\r\033[KDone: %s.\n' "$name" ;;
             error) printf '\r\033[K%s.\n' "${rest^}" ;;
         esac
