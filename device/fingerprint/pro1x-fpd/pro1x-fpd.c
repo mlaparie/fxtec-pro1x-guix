@@ -471,12 +471,21 @@ static int enumerate(uint32_t fids[5])
 	return n;
 }
 
+/* While this file exists, each change of a detect_touch result is logged. */
+#define TRACE "/run/pro1x-fpd.trace"
+
 static int detect_touch(int mode)
 {
+	static int last[8] = { -99, -99, -99, -99, -99, -99, -99, -99 };
 	int32_t m = mode;
 	const int32_t *r = command(CMD_DETECT_TOUCH, &m, 4, 0x16808);
+	int t = r ? r[0] : -1;
 
-	return r ? r[0] : -1;
+	if (mode >= 0 && mode < 8 && t != last[mode] && !access(TRACE, F_OK)) {
+		logf_("trace %.3f mode %d: %d", now(), mode, t);
+		last[mode] = t;
+	}
+	return t;
 }
 
 /* ── Names ──────────────────────────────────────────────────────────────── */
@@ -660,7 +669,6 @@ static void do_enroll(const char *name)
 				  : "error no finger, enrolment cancelled");
 			return;
 		}
-		command(CMD_TOUCH_ENERGY, NULL, 0, 0x3c0c);
 		memcpy(in + 0x10, &ts, 4);
 		r = command(CMD_DO_ENROLL, in, sizeof(in), 0x16810);
 		tries++;
@@ -779,6 +787,56 @@ static void do_identify(void)
 	}
 }
 
+/*
+ * A test of the touch detection: for SECONDS, every POLL_MS, the readings
+ * WHAT names (0 and 1: detect_touch in that mode; e: get_energy, its energy
+ * and error words), one line per round to the client.  First, in the order
+ * given: k calibrate, r reset and i calc the interrupt parameters.
+ */
+static void do_probe(const char *arg)
+{
+	double seconds = arg ? atof(arg) : 10, end;
+	const char *what = arg && strchr(arg, ' ') ? strchr(arg, ' ') + 1 : "1e";
+
+	if (seconds <= 0 || seconds > 120)
+		seconds = 10;
+	for (const char *w = what; *w; w++) {
+		const int32_t *r = NULL;
+
+		if (*w == 'k')
+			r = simple(CMD_CALIBRATE);
+		else if (*w == 'r')
+			r = simple(CMD_RESET_INTERRUPT_PARA);
+		else if (*w == 'i')
+			r = simple(CMD_CALC_INTERRUPT_PARA);
+		else
+			continue;
+		say("setup %c: %d %d", *w, r ? r[0] : -1, r ? r[1] : -1);
+	}
+	end = now() + seconds;
+	while (now() < end) {
+		char buf[200];
+		int n = snprintf(buf, sizeof(buf), "%.3f", now());
+
+		for (const char *w = what; *w && n < (int)sizeof(buf) - 40; w++) {
+			const int32_t *r;
+
+			if (*w == '0' || *w == '1') {
+				n += snprintf(buf + n, sizeof(buf) - n, " t%c %d", *w,
+					      detect_touch(*w - '0'));
+			} else if (*w == 'e') {
+				r = command(CMD_TOUCH_ENERGY, NULL, 0, 0x3c0c);
+				n += snprintf(buf + n, sizeof(buf) - n, " e %d %d",
+					      r ? r[1] : -1, r ? r[2] : -1);
+			}
+		}
+		say("%s", buf);
+		if (!still_wanted(POLL_MS))
+			return;
+	}
+	say("ok");
+}
+
 static void do_remove(uint32_t fid)
 {
 	int32_t f = fid;
@@ -850,6 +908,8 @@ static void serve(int fd)
 		do_identify();
 	} else if (!strcmp(line, "enroll")) {
 		do_enroll(arg);
+	} else if (!strcmp(line, "probe")) {
+		do_probe(arg);
 	} else if (!strcmp(line, "remove") && arg) {
 		do_remove(strtoul(arg, NULL, 10));
 	} else if (!strcmp(line, "rename") && arg && strchr(arg, ' ')) {
