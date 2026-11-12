@@ -88,7 +88,12 @@ suspend, deep sleep, charging (it goes above the charge limit).
   read only while the lock screen is up and the panel lit, so touches at other
   times do nothing.  Quick actions' Fingerprints enrols (14 touches: cover the
   whole sensor, shift the finger a little between touches), renames and
-  removes fingers.  Not in Phosh.
+  removes fingers.  In Phosh, the lock screen unlocks by finger too, and
+  GNOME Settings (Users, Fingerprint Login) enrols and removes fingers.
+- Android apps with Waydroid: quick actions' Waydroid downloads the image
+  (with or without Google Play), starts, freezes, resumes and stops Android,
+  opens, installs and removes its apps, and switches between one window and
+  a window per app.  config.scm's `autostart?` starts it at login.
 - Incoming calls show over the lock screen (not yet tried with a call);
   Calls and the camera open fullscreen in portrait, the previous
   rotation comes back after.

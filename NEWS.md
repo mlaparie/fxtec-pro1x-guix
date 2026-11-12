@@ -1,5 +1,49 @@
 # Release notes
 
+## 0.5.0 — 2026-11-12
+
+Fingerprint unlock in Sway and Phosh, Android apps with Waydroid, and
+Log out back to the greeter.  Built with guix 8b96d76 and nonguix c241d19.
+
+### New
+
+- Fingerprint reader: enrol in quick actions (Sway) or GNOME Settings
+  (Phosh, through an fprintd-compatible service), unlock either lock screen
+  by finger.  The sensor is read only while the lock screen is up and lit
+  (about 15 % of one core meanwhile).  A rejected touch says why (partial
+  touch, same spot as before, finger already enrolled).
+- Waydroid 1.6.3 (after phodina's Guix series): LineageOS 20 in a
+  container, with or without Google Play.  Quick actions' Waydroid menu
+  downloads the image, starts, freezes, resumes and stops Android, shows
+  its apps, installs APKs, sets one window or one per app and "Sleep when
+  unused", and shows the ID Google asks for.  Its notifications reach the
+  desktop.  config.scm: `waydroid-configuration` `autostart?`.
+- Log out back to tuigreet, from Sway's power menu and Phosh's top panel.
+- The btrfs root comes compressed from CI again (btrfs-progs with the fix
+  for kdave/btrfs-progs#1135); no compression at first boot.
+- Quick actions: Auto-sleep (1 to 60 minutes locked); notifications newest
+  first, with the time they came.
+- `backup-phone.sh` asks whether to save Waydroid (its apps and accounts,
+  or the image too).
+- Kernel: moWerk's three QSEECOM fixes, for the fingerprint trusted app.
+
+### Install
+
+Download the `rootfs.img.zst.part*` files and `SHA256SUMS`, check them
+with `sha256sum -c SHA256SUMS`, join and unpack with
+`cat rootfs.img.zst.part* | zstd -d -o rootfs.img`, then follow
+docs/install.md (`scripts/flash.sh --encrypt --rootfs rootfs.img`).
+
+### Known issues
+
+- Outgoing calls on 4G often fall back to 3G and take 20-40 s to ring.
+- Mute in calls has no effect; no echo cancelling.
+- Waydroid: Super opens Google's Assistant while an Android window has the
+  focus; Android's first boot takes about 2 minutes and keeps two cores busy
+  for a while.
+- A 5 GHz hotspot is impossible (the Wi-Fi chip's regulatory domain).
+- Wi-Fi takes about 100 s to connect after a boot.
+
 ## 0.4.0 — 2026-11-11
 
 A btrfs root with snapshots of `/home`, a Stream menu to send the screen to
