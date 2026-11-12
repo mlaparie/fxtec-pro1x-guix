@@ -178,11 +178,14 @@ binder library that Waydroid talks to Android with.")
           (add-after 'install 'fix-paths
             (lambda* (#:key inputs #:allow-other-keys)
               (let ((lib (string-append #$output "/lib/waydroid")))
-                ;; D-Bus activation runs the container manager.
+                ;; D-Bus activation runs the container manager.  Upstream's
+                ;; Exec has a -w that 1.6.3's parser rejects ("unrecognized
+                ;; arguments"); with systemd it never runs, SystemdService
+                ;; does.
                 (substitute* (string-append
                               #$output
                               "/share/dbus-1/system-services/id.waydro.Container.service")
-                  (("/usr/bin/waydroid") (string-append #$output "/bin/waydroid"))
+                  (("/usr/bin/waydroid -w") (string-append #$output "/bin/waydroid"))
                   (("^SystemdService=.*") ""))
                 (substitute* (find-files (string-append #$output "/share/applications")
                                          "\\.desktop$")
@@ -200,14 +203,16 @@ binder library that Waydroid talks to Android with.")
             (lambda* (#:key inputs outputs #:allow-other-keys)
               (let ((script (string-append #$output "/lib/waydroid/waydroid.py")))
                 ;; bin/waydroid is a symbolic link to waydroid.py, which
-                ;; finds its modules next to its real path.
+                ;; finds its modules next to its real path.  D-Bus starts
+                ;; it with no PATH: it runs sh, sed, pidof, coreutils,
+                ;; modprobe, mount and the lxc tools.
                 (wrap-program script
                   `("GUIX_PYTHONPATH" ":" prefix
                     (,(getenv "GUIX_PYTHONPATH")))
                   `("PATH" ":" prefix
                     ,(map (lambda (p) (string-append p "/bin"))
                           (list #$lxc #$util-linux #$kmod #$coreutils
-                                #$iproute)))
+                                #$iproute #$bash-minimal #$sed #$procps)))
                   `("PATH" ":" prefix
                     ,(map (lambda (p) (string-append p "/sbin"))
                           (list #$lxc #$util-linux #$kmod #$iproute))))))))))
@@ -219,11 +224,13 @@ binder library that Waydroid talks to Android with.")
            kmod
            lxc
            nftables
+           procps
            python
            python-dbus
            python-gbinder
            python-pyclip
            python-pygobject
+           sed
            util-linux))
     (supported-systems '("aarch64-linux" "x86_64-linux"))
     (home-page "https://waydro.id")

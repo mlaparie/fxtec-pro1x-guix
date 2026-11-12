@@ -197,7 +197,7 @@ while :; do
                 printf 'show\tShow Android\n'
                 printf 'apps\tApps…\n'
                 printf 'install\tInstall an APK…\n'
-                printf 'freeze\tFreeze (no CPU, nothing arrives)\n'
+                printf 'freeze\tFreeze\n'
                 printf 'stop\tStop Android\n'
                 printf 'multi\tOne window per app: %s   (restarts Android)\n' "$(onoff "$multi")"
                 printf 'idle\tSleep when unused: %s   (restarts Android)\n' "$(onoff "$idle")"
