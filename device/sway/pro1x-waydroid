@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# pro1x-waydroid — Waydroid from quick actions: start, freeze or stop
+# Android, show it, open, install or remove its apps, and its main settings.
+# Opened by Enter or Right on the Waydroid line of sway-quick-actions, inside
+# its window.  Also `pro1x-waydroid state': not set up, off, frozen or
+# running, for that line.
+#
+# The session runs as the user (`waydroid session start'); the container
+# manager comes up by D-Bus activation (services/waydroid.scm).  Downloading
+# or updating the Android image and reading the Google registration ID need
+# root: pro1x-waydroid-admin, allowed in sudoers (system/mobile.scm).
+#
+# Freeze stops every Android process at once (the cgroup freezer) and Resume
+# lets them go on, both within a second; meanwhile Android gets no CPU, so
+# no notifications, syncs or alarms either.  Opening an app or Show Android
+# resumes it.  Stop ends Android; Start boots it again.
+#
+# Settings are Android properties, so they are read and set only while the
+# session runs, and apply at its next start; this menu restarts it.
+#   one window per app   persist.waydroid.multi_windows
+#   sleep when unused    persist.waydroid.suspend: the container freezes
+#                        after Android's screen timeout with no app shown
+# Orientation has no setting of its own: Android follows the shape of its
+# window, so the Rotation and Orientation lines fix it.
+#
+# State: not yet run on the phone.
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
+log="$rt/pro1x-waydroid.log"
+admin=/run/current-system/profile/bin/pro1x-waydroid-admin
+
+set_up() { [ -e /var/lib/waydroid/images/system.img ]; }
+
+running() {                     # the session holds its name on the user bus
+    gdbus call --session --dest org.freedesktop.DBus \
+        --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner id.waydro.Session \
+        2>/dev/null | grep -q true
+}
+
+frozen() {                      # LXC's cgroup for the container (cgroup v2)
+    for f in /sys/fs/cgroup/lxc.payload.waydroid/cgroup.freeze; do
+        [ "$(cat "$f" 2>/dev/null)" = 1 ] && return 0
+    done
+    return 1
+}
+
+state() {
+    if ! set_up; then echo "not set up"
+    elif ! running; then echo off
+    elif frozen; then echo frozen
+    else echo running; fi
+}
+
+[ "${1:-}" = state ] && { state; exit; }
+
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+clear_screen() { printf '\033[H\033[2J\033[3J'; }
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+
+menu() {                        # menu PROMPT: tab-separated lines on stdin
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        --layout=reverse-list --no-info --cycle --margin=1,2 \
+        --color=16,gutter:-1 --bind='load:pos(2)' | cut -f1
+}
+
+gapps() { grep -q '^system_ota = .*GAPPS' /var/lib/waydroid/waydroid.cfg 2>/dev/null; }
+
+hide_menu() { sway-quick-actions --hide; }
+
+# In Sway, not in this window: the session outlives the menu.
+start() {
+    swaymsg exec "waydroid session start >>'$log' 2>&1" >/dev/null
+    for _ in $(seq 60); do running && return 0; sleep 0.5; done
+    clear_screen; echo "Android did not start; the end of $log:"; echo
+    tail -n 15 "$log"; pause; return 1
+}
+
+stop() {
+    waydroid session stop >>"$log" 2>&1
+    for _ in $(seq 20); do running || return 0; sleep 0.5; done
+}
+
+prop() { waydroid prop get "$1" 2>/dev/null | tail -n 1; }
+
+toggle_prop() {                 # toggle_prop KEY: true <-> false, then restart
+    if [ "$(prop "$1")" = true ]; then v=false; else v=true; fi
+    waydroid prop set "$1" "$v" >>"$log" 2>&1
+    clear_screen; echo "Restarting Android…"
+    stop; start
+}
+
+download() {                    # download VANILLA|GAPPS
+    clear_screen
+    if ! nmcli -t -f TYPE,STATE device 2>/dev/null | grep -qx 'wifi:connected'; then
+        echo "Not on Wi-Fi.  The image is about 1 GB: connect to Wi-Fi first,"
+        echo "or type yes to download it over mobile data."
+        read -r -p "> " ok; [ "$ok" = yes ] || return
+    fi
+    echo "Downloading Android (about 1 GB).  Ctrl+C stops."; echo
+    sudo -n "$admin" init "$1"
+    pause
+}
+
+apps() {                        # package<TAB>name, from `waydroid app list'
+    waydroid app list 2>/dev/null |
+        awk '/^Name: / { n = substr($0, 7) }
+             /^packageName: / { print substr($0, 14) "\t" n }' | sort -t '	' -k2
+}
+
+app_menu() {                    # app_menu PACKAGE NAME
+    choice=$(printf '%s\t%s\n' back "← back" open "Open" remove "Remove" | menu "$2")
+    case "$choice" in
+        open) hide_menu; swaymsg exec "waydroid app launch '$1'" >/dev/null; exit ;;
+        remove)
+            clear_screen
+            read -r -p "Remove $2? Type yes: " ok
+            [ "$ok" = yes ] && waydroid app remove "$1" >>"$log" 2>&1 ;;
+    esac
+}
+
+apps_menu() {
+    while :; do
+        list=$(apps)
+        choice=$({ printf 'back\t← back\n'; printf '%s\n' "$list"; } | menu apps)
+        case "$choice" in
+            ""|back) return ;;
+            *) app_menu "$choice" "$(printf '%s\n' "$list" |
+                   awk -F'\t' -v p="$choice" '$1 == p { print $2; exit }')" ;;
+        esac
+    done
+}
+
+install_apk() {                 # an .apk in the home, Downloads first
+    choice=$({ printf 'back\t← back\n'
+               find "$HOME/Downloads" "$HOME" -maxdepth 3 -name '*.apk' \
+                    -not -path '*/.*' 2>/dev/null | awk '!seen[$0]++' |
+                   awk '{ f = $0; sub(".*/", "", f); print $0 "\t" f }'; } |
+                 menu install)
+    case "$choice" in ""|back) return ;; esac
+    clear_screen; echo "Installing ${choice##*/}…"
+    if waydroid app install "$choice" >>"$log" 2>&1; then echo "Done."
+    else echo "Failed; see $log."; fi
+    pause
+}
+
+google_id() {
+    clear_screen
+    echo "Google Play needs this device registered.  Open"
+    echo "  https://www.google.com/android/uncertified"
+    echo "on any device, sign in, and enter this ID:"; echo
+    id=$(sudo -n "$admin" android-id 2>/dev/null)
+    printf '  %s\n\n' "${id:-not found: open Google Play once, then try again}"
+    echo "Play works some minutes after registering, sometimes after a restart."
+    pause
+}
+
+onoff() { [ "$1" = true ] && echo on || echo off; }
+
+while :; do
+    case "$(state)" in
+        "not set up")
+            choice=$(printf '%s\t%s\n' \
+                back "← back" \
+                GAPPS "Download Android with Google Play (about 1 GB)" \
+                VANILLA "Download Android without Google (about 1 GB)" |
+                     menu "Waydroid: not set up")
+            case "$choice" in
+                GAPPS|VANILLA) download "$choice"; continue ;;
+                *) break ;;
+            esac ;;
+        off)
+            choice=$(printf '%s\t%s\n' \
+                back "← back" \
+                start "Start Android" \
+                show "Show Android" \
+                update "Update the Android image" | menu "Waydroid: off") ;;
+        frozen)
+            choice=$(printf '%s\t%s\n' \
+                back "← back" \
+                resume "Resume" \
+                show "Show Android" \
+                stop "Stop Android" | menu "Waydroid: frozen") ;;
+        running)
+            multi=$(prop persist.waydroid.multi_windows)
+            idle=$(prop persist.waydroid.suspend)
+            choice=$({
+                printf 'back\t← back\n'
+                printf 'show\tShow Android\n'
+                printf 'apps\tApps…\n'
+                printf 'install\tInstall an APK…\n'
+                printf 'freeze\tFreeze (no CPU, nothing arrives)\n'
+                printf 'stop\tStop Android\n'
+                printf 'multi\tOne window per app: %s\n' "$(onoff "$multi")"
+                printf 'idle\tSleep when unused: %s\n' "$(onoff "$idle")"
+                gapps && printf 'google\tGoogle registration ID…\n'
+                printf 'update\tUpdate the Android image\n'
+            } | menu "Waydroid: running") ;;
+    esac
+    case "$choice" in
+        show) hide_menu; swaymsg exec "waydroid show-full-ui >>'$log' 2>&1" >/dev/null; break ;;
+        start) clear_screen; echo "Starting Android…"; start ;;
+        stop) clear_screen; echo "Stopping Android…"; stop ;;
+        freeze) waydroid container freeze >>"$log" 2>&1 ;;
+        resume) waydroid container unfreeze >>"$log" 2>&1 ;;
+        apps) apps_menu ;;
+        install) install_apk ;;
+        multi) toggle_prop persist.waydroid.multi_windows ;;
+        idle) toggle_prop persist.waydroid.suspend ;;
+        google) google_id ;;
+        update)
+            clear_screen; echo "Updating the Android image.  Ctrl+C stops."; echo
+            running && stop
+            sudo -n "$admin" upgrade; pause ;;
+        *) break ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

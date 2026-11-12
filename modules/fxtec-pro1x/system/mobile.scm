@@ -640,6 +640,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-sleep, "
                               ;; Quick actions' hotspot: expel, ban.
                               "/run/current-system/profile/bin/pro1x-hotspot-admin, "
+                              ;; Quick actions' Waydroid: its image.
+                              "/run/current-system/profile/bin/pro1x-waydroid-admin, "
                               ;; Quick actions' timezone.
                               "/run/current-system/profile/bin/pro1x-timezone-admin, "
                               ;; Its CPU mode line.

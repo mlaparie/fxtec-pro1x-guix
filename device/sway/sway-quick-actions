@@ -9,7 +9,8 @@
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications, operator,
 # GPU monitor (the GPU's clock; Enter or Right opens nvtop in its own
-# window; bpytop is among CPU mode's choices).
+# window; bpytop is among CPU mode's choices), Waydroid (running, frozen or
+# off; Enter or Right opens pro1x-waydroid).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
 # operator, feedback, CPU mode, charge limit, orientation, keyboard layout, audio output, word
 # completion (several at once), and for
@@ -253,7 +254,7 @@ dim() {                         # grey for off states
     case "$1" in
         # Faint, not a grey: readable on the selected line's grey too, where
         # the text is black (fg+; author, 2026-11-03).
-        off|hidden|"not running"|*"(muted)") printf '\033[2m%s\033[0m' "$1" ;;
+        off|hidden|"not running"|"not set up"|frozen|*"(muted)") printf '\033[2m%s\033[0m' "$1" ;;
         *) printf '%s' "$1" ;;
     esac
 }
@@ -1030,6 +1031,7 @@ lines() {
     layout_now > "$d/layout" &
     audio_now > "$d/audio" &
     dict_shown > "$d/dicts" &
+    pro1x-waydroid state > "$d/waydroid" 2>/dev/null &
     wait
     radio=$(cat "$d/radio")           # enabled:enabled
     wifi=$(onoff "${radio%%:*}"); wwan=$(onoff "${radio#*:}"); bt=$(cat "$d/bt")
@@ -1057,6 +1059,7 @@ lines() {
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
         "stream      Stream               $(stream_state)" \
+        "waydroid    Waydroid             $(dim "$(cat "$d/waydroid")")" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "operator    Operator             $(operator_shown "$kv")" \
@@ -1541,14 +1544,14 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  hotspot|timezone|stream|fingerprint) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
+                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  hotspot|timezone|stream|fingerprint) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
+                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;

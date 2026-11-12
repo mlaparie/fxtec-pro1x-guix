@@ -1806,6 +1806,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
+;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
+;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
@@ -1874,6 +1876,8 @@ window opened by a sway key binding.")
           ("pro1x-timezone" "bin/")
           ("pro1x-timezone-admin" "bin/")
           ("pro1x-fingerprint" "bin/")
+          ("pro1x-waydroid" "bin/")
+          ("pro1x-waydroid-admin" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
           ("pro1x-camera-button" "bin/")
@@ -2016,7 +2020,7 @@ window opened by a sway key binding.")
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
                    "pro1x-launcher"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
-                   "pro1x-osk" "pro1x-alarm-watch"))
+                   "pro1x-osk" "pro1x-alarm-watch" "pro1x-waydroid"))
                 (let ((pa (string-append #$output "/bin/pro1x-portrait-apps")))
                   (chmod pa #o755)
                   (wrap-program pa
