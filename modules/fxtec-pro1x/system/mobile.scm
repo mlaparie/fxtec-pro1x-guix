@@ -235,6 +235,10 @@
         ;; greetd does not turn into XDG_CURRENT_DESKTOP.  Without it GNOME
         ;; Settings (OnlyShowIn=GNOME) is hidden and does not start.
         (setenv "XDG_CURRENT_DESKTOP" "Phosh:GNOME")
+        ;; Phosh offers Log Out only when a display manager started it;
+        ;; greetd is one.  Log Out then quits Phosh (its patch), and
+        ;; greetd shows the greeter again.
+        (setenv "GDMSESSION" "phosh")
         (let ((d (getenv "XDG_DATA_DIRS")))
           (setenv "XDG_DATA_DIRS"
                   (string-append "/run/current-system/profile/share"
@@ -846,6 +850,9 @@ Dracula palette, no kernel messages over the greeter.")
 
      ;; D-Bus (required by Phosh, ModemManager, iio-sensor-proxy etc.)
      (service dbus-root-service-type)
+     ;; AccountsService, started by D-Bus: GNOME Settings' Users page (the
+     ;; user's name and picture, and its Fingerprint Login row) needs it.
+     (service accountsservice-service-type)
      ;; GTK 3 finds its input-method modules (the Wayland one talks to the
      ;; on-screen keyboard) only through this variable: GTK has no cache of
      ;; its own here and gtk+ is not in the profile itself, so its search

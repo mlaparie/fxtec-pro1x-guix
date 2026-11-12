@@ -911,7 +911,10 @@ It runs on top of the Phoc compositor.")
                        (repository-file "device/phosh/volume-bar-amplified.patch"))
                       ;; Torch: numbered flash LEDs, sysfs without logind.
                       (local-file
-                       (repository-file "device/phosh/torch-without-logind.patch")))))))
+                       (repository-file "device/phosh/torch-without-logind.patch"))
+                      ;; Log Out quits Phosh, back to the greeter.
+                      (local-file
+                       (repository-file "device/phosh/logout-without-gnome-session.patch")))))))
     (arguments
      (substitute-keyword-arguments (package-arguments phosh)
        ((#:configure-flags _)

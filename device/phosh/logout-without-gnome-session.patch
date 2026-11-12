@@ -1,0 +1,42 @@
+From: mlaparie
+Subject: [PATCH] session-manager: log out without gnome-session
+
+Log Out asks gnome-session to end the session.  This port runs Phosh
+without gnome-session (greetd starts phoc, phoc starts Phosh), so the
+call failed and nothing happened.  Without a session manager on the bus,
+Phosh now quits instead: phoc ends with it, and greetd shows its greeter.
+
+The menu entry also needs GDMSESSION=phosh, which the session launcher
+sets (system/mobile.scm).
+---
+--- a/src/session-manager.c
++++ b/src/session-manager.c
+@@ -17,6 +17,8 @@
+ #include "dbus/gnome-session-dbus.h"
+ #include "dbus/gnome-session-client-private-dbus.h"
+ 
++#include <gtk/gtk.h>
++
+ #define BUS_NAME "org.gnome.SessionManager"
+ #define OBJECT_PATH "/org/gnome/SessionManager"
+ 
+@@ -458,7 +460,19 @@
+ void
+ phosh_session_manager_logout (PhoshSessionManager *self)
+ {
++  g_autofree char *owner = NULL;
++
+   g_return_if_fail (PHOSH_IS_SESSION_MANAGER (self));
++
++  /* No gnome-session: end the session by quitting, which ends phoc. */
++  if (self->proxy)
++    owner = g_dbus_proxy_get_name_owner (G_DBUS_PROXY (self->proxy));
++  if (!owner) {
++    g_message ("No session manager, logging out by quitting");
++    gtk_main_quit ();
++    return;
++  }
++
+   g_return_if_fail (PHOSH_DBUS_IS_SESSION_MANAGER_PROXY (self->proxy));
+ 
+   phosh_dbus_session_manager_call_logout (self->proxy,
