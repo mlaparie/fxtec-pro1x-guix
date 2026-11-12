@@ -116,39 +116,35 @@ time, asynchronous transactions, and a stable service manager API.")
     (license license:bsd-3)))
 
 (define-public python-gbinder
-  (package
-    (name "python-gbinder")
-    (version "1.1.1")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference
-                    (url "https://github.com/waydroid/gbinder-python")
-                    (commit (string-append "upstream/" version))))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "0wdpf6b6b3cmd42j1qkfp19y9bdymy5dv12r261gkhvxxh160zym"))))
-    (build-system pyproject-build-system)
-    (arguments
-     (list #:tests? #f                  ;the tests need /dev/binder
-           #:phases
-           #~(modify-phases %standard-phases
-               ;; distutils is gone from Python 3.12; setup.py builds
-               ;; gbinder.c, which Cython makes from gbinder.pyx first.
-               (add-after 'unpack 'use-setuptools
-                 (lambda _
-                   (substitute* "setup.py"
-                     (("from distutils.core import")
-                      "from setuptools import"))
-                   (invoke "cython" "-3" "gbinder.pyx"))))))
-    ;; Cython 3 rejects its callbacks (no noexcept); 0.29 builds it.
-    (native-inputs (list pkg-config python-cython-0 python-setuptools))
-    (inputs (list libgbinder))
-    (home-page "https://github.com/waydroid/gbinder-python")
-    (synopsis "Python bindings for libgbinder")
-    (description "This package provides Python bindings for libgbinder, the
+  ;; 1.3.1 has no tag.  1.1.1, the last tag, crashed Waydroid's session
+  ;; (a segfault) at the first notification with an image: its
+  ;; read_byte_array returned the raw pointer as a Python object; fixed by
+  ;; b39fb9a, and Waydroid 1.6.3 expects the bytes it now returns.
+  (let ((commit "86b8feba4cacd0952b010d1c3af6a29a0c146ced")
+        (revision "0"))
+    (package
+      (name "python-gbinder")
+      (version (git-version "1.3.1" revision commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/waydroid/gbinder-python")
+                      (commit commit)))
+                (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "080bvw3954g6q5y28wr4yxjl1r4743wkc71r7j1gi2fq7hcsyyvd"))))
+      (build-system pyproject-build-system)
+      (arguments
+       (list #:tests? #f))                ;the tests need /dev/binder
+      ;; setup.py runs Cython on gbinder.pyx itself.
+      (native-inputs (list pkg-config python-cython python-setuptools))
+      (inputs (list libgbinder))
+      (home-page "https://github.com/waydroid/gbinder-python")
+      (synopsis "Python bindings for libgbinder")
+      (description "This package provides Python bindings for libgbinder, the
 binder library that Waydroid talks to Android with.")
-    (license license:gpl3+)))
+      (license license:gpl3+))))
 
 (define-public waydroid
   (package
