@@ -1528,7 +1528,8 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "On-screen keyboard  s-i      or bottom swipe\n"
                      "Open terminal       s-<ret>\n"
                      "Close window        s-<backspace>\n"
-                     "Help                C-s-h")
+                     "Help                C-s-h\n"
+                     "Power menu          power key (long press)")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
             (invoke "convert" (string-append dir "/dark.png") "help.png"
                     "-gravity" "center" "-geometry" "+0+330" "-composite"
