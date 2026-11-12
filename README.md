@@ -61,6 +61,7 @@ Light sensor, gyroscope          Untested
 Battery                          Working    UPower: level and charging state in Phosh
 Screen dimming, blank, lock      Working    dim at 150 s, off at 180 s, locked 2 min later (configurable)
 Double tap to wake               Working    not in a pocket (configurable)
+Fingerprint reader               Working    unlocks the Sway lock screen while it is lit; fingers managed in quick actions
 Suspend                          Untested
 GPS                              Not yet    modem's location service gives no NMEA (see TODO.org)
 NFC, video codecs                Untested

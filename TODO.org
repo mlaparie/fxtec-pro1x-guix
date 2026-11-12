@@ -10,13 +10,13 @@ requests; the author re-ranks.  Older dated notes are under History, newest firs
 TODO.md before 2026-11-11 is in git history.
 
 * State on the phone
-- 2026-11-11: generation 27, from =main= 1efc6f3, kernel 7.3.0 from CI run 42684587630
-  (built from 9745bbd).  Encrypted btrfs root since the reflash of 2026-11-08 (generation
+- 2026-11-12: generation 29, from =dev= 834804d, kernel 7.3.0 with the QSEECOM fixes from
+  CI run 43071407700 (b633813); generation 27 (=main= 1efc6f3) is the fallback.  Encrypted btrfs root since the reflash of 2026-11-08 (generation
   1 there): =/home= a subvolume, hourly btrbk snapshots, =pro1x-rootfs-compress= done,
   mounted =compress=zstd:1=.
 - Release: v0.4.0 (=main= 5719006), CI run 43050723557.
-- Branches: =main=; =dev= with the fingerprint work, the
-  Auto-sleep quick action and the tree cleanup, not yet on the phone.
+- Branches: =main=; =dev= with the fingerprint work, the Auto-sleep quick action and the
+  tree cleanup, on the phone since generation 28.
 - Backup on the PC: =~/pro1x-backup-2026-11-11.tar= (=backup-phone.sh=, without =~/.mail=,
   which syncs again from the PC).
 - Measured (screen on): idle 10% CPU; screen capture alone 35%; hardware H.264 at 30 fps
@@ -24,18 +24,13 @@ TODO.md before 2026-11-11 is in git history.
 
 * Tasks
 ** Fingerprint
-*** NEXT [#A] Fingerprint reader: enrol, unlock gtklock
-On =dev=: moWerk's three QSEECOM fixes in the kernel (CI run 43053817403),
-=pro1x-fpd= (daemon and client), =gtklock-fingerprint-module=, quick actions'
-Fingerprints, services at boot on the generation's own kernel only.  The sensor is read
-only during an enrolment, or while gtklock is up with the panel on (every 250 ms; a read
-costs about 60 ms of CPU in TrustZone).  2026-11-11, on the phone without a reboot (0004
-as a module): daemon up, status, list, permissions, a cancelled enrolment, a TA reload.
-Next, with the author: import the CI kernel (=sudo guix archive --authorize= with the run's
-key), deploy, reboot into it (passphrase), enrol in quick actions, lock and unlock.
-Details: device/fingerprint/README.md.
+*** DONE [#A] Fingerprint reader: enrol, unlock gtklock (2026-11-12)
+Works on generation 29 (author: "works very well").  Touches must cover the whole sensor;
+-2988 at enrolment is two touches on the same spot.  Details: device/fingerprint/README.md.
 *** TODO [#A] Sensor interrupt (TLMM 97) instead of polling, sensor power off when idle
-Polling a lit lock screen keeps about a fifth of a core busy.
+Polling a lit lock screen costs about 15 % of one core (2.9 s of CPU in 20 s, measured
+2026-11-12).  With the interrupt, unlocking could work with the screen blanked too, while
+gtklock runs (author's wish).
 *** TODO [#B] Recover a dead TA instance (restart the loader, then pro1x-fpd) by itself
 *** TODO [#C] Match rate (moWerk: about one touch in three)
 ** Calls and modem

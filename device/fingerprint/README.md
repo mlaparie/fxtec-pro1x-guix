@@ -1,11 +1,13 @@
 # Fingerprint reader: what Android does, mapped for a mainline driver
 
-State (2026-11-11): **the daemon runs on the phone; enrolment and unlock not tried yet**
-(they need the author's finger).  With moWerk's driver fix 0004 as a module in the running
-kernel (no reboot), pro1x-fpd brought the TA up (keymaster key, INIT, chip id 0x24, service
-init, set_active_group with an empty store), answered status and list, refused a client
-outside the users group, ended an enrolment cancelled after 3 s cleanly, and came up again on
-a reloaded TA (app 4). moWerk has
+State (2026-11-12): **enrolment and unlock work** (generation 29, kernel 7.3.0 with
+moWerk's three QSEECOM fixes).  A finger enrolled from quick actions unlocks gtklock ("works very
+well", author).  Touches must cover the whole sensor: a partial touch is read only
+while it moves, and during an enrolment two touches on the same spot give -2988 ("duplicate
+area").  Waiting for a finger polls the TA's detect_touch every 250 ms while the lock screen
+is up and the panel lit: about 15 % of one core (2.9 s of CPU in 20 s), nothing otherwise.
+With the screen blanked the sensor is not read; doing so cheaply needs the sensor interrupt
+(TLMM 97) instead of polling.  moWerk has
 enrolment and unlock working on SailfishOS with the same driver and three kernel fixes
 (sailfishos-pro1x-mainline, `notes/fingerprint.md`); this port now carries those fixes and a
 daemon of its own (below).  The rest of this file is the map that got there, read from the
