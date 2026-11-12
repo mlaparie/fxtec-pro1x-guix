@@ -42,10 +42,10 @@ the container under Guix's LXC and cgroup v2, the session in Sway and Phosh, Goo
 Play's registration.  Window mode and sleep when unused are in the menu (Android's own
 properties; a config.scm setting would be overridden by them).
 *** TODO [#B] Measure Android's cost: running, frozen, off (CPU, battery current)
-*** TODO [#C] Freeze when no Android window is shown; start at login (running or frozen)
+*** TODO [#C] Freeze when no Android window is shown
 Only if the measurement shows it is worth it.  Android's own "Sleep when unused"
-(=persist.waydroid.suspend=) freezes it already, after its screen timeout.  Phosh here
-has no autostart (no gnome-session).
+(=persist.waydroid.suspend=) freezes it already, after its screen timeout.  Start at
+login: =waydroid-configuration= =autostart?= (2026-11-12).
 ** Calls and modem
 *** TODO [#A] Outgoing calls on 4G take 22-26 s and fall back to 3G
 The author wants calls fixed before the release (2026-11-05).

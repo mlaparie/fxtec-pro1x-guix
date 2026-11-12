@@ -3,7 +3,7 @@
 # Android, show it, open, install or remove its apps, and its main settings.
 # Opened by Enter or Right on the Waydroid line of sway-quick-actions, inside
 # its window.  Also `pro1x-waydroid state': not set up, off, frozen or
-# running, for that line.
+# running, for that line; and `pro1x-waydroid autostart', at login.
 #
 # The session runs as the user (`waydroid session start'); the container
 # manager comes up by D-Bus activation (services/waydroid.scm).  Downloading
@@ -67,6 +67,15 @@ state() {
 }
 
 [ "${1:-}" = state ] && { state; exit; }
+
+# At login (Sway's config, Phosh's session), if config.scm's autostart? is
+# on and an image is downloaded: the session, as start runs it.
+if [ "${1:-}" = autostart ]; then
+    AUTOSTART=no; . /etc/pro1x/waydroid.conf 2>/dev/null
+    [ "$AUTOSTART" = yes ] && set_up && ! running || exit 0
+    echo "[$(date +%T)] autostart at login" >>"$log"
+    set -- session
+fi
 
 # The session, run by start in Sway: its exit status in the log, and
 # Python's traceback if it crashes.

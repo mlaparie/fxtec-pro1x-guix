@@ -91,7 +91,13 @@ Keyboard: `pro1x-keyboard-configuration` in `(fxtec-pro1x services
 keyboard)`; hardware: `pro1x-hardware-configuration` in `(fxtec-pro1x
 services hardware)`.
 
-Waydroid: `(delete waydroid-service-type)` in `modify-services` leaves it out;
+Waydroid: `waydroid-configuration` in `(fxtec-pro1x services waydroid)`.
+
+| field | default | |
+|---|---|---|
+| `autostart?` | `#f` | start Android at login (Sway and Phosh), once its image is downloaded; with "Sleep when unused" on in quick actions it freezes after its screen timeout while none of its apps is shown |
+
+`(delete waydroid-service-type)` in `modify-services` leaves it out;
 a downloaded Android image stays in `/var/lib/waydroid` until removed by
 hand.  Its settings (one window per app, sleep when unused) are Android's,
 in the Waydroid menu of quick actions.

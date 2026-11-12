@@ -205,6 +205,12 @@
           (setsid)
           (execl #$(file-append stevia "/bin/phosh-osk-stevia")
                  "phosh-osk-stevia" "--allow-replacement"))
+        ;; Android at login, if config.scm's waydroid-configuration says so
+        ;; (pro1x-waydroid comes with the Sway session's scripts).
+        (when (zero? (primitive-fork))
+          (setsid)
+          (execl "/run/current-system/profile/bin/pro1x-waydroid"
+                 "pro1x-waydroid" "autostart"))
         ;; Reminds about waiting MMS; the "Fetch MMS" launcher fetches them.
         (when (zero? (primitive-fork))
           (setsid)
