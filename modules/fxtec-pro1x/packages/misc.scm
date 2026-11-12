@@ -923,9 +923,27 @@ It runs on top of the Phoc compositor.")
                 "-Dman=false"
                 "-Dintrospection=false"
                 "-Dcallui-i18n=false"
-                "-Dlockscreen-plugins=false"))
+                ;; Only ours, fingerprint-unlock: the stock ones want evince
+                ;; and more.
+                "-Dlockscreen-plugins=true"))
        ((#:phases phases)
         #~(modify-phases #$phases
+            ;; Fingerprint unlock on the lock screen, through pro1x-fpd
+            ;; (device/phosh/fingerprint-unlock).  Phosh exports a fixed list
+            ;; of its functions to plugins; the unlock call is added to it.
+            (add-after 'unpack 'add-fingerprint-unlock-plugin
+              (lambda _
+                (copy-recursively
+                 #$(local-file (repository-file "device/phosh/fingerprint-unlock")
+                               "fingerprint-unlock" #:recursive? #t)
+                 "plugins/fingerprint-unlock")
+                (substitute* "plugins/meson.build"
+                  (("^lockscreen_plugins = \\[")
+                   "lockscreen_plugins = ['fingerprint-unlock']\nunused_lockscreen_plugins = ["))
+                (let ((port (open-file "src/phosh-exported-symbols.txt.in" "a")))
+                  (display "   phosh_shell_get_lockscreen_manager;
+   phosh_lockscreen_manager_set_locked;\n" port)
+                  (close-port port))))
             (add-after 'install 'install-missing-schemas
               (lambda* (#:key outputs #:allow-other-keys)
                 (let* ((out (assoc-ref outputs "out"))
@@ -947,6 +965,7 @@ It runs on top of the Phoc compositor.")
                       (string-append schema-dir "/90_fxtec-pro1x.gschema.override")
                     (lambda (port)
                       (display "[sm.puri.phosh]\napp-filter-mode=@as []\n
+[sm.puri.phosh.plugins]\nlock-screen=['fingerprint-unlock']\n
 [org.gnome.settings-daemon.peripherals.touchscreen]\norientation-lock=true\n
 [org.gnome.settings-daemon.peripherals.touchscreen:Phosh]\norientation-lock=true\n
 [org.gnome.desktop.background:Phosh]

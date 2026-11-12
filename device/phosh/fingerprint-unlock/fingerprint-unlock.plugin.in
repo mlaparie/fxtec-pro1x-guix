@@ -1,0 +1,6 @@
+[Plugin]
+Id=@name@
+Name=Fingerprint unlock
+Types=lockscreen;
+Comment=Unlock with an enrolled finger (pro1x-fpd)
+Plugin=@plugins_dir@/libphosh-plugin-@name@.so
