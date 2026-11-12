@@ -1336,14 +1336,15 @@ step() {                        # Right (+) and Left (-)
 }
 
 # Notification dock.  Lines from sway-notifications list:
-# kind id urgency app summary (tab-separated); kind new = still shown by
-# mako (actions possible), old = history (read-only).
+# kind id urgency app summary time (tab-separated), newest first; kind new
+# = still shown by mako (actions possible), old = history (read-only).  The
+# time is when it came (author, 2026-11-12), the date too if not today.
 notif_lines() {
     printf 'back\t-\t← back\n'
     sway-notifications list 2>/dev/null |
-        awk -F'\t' '{ printf "%s\t%s\t%s  %-8s %s: %s\n", $1, $2,
-                      ($1 == "new" ? "•" : " "),
-                      ($3 == "critical" ? "urgent" : ""), $4, $5 }'
+        awk -F'\t' '{ printf "%s\t%s\t%s %s  %s%s: %s\n", $1, $2,
+                      ($1 == "new" ? "•" : " "), $6,
+                      ($3 == "critical" ? "urgent " : ""), $4, $5 }'
 }
 
 notif_preview() {               # notif_preview <kind> <id>
@@ -1482,7 +1483,7 @@ case "${1:-}" in
     --notif-summary)            # preview of the Notifications line
         # Their full text (author, 2026-11-02; never on the lock screen,
         # which shows counts only): sway-notifications list writes it.
-        # Compact (author, 2026-11-06): "• App: summary", then the body
+        # Compact (author, 2026-11-06): "• 14:05 App: summary", then the body
         # without its empty lines, a blank line only between notifications;
         # no urgency line (an urgent one is marked !) and no actions (the
         # dock has them).  The full file: summary, "app · urgency", a blank
@@ -1490,11 +1491,11 @@ case "${1:-}" in
         full="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications"
         sep=
         sway-notifications list 2>/dev/null |
-            while IFS="$(printf '\t')" read -r kind id urgency app summary; do
+            while IFS="$(printf '\t')" read -r kind id urgency app summary time; do
                 [ -n "$sep" ] && echo; sep=1
                 mark=" "; [ "$kind" = new ] && mark="•"
                 [ "$urgency" = critical ] && mark="!"
-                printf '%s %s: %s\n' "$mark" "$app" "$summary"
+                printf '%s %s %s: %s\n' "$mark" "$time" "$app" "$summary"
                 [ -s "$full/$kind-$id" ] &&
                     awk -v s="$summary" 'NR > 3 && !/^Actions: / && NF && $0 != s {
                                              sub(/^[ \t]+/, ""); print "  " $0 }' \

@@ -4,8 +4,10 @@
 ;;; sway-notifications — mako's notifications as lines for fzf
 ;;;
 ;;;   sway-notifications list          one line per notification, tab-separated:
-;;;                                    kind (new|old) id urgency app summary,
-;;;                                    current ones first, newest first; writes
+;;;                                    kind (new|old) id urgency app summary
+;;;                                    time ("14:05" today, "11 Nov 14:05"
+;;;                                    before, "" if not logged), newest first,
+;;;                                    current and history together; writes
 ;;;                                    the full text of each to
 ;;;                                    $XDG_RUNTIME_DIR/sway-notifications/KIND-ID
 ;;;   sway-notifications actions ID    "key<TAB>label" per action of a current one
@@ -140,24 +142,37 @@
           (format port "~%Actions: ~a~%"
                   (string-join (map cdr actions) ", ")))))))
 
+(define (arrival-time epoch)            ;"14:05" today, else "11 Nov 14:05"
+  (if (not epoch)
+      ""
+      (let ((t (localtime epoch))
+            (now (localtime (current-time))))
+        (strftime (if (and (= (tm:yday t) (tm:yday now))
+                           (= (tm:year t) (tm:year now)))
+                      "%H:%M" "%d %b %H:%M")
+                  t))))
+
 (define (list-notifications)
   (let ((dir (cache-dir)))
     (unless (file-exists? dir) (mkdir dir #o700))
     (for-each (lambda (f) (unless (member f '("." "..")) (delete-file (string-append dir "/" f))))
               (scandir* dir)))
-  (for-each
-   (match-lambda
-     ((kind . ns)
-      (for-each (lambda (n)
-                  (write-full! kind n)
-                  (format #t "~a\t~a\t~a\t~a\t~a~%" kind (field n "id") (urgency n)
-                          (one-line (field n "app-name"))
-                          (one-line (field n "summary"))))
-                ns)))
-   ;; Newest first: mako lists the current ones newest first and the
-   ;; history oldest first.
-   (list (cons "new" (mako-call "ListNotifications"))
-         (cons "old" (reverse (mako-call "ListHistory"))))))
+  (let ((times (arrivals))
+        (id (lambda (entry) (or (string->number (field (cdr entry) "id")) 0))))
+    (for-each
+     (match-lambda
+       ((kind . n)
+        (write-full! kind n)
+        (format #t "~a\t~a\t~a\t~a\t~a\t~a~%" kind (field n "id") (urgency n)
+                (one-line (field n "app-name"))
+                (one-line (field n "summary"))
+                (arrival-time (assoc-ref times (field n "id"))))))
+     ;; Newest first: mako numbers notifications as they come, current
+     ;; and history alike (author, 2026-11-12: the history came oldest
+     ;; first).
+     (sort (append (map (lambda (n) (cons "new" n)) (mako-call "ListNotifications"))
+                   (map (lambda (n) (cons "old" n)) (mako-call "ListHistory")))
+           (lambda (a b) (> (id a) (id b)))))))
 
 (define (scandir* dir)
   (let ((d (opendir dir)))
