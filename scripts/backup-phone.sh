@@ -20,6 +20,11 @@
 #   /var/lib/pro1x-clock       the clock's offset to the RTC
 #   /etc/ssh                   host keys (the PC keeps trusting the phone)
 #                              and root's authorized keys
+#   Waydroid, if set up        asked (PRO1X_WAYDROID answers): "data", its
+#                              apps and accounts (~/.local/share/waydroid,
+#                              in the home), the default; "all", also the
+#                              Android image (/var/lib/waydroid, about 2 GB,
+#                              not its download cache); "none", neither
 # PRO1X_EXCLUDE leaves more of the home out: paths relative to it, separated by
 # spaces (PRO1X_EXCLUDE=.mail: mail that can be synced again from the PC).
 # Not saved: /etc/shadow (passwords: set them again with passwd), the store
@@ -30,7 +35,11 @@
 #
 # Close the browser first: a running LibreWolf or Firefox writes its profile
 # while tar reads it, and the copy can come back broken.  The script refuses
-# while one runs (PRO1X_FORCE=1 to go on).
+# while one runs (PRO1X_FORCE=1 to go on), and so for Android while Waydroid
+# runs (`waydroid session stop').
+#
+# With "data" only, the restored phone needs the image again before Android
+# starts: `sudo waydroid init', with `-s GAPPS' if it had Google Play.
 #
 # Restore is for a freshly flashed phone, before using it: it writes over the
 # same paths.  Then deploy (scripts/deploy.sh: the restored config.scm),
@@ -45,7 +54,7 @@
 # new key) needs a separate known_hosts entry, or `ssh-keygen -R HOST` first.
 #
 # Environment: PRO1X_USER (default user), PRO1X_LOGIN (default root),
-# PRO1X_FORCE, PRO1X_EXCLUDE.
+# PRO1X_FORCE, PRO1X_EXCLUDE, PRO1X_WAYDROID (data, all or none).
 #
 # State: the same commands, by hand, backed up and restored the author's
 # phone across the first encrypted flash (2026-11-05).  The script's backup
@@ -87,8 +96,36 @@ case "$cmd" in
                       pgrep -x -u $user -l \$n && r=0; done; exit \$r"; then
             die "close the browser on the phone first (PRO1X_FORCE=1 to go on)"
         fi
+        # Waydroid: its rootfs is mounted while Android runs.
+        waydroid=none
+        if phone "[ -d /var/lib/waydroid/rootfs ]"; then
+            if [[ -z "${PRO1X_FORCE:-}" ]] &&
+               phone "mountpoint -q /var/lib/waydroid/rootfs"; then
+                die "stop Android on the phone first: waydroid session stop (PRO1X_FORCE=1 to go on)"
+            fi
+            waydroid="${PRO1X_WAYDROID:-}"
+            if [[ -z "$waydroid" ]]; then
+                size=$(phone "du -sh --exclude=cache_http /var/lib/waydroid | cut -f1")
+                echo "Waydroid is set up.  Save it too?"
+                echo "  data  its apps and accounts (the default)"
+                echo "  all   also the Android image ($size; else downloaded again)"
+                echo "  none  neither"
+                read -r -p "> " waydroid
+                waydroid="${waydroid:-data}"
+            fi
+            case "$waydroid" in
+                data|all|none) ;;
+                *) die "PRO1X_WAYDROID: data, all or none, not $waydroid" ;;
+            esac
+        fi
         excludes=
         for e in ${PRO1X_EXCLUDE:-}; do excludes+=" --exclude=home/$user/${e#/}"; done
+        if [[ "$waydroid" == all ]]; then
+            paths+=(var/lib/waydroid)
+            excludes+=" --exclude=var/lib/waydroid/cache_http --exclude=var/lib/waydroid/overlay_work"
+        elif [[ "$waydroid" == none ]]; then
+            excludes+=" --exclude=home/$user/.local/share/waydroid"
+        fi
         umask 077
         echo "==> Saving the phone's data to $out…"
         # As the user: run as root, flatpak made root-owned files in the
@@ -110,6 +147,8 @@ case "$cmd" in
         for p in home/"$user"/.config etc/ssh; do
             grep -q "^$p/" <<< "$list" || echo "    [warn] nothing under $p" >&2
         done
+        [[ "$waydroid" == data ]] &&
+            echo "    Waydroid: apps and accounts only; after a restore, sudo waydroid init first."
         echo "Done.  Keep $out private: it holds Wi-Fi passwords and keys." ;;
     restore)
         in="${1:?usage: backup-phone.sh restore FILE [HOST]}"
@@ -151,7 +190,9 @@ Done.  Next:
      and Guix Home, if there is a config for it:
        guix home reconfigure ~/guix-home-config.scm
   4. passwd                            (the password is still the default)
-  5. log out and in, or reboot
+  5. if the backup has Waydroid's apps but not its image:
+       sudo waydroid init               (-s GAPPS if it had Google Play)
+  6. log out and in, or reboot
 EOF
         ;;
     *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
