@@ -670,8 +670,9 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      ;; Fingerprints: the TA's supplicant and loader, pro1x-fpd; at boot,
      ;; on the generation's own kernel only.
      (service pro1x-fingerprint-service-type)
-     ;; Waydroid: `sudo waydroid init' (add `-s GAPPS' for Google's apps)
-     ;; downloads the Android image; D-Bus starts the container.
+     ;; Waydroid: the Android image is downloaded from quick actions, or by
+     ;; `sudo waydroid init' (add `-s GAPPS' for Google's apps); D-Bus starts
+     ;; the container.
      (service waydroid-service-type)
      (service pro1x-rootfs-resize-service-type)
      ;; Snapshots of /home with btrbk, on a btrfs root.

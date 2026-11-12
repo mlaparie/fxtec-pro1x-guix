@@ -187,7 +187,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                )))
   ;;    The port's other services, also inside modify-services.  Each needs its module
   ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors,
-  ;;    boot, audio.
+  ;;    boot, audio, waydroid.
   ;;    (pro1x-boot-menu-service-type
   ;;     config => (pro1x-boot-menu-configuration
   ;;                (inherit config)
@@ -221,6 +221,11 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config)
   ;;                (address \"172.16.42.1\")      ; the phone over USB
   ;;                (prefix 24)))
+  ;;    (waydroid-service-type
+  ;;     config => (waydroid-configuration
+  ;;                (inherit config)
+  ;;                (multi-windows? #f)))        ; #t: a window per Android app
+  ;;    Or (delete waydroid-service-type): no Waydroid.
   ;;    (pro1x-modem-service-type
   ;;     config => (pro1x-modem-configuration
   ;;                (inherit config)

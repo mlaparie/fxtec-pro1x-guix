@@ -91,6 +91,21 @@ Keyboard: `pro1x-keyboard-configuration` in `(fxtec-pro1x services
 keyboard)`; hardware: `pro1x-hardware-configuration` in `(fxtec-pro1x
 services hardware)`.
 
+Waydroid: `waydroid-configuration` in `(fxtec-pro1x services waydroid)`.
+
+| field | default | |
+|---|---|---|
+| `multi-windows?` | `#f` | `#t` opens each Android app in a window of its own; `#f` shows all of Android in one window |
+
+```scheme
+(waydroid-service-type
+ config => (waydroid-configuration (inherit config) (multi-windows? #t)))
+```
+
+`(delete waydroid-service-type)` in `modify-services` leaves Waydroid out;
+a downloaded Android image stays in `/var/lib/waydroid` until removed by
+hand.
+
 Root SSH: deploys keep the PC's key in root's keys whatever this file
 says; `#:root-ssh-keys` matters only for root SSH after an on-phone
 reconfigure.

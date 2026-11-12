@@ -10,8 +10,10 @@ requests; the author re-ranks.  Older dated notes are under History, newest firs
 TODO.md before 2026-11-11 is in git history.
 
 * State on the phone
-- 2026-11-12: generation 29, from =dev= 834804d, kernel 7.3.0 with the QSEECOM fixes from
-  CI run 43071407700 (b633813); generation 27 (=main= 1efc6f3) is the fallback.  Encrypted btrfs root since the reflash of 2026-11-08 (generation
+- 2026-11-12: generation 33, from =dev= 15df2cc (Waydroid, its quick-actions menu), kernel
+  7.3.0 with the QSEECOM fixes from CI run 43071407700 (b633813); generation 27 (=main=
+  1efc6f3) is the fallback.  Waydroid's GAPPS image is downloaded (=waydroid init -s
+  GAPPS=, 2026-11-12); Android not started yet.  Encrypted btrfs root since the reflash of 2026-11-08 (generation
   1 there): =/home= a subvolume, hourly btrbk snapshots, =pro1x-rootfs-compress= done,
   mounted =compress=zstd:1=.
 - Release: v0.4.0 (=main= 5719006), CI run 43050723557.
@@ -33,6 +35,16 @@ Polling a lit lock screen costs about 15 % of one core (2.9 s of CPU in 20 s, me
 gtklock runs (author's wish).
 *** TODO [#B] Recover a dead TA instance (restart the loader, then pro1x-fpd) by itself
 *** TODO [#C] Match rate (moWerk: about one touch in three)
+** Waydroid
+*** WAIT [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
+Packaged after phodina's Guix series (bug #51737); image downloaded.  Not yet started:
+the container under Guix's LXC and cgroup v2, the session in Sway and Phosh, Google
+Play's registration.  Window mode is config.scm's (=waydroid-configuration=).
+*** TODO [#B] Measure Android's cost: running, frozen, off (CPU, battery current)
+*** TODO [#C] Freeze when no Android window is shown; start at login (running or frozen)
+Only if the measurement shows it is worth it.  Android's own "Sleep when unused"
+(=persist.waydroid.suspend=) freezes it already, after its screen timeout.  Phosh here
+has no autostart (no gnome-session).
 ** Calls and modem
 *** TODO [#A] Outgoing calls on 4G take 22-26 s and fall back to 3G
 The author wants calls fixed before the release (2026-11-05).
