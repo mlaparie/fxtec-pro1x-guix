@@ -52,14 +52,29 @@ frozen() {                      # LXC's cgroup for the container (cgroup v2)
     return 1
 }
 
+container_up() { [ -d /sys/fs/cgroup/lxc.payload.waydroid ]; }
+
+# "no session": the container runs but the session (the user's side:
+# notifications, clipboard, app entries) has gone, and Android cannot be
+# shown until a restart.  Seen twice on 2026-11-12, about 30 s after
+# Android was ready; why is not known yet.
 state() {
     if ! set_up; then echo "not set up"
-    elif ! running; then echo off
     elif frozen; then echo frozen
-    else echo running; fi
+    elif running; then echo running
+    elif container_up; then echo "no session"
+    else echo off; fi
 }
 
 [ "${1:-}" = state ] && { state; exit; }
+
+# The session, run by start in Sway: its exit status in the log, and
+# Python's traceback if it crashes.
+if [ "${1:-}" = session ]; then
+    PYTHONFAULTHANDLER=1 waydroid session start >>"$log" 2>&1
+    echo "[$(date +%T)] session ended: exit $?" >>"$log"
+    exit
+fi
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
@@ -81,7 +96,7 @@ hide_menu() { sway-quick-actions --hide; }
 # the container's log show it is moving.  The first boot of an image took
 # about 2 min (2026-11-12).
 start() {
-    swaymsg exec "waydroid session start >>'$log' 2>&1" >/dev/null
+    swaymsg exec "pro1x-waydroid session" >/dev/null
     t0=$(date +%s)
     while :; do
         n=$(( $(date +%s) - t0 ))
@@ -98,9 +113,12 @@ start() {
     tail -n 15 "$log"; pause; return 1
 }
 
-stop() {
+stop() {                        # without a session, it stops the container
     waydroid session stop >>"$log" 2>&1
-    for _ in $(seq 20); do running || return 0; sleep 0.5; done
+    for _ in $(seq 40); do
+        running || container_up || return 0
+        sleep 0.5
+    done
 }
 
 prop() { waydroid prop get "$1" 2>/dev/null | tail -n 1; }
@@ -197,6 +215,11 @@ while :; do
                 start "Start Android" \
                 show "Show Android" \
                 update "Update the Android image" | menu "Waydroid: off") ;;
+        "no session")
+            choice=$(printf '%s\t%s\n' \
+                back "← back" \
+                restart "Restart Android (its session has gone)" \
+                stop "Stop Android" | menu "Waydroid: no session") ;;
         frozen)
             choice=$(printf '%s\t%s\n' \
                 back "← back" \
@@ -223,6 +246,7 @@ while :; do
         show) hide_menu; swaymsg exec "waydroid show-full-ui >>'$log' 2>&1" >/dev/null; break ;;
         start) clear_screen; echo "Starting Android…"; start ;;
         stop) clear_screen; echo "Stopping Android…"; stop ;;
+        restart) clear_screen; echo "Stopping Android…"; stop; start ;;
         freeze) waydroid container freeze >>"$log" 2>&1 ;;
         resume) waydroid container unfreeze >>"$log" 2>&1 ;;
         apps) apps_menu ;;
