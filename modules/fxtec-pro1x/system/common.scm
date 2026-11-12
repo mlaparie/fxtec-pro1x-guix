@@ -221,11 +221,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (inherit config)
   ;;                (address \"172.16.42.1\")      ; the phone over USB
   ;;                (prefix 24)))
-  ;;    (waydroid-service-type
-  ;;     config => (waydroid-configuration
-  ;;                (inherit config)
-  ;;                (multi-windows? #f)))        ; #t: a window per Android app
-  ;;    Or (delete waydroid-service-type): no Waydroid.
+  ;;    (delete waydroid-service-type)        ; no Waydroid
   ;;    (pro1x-modem-service-type
   ;;     config => (pro1x-modem-configuration
   ;;                (inherit config)

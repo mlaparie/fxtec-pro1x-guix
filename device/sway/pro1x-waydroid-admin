@@ -2,8 +2,7 @@
 # pro1x-waydroid-admin — what pro1x-waydroid needs root for, allowed without
 # a password in sudoers (system/mobile.scm).  Its arguments are checked here.
 #
-#   init VANILLA|GAPPS   download the Android image (about 1 GB), then
-#                        apply config.scm's window mode (waydroid-settings)
+#   init VANILLA|GAPPS   download the Android image (about 1 GB)
 #   upgrade              update it
 #   android-id           the ID Google asks for to register the device
 #                        (Android must run, and Google Play opened once)
@@ -17,9 +16,7 @@ waydroid=/run/current-system/profile/bin/waydroid
 case "${1:-}" in
     init)
         case "${2:-}" in
-            VANILLA|GAPPS)
-                "$waydroid" init -s "$2"
-                /run/current-system/profile/bin/herd start waydroid-settings ;;
+            VANILLA|GAPPS) exec "$waydroid" init -s "$2" ;;
             *) echo "init VANILLA or GAPPS" >&2; exit 2 ;;
         esac ;;
     upgrade) exec "$waydroid" upgrade ;;

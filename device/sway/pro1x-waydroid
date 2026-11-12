@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pro1x-waydroid — Waydroid from quick actions: start, freeze or stop
-# Android, show it, open, install or remove its apps.
+# Android, show it, open, install or remove its apps, and its main settings.
 # Opened by Enter or Right on the Waydroid line of sway-quick-actions, inside
 # its window.  Also `pro1x-waydroid state': not set up, off, frozen or
 # running, for that line.
@@ -15,11 +15,12 @@
 # no notifications, syncs or alarms either.  Opening an app or Show Android
 # resumes it.  Stop ends Android; Start boots it again.
 #
-# Sleep when unused is an Android property (persist.waydroid.suspend: the
-# container freezes after Android's screen timeout with no app shown), so
-# it is read and set only while the session runs, and applies at its next
-# start; this menu restarts it.  One window per app or one for all of
-# Android is config.scm's (waydroid-configuration, services/waydroid.scm).
+# Settings are Android properties, so they are read and set only while the
+# session runs, and apply at its next start; this menu restarts it, which
+# closes Android's apps, and their lines say so.
+#   one window per app   persist.waydroid.multi_windows
+#   sleep when unused    persist.waydroid.suspend: the container freezes
+#                        after Android's screen timeout with no app shown
 # Orientation has no setting of its own: Android follows the shape of its
 # window, so the Rotation and Orientation lines fix it.
 #
@@ -189,6 +190,7 @@ while :; do
                 show "Show Android" \
                 stop "Stop Android" | menu "Waydroid: frozen") ;;
         running)
+            multi=$(prop persist.waydroid.multi_windows)
             idle=$(prop persist.waydroid.suspend)
             choice=$({
                 printf 'back\t← back\n'
@@ -197,7 +199,8 @@ while :; do
                 printf 'install\tInstall an APK…\n'
                 printf 'freeze\tFreeze (no CPU, nothing arrives)\n'
                 printf 'stop\tStop Android\n'
-                printf 'idle\tSleep when unused: %s\n' "$(onoff "$idle")"
+                printf 'multi\tOne window per app: %s   (restarts Android)\n' "$(onoff "$multi")"
+                printf 'idle\tSleep when unused: %s   (restarts Android)\n' "$(onoff "$idle")"
                 gapps && printf 'google\tGoogle registration ID…\n'
                 printf 'update\tUpdate the Android image\n'
             } | menu "Waydroid: running") ;;
@@ -210,6 +213,7 @@ while :; do
         resume) waydroid container unfreeze >>"$log" 2>&1 ;;
         apps) apps_menu ;;
         install) install_apk ;;
+        multi) toggle_prop persist.waydroid.multi_windows ;;
         idle) toggle_prop persist.waydroid.suspend ;;
         google) google_id ;;
         update)
