@@ -157,7 +157,9 @@ case "${1:-}" in
     # pro1x-menu key drives it on the sublists' socket.
     --tool)
         export PRO1X_TOOL_SOCK="$rt/pro1x-quick-actions-ask.sock"
-        "pro1x-$2"
+        # The system's, not this resident copy's own: it stays from login,
+        # and a deploy's new tool would otherwise wait for the next one.
+        "/run/current-system/profile/bin/pro1x-$2"
         rm -f "$PRO1X_TOOL_SOCK"
         exit ;;
     --resident)                 # Sway config, at login: start it hidden

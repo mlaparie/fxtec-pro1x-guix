@@ -123,6 +123,14 @@ stop() {                        # without a session, it stops the container
 
 prop() { waydroid prop get "$1" 2>/dev/null | tail -n 1; }
 
+# `waydroid container freeze' wants root; its container manager freezes and
+# unfreezes for anyone over D-Bus (what `waydroid app launch' does too).
+container() {                   # container Freeze|Unfreeze
+    gdbus call --system --dest id.waydro.Container \
+        --object-path /ContainerManager \
+        --method "id.waydro.ContainerManager.$1" >>"$log" 2>&1
+}
+
 toggle_prop() {                 # toggle_prop KEY: true <-> false, then restart
     if [ "$(prop "$1")" = true ]; then v=false; else v=true; fi
     waydroid prop set "$1" "$v" >>"$log" 2>&1
@@ -227,6 +235,8 @@ while :; do
                 show "Show Android" \
                 stop "Stop Android" | menu "Waydroid: frozen") ;;
         running)
+            # Two Android properties to read first, a second or two.
+            clear_screen; echo "Reading Android's settings…"
             multi=$(prop persist.waydroid.multi_windows)
             idle=$(prop persist.waydroid.suspend)
             choice=$({
@@ -247,8 +257,8 @@ while :; do
         start) clear_screen; echo "Starting Android…"; start ;;
         stop) clear_screen; echo "Stopping Android…"; stop ;;
         restart) clear_screen; echo "Stopping Android…"; stop; start ;;
-        freeze) waydroid container freeze >>"$log" 2>&1 ;;
-        resume) waydroid container unfreeze >>"$log" 2>&1 ;;
+        freeze) container Freeze ;;
+        resume) container Unfreeze ;;
         apps) apps_menu ;;
         install) install_apk ;;
         multi) toggle_prop persist.waydroid.multi_windows ;;
