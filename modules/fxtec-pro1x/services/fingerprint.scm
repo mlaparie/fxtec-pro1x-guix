@@ -23,6 +23,7 @@
   #:use-module (fxtec-pro1x packages fingerprint)
   #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
+  #:use-module (gnu services dbus)
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
   #:use-module (guix records)
@@ -87,7 +88,17 @@ the current generation first~%")
       (stop #~(make-kill-destructor))
       ;; INIT must be the first command of an app instance: after a crash,
       ;; restart qsee-app-loader-mafp first.
-      (respawn? #f)))))
+      (respawn? #f))
+     (shepherd-service
+      (provision '(pro1x-fprintd))
+      (requirement '(pro1x-fpd dbus-system))
+      (documentation "fprintd's D-Bus interface over pro1x-fpd (GNOME Settings)")
+      (auto-start? autostart?)
+      (start
+       #~(make-forkexec-constructor
+          (list #$(file-append pro1x-fprintd "/bin/pro1x-fprintd"))
+          #:log-file "/var/log/pro1x-fprintd.log"))
+      (stop #~(make-kill-destructor))))))
 
 (define pro1x-fingerprint-service-type
   (service-type
@@ -95,8 +106,11 @@ the current generation first~%")
    (extensions
     (list (service-extension shepherd-root-service-type
                              pro1x-fingerprint-shepherd-services)
+          ;; Its bus policy is fprintd's: root owns net.reactivated.Fprint.
+          (service-extension dbus-root-service-type
+                             (const (list pro1x-fprintd)))
           (service-extension profile-service-type
-                             (const (list qsee-supplicant pro1x-fpd
+                             (const (list qsee-supplicant pro1x-fpd pro1x-fprintd
                                           gtklock-fingerprint-module)))))
    (default-value (pro1x-fingerprint-configuration))
    (description "Services for the Pro1X's fingerprint trusted app.")))

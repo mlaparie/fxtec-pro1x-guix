@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The one key of GDM's org.gnome.login-screen that GNOME Settings reads:
+     its Users page shows the fingerprint row only when it is true.  GDM is
+     not on this system; with GDM installed, use its schema instead. -->
+<schemalist>
+  <schema id="org.gnome.login-screen" path="/org/gnome/login-screen/">
+    <key name="enable-fingerprint-authentication" type="b">
+      <default>true</default>
+      <summary>Whether to allow fingerprint readers for login</summary>
+    </key>
+  </schema>
+</schemalist>

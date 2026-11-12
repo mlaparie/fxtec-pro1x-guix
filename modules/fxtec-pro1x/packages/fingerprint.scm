@@ -8,6 +8,7 @@
 (define-module (fxtec-pro1x packages fingerprint)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages kernel)
+  #:use-module (gnu packages glib)
   #:use-module (gnu packages gtk)
   #:use-module (gnu packages pkg-config)
   #:use-module (guix build-system copy)
@@ -220,4 +221,47 @@ QSEE, and serves them on a Unix socket; the same program is its client.")
     (description
      "This gtklock module unlocks the screen when pro1x-fpd matches an
 enrolled finger; the password keeps working.")
+    (license license:gpl3+)))
+
+;;; pro1x-fprintd: fprintd's D-Bus interface over pro1x-fpd, for GNOME
+;;; Settings' Users page (enrol, list, delete) and other fprintd clients.
+;;; Also installs a one-key org.gnome.login-screen schema: GNOME Settings
+;;; shows its fingerprint row only when enable-fingerprint-authentication
+;;; is true, and that schema is GDM's, which this system does not have.
+(define-public pro1x-fprintd
+  (package
+    (name "pro1x-fprintd")
+    (version "0.1")
+    (source (local-file (repository-file "device/fingerprint/pro1x-fprintd")
+                        "pro1x-fprintd"
+                        #:recursive? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:tests? #f
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (replace 'build
+                 (lambda _
+                   (invoke "sh" "-c"
+                           (string-append
+                            #$(cc-for-target) " -std=gnu11 -O2 -Wall"
+                            " -o pro1x-fprintd pro1x-fprintd.c"
+                            " $(pkg-config --cflags --libs gio-unix-2.0)"))))
+               (replace 'install
+                 (lambda _
+                   (install-file "pro1x-fprintd" (string-append #$output "/bin"))
+                   (install-file "net.reactivated.Fprint.conf"
+                                 (string-append #$output "/etc/dbus-1/system.d"))
+                   (install-file "org.gnome.login-screen.gschema.xml"
+                                 (string-append #$output
+                                                "/share/glib-2.0/schemas")))))))
+    (native-inputs (list pkg-config))
+    (inputs (list glib))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "fprintd's D-Bus interface for the Pro1X's fingerprint reader")
+    (description
+     "pro1x-fprintd answers fprintd's D-Bus interface (net.reactivated.Fprint)
+with pro1x-fpd, so that GNOME Settings and other fprintd clients enrol, list
+and delete fingers on the Pro1X's sensor.")
     (license license:gpl3+)))
