@@ -108,8 +108,8 @@ suspend, deep sleep, charging (it goes above the charge limit).
 
 ## Not yet
 
-LTE, GPS, speakerphone and mute in calls, headphones, light sensor,
-suspend.  Details: [README](../README.md#port-status),
+Mute in calls, outgoing VoLTE calls, a GPS app, video decoding,
+headphones, NFC.  Details: [README](../README.md#port-status),
 [TODO.org](../TODO.org).
 
 ## How it is run

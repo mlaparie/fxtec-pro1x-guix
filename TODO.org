@@ -93,7 +93,7 @@ Guix fixed it upstream on 2026-11-09 (PR 12277); keep our locale patch.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
-*** TODO [#B] Proximity (screen off in calls), light, gyroscope
+*** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
 *** TODO [#C] Video decoding on Venus (needs an SM6115 video-codec DT node)

@@ -1,6 +1,7 @@
 > **Developer preview.**  Calls, SMS, MMS, mobile data, Wi-Fi, audio,
-> cameras and sensors work; GPS, speakerphone and suspend do not yet
-> (status below).  Do not flash this on a device you depend on.
+> cameras, sensors, GPS and suspend work; mute in calls and outgoing
+> VoLTE calls do not yet (status below).  Do not flash this on a device
+> you depend on.
 
 # Guix System on the F(x)tec Pro¹x (QX1050)
 
@@ -50,22 +51,25 @@ Earpiece                         Working    in calls
 Headphones                       Untested
 Microphones                      Working    in calls
 Vibration motor                  Working    feedbackd
-Calls                            Partial    both directions, earpiece and speaker; on 4G through VoLTE (81voltd); mute has no effect yet
+Calls                            Partial    both directions, earpiece and speaker; mute has no effect yet
+VoLTE                            Partial    81voltd; incoming calls on 4G; outgoing ones fall back to 3G after 22-26 s
 SMS                              Working    Chatty
 MMS                              Working    mmsd-tng + Chatty
 Mobile data                      Working    3G and 4G
 Rear and front cameras           Partial    preview and photos in GNOME Snapshot; very early (focus, exposure, rotation)
 Accelerometer                    Working    SSC via hexagonrpcd + libssc + iio-sensor-proxy 3.9
 Proximity sensor                 Working    calls (Sway), no wake in a pocket
-Light sensor, gyroscope          Untested
+Light sensor, gyroscope          Working
 Battery                          Working    UPower: level and charging state in Phosh
 Screen dimming, blank, lock      Working    dim at 150 s, off at 180 s, locked 2 min later (configurable)
 Double tap to wake               Working    not in a pocket (configurable)
 Fingerprint reader               Working    unlocks the lock screen while it is lit; fingers in quick actions (Sway), GNOME Settings (Phosh)
 Android apps (Waydroid)          Working    LineageOS 20, with or without Google Play; quick actions' Waydroid menu
-Suspend                          Untested
-GPS                              Not yet    modem's location service gives no NMEA (see TODO.org)
-NFC, video codecs                Untested
+Suspend                          Working    calls and SMS wake it
+GPS                              Working    no GPS or map app packaged yet
+Video encoding (Venus)           Working    hardware H.264 for screen streaming: 26 fps at 720p, 16 at 1920
+Video decoding (Venus)           Untested
+NFC                              Untested
 Full-disk encryption             Working    flash.sh --encrypt (first flashed 2026-11-05)
 ```
 
