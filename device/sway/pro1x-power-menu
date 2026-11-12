@@ -1,6 +1,6 @@
 #!/bin/sh
 # pro1x-power-menu — long press on the power key: cancel, lock, blank
-# screen, suspend, hibernate, reboot, power off (fzf, floating
+# screen, suspend, hibernate, log out, reboot, power off (fzf, floating
 # foot window)
 #
 #   pro1x-power-menu              open the menu
@@ -35,7 +35,7 @@ esac
 # The menu's lines.  (The CPU mode is a quick actions line: author.)
 if [ "${1:-}" = --lines ]; then
     printf '%s\n' "Cancel" "Lock screen" "Lock and suspend" "Blank screen" \
-           "Suspend" "Hibernate" "Reboot" "Power off"
+           "Suspend" "Hibernate" "Log out" "Reboot" "Power off"
     exit
 fi
 hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null; }
@@ -59,6 +59,8 @@ case "$choice" in
     # which closing this window must not cut short.
     "Suspend") setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
     "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
+    # Ends Sway and its apps; greetd shows tuigreet again.
+    "Log out") swaymsg exit >/dev/null ;;
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
     "Power off") sudo -n /run/current-system/profile/sbin/halt ;;
 esac
