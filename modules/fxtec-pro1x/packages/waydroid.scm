@@ -19,6 +19,7 @@
   #:use-module (gnu packages bison)
   #:use-module (gnu packages dns)
   #:use-module (gnu packages flex)
+  #:use-module (gnu packages gawk)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages pkg-config)
@@ -190,12 +191,14 @@ binder library that Waydroid talks to Android with.")
                 (substitute* (find-files (string-append #$output "/share/applications")
                                          "\\.desktop$")
                   (("/usr/bin/waydroid") (string-append #$output "/bin/waydroid")))
-                ;; The network script runs dnsmasq, ip and nft.
+                ;; The network script runs dnsmasq, ip and nft, awk and
+                ;; getent.
                 (wrap-program (string-append lib "/data/scripts/waydroid-net.sh")
                   `("PATH" ":" prefix
                     ,(map (lambda (p) (string-append p "/bin"))
                           (list #$coreutils #$dnsmasq #$iproute #$nftables
-                                #$kmod #$util-linux)))
+                                #$kmod #$util-linux #$gawk
+                                #$glibc)))
                   `("PATH" ":" prefix
                     ,(map (lambda (p) (string-append p "/sbin"))
                           (list #$dnsmasq #$iproute #$nftables #$kmod)))))))
@@ -220,6 +223,7 @@ binder library that Waydroid talks to Android with.")
      (list bash-minimal
            coreutils
            dnsmasq
+           gawk
            iproute
            kmod
            lxc

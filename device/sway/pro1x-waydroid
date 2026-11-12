@@ -76,11 +76,25 @@ gapps() { grep -q '^system_ota = .*GAPPS' /var/lib/waydroid/waydroid.cfg 2>/dev/
 
 hide_menu() { sway-quick-actions --hide; }
 
-# In Sway, not in this window: the session outlives the menu.
+# In Sway, not in this window: the session outlives the menu.  Done when
+# Android has booted (sys.boot_completed); meanwhile the time and the end of
+# the container's log show it is moving.  The first boot of an image took
+# about 2 min (2026-11-12).
 start() {
     swaymsg exec "waydroid session start >>'$log' 2>&1" >/dev/null
-    for _ in $(seq 60); do running && return 0; sleep 0.5; done
-    clear_screen; echo "Android did not start; the end of $log:"; echo
+    t0=$(date +%s)
+    while :; do
+        n=$(( $(date +%s) - t0 ))
+        if running && [ "$(prop sys.boot_completed)" = 1 ]; then return 0; fi
+        [ "$n" -lt 300 ] || break
+        clear_screen
+        if running; then echo "Android is booting… ${n} s"
+        else echo "Starting the container… ${n} s"; fi
+        echo
+        tail -n 12 /var/lib/waydroid/waydroid.log 2>/dev/null | cut -c 1-"$(tput cols)"
+        sleep 2
+    done
+    clear_screen; echo "Android did not start in 5 min; the end of $log:"; echo
     tail -n 15 "$log"; pause; return 1
 }
 
