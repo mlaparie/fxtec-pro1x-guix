@@ -18,8 +18,69 @@ session; F12 for shutdown and reboot):
 
 - Keyboard out: landscape, rotation locked, keyboard light on until 60 s
   without a key.  Keyboard in: auto-rotation (if on in quick actions).
-- Fn layer (F(x) key): F1-F12, media, brightness, page keys; layout in the
-  [README](../README.md#keyboard).
+- Fn layer (F(x) key): F1-F12, media, brightness, page keys; layout
+  below.
+
+### Keymap
+
+Layout: US international (`us` + `intl`).  The keys that differ from a PC
+keyboard are remapped by keyd (`device/input/keyd.conf`), after the Pro1
+keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
+
+```
+ Base layer: what each key types (keyd, then us-intl)
+ ─────────────────────────────────────────────────────────────────────
+  esc  1    2    3    4    5    6    7    8    9    0    -    =    bspc
+  tab  q    w    e    r    t    y    u    i    o    p    [    ]    del
+    caps a    s    d    f    g    h    j    k    l    ?:   '    ret
+  sft  `~   z    x    c    v    b    n    m    ,    .    /|   up   sft
+  ctl  sup  fx   alt  \|   spc ──────────────  ctl  sup  lft  down rght
+
+ Fn layer: hold fx (· = as in the base layer)
+ ─────────────────────────────────────────────────────────────────────
+  ·    f1   f2   f3   f4   f5   f6   f7   f8   f9   f10  f11  f12  sclk
+  ·    ·    wlan ·    ·    ·    ·    ·    ·    ·    \    bri- bri+ ins
+    ·    ·    ·    ·    ·    ·    ·    ·    ·    ;    play mute menu
+  ·    ·    ·    ·    ·    ·    bt   ·    ·    vol- vol+ |    pgup ·
+  ·    ·    fx   ·    agr  · ────────────────  ·    ·    home pgdn end
+
+  sup   yellow slant arrows: Super, the sway modifier ($mod)
+  fx    F(x) key: hold for the Fn layer
+  \|    key labelled Sym: \ (Shift: |); with fx it is AltGr (agr),
+        so fx+Sym+letter types é, ñ etc. on us-intl
+  ?:    the key right of l types ? (Shift: :)
+  /|    the key left of up types / (Shift: |)
+  ; \ |  on fx+l, fx+p, fx+/ as on the yellow keycaps
+  `~    sends 102nd, remapped to ` (Shift: ~; dead keys on us-intl)
+  wlan, bt   rfkill keys for Wi-Fi and Bluetooth
+  fx+alt+p   screenshot (with Ctrl: a region)
+  bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media
+
+ Sway (Super = yellow arrow); all of them: Super+Ctrl+h
+ ─────────────────────────────────────────────────────────────────────
+  Super+Return, +Shift        terminal (foot server), plain foot
+  Super+q, Super+m, Super+Tab quick actions, launcher, window switcher
+  Super+BackSpace, +Shift+q   close window
+  Super+1…0, Ctrl+Super+1…0   go to / move to workspace; Super+; back
+  Alt/Shift+Super+1…0         numbered scratchpad: put away / bring back
+  Super+arrows, +Shift        focus, move
+  Super+f, Super+space        fullscreen, floating
+  Super+h, Super+v            split vertically, horizontally
+  Super+e, Super+w, Super+r   split layout, tabs, resize mode
+  Super+o, Ctrl+Super+o       window opacity up, down
+  Super+i, Super+b            on-screen keyboard, bar
+  Ctrl+Super+l, both volume keys   lock
+  Super+Shift+r, +Shift+e     reload sway, exit sway
+  Power key, camera button    panel off / on; Snapshot, take a picture
+```
+
+`keyd monitor` (as root) shows what each key sends.
+
+The keyboard backlight is on while the keyboard is slid out and the screen
+is on (service `pro1x-kbd-backlight`).  Sliding the keyboard out with the
+screen off turns the screen on in sway (not yet in Phosh).  To switch the
+light by hand: `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
+stays that way until the next slide or screen change.
 
 ## Screen
 

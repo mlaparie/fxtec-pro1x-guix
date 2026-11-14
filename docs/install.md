@@ -53,7 +53,7 @@ bash scripts/flash.sh --uboot u-boot-nodtb.bin --rootfs rootfs.img
 
 With `--encrypt` (or "yes" when it asks), the root is encrypted (LUKS2):
 the script asks for the passphrase, and the phone asks for it at each
-boot ([README](../README.md#full-disk-encryption-luks2)).
+boot ([develop.md](develop.md#full-disk-encryption-luks2)).
 
 ## 4. First boot
 

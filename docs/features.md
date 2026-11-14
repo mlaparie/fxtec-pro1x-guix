@@ -109,7 +109,7 @@ suspend, deep sleep, charging (it goes above the charge limit).
 ## Not yet
 
 Mute in calls, outgoing VoLTE calls, a GPS app, video decoding,
-headphones, NFC.  Details: [README](../README.md#port-status),
+headphones, NFC.  Details: [README](../README.md#what-works),
 [TODO.org](../TODO.org).
 
 ## How it is run
