@@ -515,7 +515,14 @@ if [ "$portrait" = yes ]; then echo portrait; else echo landscape; fi \
 supervise() {
     tries=${PRO1X_LOCK_TRIES:-0}
     started=$(date +%s)
-    gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &
+    # A retry after a crash keeps its Wayland trace: these crashes come back
+    # within 3 s, so the next one shows which request the compositor refused.
+    if [ "$tries" -gt 0 ]; then
+        WAYLAND_DEBUG=1 gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" \
+            2> "$rt/pro1x-gtklock-crash$tries.trace" &
+    else
+        gtklock -x "$ui" -s "$css" -t '%H:%M' -D '%A %d %B' "$@" &
+    fi
     echo $! > "$rt/pro1x-lock.pid"
     wait $!
     rc=$?
@@ -525,7 +532,8 @@ supervise() {
     esac
     [ $(( $(date +%s) - started )) -lt 30 ] || tries=0
     tries=$((tries + 1))
-    logger -t pro1x-lock "gtklock ended with status $rc (crash $tries)"
+    logger -t pro1x-lock "gtklock ended with status $rc (crash $tries)," \
+        "outputs: $(swaymsg -t get_outputs -r | jq -c '[.[] | {power, transform, rect}]')"
     if [ $tries -lt 3 ]; then
         sleep 0.3
         PRO1X_LOCK_TRIES=$tries exec "$self" --restart
