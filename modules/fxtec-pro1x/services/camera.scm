@@ -13,12 +13,15 @@
   #:use-module (guix records)
   #:export (pro1x-camera-configuration
             pro1x-camera-configuration?
+            pro1x-camera-jpeg-quality
             make-pro1x-camera-configuration
             pro1x-camera-service-type))
 
 (define-record-type* <pro1x-camera-configuration>
   pro1x-camera-configuration make-pro1x-camera-configuration
-  pro1x-camera-configuration?)
+  pro1x-camera-configuration?
+  ;; The camera app's JPEG quality, 1-100 (/etc/pro1x/camera.conf).
+  (jpeg-quality pro1x-camera-jpeg-quality (default 98)))
 
 ;;; /etc/xdg/user-dirs.defaults — system-wide FreeDesktop default XDG dirs.
 ;;; xdg-user-dirs-update reads this on first login to initialise ~/.config/user-dirs.dirs.
@@ -26,6 +29,10 @@
 ;;; Using xdg/ (not skel/) because in Guix, /etc/skel is an immutable store symlink.
 (define (pro1x-camera-etc config)
   (list
+   `("pro1x/camera.conf"
+     ,(plain-file "camera.conf"
+                  (format #f "JPEG_QUALITY=~a~%"
+                          (pro1x-camera-jpeg-quality config))))
    `("xdg/user-dirs.defaults"
      ,(plain-file "user-dirs.defaults"
                   "DESKTOP=Desktop\n\

@@ -102,6 +102,12 @@ a downloaded Android image stays in `/var/lib/waydroid` until removed by
 hand.  Its settings (one window per app, sleep when unused) are Android's,
 in the Waydroid menu of quick actions.
 
+Camera: `pro1x-camera-configuration` in `(fxtec-pro1x services camera)`.
+
+| field | default | |
+|---|---|---|
+| `jpeg-quality` | `98` | the camera app's JPEG quality, 1 to 100 |
+
 Root SSH: deploys keep the PC's key in root's keys whatever this file
 says; `#:root-ssh-keys` matters only for root SSH after an on-phone
 reconfigure.

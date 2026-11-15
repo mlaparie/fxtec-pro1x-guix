@@ -127,6 +127,20 @@ VIDEO_HEIGHT = 720
 # 100 dw9800 steps each); 0 is infinity, 10 is 10 cm.
 LENS_MAX = 10.0
 LENS_STEP = 0.1
+
+
+def jpeg_quality():
+    """config.scm's jpeg-quality (/etc/pro1x/camera.conf), else 98."""
+    try:
+        with open("/etc/pro1x/camera.conf") as f:
+            for line in f:
+                if line.startswith("JPEG_QUALITY="):
+                    return max(1, min(100, int(line.split("=", 1)[1])))
+    except (OSError, ValueError):
+        pass
+    return 98
+
+
 PHOTOS = os.path.join(os.path.expanduser("~"), "Pictures", "Camera")
 VIDEOS = os.path.join(os.path.expanduser("~"), "Videos", "Camera")
 
@@ -1196,7 +1210,7 @@ class Camera(Gtk.Application):
                                    GdkPixbuf.InterpType.BILINEAR)
         os.makedirs(PHOTOS, exist_ok=True)
         path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
-        pix.savev(path, "jpeg", ["quality"], ["92"])
+        pix.savev(path, "jpeg", ["quality"], [str(jpeg_quality())])
         print("capture: saved %s" % path, flush=True)
         return path
 
