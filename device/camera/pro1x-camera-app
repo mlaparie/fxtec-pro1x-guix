@@ -32,6 +32,7 @@
 # balance lock (2026-11-16, need the new kernel and libcamera).
 
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -71,6 +72,13 @@ VIEW_REGION = (3840, 2160)
 # frame, 16:9 and 1:1 parts of it, each full or half size.
 SHAPES = [("16:9", 16 / 9, 1.0), ("4:3", 4 / 3, 1.0), ("1:1", 1.0, 1.0),
           ("16:9", 16 / 9, 0.5), ("4:3", 4 / 3, 0.5), ("1:1", 1.0, 0.5)]
+# 48 MP: the IMX582's whole array without binning, the sensor's remosaic
+# (kernel patch pro1x-imx582-48mp), about 9 frames a second, so only for
+# the photo; offered when the camera has frames that wide.  The software
+# ISP keeps a border: 7992 wide, 4:3.
+SHAPE_48 = ("48 MP", 4 / 3, 1.0)
+STILL_48 = (7992, 5994)
+VIEWS["48 MP"] = VIEWS["4:3"]
 
 # The viewfinder's turn (videoflip method) for each display transform,
 # rear and front: by the display's orientation, not the window's shape (a
@@ -202,6 +210,18 @@ def display_transform():
     return "normal"
 
 
+def max_width(dev):
+    """The widest frame the camera offers: its caps' widths, single or a
+    range, read from their text (without gst-python, GstIntRange cannot be
+    read as a value)."""
+    caps = dev.get_caps()
+    text = caps.to_string() if caps else ""
+    widths = [int(w) for w in re.findall(r"width=\(int\)(\d+)", text)]
+    widths += [int(hi) for hi in
+               re.findall(r"width=\(int\)\[ *\d+, *(\d+)", text)]
+    return max(widths, default=0)
+
+
 def active_area(dev):
     """The pixel array active area (x, y, w, h), or None."""
     props = dev.get_properties()
@@ -228,7 +248,8 @@ class Camera(Gtk.Application):
         self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
         self.lens = 1.0                 # dioptres
-        self.shape = 0                  # in SHAPES
+        self.shape = 0                  # in self.shapes
+        self.shapes = list(SHAPES)      # with 48 MP when the camera has it
         self.flash = "off"
         self.fired = False              # the LED is on for this photo
         self.timer = 0
@@ -420,12 +441,16 @@ class Camera(Gtk.Application):
 
     # ── the pipeline ───────────────────────────────────────────────────
     def view(self):
-        return VIEWS[SHAPES[self.shape][0]]
+        return VIEWS[self.shapes[self.shape][0]]
 
     def start(self, size=None):
         """The viewfinder (videos are a branch added to it later)."""
-        size = size or self.view()
         name, dev = self.cams[self.cam]
+        wide = self.cam == 0 and max_width(dev) >= STILL_48[0]
+        self.shapes = list(SHAPES) + ([SHAPE_48] if wide else [])
+        self.shape %= len(self.shapes)
+        self.show_shape()
+        size = size or self.view()
         self.src = dev.create_element("src")
         self.caps = Gst.ElementFactory.make("capsfilter")
         self.caps.set_property(
@@ -496,7 +521,7 @@ class Camera(Gtk.Application):
         turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
                 "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
                 }.get(self.method(), "none")
-        _, ratio, _ = SHAPES[self.shape]
+        _, ratio, _ = self.shapes[self.shape]
         width = int(VIDEO_HEIGHT * ratio) // 16 * 16
         desc = (
             "queue max-size-buffers=4 leaky=downstream ! videoscale ! "
@@ -708,7 +733,7 @@ class Camera(Gtk.Application):
 
     def photo_region(self, shape=None):
         """The photo's part of the still frame, before its size scale."""
-        name, ratio, _ = SHAPES[self.shape if shape is None else shape]
+        name, ratio, _ = self.shapes[self.shape if shape is None else shape]
         w, h = self.still()
         if name == "16:9" and self.cam == 0:
             w, h = VIEW_REGION
@@ -720,7 +745,7 @@ class Camera(Gtk.Application):
         shape; in a photo's frame, the same part of the scene."""
         if self.size != self.view():
             return self.photo_region()
-        _, ratio, _ = SHAPES[self.shape]
+        _, ratio, _ = self.shapes[self.shape]
         w, h = self.size
         return min(w, h * ratio), min(h, w / ratio)
 
@@ -741,7 +766,7 @@ class Camera(Gtk.Application):
         if self.busy or self.recording:
             return
         before = self.view()
-        self.shape = (self.shape + 1) % len(SHAPES)
+        self.shape = (self.shape + 1) % len(self.shapes)
         self.show_shape()
         if self.pipeline and self.view() != before:
             self.resize(self.view())      # another sensor mode
@@ -750,7 +775,10 @@ class Camera(Gtk.Application):
 
     def show_shape(self):
         """16:9 8 MP: the shape, and the megapixels of the photo."""
-        name, _, scale = SHAPES[self.shape]
+        name, _, scale = self.shapes[self.shape]
+        if name == "48 MP":
+            self.b_shape.set_label("4:3 48 MP")
+            return
         pw, ph = (v * scale for v in self.photo_region())
         self.b_shape.set_label("%s %.0f MP" % (name, pw * ph / 1e6)
                                if pw * ph >= 1.5e6 else
@@ -1145,7 +1173,9 @@ class Camera(Gtk.Application):
         return False
 
     def still(self):
-        return STILL_FRONT if self.cam != 0 else STILL
+        if self.cam != 0:
+            return STILL_FRONT
+        return STILL_48 if self.shapes[self.shape] == SHAPE_48 else STILL
 
     def since(self):
         return "%.2f s" % (time.monotonic() - self.t0)
@@ -1244,7 +1274,7 @@ class Camera(Gtk.Application):
         print("capture: held %s" % held, flush=True)
         if portrait and turn is not None:
             pix = pix.rotate_simple(turn)
-        _, _, scale = SHAPES[self.shape]
+        _, _, scale = self.shapes[self.shape]
         if scale != 1.0:
             pix = pix.scale_simple(int(pix.get_width() * scale),
                                    int(pix.get_height() * scale),
