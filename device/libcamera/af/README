@@ -11,6 +11,12 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
 - 0010-0017: moWerk's (sharpness value, configurable scan, manual AGC,
   AfWindows, gstreamer AfState, refocus rule, crop centring, keeping
   exposure/colour/focus over a camera restart).
+- 0018 (ours): longer exposures, the vertical blanking raised.  Our 0019
+  (faster auto exposure) was dropped: with it, tap to focus at 50 cm
+  never focused (moWerk, 2026-11-08).
+- 0020, 0021 (ours, 2026-11-16): manual lens position (AfModeManual and
+  LensPosition, for a focus slider) and spot metering on the autofocus
+  area (AeMeteringMode spot, for exposure at a tap).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

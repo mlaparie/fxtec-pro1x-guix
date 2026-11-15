@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Sun, 15 Nov 2026 23:05:29 +0100
+Subject: [PATCH 20/21] ipa: simple: af: Manual lens position
+
+AfModeManual kept the scan running: only AfModeAuto held a found focus.
+In manual mode the lens now stays where LensPosition puts it (dioptres,
+about 100 dw9800 steps each on the Pro1X; 0 is the far end), a new
+AfWindows does not move it, and leaving manual starts a new scan. The
+lens position is reported in the metadata in every mode.
+---
+ src/ipa/simple/algorithms/af.cpp | 33 ++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index c7c5ee1..5db95a5 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -7,6 +7,8 @@
+ 
+ #include "af.h"
+ 
++#include <algorithm>
++
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/control_ids.h>
+@@ -19,6 +21,13 @@ namespace ipa::soft::algorithms {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftAf)
+ 
++/*
++ * LensPosition is in dioptres; the lens moves in VCM steps. On the Pro1X's
++ * dw9800 about 100 steps make a dioptre (100: 1 m), and 0 is the far end.
++ */
++static constexpr float kStepsPerDioptre = 100.0f;
++static constexpr float kMaxSteps = 1023.0f;
++
+ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ {
+ 	/* Optional scan parameters, the libipa (IPU3) defaults otherwise */
+@@ -43,6 +52,9 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 		ControlInfo(controls::AfMeteringValues, controls::AfMeteringAuto);
+ 	context.ctrlMap[&controls::AfWindows] =
+ 		ControlInfo(Rectangle{}, Rectangle(0, 0, 65535, 65535), Rectangle{});
++	/* AfModeManual: the lens stays where LensPosition puts it */
++	context.ctrlMap[&controls::LensPosition] =
++		ControlInfo(0.0f, kMaxSteps / kStepsPerDioptre, 0.0f);
+ 
+ 	return 0;
+ }
+@@ -61,8 +73,20 @@ void Af::queueRequest(IPAContext &context,
+ {
+ 	const auto &mode = controls.get(controls::AfMode);
+ 	if (mode && *mode != mode_) {
++		/* Out of manual, a new scan */
++		const bool wasManual = mode_ == controls::AfModeManual;
+ 		mode_ = *mode;
+ 		LOG(IPASoftAf, Debug) << "Focus mode " << mode_;
++		if (wasManual)
++			afAlgo_.restart(context.activeState.af);
++	}
++
++	const auto &position = controls.get(controls::LensPosition);
++	if (mode_ == controls::AfModeManual && position) {
++		auto &af = context.activeState.af;
++		af.focus = static_cast<uint32_t>(
++			std::clamp(*position * kStepsPerDioptre, 0.0f, kMaxSteps) + 0.5f);
++		LOG(IPASoftAf, Debug) << "Lens at " << af.focus;
+ 	}
+ 
+ 	const auto &windows = controls.get(controls::AfWindows);
+@@ -74,6 +98,8 @@ void Af::queueRequest(IPAContext &context,
+ 		return;
+ 
+ 	window_ = window;
++	if (mode_ == controls::AfModeManual)
++		return;
+ 	LOG(IPASoftAf, Debug) << "Focus window " << window_ << ", rescanning";
+ 	afAlgo_.restart(context.activeState.af);
+ }
+@@ -84,6 +110,13 @@ void Af::process(IPAContext &context,
+ 		 const SwIspStats *stats,
+ 		 ControlList &metadata)
+ {
++	metadata.set(controls::LensPosition,
++		     context.activeState.af.focus / kStepsPerDioptre);
++	if (mode_ == controls::AfModeManual) {
++		metadata.set(controls::AfState, controls::AfStateIdle);
++		return;
++	}
++
+ 	/* The stats are computed every few frames only */
+ 	if (!stats->valid || !stats->varianceSamples)
+ 		return;

@@ -1,0 +1,168 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Sun, 15 Nov 2026 23:06:04 +0100
+Subject: [PATCH 21/21] ipa: simple: agc: Spot metering on the autofocus area
+
+AeMeteringMode spot exposes for the autofocus area (AfWindows, mapped by
+the software ISP) instead of the whole frame: a tap in a camera app then
+sets both focus and exposure there. The statistics sum that area's pixel
+values (8 MSBs, all colours) next to its sharpness; the AGC puts their
+mean, above the black level, on its 1..5 mean sample value scale.
+---
+ .../internal/software_isp/swisp_stats.h       |  9 +++++++
+ src/ipa/simple/algorithms/agc.cpp             | 27 ++++++++++++++++++-
+ src/ipa/simple/ipa_context.h                  |  1 +
+ src/libcamera/software_isp/swstats_cpu.cpp    | 11 ++++++++
+ 4 files changed, 47 insertions(+), 1 deletion(-)
+
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index 2f24f91..5573c4c 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -51,6 +51,15 @@ struct SwIspStats {
+ 	 * \brief Number of samples summed up in variance while collecting
+ 	 */
+ 	uint64_t varianceSamples;
++	/**
++	 * \brief Sum of the sampled pixel values in the autofocus area (8 MSBs,
++	 *        all colours), for spot metering
++	 */
++	uint64_t spotSum;
++	/**
++	 * \brief Number of pixels summed up in spotSum
++	 */
++	uint64_t spotSamples;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index c00710a..f979140 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -8,6 +8,7 @@
+ #include "agc.h"
+ 
+ #include <algorithm>
++#include <array>
+ #include <cmath>
+ #include <stdint.h>
+ 
+@@ -74,12 +75,20 @@ int Agc::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+ 	context.ctrlMap[&controls::AnalogueGain] = ControlInfo(1.0f, 64.0f, 1.0f);
+ 	context.ctrlMap[&controls::ExposureTime] = ControlInfo(1, 1000000, 10000);
+ 	context.ctrlMap[&controls::ExposureValue] = ControlInfo(-4.0f, 4.0f, 0.0f);
++	/* Spot metering measures the autofocus area (AfWindows), a tap's spot */
++	static const std::array<ControlValue, 2> metering = {
++		static_cast<int32_t>(controls::MeteringCentreWeighted),
++		static_cast<int32_t>(controls::MeteringSpot),
++	};
++	context.ctrlMap[&controls::AeMeteringMode] =
++		ControlInfo(metering, metering[0]);
+ 
+ 	context.activeState.agc.manualGain = false;
+ 	context.activeState.agc.manualExposure = false;
+ 	context.activeState.agc.manualGainValue = 1.0;
+ 	context.activeState.agc.manualExposureUs = 10000;
+ 	context.activeState.agc.exposureValue = 0.0f;
++	context.activeState.agc.spot = false;
+ 	return 0;
+ }
+ 
+@@ -108,7 +117,11 @@ void Agc::queueRequest(IPAContext &context,
+ 	if (ev)
+ 		agc.exposureValue = *ev;
+ 
+-	if (gainMode || gain || expMode || expTime || ev)
++	const auto &metering = controls.get(controls::AeMeteringMode);
++	if (metering)
++		agc.spot = *metering == controls::MeteringSpot;
++
++	if (gainMode || gain || expMode || expTime || ev || metering)
+ 		LOG(IPASoftExposure, Debug)
+ 			<< "manual gain " << agc.manualGain << " (" << agc.manualGainValue
+ 			<< "), manual exposure " << agc.manualExposure << " ("
+@@ -260,6 +273,18 @@ void Agc::process(IPAContext &context,
+ 
+ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
+ 
++	/*
++	 * Spot metering: the autofocus area's mean, above the black level, put
++	 * on the same 1..5 scale as the histogram's mean sample value.
++	 */
++	if (context.activeState.agc.spot && stats->spotSamples) {
++		const double black = context.activeState.blc.level;
++		const double mean = static_cast<double>(stats->spotSum) / stats->spotSamples;
++		const double x = std::clamp((mean - black) / (256.0 - black), 0.0, 0.999);
++		exposureMSV = static_cast<float>(x * kExposureBinsCount + 0.5);
++		LOG(IPASoftExposure, Debug) << "Spot mean " << mean << ", MSV " << exposureMSV;
++	}
++
+ 	/*
+ 	 * EV compensation moves the target of the mean sample value (bins 1..5):
+ 	 * half a bin per stop, kept inside the histogram.
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 354fa59..01fa3e3 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -64,6 +64,7 @@ struct IPAActiveState {
+ 		double manualGainValue;
+ 		int32_t manualExposureUs;
+ 		float exposureValue;	/* EV compensation in stops */
++		bool spot;		/* AeMeteringMode spot: the autofocus area */
+ 	} agc;
+ 
+ 	struct {
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 1a10dc8..ed36230 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -334,6 +334,7 @@ void SwStatsCpu::sharpness10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const unsigned int start = sharpnessWindow_.x * 5 / 4;
+ 	const unsigned int end = start + sharpnessWindow_.width * 5 / 4;
+ 	uint64_t sum = 0;
++	uint64_t level = 0;
+ 	unsigned int n = 0;
+ 
+ 	for (unsigned int l = 1; l <= 2; l++) {
+@@ -343,12 +344,16 @@ void SwStatsCpu::sharpness10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 			const int d0 = line[x] - line[x + 2];
+ 			const int d1 = line[x + 1] - line[x + 3];
+ 			sum += d0 * d0 + d1 * d1;
++			level += line[x] + line[x + 1] + line[x + 2] + line[x + 3];
+ 			n += 2;
+ 		}
+ 	}
+ 
+ 	stats.variance += sum;
+ 	stats.varianceSamples += n;
++	/* The same area's brightness, for spot metering */
++	stats.spotSum += level;
++	stats.spotSamples += 2 * n;
+ }
+ 
+ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+@@ -429,6 +434,8 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.variance = 0.0;
+ 		s.varianceSamples = 0;
++		s.spotSum = 0;
++		s.spotSamples = 0;
+ 		s.yHistogram.fill(0);
+ 	}
+ }
+@@ -448,11 +455,15 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		sharedStats_->variance = 0.0;
+ 		sharedStats_->varianceSamples = 0;
++		sharedStats_->spotSum = 0;
++		sharedStats_->spotSamples = 0;
+ 		sharedStats_->yHistogram.fill(0);
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
+ 			sharedStats_->variance += s.variance;
+ 			sharedStats_->varianceSamples += s.varianceSamples;
++			sharedStats_->spotSum += s.spotSum;
++			sharedStats_->spotSamples += s.spotSamples;
+ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+ 		}
