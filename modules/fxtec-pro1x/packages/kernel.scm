@@ -55,9 +55,11 @@
         ;; (the template store needs more), and an INOUT request is copied
         ;; back (the TA answers in place).  Without the first two, reading a
         ;; store of several templates hangs the phone.
+        ;; The IMX582's whole array 4x4 binned (1984x1488): a fast 4:3
+        ;; viewfinder that shows all of a 12 MP photo.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
-          "qseecom-listener-rounds" "qseecom-inout"))))
+          "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3"))))
 
 (define-public linux-pro1x
   (package
