@@ -10,8 +10,7 @@
 # (full/quiet/silent), brightness, volume, mute, notifications, operator,
 # GPU monitor (the GPU's clock; Enter or Right opens nvtop in its own
 # window; bpytop is among CPU mode's choices), Waydroid (running, frozen or
-# off; Enter or Right opens pro1x-waydroid), Android notifications (on, or
-# muted, kept across reboots).
+# off; Enter or Right opens pro1x-waydroid).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
 # operator, feedback, CPU mode, charge limit, orientation, keyboard layout, audio output, word
 # completion (several at once), and for
@@ -60,9 +59,6 @@ esac
 torch=/sys/class/leds/white:flash-0/brightness
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
-# There while Android's notifications are muted: mako hides Waydroid's
-# apps (pro1x-mako), and pro1x-notify dismisses them unseen.
-waydroid_muted="$statedir/waydroid-muted"
 autosleep="${XDG_RUNTIME_DIR:-/tmp}/pro1x-autosleep"     # nor this: minutes or off
 airplane_state="$statedir/airplane"     # on or off
 airplane_saved="$statedir/airplane-saved"   # lines: RADIO BEFORE AT-ENTRY
@@ -1066,7 +1062,6 @@ lines() {
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
         "stream      Stream               $(stream_state)" \
         "waydroid    Waydroid             $(dim "$(cat "$d/waydroid")")" \
-        "andnotif    Android notifications $(dim "$(state_of andnotif)")" \
         "wwan        Mobile data          $mobile" \
         "roaming     Roaming              $(dim "$(roaming)")" \
         "operator    Operator             $(operator_shown "$kv")" \
@@ -1176,10 +1171,6 @@ set_to() {
         airplane)
             if [ "$2" = on ]; then airplane_enter; else airplane_leave; fi ;;
         rotation) sway-autorotate "$2" ;;
-        andnotif)
-            mkdir -p "$statedir"
-            if [ "$2" = on ]; then rm -f "$waydroid_muted"; else : > "$waydroid_muted"; fi
-            pro1x-mako --reload >/dev/null 2>&1 ;;
         caffeine)
             [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
             echo "$2" > "$caffeine"
@@ -1227,7 +1218,6 @@ state_of() {                    # state_of <setting>: on or off
         airplane) airplane_now ;;
         rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;
-        andnotif) [ -e "$waydroid_muted" ] && echo off || echo on ;;
         torch) [ "$(cat "$torch" 2>/dev/null)" -gt 0 ] 2>/dev/null && echo on || echo off ;;
         mute) case "$(volume)" in *muted) echo on ;; *) echo off ;; esac ;;
         osk) [ "$(osk_state)" = shown ] && echo on || echo off ;;
@@ -1577,12 +1567,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   feedback|wwan|operator|orient|cpu|charge|autosleep|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|andnotif|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
                   feedback|wwan|operator|orient|cpu|charge|autosleep|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
-                  wifi|bluetooth|airplane|caffeine|andnotif|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
