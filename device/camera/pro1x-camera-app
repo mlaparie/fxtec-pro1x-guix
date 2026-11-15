@@ -5,13 +5,15 @@
 # libcamerasrc to the 12 MP mode (4000x3000), lets exposure and focus
 # settle, keeps one frame and saves it as JPEG in ~/Pictures/Camera, then
 # goes back to the viewfinder (moWerk's "small viewfinder, photo at full
-# resolution", jolla-camera on SailfishOS).  Tap: focus there (af-windows,
-# mapped to pixel array coordinates as moWerk's camerabin patch does).
+# resolution", jolla-camera on SailfishOS).  Tap: focus and exposure there
+# (af-windows, mapped to pixel array coordinates as moWerk's camerabin
+# patch does; spot metering).  Manual focus with a slider.  Photo shapes
+# 16:9, 4:3 and 1:1, full or half size, shown as such in the viewfinder.
 # ISO (manual analogue gain, or auto), exposure compensation, the white
 # LED as flash (off, on, auto, torch), a 3 or 10 s timer, digital zoom (a
-# pinch, or 1x, 2x, 4x), front and rear cameras.  Video mode: 720p H.264
-# on the phone's encoder with the microphone, in ~/Videos/Camera.  The
-# frames turn with the panel.  SIGUSR1 presses the shutter (the camera
+# pinch, or 1x, 2x, 4x), front and rear cameras.  Video mode: H.264 720
+# rows high on the phone's encoder with the microphone, in ~/Videos/Camera.
+# The frames turn with the panel.  SIGUSR1 presses the shutter (the camera
 # button, pro1x-camera).
 #
 # Why not Snapshot: it reads PipeWire's 1080p stream, sets no focus, ISO
@@ -22,8 +24,10 @@
 #
 # State: photos, focus, ISO and flash used on the phone since 2026-11-02.
 # Flash modes, timer, zoom presets, video and the button rows: used by the
-# author on 2026-11-16.  Pinch (raw touches), the video's frame rate and
-# its kept focus: changed after that, the frame rate tested headless.
+# author on 2026-11-16.  Then rewritten, not yet run in the app: pinch (raw
+# touches), recording into the running viewfinder (its pipeline tested
+# headless, two recordings closed cleanly), focus held in auto mode, manual
+# focus, spot exposure, photo shapes.
 
 import os
 import signal
@@ -51,6 +55,18 @@ STILL = (3968, 2976)
 # came ("No frame from the camera", no photo; author, 2026-11-02).  4:3,
 # inside its array and the software ISP's border.
 STILL_FRONT = (3200, 2400)
+# The viewfinder's 16:9 view in a photo's frame.  The IMX582's fast mode
+# reads the full width but only 2160 of the 12 MP mode's 3000 rows
+# (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
+# centred 1920x1080.  The front: assumed a centred 16:9 part too.
+VIEW_REGION = (3840, 2160)
+VIEW_REGION_FRONT = (3200, 1800)
+# Photo shapes (name, width / height, scale): the viewfinder shows the
+# same part of the scene (author, 2026-11-16).  A 4:3 photo is thus
+# narrower than the 12 MP frame: with the 12 MP mode as the viewfinder it
+# would show it all, but at 15 frames a second (measured, 2026-11-16).
+SHAPES = [("16:9", 16 / 9, 1.0), ("4:3", 4 / 3, 1.0), ("1:1", 1.0, 1.0),
+          ("16:9", 16 / 9, 0.5), ("4:3", 4 / 3, 0.5), ("1:1", 1.0, 0.5)]
 
 # The viewfinder's turn (videoflip method) for each display transform,
 # rear and front: by the display's orientation, not the window's shape (a
@@ -93,8 +109,10 @@ TIMERS = [0, 3, 10]                            # seconds before the shot
 # the photo and the video.  4x leaves a 992x744 photo.
 ZOOMS = [1.0, 2.0, 4.0]
 MAX_ZOOM = 4.0
-# Videos: the viewfinder's frames, H.264 on the phone's encoder (Venus),
-# with the microphone in Opus, in Matroska (a file cut short still plays).
+# Videos: the viewfinder's frames, 720 rows high in its shape, H.264 on
+# the phone's encoder (Venus), with the microphone in Opus, in Matroska (a
+# file cut short still plays).  Recorded from a branch added to the
+# running viewfinder: no pause, and focus and exposure stay as they are.
 # At most 30 frames a second, as many as the camera gives (15 in the dark,
 # with its 66 ms exposures): with videorate filling up to 30, the encoder
 # fell behind, its queue dropped the camera's frames, and a video kept
@@ -104,6 +122,11 @@ VIDEO_RATE = 30
 # variable and constant mode); a quantizer floor bounds it instead (24:
 # 1.6 Mbit/s for a dark scene, 2026-11-16).
 VIDEO_MIN_QP = 24
+VIDEO_HEIGHT = 720
+# Manual focus: libcamera's lens position in dioptres (patch 0020: about
+# 100 dw9800 steps each); 0 is infinity, 10 is 10 cm.
+LENS_MAX = 10.0
+LENS_STEP = 0.1
 PHOTOS = os.path.join(os.path.expanduser("~"), "Pictures", "Camera")
 VIDEOS = os.path.join(os.path.expanduser("~"), "Videos", "Camera")
 
@@ -184,8 +207,9 @@ class Camera(Gtk.Application):
         self.iso = 0
         self.ev = 0
         self.night = False
-        self.af_held, self.af_focused = False, 0
-        GLib.timeout_add(500, self.watch_af)
+        self.manual = False             # manual focus, at self.lens
+        self.lens = 1.0                 # dioptres
+        self.shape = 0                  # in SHAPES
         self.flash = "off"
         self.fired = False              # the LED is on for this photo
         self.timer = 0
@@ -195,6 +219,10 @@ class Camera(Gtk.Application):
         self.pinched = 0.0              # when the last pinch ended
         self.video = False              # video mode
         self.recording = None           # (path, start time, timer id)
+        self.rec = None                 # the recording branch, its tee pad
+        self.rec_pad = None
+        self.rec_closed = threading.Event()
+        self.rec_timer = None
         self.busy = False
         self.portrait = True
         self.toggle = False
@@ -268,12 +296,32 @@ class Camera(Gtk.Application):
         for b in (self.b_flash, self.b_timer, self.b_iso, self.b_ev,
                   self.b_night):
             settings.pack_start(b, False, False, 0)
+        # The zoom presets, the photo's shape and size, autofocus or manual.
         zooms = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
         self.b_zooms = []
         for z in ZOOMS:
             b = self.button("%g×" % z, lambda _b, z=z: self.set_zoom(z))
             self.b_zooms.append((z, b))
             zooms.pack_start(b, False, False, 0)
+        self.b_shape = self.button("", self.on_shape)
+        self.b_focus = self.button("AF", self.on_focus_mode)
+        zooms.pack_start(self.b_shape, False, False, 0)
+        zooms.pack_start(self.b_focus, False, False, 0)
+        # Manual focus: far on the left, near on the right.
+        self.lens_row = Gtk.Box(spacing=6, halign=Gtk.Align.FILL,
+                                margin_start=24, margin_end=24)
+        self.lens_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0.0, LENS_MAX, LENS_STEP)
+        self.lens_scale.set_draw_value(False)
+        self.lens_scale.set_value(self.lens)
+        self.lens_scale.connect("value-changed", self.on_lens)
+        self.lens_row.pack_start(
+            self.button("−", lambda *_: self.lens_scale.set_value(
+                self.lens_scale.get_value() - LENS_STEP)), False, False, 0)
+        self.lens_row.pack_start(self.lens_scale, True, True, 0)
+        self.lens_row.pack_start(
+            self.button("+", lambda *_: self.lens_scale.set_value(
+                self.lens_scale.get_value() + LENS_STEP)), False, False, 0)
         main = Gtk.Box(spacing=28, halign=Gtk.Align.CENTER)
         self.b_switch = self.button("⇆", self.on_switch)
         self.b_shutter = self.button("", self.on_shutter)
@@ -285,10 +333,12 @@ class Camera(Gtk.Application):
         self.sides = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.BOTH)
         self.sides.add_widget(self.b_switch)
         self.sides.add_widget(self.b_mode)
-        for row in (settings, zooms, main):
+        bars.set_halign(Gtk.Align.FILL)
+        for row in (self.lens_row, settings, zooms, main):
             bars.pack_start(row, False, False, 0)
         self.overlay.add_overlay(bars)
         self.show_zoom()
+        self.show_shape()
 
         # Pinch to zoom, from the window's own touch events: the view gets
         # no touches of its own (below), and a GestureZoom on the window
@@ -326,6 +376,7 @@ class Camera(Gtk.Application):
         self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
         self.win.show_all()
         self.b_last.hide()
+        self.lens_row.hide()
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                              self.on_signal)
@@ -347,9 +398,8 @@ class Camera(Gtk.Application):
             GLib.timeout_add_seconds(seconds, lambda: self.say("") and False)
 
     # ── the pipeline ───────────────────────────────────────────────────
-    def start(self, size=VIEW, record=None, lens=None):
-        """The viewfinder; with RECORD, a path, also a video into it; with
-        LENS, the focus held there."""
+    def start(self, size=VIEW):
+        """The viewfinder (videos are a branch added to it later)."""
         name, dev = self.cams[self.cam]
         self.src = dev.create_element("src")
         self.caps = Gst.ElementFactory.make("capsfilter")
@@ -360,7 +410,7 @@ class Camera(Gtk.Application):
         # The zoom, before the tee: what the view shows is what is kept.
         self.crop = Gst.ElementFactory.make("videocrop")
         self.flip = Gst.ElementFactory.make("videoflip")
-        tee = Gst.ElementFactory.make("tee")
+        self.tee = tee = Gst.ElementFactory.make("tee")
         q1 = Gst.ElementFactory.make("queue")
         # Only the newest frame waits: the view never falls behind.
         q1.set_property("leaky", 2)
@@ -393,8 +443,6 @@ class Camera(Gtk.Application):
         q2.link(convert2)
         convert2.link(rgb)
         rgb.link(self.snap)
-        if record:
-            self.add_recording(tee, record)
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message", self.on_message)
@@ -410,19 +458,21 @@ class Camera(Gtk.Application):
         self.orient()
         self.apply_zoom()
         self.apply_controls()
-        if lens:
-            self.hold(lens)
         self.pipeline.set_state(Gst.State.PLAYING)
-        if not record:
-            self.say(name.split(" ")[0], 2)
+        self.say(name.split(" ")[0], 2)
 
-    def add_recording(self, tee, path):
-        """A third branch from the tee: frames at a steady size and rate (the
-        zoom changes the crop's), turned as the photos are, to the encoder;
-        the microphone beside them."""
+    def recording_branch(self, path):
+        """Frames at a steady size (the zoom changes the crop's), turned as
+        the photos are, to the encoder; the microphone beside them.  The
+        encoder is never asked to drain: the end of stream is sent after it
+        (stop_recording).  A drain stuck with the viewfinder's other branches
+        attached, and stopping the pipeline then froze the phone (2026-11-16,
+        twice; stopping without a drain never did)."""
         turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
                 "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
                 }.get(self.method(), "none")
+        _, ratio, _ = SHAPES[self.shape]
+        width = int(VIDEO_HEIGHT * ratio) // 16 * 16
         desc = (
             "queue max-size-buffers=4 leaky=downstream ! videoscale ! "
             "videorate drop-only=true max-rate=%d ! "
@@ -431,20 +481,18 @@ class Camera(Gtk.Application):
             'v4l2h264enc extra-controls="controls,video_gop_size=%d,'
             "h264_i_frame_period=%d,h264_minimum_qp_value=%d,"
             'h264_i_frame_minimum_qp_value=%d,h264_p_frame_minimum_qp_value=%d;" ! '
-            "h264parse ! queue ! matroskamux name=mux ! filesink name=file "
-            "pulsesrc ! queue ! audioconvert ! audioresample ! opusenc ! "
-            "queue ! mux."
-            % ((VIDEO_RATE,) + VIEW + (VIDEO_RATE, turn, VIDEO_RATE, VIDEO_RATE)
-               + (VIDEO_MIN_QP,) * 3))
+            "h264parse name=parse ! queue ! matroskamux name=mux ! "
+            "filesink name=file "
+            "pulsesrc name=mic ! queue ! audioconvert ! audioresample ! opusenc ! "
+            "queue name=aq ! mux."
+            % (VIDEO_RATE, width, VIDEO_HEIGHT, VIDEO_RATE, turn, VIDEO_RATE,
+               VIDEO_RATE, VIDEO_MIN_QP, VIDEO_MIN_QP, VIDEO_MIN_QP))
         branch = Gst.parse_bin_from_description(desc, True)
         branch.get_by_name("file").set_property("location", path)
-        self.pipeline.add(branch)
-        tee.link(branch)
+        return branch
 
     def on_message(self, bus, msg):
-        if msg.type == Gst.MessageType.EOS and self.recording:
-            self.recorded()
-        elif msg.type == Gst.MessageType.ERROR:
+        if msg.type == Gst.MessageType.ERROR:
             err, debug = msg.parse_error()
             print("pipeline: %s (%s)" % (err.message, debug), flush=True)
             if self.recording:
@@ -470,11 +518,10 @@ class Camera(Gtk.Application):
             return
         threading.Timer(1.5, os._exit, (0,)).start()
         self.win.hide()
-        if self.recording and self.pipeline:
+        if self.rec:
             # The video's end first, so its file is whole.
-            self.pipeline.send_event(Gst.Event.new_eos())
-            self.pipeline.get_bus().timed_pop_filtered(
-                Gst.SECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR)
+            self.close_branch()
+            self.rec_closed.wait(1)
         self.stop()
         self.led(False)
         os._exit(0)
@@ -499,25 +546,38 @@ class Camera(Gtk.Application):
         self.pipeline.set_state(Gst.State.PLAYING)
 
     def current(self):
-        """The viewfinder's exposure time (µs), gain and lens position, from
-        the last frame's metadata (libcamerasrc reads them back: moWerk's
-        patch 0014), or None."""
+        """The viewfinder's exposure time (µs) and gain, from the last
+        frame's metadata (libcamerasrc reads them back: moWerk's patch
+        0014), or None."""
         try:
             exp = self.src.get_property("exposure-time")
             gain = self.src.get_property("analogue-gain")
-            lens = self.src.get_property("lens-position")
         except TypeError:
             return None
-        print("viewfinder: exposure %s µs, gain %s, lens %s" % (exp, gain, lens),
-              flush=True)
-        return (exp, gain, lens) if exp and exp > 0 else None
+        print("viewfinder: exposure %s µs, gain %s" % (exp, gain), flush=True)
+        return (exp, gain) if exp and exp > 0 else None
+
+    def focus_controls(self):
+        """Manual: the lens where the slider is.  Auto: one scan, then the
+        focus is held until the next tap (AfModeAuto, moWerk's patch 0015).
+        Manual mode used to hold it, but kept scanning: libcamera had no
+        manual focus before patch 0020 (author: taps did not refocus, a
+        video focused again at its start)."""
+        if self.manual:
+            self.src.set_property("af-mode", 0)
+            self.src.set_property("lens-position", self.lens)
+        else:
+            self.src.set_property("af-mode", 1)
 
     def apply_controls(self, carry=None):
+        # The same focus for the photo: libcamera keeps a found one over the
+        # mode switch (moWerk's patch 0017).
+        self.focus_controls()
         if carry:
-            # The photo: exposure, gain and focus as in the viewfinder.  At
-            # the mode switch the automatic exposure started from its
-            # minimum, and the photo was black (seen, 2026-11-01).
-            exp, gain, lens = carry
+            # The photo: exposure and gain as in the viewfinder.  At the mode
+            # switch the automatic exposure started from its minimum, and
+            # the photo was black (seen, 2026-11-01).
+            exp, gain = carry
             if self.night:
                 # Two stops more light for a dark scene: four times the
                 # viewfinder's exposure (which stops at 66 ms), at most
@@ -529,13 +589,8 @@ class Camera(Gtk.Application):
             self.src.set_property("analogue-gain-mode", 1)
             self.src.set_property("analogue-gain",
                                   self.iso / 100.0 if self.iso else gain)
-            if lens:
-                self.src.set_property("af-mode", 0)             # manual
-                self.src.set_property("lens-position", lens)
             return
         self.src.set_property("exposure-time-mode", 0)          # auto
-        self.src.set_property("af-mode", 2)                     # continuous
-        self.af_held, self.af_focused = False, 0
         if self.iso:
             self.src.set_property("analogue-gain-mode", 1)       # manual
             self.src.set_property("analogue-gain", self.iso / 100.0)
@@ -576,6 +631,7 @@ class Camera(Gtk.Application):
         self.cam = (self.cam + 1) % len(self.cams)
         self.zoom = 1.0
         self.show_zoom()
+        self.show_shape()
         self.start()
 
     def on_flash(self, *_):
@@ -616,16 +672,73 @@ class Camera(Gtk.Application):
         if not any(abs(z - self.zoom) < 0.05 for z in ZOOMS):
             self.say("%.1f×" % self.zoom, 2)
 
+    def region(self):
+        """The part of the frame at the current size that the viewfinder's
+        shape shows: in the viewfinder, its height in the photo's shape; in
+        a photo's frame, the same part of the scene."""
+        _, ratio, _ = SHAPES[self.shape]
+        w, h = self.size
+        if self.size != VIEW:
+            w, h = VIEW_REGION_FRONT if self.cam != 0 else VIEW_REGION
+        return min(w, h * ratio), min(h, w / ratio)
+
     def apply_zoom(self):
-        """The crop for the frames at the current size: a centred part
-        1/zoom wide and high, even sizes for the video formats."""
+        """The crop for the frames at the current size: the shape's region,
+        a centred part 1/zoom of it wide and high, even sizes for the video
+        formats."""
         if not self.pipeline:
             return
         w, h = self.size
-        x = int(w * (1 - 1 / self.zoom) / 4) * 2
-        y = int(h * (1 - 1 / self.zoom) / 4) * 2
+        rw, rh = self.region()
+        x = max(0, int((w - rw / self.zoom) / 4) * 2)
+        y = max(0, int((h - rh / self.zoom) / 4) * 2)
         for side, v in (("left", x), ("right", x), ("top", y), ("bottom", y)):
             self.crop.set_property(side, v)
+
+    def on_shape(self, *_):
+        if self.busy or self.recording:
+            return
+        self.shape = (self.shape + 1) % len(SHAPES)
+        self.show_shape()
+        self.apply_zoom()
+
+    def show_shape(self):
+        """16:9 8 MP: the shape, and the megapixels of the photo."""
+        name, ratio, scale = SHAPES[self.shape]
+        w, h = VIEW_REGION_FRONT if self.cam != 0 else VIEW_REGION
+        pw, ph = min(w, h * ratio) * scale, min(h, w / ratio) * scale
+        self.b_shape.set_label("%s %.0f MP" % (name, pw * ph / 1e6)
+                               if pw * ph >= 1.5e6 else
+                               "%s %.1f MP" % (name, pw * ph / 1e6))
+
+    def on_focus_mode(self, *_):
+        """Autofocus, or the lens where the slider puts it."""
+        if not self.manual:
+            # From where the autofocus left the lens (patch 0020 reports it).
+            try:
+                lens = float(self.src.get_property("lens-position"))
+            except (TypeError, ValueError, AttributeError):
+                lens = self.lens
+            self.lens = min(LENS_MAX, max(0.0, lens))
+            self.lens_scale.set_value(self.lens)
+        self.manual = not self.manual
+        self.b_focus.set_label("MF" if self.manual else "AF")
+        self.lit(self.b_focus, self.manual)
+        self.lens_row.set_visible(self.manual)
+        if self.pipeline and not self.busy:
+            self.focus_controls()
+        if self.manual:
+            self.show_lens()
+
+    def on_lens(self, scale):
+        self.lens = scale.get_value()
+        if self.manual and self.pipeline and not self.busy:
+            self.src.set_property("lens-position", self.lens)
+        self.show_lens()
+
+    def show_lens(self):
+        self.say("Focus %s" % ("∞" if self.lens < 0.05 else
+                               "%.2f m" % (1 / self.lens)), 2)
 
     def on_win_touch(self, win, event):
         """Two fingers: the zoom follows their distance from where they
@@ -696,52 +809,6 @@ class Camera(Gtk.Application):
         tap.x, tap.y, tap.type = x, y, event.type
         return self.on_tap(self.view, tap)
 
-    def watch_af(self):
-        """Continuous autofocus scans again on its own, moving the lens
-        audibly at regular intervals even untouched (author, 2026-11-02):
-        once it reports focused twice in a row, the lens is held where it
-        is (manual mode); a tap or a restart scans again."""
-        if not self.pipeline:
-            return True
-        if self.af_held:
-            return True
-        try:
-            state = int(self.src.get_property("af-state"))
-        except (TypeError, ValueError):
-            return True
-        self.af_focused = self.af_focused + 1 if state == 2 else 0
-        if self.af_focused >= 2:
-            try:
-                lens = self.src.get_property("lens-position")
-            except TypeError:
-                lens = None
-            self.hold(lens)
-            print("focus: held at %s" % (lens,), flush=True)
-        return True
-
-    def hold(self, lens):
-        self.src.set_property("af-mode", 0)                     # manual
-        if lens:
-            self.src.set_property("lens-position", lens)
-        self.af_held = True
-
-    def held_lens(self):
-        """The lens position, if the focus is held, to keep it over a
-        restart of the pipeline (author: a video focused again from the
-        start, 2026-11-16)."""
-        if not (self.af_held and self.pipeline):
-            return None
-        try:
-            return self.src.get_property("lens-position") or None
-        except TypeError:
-            return None
-
-    def scan(self):
-        """Back to continuous autofocus until it settles again."""
-        self.af_held, self.af_focused = False, 0
-        if self.pipeline:
-            self.src.set_property("af-mode", 2)
-
     def on_touch(self, widget, event):
         print("tap: touch %s at %.0f %.0f" % (event.type, event.x, event.y),
               flush=True)
@@ -757,15 +824,29 @@ class Camera(Gtk.Application):
                                                  self.busy), flush=True)
         if self.busy:
             return False
+        # The picture inside the view, with bars around it in other shapes.
+        alloc = widget.get_allocation()
+        rw, rh = self.region()
+        aspect = rw / rh
+        if self.method() in ("clockwise", "counterclockwise"):
+            aspect = 1 / aspect
+        dw, dh = alloc.width, alloc.height
+        if dw / dh > aspect:
+            dw = dh * aspect
+        else:
+            dh = dw / aspect
+        x = (event.x - (alloc.width - dw) / 2) / dw
+        y = (event.y - (alloc.height - dh) / 2) / dh
+        if not (0 <= x <= 1 and 0 <= y <= 1):
+            return False
         # A first finger may be the start of a pinch: focus only if no
         # second one came within 250 ms.
-        alloc = widget.get_allocation()
-        x, y = event.x / alloc.width, event.y / alloc.height
         GLib.timeout_add(250, self.focus_at, event.x, event.y, x, y)
         return True
 
     def focus_at(self, px, py, x, y):
-        """Focus at (x, y), a fraction of the view, drawn at (PX, PY)."""
+        """Focus and expose for (x, y), a fraction of the picture, drawn at
+        (PX, PY); in manual focus, exposure only."""
         if self.busy or self.pinch_from is not None \
            or time.monotonic() - self.pinched < 0.4:
             return False
@@ -774,8 +855,12 @@ class Camera(Gtk.Application):
         self.mark = (px, py, (1.0, 0.8, 0.0))
         self.marker.queue_draw()
         x, y = TAP_BACK[self.method()](x, y)
-        # The view is the centre 1/zoom of the frame.
-        x, y = 0.5 + (x - 0.5) / self.zoom, 0.5 + (y - 0.5) / self.zoom
+        # The picture is the centre of the frame: the shape's region, 1/zoom
+        # of it.
+        rw, rh = self.region()
+        sw, sh = self.size
+        x = 0.5 + (x - 0.5) * rw / self.zoom / sw
+        y = 0.5 + (y - 0.5) * rh / self.zoom / sh
         # libcamerasrc may not publish the active area: the still size, a
         # little short of the IMX582's 4000x3000 array, does for a window.
         ax, ay, aw, ah = self.area or (0, 0) + self.still()
@@ -790,11 +875,16 @@ class Camera(Gtk.Application):
         ww = 2 * half * vw * scale + (8 if self.toggle else 0)
         wh = 2 * half * vh * scale
         self.toggle = not self.toggle  # the same spot again restarts it
+        # A new window restarts the scan (moWerk's patch 0013), and the
+        # exposure is measured there (patch 0021).
         Gst.util_set_object_arg(
             self.src, "af-windows",
             "<<%d, %d, %d, %d>>" % (wx, wy, ww, wh))
+        self.src.set_property("ae-metering-mode", 1)            # spot
+        if self.manual:
+            GLib.timeout_add(800, self.clear_mark)
+            return False
         self.af_polls = 0
-        self.scan()
         GLib.timeout_add(150, self.poll_focus)
         return False
 
@@ -894,19 +984,36 @@ class Camera(Gtk.Application):
 
     # ── videos ─────────────────────────────────────────────────────────
     def start_recording(self):
-        """The pipeline again with the recording branch (a short pause in
-        the view), the LED on for Flash on or torch."""
+        """A recording branch on the running viewfinder's tee, its
+        timestamps from 0; the LED on for Flash on or torch."""
         os.makedirs(VIDEOS, exist_ok=True)
         path = os.path.join(VIDEOS, time.strftime("VID_%Y%m%d_%H%M%S.mkv"))
-        lens = self.held_lens()
-        self.stop()
-        self.start(VIEW, record=path, lens=lens)
+        self.rec = self.recording_branch(path)
+        self.rec_closed.clear()
+        # The file is whole once the end of stream reaches the file sink.
+        self.rec.get_by_name("file").get_static_pad("sink").add_probe(
+            Gst.PadProbeType.EVENT_DOWNSTREAM, self.on_rec_event)
+        self.pipeline.add(self.rec)
+        clock = self.pipeline.get_clock()
+        now = clock.get_time() - self.pipeline.get_base_time() if clock else 0
+        sink = self.rec.get_static_pad("sink")
+        sink.set_offset(-now)
+        self.rec.get_by_name("mic").get_static_pad("src").set_offset(-now)
+        self.rec_pad = self.tee.request_pad_simple("src_%u")
+        self.rec_pad.link(sink)
+        self.rec.sync_state_with_parent()
         self.led(self.flash in ("on", "torch"))
         self.recording = (path, time.monotonic(),
                           GLib.timeout_add(500, self.show_recording))
         self.b_shutter.get_style_context().add_class("recording")
         self.show_recording()
         print("video: recording %s" % path, flush=True)
+
+    def on_rec_event(self, pad, info):
+        if info.get_event().type == Gst.EventType.EOS:
+            self.rec_closed.set()
+            GLib.idle_add(self.recorded)
+        return Gst.PadProbeReturn.OK
 
     def show_recording(self):
         if not self.recording:
@@ -915,33 +1022,60 @@ class Camera(Gtk.Application):
         self.say("● %d:%02d" % (secs // 60, secs % 60))
         return True
 
+    def close_branch(self):
+        """The branch off the tee, then the end of stream after the encoder
+        and after the microphone's encoder: the frames still in the video
+        encoder are lost, but it never drains (recording_branch)."""
+        pad, sink = self.rec_pad, self.rec.get_static_pad("sink")
+        self.rec_pad = None
+        if pad:
+            def unlink(tpad, info):
+                tpad.unlink(sink)
+                self.tee.release_request_pad(tpad)
+                return Gst.PadProbeReturn.REMOVE
+            pad.add_probe(Gst.PadProbeType.IDLE, unlink)
+        for name in ("parse", "aq"):
+            self.rec.get_by_name(name).get_static_pad("sink").send_event(
+                Gst.Event.new_eos())
+
     def stop_recording(self):
-        """End of stream: the file is closed when it reaches the file sink
-        (on_message), at most 3 s later."""
+        """The file is closed when the end of stream reaches the file sink
+        (on_rec_event), or given up on after 3 s."""
         if not self.recording or self.busy:
             return
         self.busy = True
         self.b_shutter.set_sensitive(False)
         self.say("Saving the video")
-        self.pipeline.send_event(Gst.Event.new_eos())
-        GLib.timeout_add_seconds(3, self.recorded)
+        self.close_branch()
+        self.rec_timer = GLib.timeout_add_seconds(3, self.timed_out)
+
+    def timed_out(self):
+        self.rec_timer = None
+        return self.recorded()
 
     def recorded(self):
-        """The video is closed: the viewfinder alone again."""
+        """The video is closed: the branch goes, the viewfinder runs on."""
         if not self.recording:
             return False
         path, _, timer = self.recording
         GLib.source_remove(timer)
+        if self.rec_timer:
+            GLib.source_remove(self.rec_timer)
+            self.rec_timer = None
         self.recording = None
         self.b_shutter.get_style_context().remove_class("recording")
-        lens = self.held_lens()
-        self.stop()
+        if self.rec:
+            if self.rec_pad:
+                self.close_branch()
+            self.rec.set_state(Gst.State.NULL)
+            self.pipeline.remove(self.rec)
+            self.rec = None
         self.led(self.flash == "torch")
-        self.start(lens=lens)
         self.busy = False
         self.b_shutter.set_sensitive(True)
         if os.path.exists(path):
-            print("video: saved %s" % path, flush=True)
+            print("video: saved %s (%s)" % (path, "closed" if self.rec_closed.is_set()
+                                           else "not closed in 3 s"), flush=True)
             self.last_photo = path
             self.b_last.set_label("Last video")
             self.b_last.show()
@@ -1055,6 +1189,11 @@ class Camera(Gtk.Application):
         print("capture: held %s" % held, flush=True)
         if portrait and turn is not None:
             pix = pix.rotate_simple(turn)
+        _, _, scale = SHAPES[self.shape]
+        if scale != 1.0:
+            pix = pix.scale_simple(int(pix.get_width() * scale),
+                                   int(pix.get_height() * scale),
+                                   GdkPixbuf.InterpType.BILINEAR)
         os.makedirs(PHOTOS, exist_ok=True)
         path = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S.jpg"))
         pix.savev(path, "jpeg", ["quality"], ["92"])
