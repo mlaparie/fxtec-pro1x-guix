@@ -6,10 +6,36 @@ algorithms:
       # 16-bit value, libcamera uses it >> 8. 4096 = 16/255, matching the sensor helper.
       blackLevel: 4096
   - Awb:
-  # Needs a calibrated matrix to be useful; add per colour temperature (K) rows:
-  # - Ccm:
-  #     ccms:
-  #       - ct: 6500
-  #         ccm: [ 1, 0, 0,  0, 1, 0,  0, 0, 1 ]
+  # The phone's own calibration: Qualcomm's colour correction (cc13) for this
+  # module, from the stock vendor partition (com.qti.tuned.lce_s5k4h7.bin),
+  # the set for normal light.  Each matrix is the middle of its range; rows
+  # R, G, B, each summing to 1.  libcamera interpolates by the colour
+  # temperature its white balance estimates.
+  - Ccm:
+      ccms:
+        - ct: 2250  # 2000-2500 K
+          ccm: [  2.2213, -1.3996,  0.1783,
+                 -0.2768,  1.2267,  0.0501,
+                 -0.3441, -1.2564,  2.6005 ]
+        - ct: 2900  # 2600-3200 K
+          ccm: [  2.0727, -1.1832,  0.1105,
+                 -0.2448,  1.2624, -0.0177,
+                 -0.1875, -1.3036,  2.4911 ]
+        - ct: 3800  # 3300-4300 K
+          ccm: [  1.8188, -1.0543,  0.2355,
+                 -0.2016,  1.2937, -0.0921,
+                 -0.0509, -1.0370,  2.0880 ]
+        - ct: 4900  # 4500-5300 K
+          ccm: [  1.9025, -0.9051,  0.0026,
+                 -0.0910,  1.2257, -0.1346,
+                  0.0697, -1.1880,  2.1184 ]
+        - ct: 6200  # 5500-6900 K
+          ccm: [  1.7890, -0.8036,  0.0146,
+                 -0.0836,  1.2598, -0.1762,
+                  0.0671, -0.8422,  1.7750 ]
+        - ct: 7500  # 7100-7900 K
+          ccm: [  1.9004, -0.9138,  0.0134,
+                 -0.1035,  1.3111, -0.2076,
+                  0.0338, -0.9037,  1.8699 ]
   - Adjust:
   - Agc:
