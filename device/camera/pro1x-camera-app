@@ -9,6 +9,7 @@
 # (af-windows, mapped to pixel array coordinates as moWerk's camerabin
 # patch does; spot metering).  Manual focus with a slider.  Photo shapes
 # 16:9, 4:3 and 1:1, full or half size, shown as such in the viewfinder.
+# White balance automatic or locked.
 # ISO (manual analogue gain, or auto), exposure compensation, the white
 # LED as flash (off, on, auto, torch), a 3 or 10 s timer, digital zoom (a
 # pinch, or 1x, 2x, 4x), front and rear cameras.  Video mode: H.264 720
@@ -27,7 +28,8 @@
 # author on 2026-11-16.  Then rewritten, not yet run in the app: pinch (raw
 # touches), recording into the running viewfinder (its pipeline tested
 # headless, two recordings closed cleanly), focus held in auto mode, manual
-# focus, spot exposure, photo shapes.
+# focus, spot exposure, photo shapes; the 4:3 viewfinder mode and the white
+# balance lock (2026-11-16, need the new kernel and libcamera).
 
 import os
 import signal
@@ -43,10 +45,13 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, Gio, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
-# The viewfinder: from the IMX582's fast 1984x1080 mode
-# (pro1x-imx582-1080p), scaled down by the software ISP: smaller frames
-# cost less to process and show (author: the preview lagged).
-VIEW = (1280, 720)
+# The viewfinder, per photo shape, scaled down by the software ISP: smaller
+# frames cost less to process and show (author: the preview lagged).  16:9
+# comes from the IMX582's fast 1984x1080 mode (pro1x-imx582-1080p), 4:3
+# and 1:1 from its 1984x1488 mode of the whole array (kernel patch
+# pro1x-imx582-4x3), which libcamera picks for a 4:3 stream.  The front
+# S5K4H7 has one mode, its whole array.
+VIEWS = {"16:9": (1280, 720), "4:3": (960, 720), "1:1": (960, 720)}
 # Its 12 MP binned mode is 4000x3000, but the software ISP keeps a border
 # of one Bayer pattern left and right (moWerk's 1080p patch notes), and
 # 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
@@ -55,16 +60,15 @@ STILL = (3968, 2976)
 # came ("No frame from the camera", no photo; author, 2026-11-02).  4:3,
 # inside its array and the software ISP's border.
 STILL_FRONT = (3200, 2400)
-# The viewfinder's 16:9 view in a photo's frame.  The IMX582's fast mode
+# The rear 16:9 viewfinder's part of a photo's frame: the fast 1080p mode
 # reads the full width but only 2160 of the 12 MP mode's 3000 rows
 # (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
-# centred 1920x1080.  The front: assumed a centred 16:9 part too.
+# centred 1920x1080.  The other shapes and the front show a centred part
+# of the whole frame.
 VIEW_REGION = (3840, 2160)
-VIEW_REGION_FRONT = (3200, 1800)
 # Photo shapes (name, width / height, scale): the viewfinder shows the
-# same part of the scene (author, 2026-11-16).  A 4:3 photo is thus
-# narrower than the 12 MP frame: with the 12 MP mode as the viewfinder it
-# would show it all, but at 15 frames a second (measured, 2026-11-16).
+# same part of the scene (author, 2026-11-16): 4:3 is the whole 12 MP
+# frame, 16:9 and 1:1 parts of it, each full or half size.
 SHAPES = [("16:9", 16 / 9, 1.0), ("4:3", 4 / 3, 1.0), ("1:1", 1.0, 1.0),
           ("16:9", 16 / 9, 0.5), ("4:3", 4 / 3, 0.5), ("1:1", 1.0, 0.5)]
 
@@ -221,6 +225,7 @@ class Camera(Gtk.Application):
         self.iso = 0
         self.ev = 0
         self.night = False
+        self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
         self.lens = 1.0                 # dioptres
         self.shape = 0                  # in SHAPES
@@ -319,8 +324,10 @@ class Camera(Gtk.Application):
             zooms.pack_start(b, False, False, 0)
         self.b_shape = self.button("", self.on_shape)
         self.b_focus = self.button("AF", self.on_focus_mode)
+        self.b_wb = self.button("WB auto", self.on_wb)
         zooms.pack_start(self.b_shape, False, False, 0)
         zooms.pack_start(self.b_focus, False, False, 0)
+        zooms.pack_start(self.b_wb, False, False, 0)
         # Manual focus: far on the left, near on the right.
         self.lens_row = Gtk.Box(spacing=6, halign=Gtk.Align.FILL,
                                 margin_start=24, margin_end=24)
@@ -412,8 +419,12 @@ class Camera(Gtk.Application):
             GLib.timeout_add_seconds(seconds, lambda: self.say("") and False)
 
     # ── the pipeline ───────────────────────────────────────────────────
-    def start(self, size=VIEW):
+    def view(self):
+        return VIEWS[SHAPES[self.shape][0]]
+
+    def start(self, size=None):
         """The viewfinder (videos are a branch added to it later)."""
+        size = size or self.view()
         name, dev = self.cams[self.cam]
         self.src = dev.create_element("src")
         self.caps = Gst.ElementFactory.make("capsfilter")
@@ -583,10 +594,19 @@ class Camera(Gtk.Application):
         else:
             self.src.set_property("af-mode", 1)
 
+    def wb_controls(self):
+        """The white balance automatic, or kept at the gains it found last
+        (AwbEnable, libcamera patch 0022), photos included."""
+        try:
+            self.src.set_property("awb-enable", not self.wb_locked)
+        except TypeError:
+            pass
+
     def apply_controls(self, carry=None):
         # The same focus for the photo: libcamera keeps a found one over the
         # mode switch (moWerk's patch 0017).
         self.focus_controls()
+        self.wb_controls()
         if carry:
             # The photo: exposure and gain as in the viewfinder.  At the mode
             # switch the automatic exposure started from its minimum, and
@@ -686,14 +706,22 @@ class Camera(Gtk.Application):
         if not any(abs(z - self.zoom) < 0.05 for z in ZOOMS):
             self.say("%.1f×" % self.zoom, 2)
 
+    def photo_region(self, shape=None):
+        """The photo's part of the still frame, before its size scale."""
+        name, ratio, _ = SHAPES[self.shape if shape is None else shape]
+        w, h = self.still()
+        if name == "16:9" and self.cam == 0:
+            w, h = VIEW_REGION
+        return min(w, h * ratio), min(h, w / ratio)
+
     def region(self):
         """The part of the frame at the current size that the viewfinder's
-        shape shows: in the viewfinder, its height in the photo's shape; in
-        a photo's frame, the same part of the scene."""
+        shape shows: in the viewfinder, the largest part in the photo's
+        shape; in a photo's frame, the same part of the scene."""
+        if self.size != self.view():
+            return self.photo_region()
         _, ratio, _ = SHAPES[self.shape]
         w, h = self.size
-        if self.size != VIEW:
-            w, h = VIEW_REGION_FRONT if self.cam != 0 else VIEW_REGION
         return min(w, h * ratio), min(h, w / ratio)
 
     def apply_zoom(self):
@@ -712,18 +740,31 @@ class Camera(Gtk.Application):
     def on_shape(self, *_):
         if self.busy or self.recording:
             return
+        before = self.view()
         self.shape = (self.shape + 1) % len(SHAPES)
         self.show_shape()
-        self.apply_zoom()
+        if self.pipeline and self.view() != before:
+            self.resize(self.view())      # another sensor mode
+        else:
+            self.apply_zoom()
 
     def show_shape(self):
         """16:9 8 MP: the shape, and the megapixels of the photo."""
-        name, ratio, scale = SHAPES[self.shape]
-        w, h = VIEW_REGION_FRONT if self.cam != 0 else VIEW_REGION
-        pw, ph = min(w, h * ratio) * scale, min(h, w / ratio) * scale
+        name, _, scale = SHAPES[self.shape]
+        pw, ph = (v * scale for v in self.photo_region())
         self.b_shape.set_label("%s %.0f MP" % (name, pw * ph / 1e6)
                                if pw * ph >= 1.5e6 else
                                "%s %.1f MP" % (name, pw * ph / 1e6))
+
+    def on_wb(self, *_):
+        """Lock the colours as they are now (mixed light, a subject that
+        fills the frame), or let them follow the scene again.  Presets
+        would need calibrated gains (TODO.org)."""
+        self.wb_locked = not self.wb_locked
+        self.b_wb.set_label("WB lock" if self.wb_locked else "WB auto")
+        self.lit(self.b_wb, self.wb_locked)
+        if self.pipeline and not self.busy:
+            self.wb_controls()
 
     def on_focus_mode(self, *_):
         """Autofocus, or the lens where the slider puts it."""
@@ -1143,7 +1184,7 @@ class Camera(Gtk.Application):
     def resume(self):
         if self.fired:
             self.led(False)
-        self.resize(VIEW)
+        self.resize(self.view())
         self.say("Saving")
         return False
 
