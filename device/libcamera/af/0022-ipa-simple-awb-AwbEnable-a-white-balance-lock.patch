@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Mon, 16 Nov 2026 00:17:03 +0100
+Subject: [PATCH] ipa: simple: awb: AwbEnable, a white balance lock
+
+AwbEnable false keeps the colour gains found last instead of measuring
+them on every frame, so the colours stay put while the scene changes
+(mixed light, a subject that fills the frame).  The lock outlives a
+restart of the camera in another sensor mode, as for a photo taken at
+a higher resolution than the viewfinder.
+---
+ src/ipa/simple/algorithms/awb.cpp | 29 ++++++++++++++++++++++++++---
+ src/ipa/simple/algorithms/awb.h   |  8 ++++++++
+ 2 files changed, 34 insertions(+), 3 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index 05155c8..c0337b7 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -23,11 +23,33 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
+ 
+ namespace ipa::soft::algorithms {
+ 
++int Awb::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
++{
++	context.ctrlMap[&controls::AwbEnable] = ControlInfo(false, true, true);
++
++	return 0;
++}
++
++void Awb::queueRequest([[maybe_unused]] IPAContext &context,
++		       [[maybe_unused]] const uint32_t frame,
++		       [[maybe_unused]] IPAFrameContext &frameContext,
++		       const ControlList &controls)
++{
++	const auto &enable = controls.get(controls::AwbEnable);
++	if (enable && *enable != enabled_) {
++		enabled_ = *enable;
++		LOG(IPASoftAwb, Debug) << (enabled_ ? "Automatic" : "Locked");
++	}
++}
++
+ int Awb::configure(IPAContext &context,
+ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+-	auto &gains = context.activeState.awb.gains;
+-	gains = { { 1.0, 1.0, 1.0 } };
++	/* A lock outlives a restart in another mode (a photo) */
++	if (enabled_) {
++		auto &gains = context.activeState.awb.gains;
++		gains = { { 1.0, 1.0, 1.0 } };
++	}
+ 
+ 	return 0;
+ }
+@@ -55,7 +77,8 @@ void Awb::process(IPAContext &context,
+ 	metadata.set(controls::ColourGains, { frameContext.gains.r(),
+ 					      frameContext.gains.b() });
+ 
+-	if (!stats->valid)
++	metadata.set(controls::ColourTemperature, context.activeState.awb.temperatureK);
++	if (!stats->valid || !enabled_)
+ 		return;
+ 
+ 	/*
+diff --git a/src/ipa/simple/algorithms/awb.h b/src/ipa/simple/algorithms/awb.h
+index ad993f3..107cd27 100644
+--- a/src/ipa/simple/algorithms/awb.h
++++ b/src/ipa/simple/algorithms/awb.h
+@@ -19,7 +19,11 @@ public:
+ 	Awb() = default;
+ 	~Awb() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
+ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
++	void queueRequest(IPAContext &context, const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
+ 	void prepare(IPAContext &context,
+ 		     const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+@@ -29,6 +33,10 @@ public:
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
++
++private:
++	/* AwbEnable: false keeps the gains found last, a white balance lock */
++	bool enabled_ = true;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */

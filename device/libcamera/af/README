@@ -17,6 +17,8 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
 - 0020, 0021 (ours, 2026-11-16): manual lens position (AfModeManual and
   LensPosition, for a focus slider) and spot metering on the autofocus
   area (AeMeteringMode spot, for exposure at a tap).
+- 0022 (ours, 2026-11-16): AwbEnable false keeps the white balance gains (a
+  lock), also over a camera restart for a photo.
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

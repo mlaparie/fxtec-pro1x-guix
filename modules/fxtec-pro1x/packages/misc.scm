@@ -386,10 +386,11 @@ to build an FDE userdata image on the host before flashing.")
                 ;; our faster auto exposure (0019): with it, tap to focus at
                 ;; 50 cm never focused (moWerk, 2026-11-08).
                 "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"
-                ;; Ours: a manual focus position, and exposure for the
-                ;; tapped spot.
+                ;; Ours: a manual focus position, exposure for the tapped
+                ;; spot, and a white balance lock.
                 "0020-ipa-simple-af-Manual-lens-position.patch"
-                "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"))))))
+                "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"
+                "0022-ipa-simple-awb-AwbEnable-a-white-balance-lock.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
