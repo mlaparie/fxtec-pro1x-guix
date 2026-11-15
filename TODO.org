@@ -90,6 +90,17 @@ The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 Guix fixed it upstream on 2026-11-09 (PR 12277); keep our locale patch.
 *** DONE Rename =dev-fingerprint= to =dev= (2026-11-11)
 ** Camera
+*** WAIT [#B] Camera app: flash modes, timer, zoom (pinch, presets), video mode, rows of small buttons
+Generation 44 (2026-11-15).  Recording pipeline tested headless on the phone: H.264 720x1280 at
+29 fps and Opus in Matroska, closed cleanly at the end; the frames were black (scene dark or the
+phone face down: not known).  Starting or stopping a video restarts the pipeline, about 2.5 s
+without frames each time: if that is too slow, add the recording branch to the running pipeline.
+Patch 0019 dropped (focus at 50 cm, moWerk).
+*** TODO [#B] libcamera 0.8.0: lens shading correction, AWB without saturated pixels
+moWerk's autofocus series (0005-0018) does not apply: 0.8.0 renamed src/ipa/simple to
+src/ipa/softisp and moved AWB and CCM to libipa.  Rebase it, or wait for the series' next version.
+The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
+*** TODO [#C] Colour matrix for the IMX582 (needs a reference chart; last)
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
