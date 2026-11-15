@@ -7,13 +7,15 @@
 # goes back to the viewfinder (moWerk's "small viewfinder, photo at full
 # resolution", jolla-camera on SailfishOS).  Tap: focus and exposure there
 # (af-windows, mapped to pixel array coordinates as moWerk's camerabin
-# patch does; spot metering).  Manual focus with a slider.  Photo shapes
-# 16:9, 4:3 and 1:1, full or half size, shown as such in the viewfinder.
-# White balance automatic or locked.
+# patch does; spot metering).  Manual focus with a slider.  Shape and
+# resolution of what is saved, for photos (16:9, 4:3, 1:1; the sensor's
+# own pixels, binned, or half) and for videos (16:9, 4:3; 1080p, 720p),
+# kept per camera and mode; the viewfinder shows the same part of the
+# scene.  White balance automatic or locked.
 # ISO (manual analogue gain, or auto), exposure compensation, the white
 # LED as flash (off, on, auto, torch), a 3 or 10 s timer, digital zoom (a
-# pinch, or 1x, 2x, 4x), front and rear cameras.  Video mode: H.264 720
-# rows high on the phone's encoder with the microphone, in ~/Videos/Camera.
+# pinch, or 1x, 2x, 4x), front and rear cameras.  Video mode: H.264 on the
+# phone's encoder with the microphone, in ~/Videos/Camera.
 # The frames turn with the panel.  SIGUSR1 presses the shutter (the camera
 # button, pro1x-camera).
 #
@@ -31,6 +33,7 @@
 # focus, spot exposure, photo shapes; the 4:3 viewfinder mode and the white
 # balance lock (2026-11-16, need the new kernel and libcamera).
 
+import json
 import os
 import re
 import signal
@@ -46,39 +49,49 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, Gio, GLib, Gst, GstApp, GstVideo, Gtk, Gdk  # noqa: E402,F401
 
-# The viewfinder, per photo shape, scaled down by the software ISP: smaller
+# Shapes, width / height.  A photo shows what its viewfinder showed
+# (author, 2026-11-16).
+RATIOS = {"16:9": 16 / 9, "4:3": 4 / 3, "1:1": 1.0}
+PHOTO_SHAPES = ["4:3", "16:9", "1:1"]
+VIDEO_SHAPES = ["16:9", "4:3"]
+# The photo viewfinder, per shape, scaled down by the software ISP: smaller
 # frames cost less to process and show (author: the preview lagged).  16:9
 # comes from the IMX582's fast 1984x1080 mode (pro1x-imx582-1080p), 4:3
 # and 1:1 from its 1984x1488 mode of the whole array (kernel patch
 # pro1x-imx582-4x3), which libcamera picks for a 4:3 stream.  The front
-# S5K4H7 has one mode, its whole array.
+# S5K4H7 has one mode, its whole array.  The video viewfinder streams the
+# video's own size.
 VIEWS = {"16:9": (1280, 720), "4:3": (960, 720), "1:1": (960, 720)}
-# Its 12 MP binned mode is 4000x3000, but the software ISP keeps a border
-# of one Bayer pattern left and right (moWerk's 1080p patch notes), and
-# 4000x3000 did not negotiate (seen on the phone): 4:3, aligned, inside.
+# Photo resolutions, frames taken in another sensor mode than the
+# viewfinder's:
+#   full    the sensor's own pixels: the IMX582's 8000x6000 mode with its
+#           remosaic (kernel patch pro1x-imx582-48mp, offered when the camera
+#           has frames that wide; about 9 fps), the S5K4H7's whole array;
+#   binned  the IMX582's 12 MP mode, 2x2 pixels combined (less noise);
+#   half    binned (front: full) at half the width and height.
+# Each is cut to the shape.  The software ISP keeps a border of one Bayer
+# pattern left and right (moWerk's 1080p patch notes): 4000x3000 did not
+# negotiate (seen on the phone), so these are 4:3, aligned, inside.
 STILL = (3968, 2976)
+STILL_48 = (7992, 5994)
 # The front S5K4H7 gives at most 3264x2448: at the rear's size no frame
-# came ("No frame from the camera", no photo; author, 2026-11-02).  4:3,
-# inside its array and the software ISP's border.
+# came ("No frame from the camera", no photo; author, 2026-11-02).
 STILL_FRONT = (3200, 2400)
 # The rear 16:9 viewfinder's part of a photo's frame: the fast 1080p mode
 # reads the full width but only 2160 of the 12 MP mode's 3000 rows
 # (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
-# centred 1920x1080.  The other shapes and the front show a centred part
-# of the whole frame.
-VIEW_REGION = (3840, 2160)
-# Photo shapes (name, width / height, scale): the viewfinder shows the
-# same part of the scene (author, 2026-11-16): 4:3 is the whole 12 MP
-# frame, 16:9 and 1:1 parts of it, each full or half size.
-SHAPES = [("16:9", 16 / 9, 1.0), ("4:3", 4 / 3, 1.0), ("1:1", 1.0, 1.0),
-          ("16:9", 16 / 9, 0.5), ("4:3", 4 / 3, 0.5), ("1:1", 1.0, 0.5)]
-# 48 MP: the IMX582's whole array without binning, the sensor's remosaic
-# (kernel patch pro1x-imx582-48mp), about 9 frames a second, so only for
-# the photo; offered when the camera has frames that wide.  The software
-# ISP keeps a border: 7992 wide, 4:3.
-SHAPE_48 = ("48 MP", 4 / 3, 1.0)
-STILL_48 = (7992, 5994)
-VIEWS["48 MP"] = VIEWS["4:3"]
+# centred 1920x1080: 3840 of the 3968 columns.  The other shapes and the
+# front show a centred part of the whole frame.
+VIEW_REGION_WIDTH = 3840 / 3968
+# Video resolutions, in rows.
+VIDEO_SIZES = {"1080p": 1080, "720p": 720}
+# Output settings per camera and mode, kept across restarts (author,
+# 2026-11-16).
+SETTINGS = os.path.join(os.environ.get("XDG_STATE_HOME") or
+                        os.path.expanduser("~/.local/state"),
+                        "pro1x", "camera.json")
+DEFAULTS = {"photo": {"shape": "4:3", "size": "binned"},
+            "video": {"shape": "16:9", "size": "1080p"}}
 
 # The viewfinder's turn (videoflip method) for each display transform,
 # rear and front: by the display's orientation, not the window's shape (a
@@ -121,7 +134,7 @@ TIMERS = [0, 3, 10]                            # seconds before the shot
 # the photo and the video.  4x leaves a 992x744 photo.
 ZOOMS = [1.0, 2.0, 4.0]
 MAX_ZOOM = 4.0
-# Videos: the viewfinder's frames, 720 rows high in its shape, H.264 on
+# Videos: the viewfinder's frames, in their shape and size, H.264 on
 # the phone's encoder (Venus), with the microphone in Opus, in Matroska (a
 # file cut short still plays).  Recorded from a branch added to the
 # running viewfinder: no pause, and focus and exposure stay as they are.
@@ -134,7 +147,6 @@ VIDEO_RATE = 30
 # variable and constant mode); a quantizer floor bounds it instead (24:
 # 1.6 Mbit/s for a dark scene, 2026-11-16).
 VIDEO_MIN_QP = 24
-VIDEO_HEIGHT = 720
 # Manual focus: libcamera's lens position in dioptres (patch 0020: about
 # 100 dw9800 steps each); 0 is infinity, 10 is 10 cm.
 LENS_MAX = 10.0
@@ -248,8 +260,8 @@ class Camera(Gtk.Application):
         self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
         self.lens = 1.0                 # dioptres
-        self.shape = 0                  # in self.shapes
-        self.shapes = list(SHAPES)      # with 48 MP when the camera has it
+        self.settings = self.load_settings()
+        self.wide = False               # the rear camera has its 48 MP mode
         self.flash = "off"
         self.fired = False              # the LED is on for this photo
         self.timer = 0
@@ -336,17 +348,15 @@ class Camera(Gtk.Application):
         for b in (self.b_flash, self.b_timer, self.b_iso, self.b_ev,
                   self.b_night):
             settings.pack_start(b, False, False, 0)
-        # The zoom presets, the photo's shape and size, autofocus or manual.
+        # The zoom presets, autofocus or manual, the white balance.
         zooms = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
         self.b_zooms = []
         for z in ZOOMS:
             b = self.button("%g×" % z, lambda _b, z=z: self.set_zoom(z))
             self.b_zooms.append((z, b))
             zooms.pack_start(b, False, False, 0)
-        self.b_shape = self.button("", self.on_shape)
         self.b_focus = self.button("AF", self.on_focus_mode)
         self.b_wb = self.button("WB auto", self.on_wb)
-        zooms.pack_start(self.b_shape, False, False, 0)
         zooms.pack_start(self.b_focus, False, False, 0)
         zooms.pack_start(self.b_wb, False, False, 0)
         # Manual focus: far on the left, near on the right.
@@ -375,12 +385,18 @@ class Camera(Gtk.Application):
         self.sides = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.BOTH)
         self.sides.add_widget(self.b_switch)
         self.sides.add_widget(self.b_mode)
+        # What is saved: the shape and the resolution, for photos or videos.
+        outputs = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        self.b_shape = self.button("", self.on_shape)
+        self.b_res = self.button("", self.on_res)
+        outputs.pack_start(self.b_shape, False, False, 0)
+        outputs.pack_start(self.b_res, False, False, 0)
         bars.set_halign(Gtk.Align.FILL)
-        for row in (self.lens_row, settings, zooms, main):
+        for row in (self.lens_row, settings, zooms, outputs, main):
             bars.pack_start(row, False, False, 0)
         self.overlay.add_overlay(bars)
         self.show_zoom()
-        self.show_shape()
+        self.show_outputs()
 
         # Pinch to zoom, from the window's own touch events: the view gets
         # no touches of its own (below), and a GestureZoom on the window
@@ -440,16 +456,67 @@ class Camera(Gtk.Application):
             GLib.timeout_add_seconds(seconds, lambda: self.say("") and False)
 
     # ── the pipeline ───────────────────────────────────────────────────
+    # ── output settings ────────────────────────────────────────────────
+    @staticmethod
+    def load_settings():
+        try:
+            with open(SETTINGS) as f:
+                s = json.load(f)
+            return s if isinstance(s, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save_settings(self):
+        try:
+            os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+            with open(SETTINGS + ".new", "w") as f:
+                json.dump(self.settings, f, indent=1)
+            os.replace(SETTINGS + ".new", SETTINGS)
+        except OSError as e:
+            print("settings: %s" % e, flush=True)
+
+    def stored(self):
+        """This camera's saved settings for the current mode."""
+        mode = "video" if self.video else "photo"
+        cam = self.settings.setdefault("rear" if self.cam == 0 else "front", {})
+        return cam.setdefault(mode, dict(DEFAULTS[mode]))
+
+    def out(self):
+        """The saved settings, or defaults where they are not offered now
+        (full without the 48 MP mode); the saved ones stay as they are."""
+        mode = "video" if self.video else "photo"
+        o = dict(self.stored())
+        shapes, sizes = self.choices()
+        if o.get("shape") not in shapes:
+            o["shape"] = DEFAULTS[mode]["shape"]
+        if o.get("size") not in sizes:
+            o["size"] = DEFAULTS[mode]["size"] if DEFAULTS[mode]["size"] in sizes \
+                else sizes[0]
+        return o
+
+    def choices(self):
+        """The shapes and resolutions offered now."""
+        if self.video:
+            return VIDEO_SHAPES, list(VIDEO_SIZES)
+        if self.cam != 0:
+            return PHOTO_SHAPES, ["full", "half"]
+        return PHOTO_SHAPES, (["full"] if self.wide else []) + ["binned", "half"]
+
+    def scale(self):
+        return 0.5 if self.out()["size"] == "half" else 1.0
+
     def view(self):
-        return VIEWS[self.shapes[self.shape][0]]
+        o = self.out()
+        if self.video:
+            h = VIDEO_SIZES[o["size"]]
+            return (int(h * RATIOS[o["shape"]]) // 16 * 16, h)
+        return VIEWS[o["shape"]]
 
     def start(self, size=None):
         """The viewfinder (videos are a branch added to it later)."""
         name, dev = self.cams[self.cam]
-        wide = self.cam == 0 and max_width(dev) >= STILL_48[0]
-        self.shapes = list(SHAPES) + ([SHAPE_48] if wide else [])
-        self.shape %= len(self.shapes)
-        self.show_shape()
+        self.wide = self.cam == 0 and max_width(dev) >= STILL_48[0]
+        self.show_outputs()
         size = size or self.view()
         self.src = dev.create_element("src")
         self.caps = Gst.ElementFactory.make("capsfilter")
@@ -521,8 +588,7 @@ class Camera(Gtk.Application):
         turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
                 "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
                 }.get(self.method(), "none")
-        _, ratio, _ = self.shapes[self.shape]
-        width = int(VIDEO_HEIGHT * ratio) // 16 * 16
+        width, height = self.view()
         desc = (
             "queue max-size-buffers=4 leaky=downstream ! videoscale ! "
             "videorate drop-only=true max-rate=%d ! "
@@ -535,7 +601,7 @@ class Camera(Gtk.Application):
             "filesink name=file "
             "pulsesrc name=mic ! queue ! audioconvert ! audioresample ! opusenc ! "
             "queue name=aq ! mux."
-            % (VIDEO_RATE, width, VIDEO_HEIGHT, VIDEO_RATE, turn, VIDEO_RATE,
+            % (VIDEO_RATE, width, height, VIDEO_RATE, turn, VIDEO_RATE,
                VIDEO_RATE, VIDEO_MIN_QP, VIDEO_MIN_QP, VIDEO_MIN_QP))
         branch = Gst.parse_bin_from_description(desc, True)
         branch.get_by_name("file").set_property("location", path)
@@ -690,7 +756,6 @@ class Camera(Gtk.Application):
         self.cam = (self.cam + 1) % len(self.cams)
         self.zoom = 1.0
         self.show_zoom()
-        self.show_shape()
         self.start()
 
     def on_flash(self, *_):
@@ -717,6 +782,7 @@ class Camera(Gtk.Application):
         (ctx.add_class if self.video else ctx.remove_class)("video")
         # Night lengthens a photo's exposure; a video has none to lengthen.
         self.b_night.set_sensitive(not self.video)
+        self.outputs_changed()
 
     # ── zoom ───────────────────────────────────────────────────────────
     def set_zoom(self, z):
@@ -731,21 +797,23 @@ class Camera(Gtk.Application):
         if not any(abs(z - self.zoom) < 0.05 for z in ZOOMS):
             self.say("%.1f×" % self.zoom, 2)
 
-    def photo_region(self, shape=None):
+    def photo_region(self):
         """The photo's part of the still frame, before its size scale."""
-        name, ratio, _ = self.shapes[self.shape if shape is None else shape]
+        shape = self.out()["shape"]
+        ratio = RATIOS[shape]
         w, h = self.still()
-        if name == "16:9" and self.cam == 0:
-            w, h = VIEW_REGION
+        if shape == "16:9" and self.cam == 0:
+            w = w * VIEW_REGION_WIDTH
+            h = w * 9 / 16
         return min(w, h * ratio), min(h, w / ratio)
 
     def region(self):
         """The part of the frame at the current size that the viewfinder's
-        shape shows: in the viewfinder, the largest part in the photo's
-        shape; in a photo's frame, the same part of the scene."""
+        shape shows: in the viewfinder, the largest part in the shape; in a
+        photo's frame, the same part of the scene."""
         if self.size != self.view():
             return self.photo_region()
-        _, ratio, _ = self.shapes[self.shape]
+        ratio = RATIOS[self.out()["shape"]]
         w, h = self.size
         return min(w, h * ratio), min(h, w / ratio)
 
@@ -763,26 +831,42 @@ class Camera(Gtk.Application):
             self.crop.set_property(side, v)
 
     def on_shape(self, *_):
+        self.cycle("shape", 0)
+
+    def on_res(self, *_):
+        self.cycle("size", 1)
+
+    def cycle(self, key, which):
+        """The next shape or resolution for this camera and mode, saved."""
         if self.busy or self.recording:
             return
-        before = self.view()
-        self.shape = (self.shape + 1) % len(self.shapes)
-        self.show_shape()
-        if self.pipeline and self.view() != before:
-            self.resize(self.view())      # another sensor mode
+        options = self.choices()[which]
+        now = self.out()[key]
+        self.stored()[key] = options[(options.index(now) + 1) % len(options)]
+        self.save_settings()
+        self.outputs_changed()
+
+    def outputs_changed(self):
+        """Another sensor mode or stream size if the viewfinder's changed
+        (a restart), else only the crop."""
+        self.show_outputs()
+        if not self.pipeline or self.busy:
+            return
+        if self.view() != self.size:
+            self.resize(self.view())
         else:
             self.apply_zoom()
 
-    def show_shape(self):
-        """16:9 8 MP: the shape, and the megapixels of the photo."""
-        name, _, scale = self.shapes[self.shape]
-        if name == "48 MP":
-            self.b_shape.set_label("4:3 48 MP")
+    def show_outputs(self):
+        """4:3 and 12 MP, or 16:9 and 1080p: what will be saved."""
+        o = self.out()
+        self.b_shape.set_label(o["shape"])
+        if self.video:
+            self.b_res.set_label(o["size"])
             return
-        pw, ph = (v * scale for v in self.photo_region())
-        self.b_shape.set_label("%s %.0f MP" % (name, pw * ph / 1e6)
-                               if pw * ph >= 1.5e6 else
-                               "%s %.1f MP" % (name, pw * ph / 1e6))
+        pw, ph = (v * self.scale() for v in self.photo_region())
+        mp = pw * ph / 1e6
+        self.b_res.set_label(("%.0f MP" if mp >= 1.5 else "%.1f MP") % mp)
 
     def on_wb(self, *_):
         """Lock the colours as they are now (mixed light, a subject that
@@ -1175,7 +1259,7 @@ class Camera(Gtk.Application):
     def still(self):
         if self.cam != 0:
             return STILL_FRONT
-        return STILL_48 if self.shapes[self.shape] == SHAPE_48 else STILL
+        return STILL_48 if self.out()["size"] == "full" else STILL
 
     def since(self):
         return "%.2f s" % (time.monotonic() - self.t0)
@@ -1274,7 +1358,7 @@ class Camera(Gtk.Application):
         print("capture: held %s" % held, flush=True)
         if portrait and turn is not None:
             pix = pix.rotate_simple(turn)
-        _, _, scale = self.shapes[self.shape]
+        scale = self.scale()
         if scale != 1.0:
             pix = pix.scale_simple(int(pix.get_width() * scale),
                                    int(pix.get_height() * scale),
