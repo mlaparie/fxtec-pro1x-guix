@@ -383,9 +383,10 @@ to build an FDE userdata image on the host before flashing.")
                 "0016-software_isp-debayer_egl-Centre-the-scaled-crop-stat.patch"
                 "0017-simple-Keep-exposure-colour-and-focus-over-a-camera-.patch"
                 ;; Ours: longer exposures (vertical blanking raised).
-                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"
-                ;; Ours: auto exposure settles about three times as fast.
-                "0019-ipa-simple-agc-settle-the-exposure-faster.patch"))))))
+                ;; Ours: longer exposures (vertical blanking raised).  Not
+                ;; our faster auto exposure (0019): with it, tap to focus at
+                ;; 50 cm never focused (moWerk, 2026-11-08).
+                "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
