@@ -441,7 +441,7 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
                     (format port "[Desktop Entry]
 Type=Application
 Name=Camera
-Comment=Photos with tap to focus, ISO and flash (libcamera)
+Comment=Photos and videos with tap to focus, zoom, timer and flash (libcamera)
 Exec=~a/bin/pro1x-camera-app
 Icon=camera-photo
 Categories=AudioVideo;Video;
@@ -452,17 +452,19 @@ StartupNotify=false
      ;; python-pycairo: the focus square's draw handler gets a cairo
      ;; context (without it: "Couldn't find foreign struct converter for
      ;; 'cairo.Context'", no square; 2026-11-02).
+     ;; gst-plugins-bad: h264parse, for videos.
      (list bash-minimal python python-pygobject python-pycairo
            gobject-introspection gtk+
            gdk-pixbuf pango
-           gstreamer gst-plugins-base gst-plugins-good
+           gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad
            (list libcamera-pro1x "gst")))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Camera for the F(x)tec Pro1X on libcamera")
     (description
      "A camera application for the F(x)tec Pro1X: a 1080p viewfinder,
 photos at the sensor's 12 MP mode, tap to focus, ISO, exposure
-compensation and the LED as flash, through libcamera's GStreamer source and
+compensation, the LED as flash or torch, a timer, digital zoom, and 720p
+videos on the hardware encoder, through libcamera's GStreamer source and
 the port's libcamera controls.")
     (license license:gpl3+)))
 
