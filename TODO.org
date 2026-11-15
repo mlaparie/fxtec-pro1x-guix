@@ -90,17 +90,34 @@ The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 Guix fixed it upstream on 2026-11-09 (PR 12277); keep our locale patch.
 *** DONE Rename =dev-fingerprint= to =dev= (2026-11-11)
 ** Camera
-*** WAIT [#B] Camera app: flash modes, timer, zoom (pinch, presets), video mode, rows of small buttons
-Generation 44 (2026-11-15).  Recording pipeline tested headless on the phone: H.264 720x1280 at
-29 fps and Opus in Matroska, closed cleanly at the end; the frames were black (scene dark or the
-phone face down: not known).  Starting or stopping a video restarts the pipeline, about 2.5 s
-without frames each time: if that is too slow, add the recording branch to the running pipeline.
-Patch 0019 dropped (focus at 50 cm, moWerk).
+*** WAIT [#B] Camera app: recording, focus, shapes (generation 46, 2026-11-16)
+Recording is a branch on the running viewfinder, closed without draining the encoder: stopping
+with a drain froze the phone twice (reproduced headless); two headless recordings closed
+cleanly.  Focus held in auto mode, tap focuses and meters there (libcamera 0020, 0021), manual
+focus slider, photo shapes 16:9 / 4:3 / 1:1, JPEG quality a config.scm field (98).  Not yet run
+in the app by the author after these changes.
+*** TODO [#B] Camera: fast 4:3 viewfinder (kernel IMX582 1984x1488 mode), then 4:3 at 12 MP
+Kernel patch pro1x-imx582-4x3 (not built or run yet).  After the reboot: check that libcamera
+picks it for a 4:3 viewfinder (960x720) and its frame rate, then let the 4:3 shape use the whole
+12 MP frame (VIEW_REGION per shape) and add a size selector with the modes.
+*** TODO [#C] Camera: 48 MP mode (8000x6000, the sensor's remosaic)
+Register table found in the stock vendor file com.qti.sensormodule.lce_imx582.bin (super,
+vendor_a): 32 registers differ from 12 MP, binning off, 0x3620/0x3621 = 1 (remosaic, inferred),
+about 9 fps (estimated).  Needs a driver mode with its own link frequency, then a test of
+whether the output is ordinary Bayer, and of libcamera's software ISP on 48 MP frames.
+*** TODO [#C] Camera: white balance presets
+libcamera's software AWB has no manual mode.  Inverting its generic colour temperature estimate
+gives gains that are not monotonic with temperature: presets need the vendor's AWB reference
+points (refPt in com.qti.tuned.lce_imx582.bin, stored transformed, not decoded) or a
+measurement under known light.  An AWB lock (keep the current gains) needs only a small patch.
+*** TODO [#B] CI: one stored signing key for the exported kernel
+Each run makes a new key, so importing a CI kernel needs the author's sudo every time.  A key
+kept as a repository secret, authorized once on the PC, would let the agent import unattended.
 *** TODO [#B] libcamera 0.8.0: lens shading correction, AWB without saturated pixels
 moWerk's autofocus series (0005-0018) does not apply: 0.8.0 renamed src/ipa/simple to
 src/ipa/softisp and moved AWB and CCM to libipa.  Rebase it, or wait for the series' next version.
 The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
-*** TODO [#C] Colour matrix for the IMX582 (needs a reference chart; last)
+*** DONE Colour matrices for both cameras, from the stock calibration (2026-11-16)
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
