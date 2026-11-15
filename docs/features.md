@@ -94,6 +94,15 @@ suspend, deep sleep, charging (it goes above the charge limit).
   (with or without Google Play), starts, freezes, resumes and stops Android,
   opens, installs and removes its apps, and switches between one window and
   a window per app.  config.scm's `autostart?` starts it at login.
+- Waydroid's menu also mutes Android's notifications (kept across
+  reboots): none shows, wakes the screen or lights the LED.
+- The camera app (pro1x-camera-app): photos in 16:9, 4:3 or 1:1, full or
+  half size (48 MP with a later kernel), shown as such in the viewfinder;
+  tap to focus and expose there, or manual focus with a slider; flash off,
+  on, auto or torch; timer; zoom by pinch or 1×/2×/4×; ISO, exposure
+  compensation, a night mode and a white balance lock; videos with sound
+  on the hardware encoder.  Colours from the phone's stock calibration.
+  Being tested: some of this has not run on the phone yet (TODO.org).
 - Incoming calls show over the lock screen (not yet tried with a call);
   Calls and the camera open fullscreen in portrait, the previous
   rotation comes back after.
