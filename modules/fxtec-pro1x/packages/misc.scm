@@ -2081,7 +2081,8 @@ window opened by a sway key binding.")
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "jq" "procps" "swayidle"))))))
+                              '("coreutils" "glib" "grep" "jq" "procps" "sed"
+                                "swayidle"))))))
                 (let ((mako (string-append #$output "/bin/pro1x-mako")))
                   (chmod mako #o755)
                   ;; sway-notifications for on-notify; mako from the system.

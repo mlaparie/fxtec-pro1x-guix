@@ -9,10 +9,15 @@
 # on-notify, so this writes a config with that line first (global options
 # come before any [section]) followed by the user's own config, whose
 # settings win, and runs mako -c on it.  Started by the Sway config.
+# While Android's notifications are muted (quick actions), each Waydroid
+# app's are invisible, so none flashes before pro1x-notify dismisses it;
+# --reload writes the config again and has mako read it.
 #
 # State: written 2026-10-30, not yet run on the phone.
 
 conf="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mako.config"
+muted="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/waydroid-muted"
+apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 {
     echo '# Written by pro1x-mako; edit ~/.config/mako/config instead.'
     echo 'on-notify=exec pro1x-notify "$id"'
@@ -28,5 +33,15 @@ conf="${XDG_RUNTIME_DIR:-/tmp}/pro1x-mako.config"
     for app in Chats gnome-calls Calls Clocks; do
         printf '\n[app-name="%s"]\ndefault-timeout=0\nignore-timeout=1\n' "$app"
     done
+    # mako matches desktop entries whole: one section per Waydroid app.
+    if [ -e "$muted" ]; then
+        for f in "$apps"/waydroid.*.desktop; do
+            [ -e "$f" ] || continue
+            printf '\n[desktop-entry="%s"]\ninvisible=1\n' "$(basename "$f" .desktop)"
+        done
+    fi
 } > "$conf"
+if [ "${1:-}" = --reload ]; then
+    exec makoctl reload
+fi
 exec mako -c "$conf" "$@"

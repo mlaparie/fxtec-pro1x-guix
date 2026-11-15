@@ -2,6 +2,7 @@
 # pro1x-notify ID — what Sway does when mako shows notification ID
 #
 # Run by mako's on-notify (pro1x-mako):
+#   - dismisses Android's (Waydroid's) while they are muted, and stops;
 #   - notes the arrival time for the lock screen (sway-notifications log);
 #   - if the panel is off, lights it dimly for WAKE_FOR seconds (8), then
 #     turns it off again, unless there was input meanwhile: then the saved
@@ -29,6 +30,20 @@ if [ "${1:-}" = --wake-idle ]; then
 fi
 
 id=${1:-}
+
+# Android's notifications, while muted in quick actions (the file below):
+# dismissed at once, kept out of the history, and nothing wakes for them.
+# Waydroid names each app's desktop entry waydroid.<package>.
+muted="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/waydroid-muted"
+if [ -n "$id" ] && [ -e "$muted" ] &&
+   gdbus call --session --dest org.freedesktop.Notifications \
+         --object-path /fr/emersion/Mako \
+         --method fr.emersion.Mako.ListNotifications 2>/dev/null |
+       sed 's/}, {/}\n{/g' | grep "'id': <uint32 $id>" |
+       grep -q "'desktop-entry': <'waydroid\."; then
+    makoctl dismiss --no-history -n "$id"
+    exit 0
+fi
 
 [ -n "$id" ] && sway-notifications log "$id"
 
