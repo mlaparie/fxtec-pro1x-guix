@@ -119,8 +119,11 @@ TAP_BACK = {
     "vertical-flip": lambda x, y: (x, 1 - y),
 }
 # Frames at 12 MP before the one kept: exposure and focus are carried over
-# from the viewfinder, so one is enough (author: saving was slow; was 3).
-SETTLE_FRAMES = 1
+# from the viewfinder (author: saving was slow).  The first three after the
+# switch lack a colour, with the colour matrices of the tuning file: one
+# or two settle frames gave yellow or green photos, three a good one (seen
+# on the phone, 2026-11-16); one more for margin.
+SETTLE_FRAMES = 4
 ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
 EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
 FLASH_LED = "/sys/class/leds/white:flash-0"
