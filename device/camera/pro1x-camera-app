@@ -75,7 +75,9 @@ VIEWS = {"16:9": (1280, 720), "4:3": (1472, 1104), "1:1": (1104, 1104)}
 # pattern left and right (moWerk's 1080p patch notes): 4000x3000 did not
 # negotiate (seen on the phone), so these are 4:3, aligned, inside.
 STILL = (3968, 2976)
-STILL_48 = (7992, 5994)
+# The GPU takes rows of a multiple of 64 bytes: at 7992 wide every frame
+# failed (eglCreateImageKHR), 7984 works (seen on the phone, 2026-11-16).
+STILL_48 = (7984, 5988)
 # The front S5K4H7 gives at most 3264x2448: at the rear's size no frame
 # came ("No frame from the camera", no photo; author, 2026-11-02).
 STILL_FRONT = (3200, 2400)
@@ -1275,9 +1277,11 @@ class Camera(Gtk.Application):
         turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
         want = self.still()
-        deadline = time.monotonic() + 5
+        # A 48 MP frame comes later: none came within 3 s.
+        wait = 15 if want == STILL_48 else 5
+        deadline = time.monotonic() + wait
         while got < SETTLE_FRAMES + 1 and time.monotonic() < deadline:
-            s = self.snap.try_pull_sample(3 * Gst.SECOND)
+            s = self.snap.try_pull_sample(wait * Gst.SECOND)
             if not s:
                 break
             # The appsink may still hold a viewfinder frame.
