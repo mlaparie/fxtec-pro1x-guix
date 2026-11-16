@@ -58,10 +58,12 @@ VIDEO_SHAPES = ["16:9", "4:3"]
 # frames cost less to process and show (author: the preview lagged).  16:9
 # comes from the IMX582's fast 1984x1080 mode (pro1x-imx582-1080p), 4:3
 # and 1:1 from its 1984x1488 mode of the whole array (kernel patch
-# pro1x-imx582-4x3), which libcamera picks for a 4:3 stream.  The front
-# S5K4H7 has one mode, its whole array.  The video viewfinder streams the
-# video's own size.
-VIEWS = {"16:9": (1280, 720), "4:3": (960, 720), "1:1": (960, 720)}
+# pro1x-imx582-4x3).  libcamera picks the smallest mode that gives the
+# stream's size, whatever its shape: 960x720 and 1440x1080 came from the
+# 1080p mode, cut to 4:3 (seen on the phone), so 4:3 and 1:1 ask for more
+# than its 1080 rows.  The front S5K4H7 has one mode, its whole array.  The video
+# viewfinder streams the video's own size.
+VIEWS = {"16:9": (1280, 720), "4:3": (1472, 1104), "1:1": (1104, 1104)}
 # Photo resolutions, frames taken in another sensor mode than the
 # viewfinder's:
 #   full    the sensor's own pixels: the IMX582's 8000x6000 mode with its
@@ -505,7 +507,7 @@ class Camera(Gtk.Application):
     def scale(self):
         return 0.5 if self.out()["size"] == "half" else 1.0
 
-    def view(self):
+    def view_size(self):
         o = self.out()
         if self.video:
             h = VIDEO_SIZES[o["size"]]
@@ -517,7 +519,7 @@ class Camera(Gtk.Application):
         name, dev = self.cams[self.cam]
         self.wide = self.cam == 0 and max_width(dev) >= STILL_48[0]
         self.show_outputs()
-        size = size or self.view()
+        size = size or self.view_size()
         self.src = dev.create_element("src")
         self.caps = Gst.ElementFactory.make("capsfilter")
         self.caps.set_property(
@@ -588,7 +590,7 @@ class Camera(Gtk.Application):
         turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
                 "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
                 }.get(self.method(), "none")
-        width, height = self.view()
+        width, height = self.view_size()
         desc = (
             "queue max-size-buffers=4 leaky=downstream ! videoscale ! "
             "videorate drop-only=true max-rate=%d ! "
@@ -811,7 +813,7 @@ class Camera(Gtk.Application):
         """The part of the frame at the current size that the viewfinder's
         shape shows: in the viewfinder, the largest part in the shape; in a
         photo's frame, the same part of the scene."""
-        if self.size != self.view():
+        if self.size != self.view_size():
             return self.photo_region()
         ratio = RATIOS[self.out()["shape"]]
         w, h = self.size
@@ -852,8 +854,8 @@ class Camera(Gtk.Application):
         self.show_outputs()
         if not self.pipeline or self.busy:
             return
-        if self.view() != self.size:
-            self.resize(self.view())
+        if self.view_size() != self.size:
+            self.resize(self.view_size())
         else:
             self.apply_zoom()
 
@@ -1298,7 +1300,7 @@ class Camera(Gtk.Application):
     def resume(self):
         if self.fired:
             self.led(False)
-        self.resize(self.view())
+        self.resize(self.view_size())
         self.say("Saving")
         return False
 
