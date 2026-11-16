@@ -1277,8 +1277,9 @@ class Camera(Gtk.Application):
         turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
         want = self.still()
-        # A 48 MP frame comes later: none came within 3 s.
-        wait = 15 if want == STILL_48 else 5
+        # A 48 MP frame comes later: the first 9 s after the switch
+        # headless, and in a dark room none within 15 s in the app.
+        wait = 30 if want == STILL_48 else 5
         deadline = time.monotonic() + wait
         while got < SETTLE_FRAMES + 1 and time.monotonic() < deadline:
             s = self.snap.try_pull_sample(wait * Gst.SECOND)
