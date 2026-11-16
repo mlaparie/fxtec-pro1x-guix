@@ -118,12 +118,12 @@ TAP_BACK = {
     "horizontal-flip": lambda x, y: (1 - x, y),
     "vertical-flip": lambda x, y: (x, 1 - y),
 }
-# Frames at 12 MP before the one kept: exposure and focus are carried over
-# from the viewfinder (author: saving was slow).  The first three after the
-# switch lack a colour, with the colour matrices of the tuning file: one
-# or two settle frames gave yellow or green photos, three a good one (seen
-# on the phone, 2026-11-16); one more for margin.
-SETTLE_FRAMES = 4
+# Frames at the photo's size before the one kept: exposure, colour and focus
+# are carried over from the viewfinder (libcamera patch 0017, while the
+# camera stays open: resize), so none (author: saving was slow).  A full
+# stop made libcamera start over, and the first frames had no white
+# balance yet: green photos (2026-11-16).
+SETTLE_FRAMES = 0
 ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
 EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
 FLASH_LED = "/sys/class/leds/white:flash-0"
@@ -656,8 +656,9 @@ class Camera(Gtk.Application):
     def resize(self, size, carry=None):
         """The same camera at another sensor mode (a state cycle).  CARRY:
         (exposure time, analogue gain, lens position) to hold during it,
-        else automatic again."""
-        self.pipeline.set_state(Gst.State.NULL)
+        else automatic again.  READY keeps the camera open; NULL closed
+        it, and libcamera started over without the viewfinder's state."""
+        self.pipeline.set_state(Gst.State.READY)
         self.caps.set_property(
             "caps", Gst.Caps.from_string(
                 "video/x-raw,width=%d,height=%d" % size))
@@ -1273,9 +1274,15 @@ class Camera(Gtk.Application):
         """Frames at 12 MP, then the viewfinder back at once, and the photo
         turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
-        for _ in range(SETTLE_FRAMES + 1):
+        want = self.still()
+        deadline = time.monotonic() + 5
+        while got < SETTLE_FRAMES + 1 and time.monotonic() < deadline:
             s = self.snap.try_pull_sample(3 * Gst.SECOND)
-            if s:
+            if not s:
+                break
+            # The appsink may still hold a viewfinder frame.
+            c = s.get_caps().get_structure(0)
+            if (c.get_value("width"), c.get_value("height")) == want:
                 sample, got = s, got + 1
         if sample:
             caps = sample.get_caps().get_structure(0)
@@ -1332,10 +1339,10 @@ class Camera(Gtk.Application):
         if not ok:
             raise RuntimeError("cannot read the frame")
         try:
+            # GLib.Bytes holds its own copy of the data.
             pix = GdkPixbuf.Pixbuf.new_from_bytes(
                 GLib.Bytes.new(mapping.data), GdkPixbuf.Colorspace.RGB,
                 False, 8, info.width, info.height, info.stride[0])
-            pix = pix.copy()
         finally:
             buf.unmap(mapping)
         return pix
