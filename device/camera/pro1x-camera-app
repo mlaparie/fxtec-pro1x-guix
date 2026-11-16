@@ -1345,24 +1345,22 @@ class Camera(Gtk.Application):
         mirror image), then as the phone was held; a JPEG.  (The
         2026-11-01 finding that photos needed the opposite turn came from a
         viewfinder that was itself upside down in portrait, unnoticed.)"""
-        R = GdkPixbuf.PixbufRotation
-        if method == "counterclockwise":
-            pix = pix.rotate_simple(R.COUNTERCLOCKWISE)
-        elif method == "clockwise":
-            pix = pix.rotate_simple(R.CLOCKWISE)
-        elif method in ("rotate-180", "vertical-flip"):
-            pix = pix.rotate_simple(R.UPSIDEDOWN)
+        # Degrees counterclockwise, both turns in one: a 12 MP turn takes
+        # seconds (7.7 s to save with two, 3.2 s with none; 2026-11-16).
+        degrees = {"counterclockwise": 90, "clockwise": 270, "rotate-180": 180,
+                   "vertical-flip": 180}.get(method, 0)
         portrait = method in ("counterclockwise", "clockwise")
-        # Then as held.  right-up is the keyboard landscape here
-        # (sway-autorotate's naming, swapped from Phosh's).  The direction
-        # is from one landscape photo (2026-11-02), side not yet known:
-        # the log says which way the phone was held.
-        turn = {"right-up": GdkPixbuf.PixbufRotation.CLOCKWISE,
-                "left-up": GdkPixbuf.PixbufRotation.COUNTERCLOCKWISE,
-                "bottom-up": GdkPixbuf.PixbufRotation.UPSIDEDOWN}.get(held)
+        # Then as held, when the display stayed portrait (the keyboard
+        # closed).  right-up is the keyboard landscape here (sway-autorotate's
+        # naming, swapped from Phosh's).  right-up needs the counterclockwise
+        # turn: the clockwise one gave an upside down photo, held as one
+        # taken right in the keyboard landscape (author, 2026-11-16).
+        turn = {"right-up": 90, "left-up": 270, "bottom-up": 180}.get(held)
         print("capture: held %s" % held, flush=True)
         if portrait and turn is not None:
-            pix = pix.rotate_simple(turn)
+            degrees += turn
+        if degrees % 360:
+            pix = pix.rotate_simple(GdkPixbuf.PixbufRotation(degrees % 360))
         scale = self.scale()
         if scale != 1.0:
             pix = pix.scale_simple(int(pix.get_width() * scale),
