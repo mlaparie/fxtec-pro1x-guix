@@ -59,7 +59,7 @@
         ;; viewfinder that shows all of a 12 MP photo.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
-          "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3"))))
+          "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"))))
 
 (define-public linux-pro1x
   (package
