@@ -107,13 +107,16 @@ alarm_wake() {
         logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) ($([ "$next" = "$hibernate_at" ] && echo hibernate || echo Clocks alarm))"
 }
 
-# Hibernation possible: the swap file on, and this boot's kernel arguments
-# carrying its resume arguments (the next boot's, from the same file).
+# Hibernation possible: the swap file on, and the boot menu's default
+# line carrying its resume arguments, since the next boot is the one that
+# resumes.  Not this boot's arguments: after a boot by the no-resume line
+# the phone can still hibernate (author, 2026-11-17).
 resume_args=/var/lib/pro1x/resume
+boot_conf=/boot/boot/extlinux/extlinux.conf
 hibernate_ready() {
-    [ -r "$resume_args" ] &&
+    [ -r "$resume_args" ] && [ -r "$boot_conf" ] &&
         swapon --show=NAME --noheadings | grep -qx /swap/swapfile &&
-        grep -qF -- "$(cat "$resume_args")" /proc/cmdline
+        grep -qF -- "$(cat "$resume_args")" "$boot_conf"
 }
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"

@@ -39,9 +39,9 @@ HIBERNATE_DELAY=
 [ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 # As pro1x-sleep's hibernate_ready.
 hibernate_ready() {
-    [ -r /var/lib/pro1x/resume ] &&
+    [ -r /var/lib/pro1x/resume ] && [ -r /boot/boot/extlinux/extlinux.conf ] &&
         swapon --show=NAME --noheadings 2>/dev/null | grep -qx /swap/swapfile &&
-        grep -qF -- "$(cat /var/lib/pro1x/resume)" /proc/cmdline
+        grep -qF -- "$(cat /var/lib/pro1x/resume)" /boot/boot/extlinux/extlinux.conf
 }
 # The delay as said in the lines: 2 h, 90 min.
 delay=
