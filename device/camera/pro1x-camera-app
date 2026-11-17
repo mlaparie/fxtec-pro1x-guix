@@ -442,7 +442,9 @@ class Camera(Gtk.Application):
         self.b_shutter = self.button("", self.on_shutter)
         self.b_shutter.get_style_context().add_class("shutter")
         self.b_mode = self.button("Video", self.on_mode)
-        for b in (self.b_switch, self.b_shutter, self.b_mode):
+        # Video above or left of the shutter, the camera switch below or
+        # right (author, 2026-11-17).
+        for b in (self.b_mode, self.b_shutter, self.b_switch):
             self.main.pack_start(b, False, False, 0)
         # The camera switch as large as Video beside it (author, 2026-11-16).
         self.sides = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.BOTH)
@@ -1836,8 +1838,24 @@ class Camera(Gtk.Application):
                                    Gdk.CURRENT_TIME)
             return
 
+        app = "mpv" if video else "org.gnome.Loupe"
+
+        def viewers():
+            tree = subprocess.run(["swaymsg", "-t", "get_tree", "-r"],
+                                  capture_output=True, text=True).stdout
+            return tree.count('"app_id": "%s"' % app)
+
         def back():
-            viewer.wait()
+            # Fullscreen again once the viewer's window has come and gone.
+            # Not when its process ends: Loupe hands the photo to another
+            # instance and exits at once, and the camera came back over it
+            # (author, 2026-11-17).  Loupe takes over 10 s to open here.
+            for _ in range(60):
+                if viewers() or viewer.poll() not in (None, 0):
+                    break
+                time.sleep(0.5)
+            while viewers():
+                time.sleep(0.5)
             subprocess.run(["swaymsg", me + " focus, fullscreen enable"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         threading.Thread(target=back, daemon=True).start()
