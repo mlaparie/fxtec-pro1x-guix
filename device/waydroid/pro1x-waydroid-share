@@ -3,34 +3,37 @@
 # shared between the phone and Waydroid (waydroid-service-type in
 # config.scm: storage-view, shared-folders).  As root, at boot.
 #
+# start: each SOURCE (a folder of the phone; relative: in USER's home) is
+# mounted at /run/pro1x-waydroid-share/TARGET, a root-only place outside
+# the home, through bindfs: USER's files are Android's media user (1023)
+# there and the files Android writes are USER's, so both sides write.
 # VIEW (/mnt/waydroid, or "" for none): Android's internal storage seen
 # from the phone, every file owned by USER (bindfs --mirror, as in
 # Waydroid's documentation).
-# SOURCE TARGET: a folder of the phone (relative: in USER's home) shown in
-# Android's storage as TARGET (Documents, Download...).  Through bindfs,
-# USER's files are Android's media user (1023) there and the files Android
-# writes are USER's on the phone, so both sides can write.
-#
-# Android's storage, ~USER/.local/share/waydroid/data/media/0, exists once
-# Waydroid is set up and Android started once; until then nothing is
-# mounted (the service is started again by hand, or at the next boot).
 #
 # watch: each time Android starts, once it has booted, each share is
-# mounted again inside the container, on Android's data folder itself.
-# Android's storage service reads a copy of that folder made at its start
-# without the mounts below it, so apps saw the shares empty (only the shell
-# saw them in /data/media/0); a mount made there after the start reaches
-# that copy.  Android's init is looked for every 30 s (nothing in suspend).
+# attached inside the container at /data/media/0/TARGET (pro1x-nsbind:
+# cloned here, attached in Android's mount namespace).  Android's storage
+# service reads a copy of its data folder made at its start, without the
+# mounts below it: a mount made there after the start reaches that copy,
+# so apps see the files.  Nothing is mounted under ~/.local/share/waydroid
+# on the phone's side: deleting Waydroid's data meets empty folders there,
+# never the phone's own (author, 2026-11-17).  Android's init is looked for
+# every 30 s (nothing in suspend).
 #
-# State (2026-11-17, on the phone): start mounted the shares; Android's
-# apps saw them only after the remount that watch does (done by hand: the
-# storage service's mounts then had them, a media scan indexed 99 images).
+# stop: the view and the shares unmounted on the phone's side; Android
+# keeps its attached copies until it stops.
+#
+# State (2026-11-17, on the phone): a test folder attached this way was
+# read inside Android and present in its storage service's mounts, with no
+# mount on the phone's side; this script as a whole not yet run.
 
 set -u
 action=$1 user=$2 view=$3
 shift 3
 home=$(getent passwd "$user" | cut -d: -f6)
 media=$home/.local/share/waydroid/data/media/0
+shares=/run/pro1x-waydroid-share
 uid=$(id -u "$user") gid=$(id -g "$user")
 android=1023                            # media_rw, Android's storage owner
 
@@ -38,33 +41,25 @@ mounted() { grep -q " $1 fuse" /proc/mounts; }
 
 case "$action" in
     start)
-        if [ ! -d "$media" ]; then
-            echo "no Waydroid storage yet: $media"
-            exit 0
-        fi
+        mkdir -p "$shares" && chmod 700 "$shares"
         while [ $# -ge 2 ]; do
-            src=$1 target=$media/$2
+            src=$1 dir=$shares/$2
             shift 2
             case "$src" in /*) ;; *) src=$home/$src ;; esac
             [ -d "$src" ] || continue
-            mounted "$target" && continue
-            if [ ! -d "$target" ]; then
-                mkdir -p "$target" &&
-                    chown "$android:$android" "$target" && chmod 2770 "$target"
-            fi
-            bindfs -o allow_other,nonempty \
-                   --map="$uid/$android:@$gid/@$android" "$src" "$target" ||
-                echo "could not share $src as $target"
+            mounted "$dir" && continue
+            mkdir -p "$dir"
+            bindfs -o allow_other \
+                   --map="$uid/$android:@$gid/@$android" "$src" "$dir" ||
+                echo "could not share $src"
         done
-        if [ -n "$view" ] && ! mounted "$view"; then
+        if [ -n "$view" ] && [ -d "$media" ] && ! mounted "$view"; then
             mkdir -p "$view"
             bindfs -o allow_other --mirror="$user" "$media" "$view" ||
                 echo "could not show $media at $view"
         fi
         exit 0 ;;
     watch)
-        targets=
-        while [ $# -ge 2 ]; do targets="$targets $2"; shift 2; done
         last=
         while sleep 30; do
             pid=$(pgrep -f '^/system/bin/init second_stage' | head -n 1)
@@ -76,26 +71,25 @@ case "$action" in
                 sleep 5
             done
             last=$pid
-            # Kept at a side path, the share's mounts removed, then mounted
-            # again on the data folder.
-            waydroid shell -- sh -c '
-                for d in '"$targets"'; do
-                    t=/data/media/0/$d
-                    grep -q " $t fuse" /proc/mounts || continue
-                    mkdir -p /dev/pro1x-share/$d
-                    mount --bind $t /dev/pro1x-share/$d || continue
-                    i=0
-                    while grep -q " $t fuse" /proc/mounts && [ $i -lt 4 ]; do
-                        umount $t; i=$((i + 1))
-                    done
-                    mount --bind /dev/pro1x-share/$d $t
-                done' && logger -t pro1x-waydroid-share "shares mounted in Android"
+            for dir in "$shares"/*; do
+                mounted "$dir" || continue
+                t=${dir##*/}
+                # The folder in Android's storage, as Android makes its own.
+                waydroid shell -- sh -c "
+                    t=/data/media/0/$t
+                    grep -q \" \$t fuse\" /proc/mounts && exit 1
+                    mkdir -p \$t && chown $android:$android \$t && chmod 2770 \$t" ||
+                    continue
+                "${NSBIND:-pro1x-nsbind}" "$dir" "$pid" "/data/media/0/$t" ||
+                    echo "could not attach $t in Android"
+            done
+            logger -t pro1x-waydroid-share "shares attached in Android"
         done ;;
     stop)
-        # The view first: it sits on top of the shares.
         [ -n "$view" ] && mounted "$view" && umount "$view"
-        grep " $media/[^ ]* fuse" /proc/mounts | cut -d' ' -f2 |
-            while read -r m; do umount "$m"; done
+        for dir in "$shares"/*; do
+            mounted "$dir" && umount "$dir"
+        done
         exit 0 ;;
     *)
         echo "usage: pro1x-waydroid-share start|watch|stop USER VIEW [SOURCE TARGET]..." >&2

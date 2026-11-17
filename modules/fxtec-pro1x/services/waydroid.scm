@@ -16,14 +16,16 @@
 ;;; Shared folders (pro1x-waydroid-share, at boot): Android's internal
 ;;; storage at storage-view (/mnt/waydroid), owned there by the user; and
 ;;; shared-folders, the phone's folders shown in Android's storage, both
-;;; sides writing (bindfs, owners mapped).  Both need Android set up and
-;;; started once: before that, nothing is mounted.
+;;; sides writing (bindfs, owners mapped), attached inside Android after
+;;; each of its starts and never mounted under ~/.local/share/waydroid on
+;;; the phone's side: deleting Waydroid's data cannot reach them.
 
 (define-module (fxtec-pro1x services waydroid)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages waydroid)
   #:use-module (gnu packages base)          ; coreutils, grep, glibc (getent)
   #:use-module (gnu packages bash)          ; bash-minimal
+  #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module ((gnu packages file-systems) #:select (bindfs))
   #:use-module (gnu packages linux)         ; util-linux, fuse, procps
   #:use-module ((gnu packages admin) #:select (inetutils)) ; logger
@@ -56,9 +58,21 @@
                              ("Videos" . "Movies")
                              ("/tmp" . "tmp")))))
 
+;;; The helper attaching a share inside Android's mount namespace.
+(define pro1x-nsbind
+  (computed-file "pro1x-nsbind"
+    (with-imported-modules '((guix build utils))
+      #~(begin
+          (use-modules (guix build utils))
+          (setenv "PATH" (string-append #$gcc-toolchain "/bin"))
+          (invoke "gcc" "-O2" "-Wall" "-o" #$output
+                  #$(local-file
+                     (repository-file "device/waydroid/pro1x-nsbind.c")))))))
+
 (define pro1x-waydroid-share-script
   (program-file "pro1x-waydroid-share"
     #~(begin
+        (setenv "NSBIND" #$pro1x-nsbind)
         (setenv "PATH"
                 (string-append #$coreutils "/bin:" #$grep "/bin:"
                                #$util-linux "/bin:" #$util-linux "/sbin:"
