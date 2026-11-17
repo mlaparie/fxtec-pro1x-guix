@@ -1,0 +1,72 @@
+#!/bin/sh
+# pro1x-swap start SIZE | stop — the swap file, as root (Shepherd service
+# pro1x-swap, swap-size in config.scm).
+#
+# start: a swap file of SIZE (8G, 4G, ...) at /swap/swapfile, made unless
+# one of that size is there, then swapon.  On btrfs, /swap is a subvolume
+# of its own (btrfs refuses to snapshot a subvolume holding an active swap
+# file, and the home snapshots must go on) and the file comes from
+# `btrfs filesystem mkswapfile' (no copy on write, no compression, all
+# allocated); on another file system, fallocate and mkswap.
+# Then the kernel arguments that resume from it after hibernation,
+# "resume=/dev/mapper/NAME resume_offset=N", go to /var/lib/pro1x/resume:
+# pro1x-boot-menu adds them to the boot entries, and is run again when
+# they change.  The offset is that of the file's first block, so it holds
+# until the file is made again.
+# stop: swapoff.
+#
+# State: written 2026-11-17, not yet run on the phone.
+
+set -u
+dir=/swap
+file=$dir/swapfile
+state=/var/lib/pro1x/resume
+
+on() { swapon --show=NAME --noheadings | grep -qx "$file"; }
+
+case "${1:-}" in
+    start)
+        size=${2:?size}
+        bytes=$(numfmt --from=iec "$size") || exit 1
+        if [ "$(stat -c %s "$file" 2>/dev/null || echo 0)" != "$bytes" ]; then
+            on && swapoff "$file"
+            rm -f "$file"
+            if [ "$(findmnt -no FSTYPE -T /)" = btrfs ]; then
+                [ -d "$dir" ] || btrfs subvolume create "$dir" || exit 1
+                btrfs filesystem mkswapfile --size "$size" "$file" || exit 1
+            else
+                mkdir -p "$dir"
+                fallocate -l "$size" "$file" && chmod 600 "$file" &&
+                    mkswap "$file" >/dev/null || exit 1
+            fi
+            logger -t pro1x-swap "made $file, $size"
+        fi
+        on || swapon "$file" || exit 1
+
+        # The device under the file: /dev/mapper/NAME for a mapped one
+        # (the encrypted root), which the initrd opens before resuming.
+        dev=$(findmnt -no SOURCE -T "$file" | sed 's/\[.*//')
+        case "$dev" in
+            /dev/dm-*) dev=/dev/mapper/$(cat "/sys/block/${dev#/dev/}/dm/name") ;;
+        esac
+        if [ "$(findmnt -no FSTYPE -T "$file")" = btrfs ]; then
+            offset=$(btrfs inspect-internal map-swapfile -r "$file")
+        else
+            # The first extent's physical block, in pages (4 KiB blocks).
+            offset=$(filefrag -v "$file" | awk '$1 == "0:" { sub(/\.\..*/, "", $4); print $4; exit }')
+        fi
+        [ -n "$offset" ] || exit 1
+        args="resume=$dev resume_offset=$offset"
+        if [ "$(cat "$state" 2>/dev/null)" != "$args" ]; then
+            mkdir -p "${state%/*}"
+            echo "$args" > "$state"
+            logger -t pro1x-swap "resume arguments: $args"
+            herd restart pro1x-boot-menu >/dev/null 2>&1 || true
+        fi ;;
+    stop)
+        on && swapoff "$file"
+        exit 0 ;;
+    *)
+        echo "usage: pro1x-swap start SIZE | stop" >&2
+        exit 1 ;;
+esac

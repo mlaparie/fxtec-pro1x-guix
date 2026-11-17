@@ -1,5 +1,6 @@
 #!/bin/sh
-# pro1x-sleep suspend|hibernate — as root (sudo, from pro1x-power-menu).
+# pro1x-sleep suspend [then-hibernate] | hibernate — as root (sudo, from
+# pro1x-power-menu, pro1x-idle).
 #
 # Suspend is s2idle (the only mem_sleep mode on the Pro¹x), in a loop:
 # after each wake it looks at what woke the phone (the wakeup sources'
@@ -26,9 +27,18 @@
 # the ADSP raise smp2p-sleepstate about twice a second (none without it), and
 # that wakeup source aborted most tries to suspend, five in a row at times.  The
 # stream stops before sleeping; the service starts again after the wake.
-# Hibernate needs swap and a resume device, which the port does not set up.
+# Hibernate: the memory to the swap file (pro1x-swap, swap-size in
+# config.scm), then off; the next boot resumes from it.  Only when this
+# boot's kernel arguments carry the swap file's resume arguments, which
+# pro1x-boot-menu adds (so one reboot after the swap file is first made):
+# the image would otherwise be written where the next boot does not look.
+# suspend then-hibernate, and every suspend with AUTO_HIBERNATE=yes:
+# HIBERNATE_DELAY minutes after it, the RTC wakes the phone and it
+# hibernates (/etc/pro1x/sleep.conf: hibernate-delay and auto-hibernate?
+# in config.scm).  A Clocks alarm before that wakes it as usual.
 #
 # State: the loop written 2026-11-01 for the patched kernel, not yet run.
+# Hibernation written 2026-11-17, not yet run.
 
 # sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
@@ -57,13 +67,15 @@ led_asleep() {
 # so the alarm is set relative ("+seconds").  A wake by the RTC keeps the
 # phone up (suspend_loop), and Clocks rings.
 rtcwake=/sys/class/rtc/rtc0/wakealarm
+# hibernate_at: when to hibernate (epoch seconds), empty for never.
+hibernate_at=
 alarm_wake() {
     [ -w "$rtcwake" ] || return 0
     echo 0 > "$rtcwake"
     times=$(su -s /run/current-system/profile/bin/sh "${SUDO_USER:-user}" \
                 -c "dconf read /org/gnome/clocks/alarms" 2>/dev/null |
                 grep -o "'ring_time': <'[^']*'>" | sed "s/.*<'\(.*\)'>/\1/")
-    now=$(date +%s) next=
+    now=$(date +%s) next=$hibernate_at
     for t in $times; do
         at=$(date -d "$t" +%s 2>/dev/null) || continue
         [ "$at" -gt $((now + 30)) ] || continue
@@ -71,7 +83,22 @@ alarm_wake() {
     done
     [ -n "$next" ] || return 0
     echo "+$((next - now - 5))" > "$rtcwake" &&
-        logger -t pro1x-sleep "Clocks alarm at $(date -d "@$next" +%H:%M): RTC wake set"
+        logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) ($([ "$next" = "$hibernate_at" ] && echo hibernate || echo Clocks alarm))"
+}
+
+# Hibernation possible: the swap file on, and this boot's kernel arguments
+# carrying its resume arguments (the next boot's, from the same file).
+resume_args=/var/lib/pro1x/resume
+hibernate_ready() {
+    [ -r "$resume_args" ] &&
+        swapon --show=NAME --noheadings | grep -qx /swap/swapfile &&
+        grep -qF -- "$(cat "$resume_args")" /proc/cmdline
+}
+hibernate_now() {
+    logger -t pro1x-sleep "hibernating"
+    sync
+    echo disk > /sys/power/state ||
+        logger -t pro1x-sleep "hibernation failed"
 }
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
@@ -115,7 +142,7 @@ counts() {
 # The sources whose count grew between two snapshots (files).
 woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
 
-WAKE_ON='calls sms'
+WAKE_ON='calls sms' HIBERNATE_DELAY= AUTO_HIBERNATE=no
 [ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 allowed() { case " $WAKE_ON " in *" $1 "*) return 0 ;; esac; return 1; }
 
@@ -225,6 +252,12 @@ suspend_loop() {
             " adsp ")
                 adsp_recover
                 sleep 1 ;;               # its answer
+            *rtc*)
+                if [ -n "$hibernate_at" ] &&
+                   [ "$(date +%s)" -ge $((hibernate_at - 60)) ]; then
+                    woke=hibernate
+                fi
+                break ;;
             *) break ;;
         esac
     done
@@ -233,6 +266,14 @@ suspend_loop() {
 
 case "${1:-}" in
     suspend)
+        if [ -n "$HIBERNATE_DELAY" ] &&
+           { [ "${2:-}" = then-hibernate ] || [ "$AUTO_HIBERNATE" = yes ]; }; then
+            if hibernate_ready; then
+                hibernate_at=$(( $(date +%s) + HIBERNATE_DELAY * 60 ))
+            else
+                logger -t pro1x-sleep "no hibernation: swap or resume arguments missing (reboot once after the swap file is made)"
+            fi
+        fi
         while :; do
             herd stop pro1x-shake-torch >/dev/null 2>&1
             panel off
@@ -242,6 +283,10 @@ case "${1:-}" in
             led_asleep
             alarm_wake
             suspend_loop
+            if [ "$woke" = hibernate ]; then
+                hibernate_now
+                woke=
+            fi
             [ -w "$rtcwake" ] && echo 0 > "$rtcwake"
             [ -n "$uart" ] && echo enabled > "$uart"
             [ -n "$ipa" ] && echo enabled > "$ipa"
@@ -263,6 +308,13 @@ case "${1:-}" in
                 *) break ;;
             esac
         done ;;
-    hibernate) echo disk > /sys/power/state ;;
-    *) echo "usage: pro1x-sleep suspend|hibernate" >&2; exit 1 ;;
+    hibernate)
+        if ! hibernate_ready; then
+            logger -t pro1x-sleep "no hibernation: swap or resume arguments missing (reboot once after the swap file is made)"
+            exit 1
+        fi
+        panel off
+        hibernate_now
+        panel on ;;
+    *) echo "usage: pro1x-sleep suspend [then-hibernate] | hibernate" >&2; exit 1 ;;
 esac

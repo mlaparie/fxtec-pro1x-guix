@@ -21,6 +21,12 @@
 # Environment: PRO1X_SYSTEM_LINK, the current generation's profile link (default
 # /var/guix/profiles/system), for its number and date.
 #
+# Hibernation: with --plain-area, the swap file's resume arguments, which
+# pro1x-swap keeps in /var/lib/pro1x/resume, are added to each entry's
+# APPEND line (the offset is known only once the file exists, so it cannot
+# be in config.scm's kernel arguments).  Without a plain area, Guix's own
+# extlinux.conf is what U-Boot reads, and they are not added.
+#
 # State: tested in QEMU; on the encrypted phone (2026-11-06) a deploy's kernel
 # and initrd went to the plain area and the menu listed both generations.
 
@@ -34,6 +40,7 @@ fi
 src=$1 dir=$2 n=$3 delay=$4
 link=${PRO1X_SYSTEM_LINK:-/var/guix/profiles/system}
 dtb=qcom/sm6115-fxtec-pro1x.dtb
+resume=$(cat /var/lib/pro1x/resume 2>/dev/null || true)
 
 # Files from the flash carry the PC user's uid, the phone user's too: U-Boot boots
 # whatever is here, so only root may write.
@@ -108,7 +115,13 @@ if [ -n "$root" ]; then
             remove_unwanted "$wanted"
             copy_entry "$text" || break
         fi
-        printf '%s\n' "$text" | sed 's#\(KERNEL\|INITRD\|FDTDIR\) */gnu/store/#\1 /files/#; s#/lib/dtbs$#/dtbs#' >> "$tmp"
+        printf '%s\n' "$text" |
+            sed 's#\(KERNEL\|INITRD\|FDTDIR\) */gnu/store/#\1 /files/#; s#/lib/dtbs$#/dtbs#' |
+            if [ -n "$resume" ]; then
+                sed "s#^\([[:space:]]*APPEND[[:space:]].*\)#\1 $resume#"
+            else
+                cat
+            fi >> "$tmp"
         kept=$((kept + 1))
         i=$((i + 1))
     done

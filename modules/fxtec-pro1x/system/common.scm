@@ -117,6 +117,14 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (lock-after 120)
   ;;                Suspend after this many minutes locked (#f: never; Sway).
   ;;                (auto-sleep #f)
+  ;;                A swap file of this size in /swap, for idle memory and hibernation
+  ;;                (#f: none; one already made stays until removed by hand).
+  ;;                (swap-size \"8G\")
+  ;;                Delay between suspend and hibernate, in minutes, for the power menu's
+  ;;                \"Suspend, then hibernate\" lines (#f: no such lines).
+  ;;                (hibernate-delay 120)
+  ;;                Let every suspend hibernate once it has lasted hibernate-delay.
+  ;;                (auto-hibernate? #f)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
   ;;                Light or dark themes are set in Phosh, which writes into dconf; Sway reuses it.

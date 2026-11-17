@@ -67,6 +67,9 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `charge-limit`, `charge-resume` | `85`, `80` | stop charging at 85%, charge again at 80%; `#f` charges to full.  Quick actions (Charge limit line) override it until the next reboot, marked "(until reboot)" |
 | hardware `charging-awake?` | `#t` | stay awake while charging, so the limit is seen in time (Linux 7.3); `#f` lets it sleep |
 | hardware `auto-sleep` | `#f` | minutes locked before suspending (Sway); `#f` never.  Quick actions (Auto-sleep line) override it until the next reboot |
+| hardware `swap-size` | `"8G"` | a swap file of this size, `/swap/swapfile` (a btrfs subvolume of its own, outside the home snapshots), made at the next boot: room for idle memory, and for hibernation; `#f` none (a file already made stays until removed by hand) |
+| hardware `hibernate-delay` | `120` | minutes between suspend and hibernate: the power menu's "Suspend, then hibernate" and "Lock, suspend, then hibernate" lines wait this long, then hibernate; `#f` no such lines |
+| hardware `auto-hibernate?` | `#f` | every suspend (auto-sleep, Lock and suspend...) hibernates once it has lasted `hibernate-delay` |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
 | hardware `usb-runtime-pm?` | `#t` | let the USB controller runtime-suspend when unplugged, so its supplies switch off in suspend (moWerk: 29-32 mA instead of 40-42); `#f` keeps it on |
@@ -80,6 +83,11 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `camera-triple-press` | `"pro1x-camera-app"` | shell command for a triple press of the camera button (default: the camera; not while the proximity sensor reads near); a press in the camera app (or Snapshot) takes a picture, a single press elsewhere is a left click where the pointer is (a right click with Fn held); held, the touchscreen is a touchpad moving the pointer, and with Super held too a window drag |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
+
+Hibernation needs the swap file and the encrypted layout (its boot area
+gets the swap file's resume arguments), and one reboot after the swap file
+is first made; until then the power menu shows no hibernation lines.  It is
+untested on this phone yet.
 
 `blank-after` and `lock-after` are the defaults of the GSettings keys that
 GNOME Settings (blank) and Phosh Mobile Settings ("Automatic screen lock

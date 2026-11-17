@@ -66,6 +66,7 @@
   #:use-module (gnu services)
   #:use-module ((ice-9 regex) #:select (regexp-quote))
   #:use-module (gnu packages base)          ; coreutils
+  #:use-module ((gnu packages gawk) #:select (gawk))
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module (gnu packages hunspell)      ; word completion dictionaries
   #:use-module ((gnu packages window-management) #:select (swayfx))
@@ -148,6 +149,17 @@
   ;; Suspend after this many minutes locked; #f: never on its own (Sway).
   ;; Quick actions (Auto-sleep) override it until reboot.
   (auto-sleep         pro1x-hardware-auto-sleep         (default #f))
+  ;; A swap file of this size, /swap/swapfile (a btrfs subvolume of its
+  ;; own, outside the home snapshots), made at the first boot that asks for
+  ;; it: room for memory that apps leave idle, and for hibernation.  #f: no
+  ;; swap (a file already made stays until removed by hand).
+  (swap-size          pro1x-hardware-swap-size          (default "8G"))
+  ;; Minutes between suspend and hibernate, for the power menu's "Suspend,
+  ;; then hibernate" lines and auto-hibernate?; #f: no such lines.
+  (hibernate-delay    pro1x-hardware-hibernate-delay    (default 120))
+  ;; Every suspend (auto-sleep, Lock and suspend...) hibernates once it
+  ;; has lasted hibernate-delay minutes.
+  (auto-hibernate?    pro1x-hardware-auto-hibernate?    (default #f))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -962,6 +974,36 @@ esac
                     #f))
           (respawn? #t)))))
 
+(define pro1x-swap-script
+  (program-file "pro1x-swap"
+    #~(begin
+        (setenv "PATH"
+                (string-append #$coreutils "/bin:" #$util-linux "/bin:"
+                               #$util-linux "/sbin:" #$btrfs-progs "/bin:"
+                               #$e2fsprogs "/sbin:" #$gawk "/bin:"
+                               #$sed "/bin:" #$grep "/bin:"
+                               ;; herd, to rewrite the boot menu.
+                               "/run/current-system/profile/bin"))
+        (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
+               #$(local-file (repository-file "device/boot/pro1x-swap"))
+               (cdr (command-line))))))
+
+(define (pro1x-swap-shepherd-service config)
+  (let ((size (pro1x-hardware-swap-size config)))
+    (if size
+        (list
+         (shepherd-service
+          (provision '(pro1x-swap))
+          (requirement '(file-systems))
+          (documentation "The swap file (swap-size), and the resume arguments
+of hibernation for the boot menu.")
+          (start #~(lambda _
+                     (zero? (system* #$pro1x-swap-script "start" #$size))))
+          (stop #~(lambda _
+                    (system* #$pro1x-swap-script "stop")
+                    #f))))
+        '())))
+
 (define (pro1x-clock-shepherd-service config)
   (list
    (shepherd-service
@@ -1132,7 +1174,13 @@ under the file names stevia looks for.")
                      "WAKE_ON='"
                      (string-join (map symbol->string
                                        (pro1x-hardware-wake-on config)))
-                     "'\n")))
+                     "'\n"
+                     "HIBERNATE_DELAY="
+                     (let ((d (pro1x-hardware-hibernate-delay config)))
+                       (if d (number->string d) ""))
+                     "\nAUTO_HIBERNATE="
+                     (if (pro1x-hardware-auto-hibernate? config) "yes" "no")
+                     "\n")))
       ;; /etc/pro1x/cpu.conf: the CPU mode for good, for pro1x-cpu-mode
       ;; (quick actions override it until reboot).
       ("pro1x/cpu.conf"
@@ -1231,6 +1279,7 @@ under the file names stevia looks for.")
      (service-extension shepherd-root-service-type
                         (lambda (config)
                           (append (pro1x-clock-shepherd-service config)
+                                  (pro1x-swap-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
                                   (pro1x-shake-torch-shepherd-service config)
