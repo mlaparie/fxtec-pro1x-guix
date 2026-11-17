@@ -2,11 +2,12 @@
 ;;;
 ;;; Mirrors the NixOS packages/uboot/default.nix:
 ;;;   • replaces UEFI boot with sysboot/extlinux
-;;;   • inserts N "Boot previous generation" menu entries
+;;;   • inserts a "Boot without resume" entry and N "Boot previous
+;;;     generation" ones
 ;;;   • patches USB gadget (high-speed, UTMI pipe clock) and UFS GDSC
 ;;;
 ;;; `previous-generations` (default 4: five generations in the menu with the
-;;; current one) must match services/boot.scm's `generations`; it is compiled into
+;;; current one, which also has a line without hibernation resume) must match services/boot.scm's `generations`; it is compiled into
 ;;; U-Boot, so reflash after changing it.  With more in menu.env than here, the
 ;;; extra labels would replace U-Boot's own menu entries after them.
 ;;;
@@ -76,12 +77,15 @@
 
 (define* (make-u-boot-pro1x #:key (previous-generations 4))
   (let* ((n previous-generations)
-         ;; "bootmenu_1=Boot previous generation 1=sysboot …\n" × n
+         ;; "bootmenu_1=Boot without resume=…noresume.conf…\n", then
+         ;; "bootmenu_2=Boot previous generation 1=sysboot …\n" × n
          (prev-entries
           (apply string-append
+                 "bootmenu_1=Boot without resume=sysboot scsi 0#userdata any"
+                 " ${scriptaddr} /boot/extlinux/noresume.conf; pause\n"
                  (map (lambda (i)
                         (string-append
-                         "bootmenu_" (number->string i)
+                         "bootmenu_" (number->string (+ i 1))
                          "=Boot previous generation " (number->string i)
                          "=sysboot scsi 0#userdata any ${scriptaddr}"
                          " /boot/extlinux/prev" (number->string i)
@@ -167,21 +171,22 @@
                   (("bootmenu_3=Enable fastboot mode=echo \"Press any key to exit fastboot mode\"; run fastboot")
                    "bootmenu_3=Reboot to fastboot (stock bootloader)=pmic dev pmic@0; pmic write 0x88f 0x04; smc 0x84000009"))
 
-                ;; 2. Renumber existing entries ≥ 1 to make room for prev-N slots.
+                ;; 2. Renumber existing entries ≥ 1 to make room for the no-resume
+                ;; and prev-N slots.
                 #$@(if (> n 0)
                        (list #~(begin
                                  (invoke "perl" "-0pi" "-e"
                                          (string-append
                                           "s/^bootmenu_(\\d+)=/"
-                                          "'bootmenu_'.($1>=1?$1+" #$(number->string n) ":$1).'='/gme")
+                                          "'bootmenu_'.($1>=1?$1+" #$(number->string (+ n 1)) ":$1).'='/gme")
                                          "board/qualcomm/qcom-phone.env")
-                                 ;; Insert the prev entries before the (now-renumbered) slot 1+n.
+                                 ;; Insert them before the (now-renumbered) slot 2+n.
                                  (call-with-output-file "prev-entries.txt"
                                    (lambda (port) (display #$prev-entries port)))
                                  (invoke "perl" "-0pi" "-e"
                                          (string-append
                                           "BEGIN{local $/;open F,'<prev-entries.txt' or die;$e=<F>;}"
-                                          "s/^(bootmenu_" #$(number->string (+ n 1)) "=)/$e$1/m or die")
+                                          "s/^(bootmenu_" #$(number->string (+ n 2)) "=)/$e$1/m or die")
                                          "board/qualcomm/qcom-phone.env")))
                        '())
 
