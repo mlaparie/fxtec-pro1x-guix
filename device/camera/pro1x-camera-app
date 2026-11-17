@@ -168,8 +168,12 @@ FLASH_MODES = ["off", "on", "auto", "torch"]
 AUTO_FLASH_EXPOSURE = 50000                    # µs
 AUTO_FLASH_GAIN = 4.0
 TIMERS = [0, 3, 10]                            # seconds before the shot
-# Night: off; long, four times the viewfinder's exposure (at most 0.5 s).
-NIGHT_MODES = ["off", "long"]
+# Night: off; long, four times the viewfinder's exposure (at most 0.5 s);
+# stack, a burst of STACK_FRAMES at the viewfinder's exposure, aligned and
+# averaged by pro1x-develop (about 1.5 stops less noise, no long-exposure
+# blur; 0.7 s more to develop on the phone).
+NIGHT_MODES = ["off", "long", "stack"]
+STACK_FRAMES = 8
 # The shutter blink, in drawn frames (about 0.15 s): counted from the first
 # one drawn, so a busy moment after the shot cannot skip it (the front
 # camera, the end of a countdown; author, 2026-11-17).
@@ -1962,6 +1966,8 @@ class Camera(Gtk.Application):
             if cur:
                 self.apply_controls(cur)
                 want = min(cur[0] * 4, 500000)
+        if self.night == "stack":
+            self.say("Hold still")
         threading.Thread(target=self.raw_capture, args=(held, method, want),
                          daemon=True).start()
         return False
@@ -1989,17 +1995,27 @@ class Camera(Gtk.Application):
             GLib.idle_add(self.raw_taken, None, None)
             return
         print("capture: raw frame at %s, %s" % (self.since(), meta["order"]), flush=True)
-        raw = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
-                           "pro1x-camera-%d.raw" % threading.get_ident())
-        buf = sample.get_buffer()
-        ok, mapping = buf.map(Gst.MapFlags.READ)
-        try:
-            with open(raw, "wb") as f:
-                f.write(mapping.data)
-            meta["stride"] = mapping.size // meta["height"]
-        finally:
-            buf.unmap(mapping)
-        del sample, buf
+        base = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+                            "pro1x-camera-%d" % threading.get_ident())
+        files = []
+        # Night stack: this frame and the next ones, each saved as it comes.
+        count = STACK_FRAMES if self.night == "stack" else 1
+        while sample and len(files) < count:
+            name = "%s-%d.raw" % (base, len(files))
+            buf = sample.get_buffer()
+            ok, mapping = buf.map(Gst.MapFlags.READ)
+            try:
+                with open(name, "wb") as f:
+                    f.write(mapping.data)
+                meta["stride"] = mapping.size // meta["height"]
+            finally:
+                buf.unmap(mapping)
+            files.append(name)
+            del buf
+            sample = (self.raw_sink.try_pull_sample(Gst.SECOND)
+                      if len(files) < count else None)
+        sample = None
+        raw = ",".join(files)
         path = self.photo_path()
         GLib.idle_add(self.raw_taken, path, meta)
         error = None
@@ -2009,10 +2025,11 @@ class Camera(Gtk.Application):
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             error, path = e, None
         finally:
-            try:
-                os.remove(raw)
-            except OSError:
-                pass
+            for name in files:
+                try:
+                    os.remove(name)
+                except OSError:
+                    pass
         GLib.idle_add(self.raw_saved, path, error)
 
     def raw_meta(self, sample):

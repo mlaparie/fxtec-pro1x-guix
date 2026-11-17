@@ -7,7 +7,9 @@
  *                 TURN SCALE QUALITY [SHADING]
  *
  * RAW: 10-bit packed Bayer (MIPI CSI-2: four pixels in five bytes), rows of
- * STRIDE bytes; ORDER RGGB, GRBG, GBRG or BGGR.  BLACK: the black level, a
+ * STRIDE bytes; several files separated by commas are a burst, stacked
+ * first (Night stack: aligned on the first, averaged, moved pixels left
+ * out); ORDER RGGB, GRBG, GBRG or BGGR.  BLACK: the black level, a
  * fraction of the range.  The gains and the colour matrix (row major) are
  * the frame's ColourGains and ColourCorrectionMatrix; GAMMA and CONTRAST as
  * the software ISP's shader applies them (1/2.2 and 1.0 by default).  The
@@ -125,6 +127,162 @@ static void demosaic(const struct job *j, int x, int y, int out[3])
 		out[1] = green;
 		out[2 - c] = other;
 	}
+}
+
+/* ── Night stack: a burst of frames aligned and averaged ─────────────── */
+
+/* A pixel of a packed frame, in range. */
+static inline int pk(const uint8_t *raw, int stride, int x, int y)
+{
+	const uint8_t *group = raw + (size_t)y * stride + (x >> 2) * 5;
+	int i = x & 3;
+	return (group[i] << 2) | ((group[4] >> (2 * i)) & 3);
+}
+
+static inline void pk_set(uint8_t *raw, int stride, int x, int y, int v)
+{
+	uint8_t *group = raw + (size_t)y * stride + (x >> 2) * 5;
+	int i = x & 3;
+	group[i] = v >> 2;
+	group[4] = (group[4] & ~(3 << (2 * i))) | ((v & 3) << (2 * i));
+}
+
+#define LOW 8			/* the alignment's coarse scale */
+
+/* A frame reduced LOW times: the mean of each block (all colours). */
+static float *reduce(const uint8_t *raw, int w, int h, int stride)
+{
+	int lw = w / LOW, lh = h / LOW;
+	float *out = malloc(sizeof(float) * lw * lh);
+	for (int y = 0; y < lh; y++)
+		for (int x = 0; x < lw; x++) {
+			int sum = 0;
+			for (int dy = 0; dy < LOW; dy += 2)
+				for (int dx = 0; dx < LOW; dx += 2)
+					sum += pk(raw, stride, x * LOW + dx, y * LOW + dy)
+					     + pk(raw, stride, x * LOW + dx + 1, y * LOW + dy)
+					     + pk(raw, stride, x * LOW + dx, y * LOW + dy + 1)
+					     + pk(raw, stride, x * LOW + dx + 1, y * LOW + dy + 1);
+			out[y * lw + x] = sum;
+		}
+	return out;
+}
+
+/* The shift of CUR against REF (reduced frames) within RANGE, by the least
+ * mean absolute difference over the middle of the frame. */
+static void coarse_shift(const float *ref, const float *cur, int lw, int lh,
+			 int range, int *sx, int *sy)
+{
+	double best = 1e30;
+	*sx = *sy = 0;
+	for (int dy = -range; dy <= range; dy++)
+		for (int dx = -range; dx <= range; dx++) {
+			double sad = 0;
+			int n = 0;
+			for (int y = lh / 4; y < lh * 3 / 4; y += 2)
+				for (int x = lw / 4; x < lw * 3 / 4; x += 2) {
+					sad += fabsf(ref[y * lw + x] -
+						     cur[(y + dy) * lw + x + dx]);
+					n++;
+				}
+			sad /= n;
+			if (sad < best) {
+				best = sad;
+				*sx = dx;
+				*sy = dy;
+			}
+		}
+}
+
+/* Refined at full size around (*sx, *sy), in even steps (the Bayer
+ * pattern stays in phase). */
+static void fine_shift(const uint8_t *ref, const uint8_t *cur, int w, int h,
+		       int stride, int *sx, int *sy)
+{
+	int bx = *sx, by = *sy;
+	double best = 1e30;
+	for (int dy = by - LOW; dy <= by + LOW; dy += 2)
+		for (int dx = bx - LOW; dx <= bx + LOW; dx += 2) {
+			double sad = 0;
+			for (int y = h / 4; y < h * 3 / 4; y += 16)
+				for (int x = w / 4; x < w * 3 / 4; x += 16)
+					sad += abs(pk(ref, stride, x, y) -
+						   pk(cur, stride, x + dx, y + dy));
+			if (sad < best) {
+				best = sad;
+				*sx = dx;
+				*sy = dy;
+			}
+		}
+}
+
+struct stack {
+	const uint8_t **frames;
+	int n, w, h, stride;
+	int *dx, *dy;
+	uint8_t *out;
+	int first, last;
+};
+
+/* Each pixel: the mean of the frames that agree with the first within
+ * their noise (a moved object or hand is left to the first frame). */
+static void *stack_band(void *arg)
+{
+	struct stack *s = arg;
+	for (int y = s->first; y < s->last; y++)
+		for (int x = 0; x < s->w; x++) {
+			int ref = pk(s->frames[0], s->stride, x, y);
+			int sum = ref, count = 1;
+			float limit = 3 * sqrtf((float)ref) + 8;
+			for (int k = 1; k < s->n; k++) {
+				int xx = x + s->dx[k], yy = y + s->dy[k];
+				if (xx < 0 || yy < 0 || xx >= s->w || yy >= s->h)
+					continue;
+				int v = pk(s->frames[k], s->stride, xx, yy);
+				if (abs(v - ref) <= limit) {
+					sum += v;
+					count++;
+				}
+			}
+			pk_set(s->out, s->stride, x, y, (sum + count / 2) / count);
+		}
+	return NULL;
+}
+
+/* The burst FRAMES stacked into one frame of the same layout. */
+static uint8_t *stack_frames(struct job *j, const uint8_t **frames, int n)
+{
+	int w = j->width, h = j->height, stride = j->stride;
+	int lw = w / LOW, lh = h / LOW, range = 12;
+	int dx[64], dy[64];
+	float *ref = reduce(frames[0], w, h, stride);
+	dx[0] = dy[0] = 0;
+	for (int k = 1; k < n; k++) {
+		float *cur = reduce(frames[k], w, h, stride);
+		int sx, sy;
+		coarse_shift(ref, cur, lw, lh, range, &sx, &sy);
+		free(cur);
+		sx *= LOW;
+		sy *= LOW;
+		fine_shift(frames[0], frames[k], w, h, stride, &sx, &sy);
+		dx[k] = sx;
+		dy[k] = sy;
+		fprintf(stderr, "stack: frame %d shifted %d,%d\n", k, sx, sy);
+	}
+	free(ref);
+	uint8_t *out = malloc((size_t)stride * h);
+	memcpy(out, frames[0], (size_t)stride * h);
+	pthread_t threads[16];
+	struct stack bands[16];
+	for (int t = 0; t < j->nthreads; t++) {
+		bands[t] = (struct stack){ frames, n, w, h, stride, dx, dy, out,
+					   h * t / j->nthreads,
+					   h * (t + 1) / j->nthreads };
+		pthread_create(&threads[t], NULL, stack_band, &bands[t]);
+	}
+	for (int t = 0; t < j->nthreads; t++)
+		pthread_join(threads[t], NULL);
+	return out;
 }
 
 static void *develop_band(void *arg)
@@ -360,30 +518,41 @@ int main(int argc, char **argv)
 		return 2;
 	}
 
-	int fd = open(in, O_RDONLY);
-	struct stat st;
-	if (fd < 0 || fstat(fd, &st) < 0) {
-		perror(in);
-		return 1;
+	long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+	j.nthreads = ncpu < 1 ? 1 : ncpu > 16 ? 16 : (int)ncpu;
+
+	/* The frame, or the burst's frames (comma separated) stacked. */
+	const uint8_t *frames[64];
+	int nframes = 0;
+	char *list = strdup(in);
+	for (char *name = strtok(list, ","); name && nframes < 64;
+	     name = strtok(NULL, ",")) {
+		int fd = open(name, O_RDONLY);
+		struct stat st;
+		if (fd < 0 || fstat(fd, &st) < 0) {
+			perror(name);
+			return 1;
+		}
+		if (st.st_size < (off_t)j.stride * j.height) {
+			fprintf(stderr, "%s: %lld bytes, short of %d rows of %d\n",
+				name, (long long)st.st_size, j.height, j.stride);
+			return 1;
+		}
+		frames[nframes] = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE,
+				       fd, 0);
+		if (frames[nframes] == MAP_FAILED) {
+			perror("mmap");
+			return 1;
+		}
+		nframes++;
 	}
-	if (st.st_size < (off_t)j.stride * j.height) {
-		fprintf(stderr, "%s: %lld bytes, short of %d rows of %d\n", in,
-			(long long)st.st_size, j.height, j.stride);
-		return 1;
-	}
-	j.raw = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (j.raw == MAP_FAILED) {
-		perror("mmap");
-		return 1;
-	}
+	j.raw = nframes > 1 ? stack_frames(&j, frames, nframes) : frames[0];
 	j.rgb = malloc((size_t)j.cw * j.ch * 3);
 	if (!j.rgb) {
 		perror("malloc");
 		return 1;
 	}
 
-	long n = sysconf(_SC_NPROCESSORS_ONLN);
-	j.nthreads = n < 1 ? 1 : n > 16 ? 16 : (int)n;
 	pthread_t threads[16];
 	struct band bands[16];
 	for (int t = 0; t < j.nthreads; t++) {
