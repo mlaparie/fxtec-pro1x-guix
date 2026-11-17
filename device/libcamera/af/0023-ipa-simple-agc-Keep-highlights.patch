@@ -1,4 +1,4 @@
-From 2ad96f82ad6d0d96fce2880be527d9c2cc29b6af Mon Sep 17 00:00:00 2001
+From d8b8b1c6859b9afda98a9685e9fd945664cca004 Mon Sep 17 00:00:00 2001
 From: fxtec-pro1x-guix
 Date: Mon, 16 Nov 2026 15:30:26 +0100
 Subject: [PATCH] ipa: simple: agc: Keep highlights
@@ -8,34 +8,43 @@ histogram, whatever is white.  In a dim room with a lamp in view the
 Pro1X viewfinder settled at 66 ms and gain 9.8 with 15% of the frame
 clipped, and the photos had white areas.
 
-Above 2% of the samples in the histogram's top bin, the target is
-lowered, by at most one bin (two stops), so the rest of the scene still
-shows.  A tapped spot (spot metering) is exposed as asked.
+Above 2% of the samples coming out white, the target is lowered, by at
+most one bin (two stops), so the rest of the scene still shows.  The
+histogram is of raw values, before the white balance gains: a white
+area clips once its green does, at a raw luminance of 0.76 of the range
+with gains of 4 and 1.16 (a lamp), so the samples from there up count,
+not only the top bin.  A tapped spot (spot metering) is exposed as
+asked.
 ---
- src/ipa/simple/algorithms/agc.cpp | 24 ++++++++++++++++++++++--
- 1 file changed, 22 insertions(+), 2 deletions(-)
+ src/ipa/simple/algorithms/agc.cpp | 47 +++++++++++++++++++++++++++++--
+ 1 file changed, 45 insertions(+), 2 deletions(-)
 
 diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
-index f979140..c1c0468 100644
+index f979140..78fd7a0 100644
 --- a/src/ipa/simple/algorithms/agc.cpp
 +++ b/src/ipa/simple/algorithms/agc.cpp
-@@ -40,6 +40,15 @@ static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
+@@ -40,6 +40,20 @@ static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
   */
  static constexpr float kExposureSatisfactory = 0.2;
  
 +/*
-+ * Highlights: above this share of the samples in the histogram's top bin
-+ * (white), the target is lowered, at most kMaxHighlightDrop bins (two
-+ * stops), so that a lamp in a dim room is not left white while the rest
-+ * of the scene still shows.
++ * Highlights: above this share of the samples that come out white, the
++ * target is lowered, at most kMaxHighlightDrop bins (two stops), so that a
++ * lamp in a dim room is not left white while the rest of the scene still
++ * shows.
 + */
 +static constexpr double kMaxClipped = 0.02;
 +static constexpr double kMaxHighlightDrop = 1.0;
 +
++/* Luminance weights of the raw values, as the statistics compute them. */
++static constexpr double kRedYMul = 0.299;
++static constexpr double kGreenYMul = 0.587;
++static constexpr double kBlueYMul = 0.114;
++
  /*
   * Proportional gain for exposure/gain adjustment. Maps the MSV error to a
   * multiplicative correction factor:
-@@ -289,8 +298,19 @@ void Agc::process(IPAContext &context,
+@@ -289,8 +303,37 @@ void Agc::process(IPAContext &context,
  	 * EV compensation moves the target of the mean sample value (bins 1..5):
  	 * half a bin per stop, kept inside the histogram.
  	 */
@@ -44,19 +53,34 @@ index f979140..c1c0468 100644
 +	double target = std::clamp(kExposureOptimal + 0.5 * context.activeState.agc.exposureValue,
 +				   1.2, kExposureBinsCount - 0.2);
 +
-+	/* A tapped spot is exposed as asked; otherwise highlights are kept. */
-+	const uint32_t clippedSamples = histogram[SwIspStats::kYHistogramSize - 1];
++	/*
++	 * A tapped spot is exposed as asked; otherwise highlights are kept.
++	 * The histogram is of the raw values, before the white balance gains:
++	 * a white area comes out white once its green reaches the top, when
++	 * its raw luminance is 0.299 / red gain + 0.587 + 0.114 / blue gain of
++	 * the range (0.76 with gains of 4 and 1.16, under a lamp), not only in
++	 * the top bin.
++	 */
++	const RGB<float> &gains = context.activeState.awb.gains;
++	const double white = std::clamp(kRedYMul / std::max(gains.r(), 1.0f) +
++					kGreenYMul +
++					kBlueYMul / std::max(gains.b(), 1.0f),
++					0.25, 1.0);
++	const unsigned int whiteBin = std::min(
++		blackLevelHistIdx + static_cast<unsigned int>(white * histogramSize),
++		SwIspStats::kYHistogramSize - 1);
++	uint32_t clippedSamples = 0;
++	for (unsigned int i = whiteBin; i < SwIspStats::kYHistogramSize; i++)
++		clippedSamples += histogram[i];
 +	const double clipped = denom ? static_cast<double>(clippedSamples) / denom : 0.0;
 +	if (!(context.activeState.agc.spot && stats->spotSamples) && clipped > kMaxClipped) {
 +		target = std::max(target - std::min((clipped - kMaxClipped) * 20.0,
 +						    kMaxHighlightDrop),
 +				  1.2);
 +		LOG(IPASoftExposure, Debug)
-+			<< "Clipped " << clipped << ", target " << target;
++			<< "Clipped " << clipped << " from bin " << whiteBin
++			<< ", target " << target;
 +	}
  	auto &agc = context.activeState.agc;
  	if (!(agc.manualGain && agc.manualExposure))
  		updateExposure(context, frameContext, exposureMSV, target);
--- 
-2.54.0
-
