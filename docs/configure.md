@@ -80,6 +80,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `shake-action` | `'torch` | `'torch` toggles the torch; a string is a shell command, run in Sway (over the lock screen for `lock-screen-apps`) |
 | hardware `portrait-apps` | Calls, Snapshot | app_ids (`swaymsg -t get_tree`) that turn the panel to portrait while focused (Sway) |
 | hardware `landscape-apps` | none | the same, landscape |
+| hardware `sensor-apps` | `'("org.pro1x.Camera")` | apps that turn with the phone while focused (the accelerometer with the keyboard closed, landscape with it out), whatever the rotation mode set in quick actions |
 | hardware `fullscreen-apps` | Calls, Camera, Snapshot | app_ids made fullscreen when they open (Sway) |
 | hardware `lock-screen-apps` | Calls, Camera | app_ids allowed to open over the lock screen: an incoming call, the camera button's triple press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
 | hardware `camera-triple-press` | `"pro1x-camera-app"` | shell command for a triple press of the camera button (default: the camera; not while the proximity sensor reads near); a press in the camera app (or Snapshot) takes a picture, a single press elsewhere is a left click where the pointer is (a right click with Fn held); held, the touchscreen is a touchpad moving the pointer, and with Super held too a window drag |

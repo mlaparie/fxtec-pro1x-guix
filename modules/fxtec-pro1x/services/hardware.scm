@@ -191,6 +191,12 @@
   (portrait-apps      pro1x-hardware-portrait-apps
                       (default '("org.gnome.Calls" "org.gnome.Snapshot")))
   (landscape-apps     pro1x-hardware-landscape-apps     (default '()))
+  ;; Apps that turn with the phone while focused, whatever the rotation
+  ;; mode quick actions set (the sensor's orientation with the keyboard
+  ;; closed, landscape with it out); the camera turns its photos the same
+  ;; way (author, 2026-11-17).
+  (sensor-apps        pro1x-hardware-sensor-apps
+                      (default '("org.pro1x.Camera")))
   (fullscreen-apps    pro1x-hardware-fullscreen-apps
                       (default '("org.gnome.Calls" "org.pro1x.Camera"
                                  "org.gnome.Snapshot")))
@@ -1160,6 +1166,8 @@ under the file names stevia looks for.")
                      (string-join (pro1x-hardware-portrait-apps config)) "'\n"
                      "LANDSCAPE_APPS='"
                      (string-join (pro1x-hardware-landscape-apps config)) "'\n"
+                     "SENSOR_APPS='"
+                     (string-join (pro1x-hardware-sensor-apps config)) "'\n"
                      "FULLSCREEN_APPS='"
                      (string-join (pro1x-hardware-fullscreen-apps config)) "'\n"
                      "LOCK_SCREEN_APPS='"

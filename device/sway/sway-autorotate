@@ -6,6 +6,7 @@
 #   sway-autorotate keyboard|fixed
 #   sway-autorotate normal|left|right|inverted   fix an orientation
 #   sway-autorotate restore     the orientation the mode wants, now
+#   sway-autorotate poke        re-check (a sensor app got or lost the focus)
 #
 # Three modes (author, 2026-11-02): on, the sensor (landscape while the
 # keyboard is out); off, also called keyboard, the slider's (portrait slid
@@ -111,8 +112,9 @@ case "${1:-}" in
             *) if slider_out; then set_transform 90; else set_transform normal; fi ;;
         esac
         exit 0 ;;
+    poke) poke; exit 0 ;;
     "") ;;
-    *) echo "usage: sway-autorotate [on|off|toggle|keyboard|fixed|normal|left|right|inverted|restore]" >&2
+    *) echo "usage: sway-autorotate [on|off|toggle|keyboard|fixed|normal|left|right|inverted|restore|poke]" >&2
        exit 2 ;;
 esac
 
@@ -169,8 +171,11 @@ release() {
     sensor=
 }
 
+# While a sensor app has the focus (pro1x-portrait-apps), the sensor
+# turns the panel whatever the mode.
+sensor_app="${XDG_RUNTIME_DIR:-/tmp}/pro1x-sensor-app"
 reconcile() {
-    if [ "$(cat "$state" 2>/dev/null)" = on ] && lit; then
+    if { [ "$(cat "$state" 2>/dev/null)" = on ] || [ -f "$sensor_app" ]; } && lit; then
         if [ -z "$sensor" ] || ! kill -0 "$sensor" 2>/dev/null; then
             follow &
             monitor-sensor --accel > "$fifo" 2>/dev/null &

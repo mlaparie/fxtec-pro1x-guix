@@ -18,9 +18,13 @@
 # The apps: portrait-apps, landscape-apps and fullscreen-apps in
 # config.scm (/etc/pro1x/apps.conf).
 PORTRAIT_APPS='org.gnome.Snapshot org.gnome.Calls' LANDSCAPE_APPS=
+SENSOR_APPS=org.pro1x.Camera
 [ -r /etc/pro1x/apps.conf ] && . /etc/pro1x/apps.conf
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 flag="$rt/pro1x-portrait-app"
+# A sensor app (sensor-apps) has the focus: sway-autorotate follows the
+# accelerometer meanwhile, whatever its mode.
+sensor_flag="$rt/pro1x-sensor-app"
 events="$rt/pro1x-portrait-apps.events"
 rotation="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/sway-autorotate"
 
@@ -39,6 +43,13 @@ restore() {
     sway-autorotate restore         # sensor, keyboard or fixed
 }
 
+sensor_off() {
+    [ -f "$sensor_flag" ] || return 0
+    rm -f "$sensor_flag"
+    sway-autorotate poke            # the sensor released unless the mode wants it
+    sway-autorotate restore
+}
+
 check() {
     app=$(focused_app)
     case "$app" in
@@ -50,8 +61,19 @@ check() {
         # Nothing focused (the forced app just closed, an empty workspace):
         # its orientation goes (author: stuck in portrait after the camera
         # until a touch, 2026-11-02); never forced from here.
-        "") [ -f "$flag" ] && restore; return ;;
+        "") [ -f "$flag" ] && restore
+            sensor_off; return ;;
     esac
+    case " $SENSOR_APPS " in
+        *" $app "*)
+            rm -f "$flag"
+            if [ ! -f "$sensor_flag" ]; then
+                : > "$sensor_flag"
+                sway-autorotate poke
+            fi
+            return ;;
+    esac
+    sensor_off
     case " $PORTRAIT_APPS " in *" $app "*) want=normal ;; *) want= ;; esac
     case " $LANDSCAPE_APPS " in *" $app "*) want=90 ;; esac
     if [ -n "$want" ]; then
@@ -65,7 +87,7 @@ check() {
 }
 
 
-rm -f "$flag"
+rm -f "$flag" "$sensor_flag"
 trap 'rm -f "$events"' EXIT
 trap 'exit 0' INT TERM HUP
 rm -f "$events"; mkfifo "$events"

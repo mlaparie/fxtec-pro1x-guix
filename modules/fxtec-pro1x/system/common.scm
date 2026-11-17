@@ -170,6 +170,8 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                focused, fullscreen when opened, allowed over the lock screen.
   ;;                (portrait-apps '(\"org.gnome.Calls\" \"org.gnome.Snapshot\"))
   ;;                (landscape-apps '())
+  ;;                Apps that turn with the phone while focused, whatever the rotation mode.
+  ;;                (sensor-apps '(\"org.pro1x.Camera\"))
   ;;                (fullscreen-apps '(\"org.gnome.Calls\" \"org.pro1x.Camera\" \"org.gnome.Snapshot\"))
   ;;                (lock-screen-apps '(\"org.gnome.Calls\" \"org.pro1x.Camera\"))
   ;;                Notification LED: (EVENT COLOUR) or (EVENT COLOUR BLINK-MS); colours \"red\"
