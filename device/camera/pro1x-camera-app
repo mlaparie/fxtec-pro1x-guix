@@ -665,8 +665,9 @@ class Camera(Gtk.Application):
         for row in (self.lens_row, self.ev_row):
             self.slider_width.add_widget(row)
             self.overlay.add_overlay(row)
-        # Pro mode: horizontal sliders for the exposure time and ISO, at the
-        # bottom between the tags and the controls; the EV slider stays.
+        # Pro mode: a horizontal slider for the exposure time, at the bottom
+        # between the tags and the controls; the EV slider stays, and the
+        # ISO tag is enough for ISO (author).
         self.shutter_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL, 0, len(SHUTTERS) - 1, 1)
         self.shutter_scale.set_round_digits(0)
@@ -674,19 +675,10 @@ class Camera(Gtk.Application):
             "format-value", lambda _s, v: "SHUTTER " + shutter_text(SHUTTERS[int(round(v))]))
         self.shutter_scale.connect(
             "value-changed", lambda sc: self.set_shutter(SHUTTERS[int(round(sc.get_value()))]))
-        self.iso_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0, len(ISOS) - 1, 1)
-        self.iso_scale.set_round_digits(0)
-        self.iso_scale.connect(
-            "format-value", lambda _s, v: "ISO %s" % (ISOS[int(round(v))] or "AUTO"))
-        self.iso_scale.connect(
-            "value-changed", lambda sc: self.iso != ISOS[int(round(sc.get_value()))]
-            and self.set_iso(ISOS[int(round(sc.get_value()))]))
         self.pro_strip = Gtk.Box(spacing=24, halign=Gtk.Align.CENTER,
                                  valign=Gtk.Align.END, margin_bottom=16)
-        for sc in (self.shutter_scale, self.iso_scale):
-            sc.set_size_request(260, -1)
-            self.pro_strip.pack_start(sc, False, False, 0)
+        self.shutter_scale.set_size_request(300, -1)
+        self.pro_strip.pack_start(self.shutter_scale, False, False, 0)
         self.overlay.add_overlay(self.pro_strip)
         # ☰, bottom left: every setting over the view (refresh_settings()).
         self.b_menu = self.button("☰", self.on_menu)
@@ -1515,7 +1507,7 @@ class Camera(Gtk.Application):
         threading.Thread(target=read, daemon=True).start()
 
     def set_pro(self, on):
-        """Pro mode: the shutter and ISO sliders and the EV slider shown;
+        """Pro mode: the shutter and EV sliders shown;
         out of it, the exposure automatic again."""
         self.pro = on
         self.lit(self.b_pro, on)
