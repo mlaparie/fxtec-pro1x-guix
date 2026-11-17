@@ -1116,11 +1116,13 @@ class Camera(Gtk.Application):
         for menu in (self.flash_menu, self.night_menu, self.iso_menu):
             menu.set_position(Gtk.PositionType.RIGHT if wide
                               else Gtk.PositionType.BOTTOM)
-        # Both sliders as far from their edges, past the wider bar.
-        edge = max(self.controls.get_allocated_width(),
-                   self.side.get_allocated_width()) + 24 if wide else 12
-        self.lens_row.set_margin_end(edge)
-        self.ev_row.set_margin_start(edge)
+        # Close to what they belong to: EV beside the tags, focus beside the
+        # controls in landscape; near the screen's edges in portrait
+        # (author, 2026-11-17).
+        self.ev_row.set_margin_start(self.side.get_allocated_width() + 24
+                                     if wide else 4)
+        self.lens_row.set_margin_end(self.controls.get_allocated_width() + 24
+                                     if wide else 4)
         for scale in (self.lens_scale, self.ev_scale):
             scale.set_size_request(-1, int(min(w, h) * 0.7))
         return False

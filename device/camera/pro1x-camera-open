@@ -30,7 +30,9 @@ if [ "${1:-}" = --standby ]; then
     while :; do
         while running; do sleep 30; done
         start=$(date +%s)
-        PRO1X_CAMERA_STANDBY=1 pro1x-camera-app
+        # Its output, for when something goes wrong; new at each start.
+        PRO1X_CAMERA_STANDBY=1 pro1x-camera-app \
+            > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-camera.log" 2>&1
         # Ended at once (no camera, an error): not in a tight loop.
         if [ $(($(date +%s) - start)) -lt 10 ]; then sleep 60; else sleep 2; fi
     done
