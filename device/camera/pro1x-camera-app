@@ -219,6 +219,9 @@ button.on { background: #d79921; color: #1d2021; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
+button.mark { background: rgba(235,219,178,0.3); color: #fbf1c7; border-radius: 0;
+              font-family: monospace; font-size: 11px; min-height: 22px;
+              padding: 1px 6px; }
 grid.panel button { min-height: 44px; }
 scale { color: #ebdbb2; font-size: 15px; }
 scale slider { min-width: 28px; min-height: 28px; background: #ebdbb2;
@@ -436,7 +439,15 @@ class Camera(Gtk.Application):
         self.side = Gtk.Box(spacing=12)
         for b in (self.b_flash, self.b_night, self.b_ev):
             self.side.pack_start(b, False, False, 0)
+        # Below or after them, a tag for each setting that is not at its
+        # default, so one is always seen; a tap on a tag resets it (MF:
+        # shows the focus slider).  Small, square, monospace (author,
+        # 2026-11-17).
+        self.marks = Gtk.Box(spacing=4)
+        self.side.pack_start(self.marks, False, False, 8)
         self.overlay.add_overlay(self.side)
+        self.marked = None
+        GLib.timeout_add(300, self.update_marks)
         self.main = Gtk.Box(spacing=28)
         self.b_switch = self.button("⇆", self.on_switch)
         self.b_shutter = self.button("", self.on_shutter)
@@ -476,6 +487,8 @@ class Camera(Gtk.Application):
         self.lens_row.pack_start(far, False, False, 0)
         self.lens_row.pack_start(self.lens_scale, True, True, 0)
         self.lens_row.pack_start(near, False, False, 0)
+        self.lens_row.pack_start(self.button("AF", self.on_focus_mode),
+                                 False, False, 0)
         self.overlay.add_overlay(self.lens_row)
         # EV compensation: a vertical slider beside the side bar, +2 at the
         # top, applied as it moves.
@@ -914,7 +927,7 @@ class Camera(Gtk.Application):
         w, h = self.win.get_size()
         wide = w > h
         vertical, horizontal = Gtk.Orientation.VERTICAL, Gtk.Orientation.HORIZONTAL
-        for box in (self.top, self.main, self.side):
+        for box in (self.top, self.main, self.side, self.marks):
             box.set_orientation(vertical if wide else horizontal)
         self.main.set_spacing(20 if wide else 28)
         if wide:
@@ -955,6 +968,68 @@ class Camera(Gtk.Application):
         for scale in (self.lens_scale, self.ev_scale):
             scale.set_size_request(-1, int(min(w, h) * 0.7))
         return False
+
+    def marks_wanted(self):
+        """(label, reset) for each setting away from its default."""
+        marks = []
+        if self.flash != "off":
+            marks.append(("TORCH" if self.flash == "torch" else
+                          "FLASH " + self.flash.upper(),
+                          lambda: self.reset_cycle("flash", FLASH_MODES, self.on_flash)))
+        if self.night:
+            marks.append(("NIGHT", self.on_night))
+        if round(self.ev * 3):
+            marks.append(("EV " + ev_text(self.ev), lambda: self.ev_scale.set_value(0.0)))
+        if self.manual:
+            marks.append(("MF " + lens_text(self.lens),
+                          lambda: self.lens_row.set_visible(not self.lens_row.get_visible())))
+        if self.iso:
+            marks.append(("ISO %d" % self.iso,
+                          lambda: self.reset_cycle("iso", ISOS, self.on_iso)))
+        if self.timer:
+            marks.append(("TIMER %dS" % self.timer,
+                          lambda: self.reset_cycle("timer", TIMERS, self.on_timer)))
+        if self.wb_locked:
+            marks.append(("WB LOCK", self.on_wb))
+        mode = "video" if self.video else "photo"
+        shapes, sizes = self.choices()
+        o = self.out()
+        default_size = DEFAULTS[mode]["size"] if DEFAULTS[mode]["size"] in sizes \
+            else sizes[0]
+        if o["shape"] != DEFAULTS[mode]["shape"]:
+            marks.append((o["shape"], lambda: self.reset_output(
+                "shape", DEFAULTS[mode]["shape"])))
+        if o["size"] != default_size:
+            marks.append((self.b_res.get_label().replace(" ", ""),
+                          lambda: self.reset_output("size", default_size)))
+        return marks
+
+    def update_marks(self):
+        marks = self.marks_wanted()
+        labels = [m[0] for m in marks]
+        if labels != self.marked:
+            self.marked = labels
+            for child in self.marks.get_children():
+                self.marks.remove(child)
+            for label, reset in marks:
+                b = Gtk.Button(label=label)
+                b.get_style_context().add_class("mark")
+                b.connect("clicked", lambda _b, r=reset: r())
+                self.marks.pack_start(b, False, False, 0)
+            self.marks.show_all()
+        return True
+
+    def reset_cycle(self, attr, values, handler):
+        """A cycling setting back to its first value, by its own handler."""
+        setattr(self, attr, values[-1])
+        handler()
+
+    def reset_output(self, key, value):
+        if self.busy or self.recording:
+            return
+        self.stored()[key] = value
+        self.save_settings()
+        self.outputs_changed()
 
     def toggle_menu(self, menu):
         """One menu open at a time."""
