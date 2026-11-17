@@ -665,21 +665,27 @@ class Camera(Gtk.Application):
         encoder is never asked to drain: the end of stream is sent after it
         (stop_recording).  A drain stuck with the viewfinder's other branches
         attached, and stopping the pipeline then froze the phone (2026-11-16,
-        twice; stopping without a drain never did)."""
+        twice; stopping without a drain never did).  libcamera's buffers come
+        straight from the tee, so the first step copies them (to NV12) and
+        holds one at most: holding more (a queue of 4, videorate's previous
+        frame) stopped the camera, which has four.  The file sink does not
+        wait for a preroll: added to a playing pipeline, it never got one
+        and the muxer stalled (2026-11-17)."""
         turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
                 "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
                 }.get(self.method(), "none")
         width, height = self.view_size()
         desc = (
-            "queue max-size-buffers=4 leaky=downstream ! videoscale ! "
+            "queue max-size-buffers=1 leaky=downstream ! "
+            "videoconvert ! video/x-raw,format=NV12 ! videoscale ! "
             "videorate drop-only=true max-rate=%d ! "
             "video/x-raw,width=%d,height=%d,framerate=%d/1 ! "
-            "videoflip method=%s ! videoconvert ! video/x-raw,format=NV12 ! "
+            "videoflip method=%s ! "
             'v4l2h264enc extra-controls="controls,video_gop_size=%d,'
             "h264_i_frame_period=%d,h264_minimum_qp_value=%d,"
             'h264_i_frame_minimum_qp_value=%d,h264_p_frame_minimum_qp_value=%d;" ! '
             "h264parse name=parse ! queue ! matroskamux name=mux ! "
-            "filesink name=file "
+            "filesink name=file async=false "
             "pulsesrc name=mic ! queue ! audioconvert ! audioresample ! opusenc ! "
             "queue name=aq ! mux."
             % (VIDEO_RATE, width, height, VIDEO_RATE, turn, VIDEO_RATE,
@@ -1287,9 +1293,11 @@ class Camera(Gtk.Application):
         sink = self.rec.get_static_pad("sink")
         sink.set_offset(-now)
         self.rec.get_by_name("mic").get_static_pad("src").set_offset(-now)
+        # Playing before it is linked: a frame pushed into a stopped branch
+        # came back as flushing, and libcamerasrc stopped for good.
+        self.rec.sync_state_with_parent()
         self.rec_pad = self.tee.request_pad_simple("src_%u")
         self.rec_pad.link(sink)
-        self.rec.sync_state_with_parent()
         self.led(self.flash in ("on", "torch"))
         self.recording = (path, time.monotonic(),
                           GLib.timeout_add(500, self.show_recording))
