@@ -53,12 +53,13 @@ ipa=$(ls -d /sys/devices/platform/*/5840000.ipa/power/wakeup 2>/dev/null | head 
 # devices of their own and still do.
 gpiokeys=/sys/devices/platform/gpio-keys/power/wakeup
 # Asleep: the status LED dim cyan (author, 2026-11-02), so a sleeping
-# phone is told from a dark one.  feedbackd is frozen meanwhile.
+# phone is told from a dark one.  feedbackd is frozen meanwhile.  Colour
+# and level: sleep-led in config.scm (SLEEP_LED, SLEEP_LEVEL).
 led=/sys/class/leds/rgb:status
 led_asleep() {
-    [ -w "$led/pattern" ] || return 0
-    echo "0 255 255" > "$led/multi_intensity"
-    echo "6 1000 6 1000" > "$led/pattern"
+    [ -w "$led/pattern" ] && [ -n "$SLEEP_LED" ] || return 0
+    echo "$SLEEP_LED" > "$led/multi_intensity"
+    echo "$SLEEP_LEVEL 1000 $SLEEP_LEVEL 1000" > "$led/pattern"
 }
 # Hibernating: the same cyan, breathing (author, 2026-11-17), from the
 # PMIC's own pattern generator (hw_pattern), which runs without the CPU.
@@ -66,15 +67,18 @@ led_asleep() {
 # ping-pong: 24 steps of 200 ms, up, down and a dark pause, 4.8 s.  The
 # first write after boot was once refused (EINVAL, cause not found), so a
 # refusal is retried.  Whether the pattern outlives the power-off at the
-# end of hibernation is not yet known.
+# end of hibernation is not yet known.  Colour and peak level:
+# hibernate-led in config.scm (HIBERNATE_LED, HIBERNATE_LEVEL); the steps
+# are those of 16 (seen and kept by the author), scaled.
 led_hibernating() {
-    [ -w "$led/hw_pattern" ] || return 0
+    [ -w "$led/hw_pattern" ] && [ -n "$HIBERNATE_LED" ] || return 0
     p=
     for b in 0 1 2 3 4 6 8 10 12 14 16 16 14 12 10 8 6 4 3 2 1 0 0 0; do
+        b=$((b * HIBERNATE_LEVEL / 16))
         p="$p $b 200 $b 0"
     done
     echo pattern > "$led/trigger"
-    echo "0 255 255" > "$led/multi_intensity"
+    echo "$HIBERNATE_LED" > "$led/multi_intensity"
     echo $p > "$led/hw_pattern" 2>/dev/null || echo $p > "$led/hw_pattern"
 }
 # The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
@@ -162,6 +166,7 @@ counts() {
 woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
 
 WAKE_ON='calls sms' HIBERNATE_DELAY= AUTO_HIBERNATE=no
+SLEEP_LED='0 255 255' SLEEP_LEVEL=6 HIBERNATE_LED='0 255 255' HIBERNATE_LEVEL=16
 [ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 allowed() { case " $WAKE_ON " in *" $1 "*) return 0 ;; esac; return 1; }
 

@@ -70,6 +70,8 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `swap-size` | `"8G"` | a swap file of this size, `/swap/swapfile` (a btrfs subvolume of its own, outside the home snapshots), made at the next boot: room for idle memory, and for hibernation; `#f` none (a file already made stays until removed by hand) |
 | hardware `hibernate-delay` | `120` | minutes between suspend and hibernate: the power menu's "Suspend, then hibernate" and "Lock, suspend, then hibernate" lines wait this long, then hibernate; `#f` no such lines |
 | hardware `auto-hibernate?` | `#f` | every suspend (auto-sleep, Lock and suspend...) hibernates once it has lasted `hibernate-delay` |
+| hardware `sleep-led` | `'("#00FFFF" 6)` | the LED while suspended, steady: `(COLOUR LEVEL)`, level 0-255; `#f` none |
+| hardware `hibernate-led` | `'("#00FFFF" 16)` | the LED while hibernated, breathing up to LEVEL (the PMIC's own pattern, 4.8 s); `#f` none.  Whether it stays on once the phone has powered off is not yet known |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |
 | hardware `wake-on` | `'(calls sms)` | what may wake the phone from suspend besides its keys and alarms: `'calls`, `'sms` (Chatty's text messages); internet chats cannot (the network is not a wake source) |
 | hardware `usb-runtime-pm?` | `#t` | let the USB controller runtime-suspend when unplugged, so its supplies switch off in suspend (moWerk: 29-32 mA instead of 40-42); `#f` keeps it on |

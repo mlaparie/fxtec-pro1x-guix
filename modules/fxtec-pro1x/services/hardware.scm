@@ -225,7 +225,12 @@
   ;; The LED while the screen is blank but not locked (Sway,
   ;; pro1x-blank-led): (COLOUR LEVEL), COLOUR as above and LEVEL the
   ;; pattern brightness (0-255; 6 is barely visible), or #f for none.
-  (unlocked-led       pro1x-hardware-unlocked-led       (default '("white" 6))))
+  (unlocked-led       pro1x-hardware-unlocked-led       (default '("white" 6)))
+  ;; The LED while suspended (pro1x-sleep): (COLOUR LEVEL), steady; or #f.
+  (sleep-led          pro1x-hardware-sleep-led          (default '("#00FFFF" 6)))
+  ;; While hibernating: (COLOUR LEVEL), breathing up to LEVEL from the
+  ;; PMIC's own pattern generator; or #f.
+  (hibernate-led      pro1x-hardware-hibernate-led      (default '("#00FFFF" 16))))
 
 ;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
 (define (led-intensity colour)
@@ -1188,7 +1193,17 @@ under the file names stevia looks for.")
                        (if d (number->string d) ""))
                      "\nAUTO_HIBERNATE="
                      (if (pro1x-hardware-auto-hibernate? config) "yes" "no")
-                     "\n")))
+                     "\n"
+                     (let ((led (pro1x-hardware-sleep-led config)))
+                       (string-append
+                        "SLEEP_LED='" (if led (led-intensity (car led)) "")
+                        "'\nSLEEP_LEVEL="
+                        (if led (number->string (cadr led)) "0") "\n"))
+                     (let ((led (pro1x-hardware-hibernate-led config)))
+                       (string-append
+                        "HIBERNATE_LED='" (if led (led-intensity (car led)) "")
+                        "'\nHIBERNATE_LEVEL="
+                        (if led (number->string (cadr led)) "0") "\n")))))
       ;; /etc/pro1x/cpu.conf: the CPU mode for good, for pro1x-cpu-mode
       ;; (quick actions override it until reboot).
       ("pro1x/cpu.conf"

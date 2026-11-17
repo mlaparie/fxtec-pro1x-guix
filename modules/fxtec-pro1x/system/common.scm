@@ -187,6 +187,10 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (low-battery-level 15)
   ;;                LED while blank but not locked: (COLOUR LEVEL), level 0-255, or #f.
   ;;                (unlocked-led '(\"white\" 6))
+  ;;                LED while suspended, steady, and while hibernated, breathing up to
+  ;;                LEVEL: (COLOUR LEVEL), or #f.
+  ;;                (sleep-led '(\"#00FFFF\" 6))
+  ;;                (hibernate-led '(\"#00FFFF\" 16))
   ;;                Console and debugging: fbcon rotation (0-3), USB serial console on ttyGS0,
   ;;                verbose kernel log.
   ;;                (console-rotation #f)
@@ -195,7 +199,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                )))
   ;;    The port's other services, also inside modify-services.  Each needs its module
   ;;    in use-modules: (fxtec-pro1x services keyboard), and usb-network, modem, sensors,
-  ;;    boot, audio, waydroid.
+  ;;    boot, audio, waydroid, camera, snapshots.
   ;;    (pro1x-boot-menu-service-type
   ;;     config => (pro1x-boot-menu-configuration
   ;;                (inherit config)
@@ -253,6 +257,19 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                ;; (hexagonfs (local-file \"hexagonfs\" #:recursive? #t))
   ;;                ;; (hexagonrpcd-package hexagonrpcd)   ; in (fxtec-pro1x packages misc)
   ;;                ))
+  ;;    (pro1x-camera-service-type          ; (fxtec-pro1x services camera)
+  ;;     config => (pro1x-camera-configuration
+  ;;                (inherit config)
+  ;;                (jpeg-quality 98)))          ; the camera app's photos, 1-100
+  ;;    (pro1x-snapshots-service-type       ; (fxtec-pro1x services snapshots)
+  ;;     config => (pro1x-snapshots-configuration
+  ;;                (inherit config)
+  ;;                Snapshots of /home on btrfs (btrbk): when to look for changes (cron),
+  ;;                keep all of the last day, then one a day for 7 days and one a week
+  ;;                for 3 weeks.
+  ;;                (schedule \"0 * * * *\")
+  ;;                (preserve-min \"1d\")
+  ;;                (preserve \"7d 3w\")))
   )
 "))
 
