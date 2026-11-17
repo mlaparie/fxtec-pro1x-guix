@@ -121,7 +121,7 @@ Camera: `pro1x-camera-configuration` in `(fxtec-pro1x services camera)`.
 | field | default | |
 |---|---|---|
 | `jpeg-quality` | `98` | the camera app's JPEG quality, 1 to 100 |
-| `standby?` | `#f` | keep the camera app in the background after login and once closed, for a quicker start (1.0 s instead of 2.8 s); meanwhile it has no window, the camera is closed and no sensor or timer runs (no CPU, about 60 MB of memory) |
+| `standby?` | `#t` | keep the camera app in the background after login and once closed, for a quicker start (1.0 s instead of 2.8 s); meanwhile it has no window, the camera is closed and no sensor or timer runs (no CPU, about 60 MB of memory) |
 
 Root SSH: deploys keep the PC's key in root's keys whatever this file
 says; `#:root-ssh-keys` matters only for root SSH after an on-phone

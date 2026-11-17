@@ -25,8 +25,8 @@
   ;; Keep the camera app in the background after login and after it is
   ;; closed, for a quicker start (1.0 s instead of 2.8).  Meanwhile it has
   ;; no window, the camera is closed and no sensor is held: it uses no
-  ;; CPU, only memory (about 60 MB).  Off by default.
-  (standby? pro1x-camera-standby? (default #f)))
+  ;; CPU, only memory (about 60 MB).  On by default (author, 2026-11-17).
+  (standby? pro1x-camera-standby? (default #t)))
 
 ;;; /etc/xdg/user-dirs.defaults — system-wide FreeDesktop default XDG dirs.
 ;;; xdg-user-dirs-update reads this on first login to initialise ~/.config/user-dirs.dirs.

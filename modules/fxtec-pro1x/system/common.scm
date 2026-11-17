@@ -273,7 +273,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (jpeg-quality 98)            ; the camera app's photos, 1-100
   ;;                Kept in the background after login and once closed, for a quick start;
   ;;                meanwhile the camera is closed and no sensor or timer runs.
-  ;;                (standby? #f)))
+  ;;                (standby? #t)))
   ;;    (pro1x-snapshots-service-type       ; (fxtec-pro1x services snapshots)
   ;;     config => (pro1x-snapshots-configuration
   ;;                (inherit config)
