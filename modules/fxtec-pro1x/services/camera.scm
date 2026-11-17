@@ -35,11 +35,15 @@
 ;;; Using xdg/ (not skel/) because in Guix, /etc/skel is an immutable store symlink.
 (define (pro1x-camera-etc config)
   (list
+   ;; SSCCLI: libssc's ssccli for the camera app's level line, by its
+   ;; store path: libssc in the profile clashed with the system's libqmi.
    `("pro1x/camera.conf"
-     ,(plain-file "camera.conf"
-                  (format #f "JPEG_QUALITY=~a~%CAMERA_STANDBY=~a~%"
-                          (pro1x-camera-jpeg-quality config)
-                          (if (pro1x-camera-standby? config) "yes" "no"))))
+     ,(mixed-text-file "camera.conf"
+                       "JPEG_QUALITY=" (number->string
+                                        (pro1x-camera-jpeg-quality config))
+                       "\nCAMERA_STANDBY="
+                       (if (pro1x-camera-standby? config) "yes" "no")
+                       "\nSSCCLI=" (file-append libssc "/bin/ssccli") "\n"))
    `("xdg/user-dirs.defaults"
      ,(plain-file "user-dirs.defaults"
                   "DESKTOP=Desktop\n\
@@ -54,8 +58,7 @@ VIDEOS=Videos\n"))))
 ;;; /etc/environment.d file did that on NixOS, but nothing reads it here.
 
 (define (pro1x-camera-packages config)
-  ;; libssc: ssccli, the camera app's level line (accelerometer readings).
-  (list libcamera-pro1x cameractrl v4l-utils libssc))
+  (list libcamera-pro1x cameractrl v4l-utils))
 
 ;;; A sensor that does not answer while it probes is gone until its driver
 ;;; is loaded again, and camss registers no camera at all without it: on

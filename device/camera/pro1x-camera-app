@@ -214,6 +214,19 @@ def camera_standby():
         return False
 
 
+def ssccli():
+    """libssc's ssccli, by the path the camera service writes
+    (/etc/pro1x/camera.conf), else from PATH."""
+    try:
+        with open("/etc/pro1x/camera.conf") as f:
+            for line in f:
+                if line.startswith("SSCCLI="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return "ssccli"
+
+
 def jpeg_quality():
     """config.scm's jpeg-quality (/etc/pro1x/camera.conf), else 98."""
     try:
@@ -1289,7 +1302,7 @@ class Camera(Gtk.Application):
         if proc:
             return
         try:
-            proc = subprocess.Popen(["ssccli", "--sensor", "accelerometer"],
+            proc = subprocess.Popen([ssccli(), "--sensor", "accelerometer"],
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL, text=True)
         except OSError as e:
