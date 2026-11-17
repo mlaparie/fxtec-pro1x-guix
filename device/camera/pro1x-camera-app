@@ -134,11 +134,14 @@ DEFAULTS = {"photo": {"shape": "4:3", "size": "binned"},
 # in portrait, so clockwise there; the front upside down in both with
 # vertical-flip and clockwise, so horizontal-flip (a mirror, as a selfie
 # view) and counterclockwise.  180 and 270 are those turned half way.
+# The front's landscapes were mirrors while its portrait was a plain turn,
+# so going from portrait to landscape showed it upside down (author,
+# 2026-11-17): plain turns throughout, as for the rear.
 VIEW_TURN = {
     "normal": ("clockwise", "counterclockwise"),
-    "90": ("none", "horizontal-flip"),
+    "90": ("none", "rotate-180"),
     "180": ("counterclockwise", "clockwise"),
-    "270": ("rotate-180", "vertical-flip"),
+    "270": ("rotate-180", "none"),
 }
 # A tap at (x, y) in the view, back to the frame's (u, v), per method.
 TAP_BACK = {
