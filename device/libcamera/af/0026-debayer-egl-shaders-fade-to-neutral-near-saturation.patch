@@ -1,0 +1,65 @@
+From 76bd1a91cb337544d0d1c2e1d67f9e859141bb32 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 14:50:25 +0100
+Subject: [PATCH] debayer_egl: shaders: fade to neutral near saturation
+
+Where one channel clips before the others (green first, the most
+sensitive), the white balance gains and the colour matrix turn a
+near-white area green or magenta: the sun, a lamp, a bright sky.  From
+90% of the sensor range up, the colour fades to the brightest of its
+components, neutral at saturation.
+---
+ src/libcamera/shaders/bayer_1x_packed.frag | 10 +++++++++-
+ src/libcamera/shaders/bayer_unpacked.frag  | 10 +++++++++-
+ 2 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
+index 0b641a5..039faf0 100644
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -232,11 +232,19 @@ void main(void)
+ 	 */
+ 	rgb = (rgb - blacklevel) / (1.0 - blacklevel);
+ 
++	/*
++	 * Near the sensor's saturation one channel clips before the others
++	 * and the colour matrix turns the near-white green or magenta: fade
++	 * to neutral from 90% of the range up.
++	 */
++	float clipping = smoothstep(0.9, 1.0, max(rgb.r, max(rgb.g, rgb.b)));
++
+ 	/* Apply AWB gains, and saturate each channel at sensor range */
+ 	rgb = clamp(rgb * awb, vec3(0.0), vec3(1.0));
+ 
+ 	/* Colour Correction Matrix */
+-	rgb = ccm * rgb;
++	rgb = clamp(ccm * rgb, 0.0, 1.0);
++	rgb = mix(rgb, vec3(max(rgb.r, max(rgb.g, rgb.b))), clipping);
+ 
+ 	/*
+ 	 * Contrast
+diff --git a/src/libcamera/shaders/bayer_unpacked.frag b/src/libcamera/shaders/bayer_unpacked.frag
+index 10c5e94..b7959b8 100644
+--- a/src/libcamera/shaders/bayer_unpacked.frag
++++ b/src/libcamera/shaders/bayer_unpacked.frag
+@@ -135,11 +135,19 @@ void main(void) {
+      */
+     rgb = (rgb - blacklevel) / (1.0 - blacklevel);
+ 
++    /*
++     * Near the sensor's saturation one channel clips before the others
++     * and the colour matrix turns the near-white green or magenta: fade
++     * to neutral from 90% of the range up.
++     */
++    float clipping = smoothstep(0.9, 1.0, max(rgb.r, max(rgb.g, rgb.b)));
++
+     /* Apply AWB gains, and saturate each channel at sensor range */
+     rgb = clamp(rgb * awb, vec3(0.0), vec3(1.0));
+ 
+     /* Colour Correction Matrix */
+-    rgb = ccm * rgb;
++    rgb = clamp(ccm * rgb, 0.0, 1.0);
++    rgb = mix(rgb, vec3(max(rgb.r, max(rgb.g, rgb.b))), clipping);
+ 
+     /*
+      * Contrast

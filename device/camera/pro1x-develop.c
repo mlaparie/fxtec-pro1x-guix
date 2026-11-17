@@ -19,7 +19,8 @@
  *
  * The pipeline follows libcamera's bayer_1x_packed.frag (normalise above the
  * black level, white balance, clamp, colour matrix, clamp, contrast curve,
- * gamma), so a photo looks as the viewfinder did, but for the shading.  The demosaic is
+ * gamma, and libcamera-pro1x's fade to neutral near saturation), so a photo
+ * looks as the viewfinder did, but for the shading.  The demosaic is
  * Malvar-He-Cutler (gradient-corrected bilinear, IEEE ICASSP 2004), sharper
  * than the shader's bilinear one.  Rows are shared out among the CPU's
  * cores.
@@ -158,16 +159,31 @@ static void *develop_band(void *arg)
 				for (int k = 0; k < 3; k++)
 					sg[k] = row[i][k] * (1 - t) + row[i + 1][k] * t;
 			}
+			float top = 0;
 			for (int k = 0; k < 3; k++) {
-				float f = (v[k] * scale - black) / range * j->gain[k]
-					  * sg[k];
+				float n = (v[k] * scale - black) / range;
+				if (n > top)
+					top = n;
+				float f = n * j->gain[k] * sg[k];
 				rgb[k] = f < 0 ? 0 : f > 1 ? 1 : f;
 			}
+			float most = 0;
 			for (int k = 0; k < 3; k++) {
 				float f = j->ccm[3 * k] * rgb[0]
 					  + j->ccm[3 * k + 1] * rgb[1]
 					  + j->ccm[3 * k + 2] * rgb[2];
 				m[k] = f < 0 ? 0 : f > 1 ? 1 : f;
+				if (m[k] > most)
+					most = m[k];
+			}
+			/* Near saturation one channel clips before the others
+			 * and the matrix turns the near-white green: fade to
+			 * neutral from 90% of the range up (our shader patch). */
+			if (top > 0.9f) {
+				float t = top >= 1 ? 1 : (top - 0.9f) / 0.1f;
+				t = t * t * (3 - 2 * t);
+				for (int k = 0; k < 3; k++)
+					m[k] += (most - m[k]) * t;
 			}
 			for (int k = 0; k < 3; k++)
 				*out++ = j->lut[(int)(m[k] * LUT_SIZE + 0.5f)];

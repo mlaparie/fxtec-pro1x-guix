@@ -1,0 +1,49 @@
+From 1e176ff016a016494c71f093c6408af39a67eff0 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 14:50:25 +0100
+Subject: [PATCH] ipa: simple: agc: Step by the ratio to the target when far
+ from it
+
+Proportional steps of at most 15% an update took some 20 updates, about
+5 s at 15 fps with statistics every 4 frames, to cover 4 stops when a
+camera starts or the light changes.  Errors above 0.75 bin are now
+corrected by the ratio of the target to the mean sample value, at most
+twice or half the exposure an update.
+---
+ src/ipa/simple/algorithms/agc.cpp | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 78fd7a0..01056ee 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -76,6 +76,12 @@ static constexpr float kExpProportionalGain = 0.04;
+  */
+ static constexpr float kExpMaxStep = 0.15;
+ 
++/*
++ * Errors above this (in histogram bins) are corrected by the ratio of the
++ * target to the mean sample value, not proportionally.
++ */
++static constexpr float kExpFastError = 0.75;
++
+ Agc::Agc()
+ {
+ }
+@@ -180,6 +186,16 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ 				-kExpMaxStep, kExpMaxStep);
+ 	float factor = 1.0f + step;
+ 
++	/*
++	 * Far from the target (a camera just started, a light switched on),
++	 * steps of 15% took some 20 updates, 5 s, to cover 4 stops: step by
++	 * the ratio to the target instead, at most twice or half the
++	 * exposure an update.
++	 */
++	if (std::abs(error) > kExpFastError)
++		factor = std::clamp(static_cast<float>(target / std::max(exposureMSV, 0.5)),
++				    0.5f, 2.0f);
++
+ 	if (factor > 1.0f) {
+ 		/* Scene too dark: increase exposure first, then gain. */
+ 		if (exposure < context.configuration.agc.exposureMaxAuto) {

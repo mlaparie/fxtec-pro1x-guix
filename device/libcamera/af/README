@@ -32,6 +32,12 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
   when validated again: libcamerasrc validates the 48 MP default first,
   and two buffers for the 12 MP viewfinder plus raw stream stalled both
   after one frame (fixed the same day; both cameras then 15-17 fps).
+- 0026 (ours, 2026-11-17): the shaders fade the colour to neutral from 90%
+  of the sensor range up: a clipped green channel had turned the sun and
+  lamps green (author's report).  pro1x-develop does the same.
+- 0027 (ours, 2026-11-17): the exposure steps by the ratio to the target
+  (at most 2x an update) when more than 0.75 bin off, instead of 15%: a
+  camera start took about 5 s to settle over 4 stops (author's report).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The
