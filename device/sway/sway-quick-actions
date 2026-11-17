@@ -294,7 +294,9 @@ mobile_set() {                  # mobile_set off|234|34|23|3
     f="${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile"
     opt=$1
     # Not in flight: the modem stays off until airplane mode ends.
-    if [ "$opt" != off ] && [ "$(airplane_now)" = on ]; then return 1; fi
+    if [ "$opt" != off ] && [ "$(airplane_now)" = on ]; then
+        why "airplane mode on"; return 1
+    fi
     case "$opt" in
         off) nmcli radio wwan off ;;
         234|34|23|3)
@@ -973,10 +975,15 @@ refresh_swap() {
     rmdir "$cache.lock"
 }
 
+# why TEXT: in a command run by confirm, why it failed, shown in red
+# instead of "failed" (the mobile data line in airplane mode only said
+# "failed"; author, 2026-11-17).
+why() { [ -n "${QS_WHY:-}" ] && printf '%s' "$1" > "$QS_WHY"; return 0; }
+
 # confirm KEY SHOWN COMMAND...: SHOWN on KEY's line now, COMMAND in the
-# background, one at a time per line; then the real lines, or "failed" in
-# red for 2 s first.  QS_ALSO: other keys shown with their own values, gone
-# together.
+# background, one at a time per line; then the real lines, or "failed" (or
+# the command's why) in red for 2 s first.  QS_ALSO: other keys shown with
+# their own values, gone together.
 confirm() {
     key=$1 shown=$2; shift 2
     mkdir -p "$pending"
@@ -987,6 +994,7 @@ confirm() {
             sleep 0.1; i=$((i + 1))
             [ "$i" -lt 100 ] || break
         done
+        QS_WHY="$pending/.why-$key"; rm -f "$QS_WHY"
         if "$@"; then ok=yes; else ok=; fi
         refresh_lines
         for k in $QS_ALSO; do rm -f "$pending/$k"; done
@@ -994,12 +1002,13 @@ confirm() {
         if [ "$(cat "$pending/$key" 2>/dev/null)" = "$shown" ]; then
             rm -f "$pending/$key"
             if [ -z "$ok" ]; then
-                printf '\033[91mfailed\033[0m' > "$pending/$key"
+                printf '\033[91m%s\033[0m' "$(cat "$QS_WHY" 2>/dev/null || echo failed)" > "$pending/$key"
                 qs_reload
                 sleep 2
                 rm -f "$pending/$key"
             fi
         fi
+        rm -f "$QS_WHY"
         rmdir "$pending/.lock-$key" 2>/dev/null
         qs_reload
     ) >/dev/null 2>&1 </dev/null &
@@ -1166,7 +1175,9 @@ set_to() {
             radio_set "$1" "$2"
             [ "$(airplane_now)" = on ] && airplane_remember "$1" "$2" ;;
         wwan)                     # the modem stays off in flight
-            if [ "$2" = on ] && [ "$(airplane_now)" = on ]; then return 1; fi
+            if [ "$2" = on ] && [ "$(airplane_now)" = on ]; then
+                why "airplane mode on"; return 1
+            fi
             radio_set wwan "$2" ;;
         airplane)
             if [ "$2" = on ]; then airplane_enter; else airplane_leave; fi ;;
