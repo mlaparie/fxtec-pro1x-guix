@@ -1,0 +1,42 @@
+From 83a6945c805dbb79bbdce6372d62c08af05c5c92 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 09:30:57 +0100
+Subject: [PATCH] gstreamer: Name the 10-bit CSI-2 packed Bayer formats
+
+The simple pipeline's raw stream comes in the CSI-2 receiver's packed
+format, which libcamerasrc could not express in caps, so no raw pad
+could be negotiated.  Name them bggr10p, gbrg10p, grbg10p and rggb10p.
+---
+ src/gstreamer/gstlibcamera-utils.cpp | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/gstreamer/gstlibcamera-utils.cpp b/src/gstreamer/gstlibcamera-utils.cpp
+index 6541d47..f793a96 100644
+--- a/src/gstreamer/gstlibcamera-utils.cpp
++++ b/src/gstreamer/gstlibcamera-utils.cpp
+@@ -43,6 +43,10 @@ static const struct {
+ 	{ GST_VIDEO_FORMAT_ENCODED, formats::SGBRG16 },
+ 	{ GST_VIDEO_FORMAT_ENCODED, formats::SGRBG16 },
+ 	{ GST_VIDEO_FORMAT_ENCODED, formats::SRGGB16 },
++	{ GST_VIDEO_FORMAT_ENCODED, formats::SBGGR10_CSI2P },
++	{ GST_VIDEO_FORMAT_ENCODED, formats::SGBRG10_CSI2P },
++	{ GST_VIDEO_FORMAT_ENCODED, formats::SGRBG10_CSI2P },
++	{ GST_VIDEO_FORMAT_ENCODED, formats::SRGGB10_CSI2P },
+ 
+ 	/* Monochrome */
+ 	{ GST_VIDEO_FORMAT_GRAY8, formats::R8 },
+@@ -285,6 +289,14 @@ static const struct {
+ 	{ formats::SGBRG16, "gbrg16le" },
+ 	{ formats::SGRBG16, "grbg16le" },
+ 	{ formats::SRGGB16, "rggb16le" },
++	/*
++	 * MIPI CSI-2 packed (four pixels in five bytes), as CSI-2 receivers
++	 * without an ISP give them; GStreamer has no name of its own for them.
++	 */
++	{ formats::SBGGR10_CSI2P, "bggr10p" },
++	{ formats::SGBRG10_CSI2P, "gbrg10p" },
++	{ formats::SGRBG10_CSI2P, "grbg10p" },
++	{ formats::SRGGB10_CSI2P, "rggb10p" },
+ };
+ 
+ static const gchar *

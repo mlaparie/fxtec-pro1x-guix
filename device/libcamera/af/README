@@ -23,6 +23,12 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
   exposure aims lower, by at most two stops (a lamp in a dim room was left
   white).  White counts from the raw level that clips after the white
   balance gains (2026-11-17; the top bin alone missed it under a lamp).
+- 0024 (ours, 2026-11-17): libcamerasrc names the 10-bit CSI-2 packed Bayer
+  formats (rggb10p ...), so the simple pipeline's raw stream can be a pad:
+  the camera app's photos come from it.
+- 0025 (ours, 2026-11-17): frames over 24 MP get two buffers instead of
+  four (48 MP: 0.73 GB in use instead of 1.85, with the camera app's 7936
+  width that libcamerasrc need not copy).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

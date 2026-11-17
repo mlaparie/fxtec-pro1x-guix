@@ -1,0 +1,65 @@
+From 8c517fbde5d46b66a6e819f8476448a944dccab4 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 10:33:07 +0100
+Subject: [PATCH] simple: Two buffers for frames of more than 24 MP
+
+Four 48 MP buffers, raw (60 MB each) and processed (190 MB each), took
+2 s to allocate and about 1 GB of memory; with Android apps running the
+phone ran out of memory and froze.  A still camera needs no more than
+two: frames over 24 MP get at most two, internal and output.
+---
+ src/libcamera/pipeline/simple/simple.cpp | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 3483b59..a20c271 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -258,6 +258,17 @@ struct SimplePipelineInfo {
+ 
+ namespace {
+ 
++/*
++ * Frames of more than 24 MP (a 48 MP mode: about 60 MB raw and 190 MB
++ * processed each) get at most two buffers instead of four.  A still needs
++ * no more, and four took 2 s to allocate and 1 GB of memory, enough to run
++ * a phone with 8 GB out of memory.
++ */
++unsigned int buffersFor(const Size &size, unsigned int count)
++{
++	return size.width * size.height > 24000000 ? std::min(count, 2u) : count;
++}
++
+ static const SimplePipelineInfo supportedDevices[] = {
+ 	{ "dcmipp", {}, false },
+ 	{ "imx7-csi", { { "pxp", 1 } }, true },
+@@ -1399,7 +1410,8 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 
+ 		const unsigned int bufferCount = cfg.bufferCount;
+ 		if (!bufferCount)
+-			cfg.bufferCount = kNumBuffersDefault;
++			cfg.bufferCount = buffersFor(pipeConfig_->captureSize,
++						     kNumBuffersDefault);
+ 		else if (bufferCount > kNumBuffersMax)
+ 			cfg.bufferCount = kNumBuffersMax;
+ 
+@@ -1650,7 +1662,7 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 	inputCfg.pixelFormat = videoFormat.toPixelFormat();
+ 	inputCfg.size = pipeConfig->captureSize;
+ 	inputCfg.stride = captureFormat.planes[0].bpl;
+-	inputCfg.bufferCount = kNumInternalBuffers;
++	inputCfg.bufferCount = buffersFor(inputCfg.size, kNumInternalBuffers);
+ 
+ 	if (data->converter_) {
+ 		return data->converter_->configure(inputCfg, outputCfgs);
+@@ -1703,7 +1715,9 @@ int SimplePipelineHandler::start(Camera *camera, [[maybe_unused]] const ControlL
+ 		 * When using the converter allocate a fixed number of internal
+ 		 * buffers.
+ 		 */
+-		ret = video->allocateBuffers(kNumInternalBuffers,
++		V4L2DeviceFormat format;
++		video->getFormat(&format);
++		ret = video->allocateBuffers(buffersFor(format.size, kNumInternalBuffers),
+ 					     &data->conversionBuffers_);
+ 	} else {
+ 		/*

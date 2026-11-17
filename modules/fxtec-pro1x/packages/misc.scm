@@ -387,11 +387,15 @@ to build an FDE userdata image on the host before flashing.")
                 ;; 50 cm never focused (moWerk, 2026-11-08).
                 "0018-simple-raise-the-vertical-blanking-for-longer-exposu.patch"
                 ;; Ours: a manual focus position, exposure for the tapped
-                ;; spot, a white balance lock, and highlights kept.
+                ;; spot, a white balance lock, highlights kept, the raw
+                ;; stream's packed format in libcamerasrc caps, and two
+                ;; buffers at 48 MP.
                 "0020-ipa-simple-af-Manual-lens-position.patch"
                 "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"
                 "0022-ipa-simple-awb-AwbEnable-a-white-balance-lock.patch"
-                "0023-ipa-simple-agc-Keep-highlights.patch"))))))
+                "0023-ipa-simple-agc-Keep-highlights.patch"
+                "0024-gstreamer-Name-the-10-bit-CSI-2-packed-Bayer-formats.patch"
+                "0025-simple-Two-buffers-for-frames-of-more-than-24-MP.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
@@ -409,9 +413,15 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
     (build-system copy-build-system)
     (arguments
      (list
-      #:install-plan ''(("pro1x-camera-app" "bin/"))
+      #:install-plan ''(("pro1x-camera-app" "bin/")
+                        ("pro1x-develop" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
+          ;; The photos' developer (a raw frame to a JPEG), beside the app.
+          (add-before 'install 'build-develop
+            (lambda _
+              (invoke "gcc" "-O2" "-Wall" "-o" "pro1x-develop"
+                      "pro1x-develop.c" "-ljpeg" "-lpthread" "-lm")))
           (add-after 'install 'wrap
             (lambda* (#:key inputs #:allow-other-keys)
               (let* ((bin (string-append #$output "/bin/pro1x-camera-app"))
@@ -460,14 +470,15 @@ StartupNotify=false
      ;; gst-plugins-bad: h264parse, for videos.
      (list bash-minimal python python-pygobject python-pycairo
            gobject-introspection gtk+
-           gdk-pixbuf pango
+           gdk-pixbuf pango libjpeg-turbo
            gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad
            (list libcamera-pro1x "gst")))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Camera for the F(x)tec Pro1X on libcamera")
     (description
-     "A camera application for the F(x)tec Pro1X: a 1080p viewfinder,
-photos at the sensor's 12 MP mode, tap to focus, ISO, exposure
+     "A camera application for the F(x)tec Pro1X: photos taken from a raw
+stream beside the viewfinder (no mode switch), developed by pro1x-develop,
+the rear 48 MP mode, tap to focus, ISO, exposure
 compensation, the LED as flash or torch, a timer, digital zoom, and 720p
 videos on the hardware encoder, through libcamera's GStreamer source and
 the port's libcamera controls.")

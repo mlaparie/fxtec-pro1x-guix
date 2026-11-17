@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # pro1x-camera-app — a camera for the F(x)tec Pro¹x on libcamera
 #
-# The viewfinder streams the sensor's fast 1080p mode; a photo switches
-# libcamerasrc to the 12 MP mode (4000x3000), lets exposure and focus
-# settle, keeps one frame and saves it as JPEG in ~/Pictures/Camera, then
-# goes back to the viewfinder (moWerk's "small viewfinder, photo at full
+# Photos: the viewfinder is scaled from the photo's own sensor mode (the
+# rear's 12 MP, the front's whole array), beside a raw stream of the same
+# frames; the shutter keeps the newest raw frame and pro1x-develop turns it
+# into a JPEG in ~/Pictures/Camera, the viewfinder running on (RAW).  The
+# rear 48 MP, or a failed raw stream, switch libcamerasrc to the photo's
+# mode for one frame and back (moWerk's "small viewfinder, photo at full
 # resolution", jolla-camera on SailfishOS).  Tap: focus and exposure there
 # (af-windows, mapped to pixel array coordinates as moWerk's camerabin
 # patch does; spot metering).  Manual focus with a slider.  Shape and
@@ -31,9 +33,13 @@
 # touches), recording into the running viewfinder (its pipeline tested
 # headless, two recordings closed cleanly), focus held in auto mode, manual
 # focus, spot exposure, photo shapes; the 4:3 viewfinder mode and the white
-# balance lock (2026-11-16, need the new kernel and libcamera).
+# balance lock (2026-11-16, need the new kernel and libcamera).  Photos from
+# the raw stream (2026-11-17): rear 12 MP tested in the app (frame 0.02 s
+# after the shutter, saved at 1.3 s), front only headless and in the dark;
+# Night and flash with it not yet run.
 
 import json
+import math
 import os
 import re
 import signal
@@ -76,11 +82,28 @@ VIEWS = {"16:9": (1280, 720), "4:3": (1472, 1104), "1:1": (1104, 1104)}
 # negotiate (seen on the phone), so these are 4:3, aligned, inside.
 STILL = (3968, 2976)
 # The GPU takes rows of a multiple of 64 bytes: at 7992 wide every frame
-# failed (eglCreateImageKHR), 7984 works (seen on the phone, 2026-11-16).
-STILL_48 = (7984, 5988)
+# failed (eglCreateImageKHR; seen on the phone, 2026-11-16).  At 7984,
+# rows of 31936 bytes, the GPU's were padded to 256 and libcamerasrc copied
+# each 190 MB frame on the CPU: 2.3 s a frame.  7936 (rows of 31 x 1024
+# bytes) needs no copy: the first frame 4.6 s after the switch instead of
+# 8, then one every 0.6 s (2026-11-17).
+STILL_48 = (7936, 5952)
 # The front S5K4H7 gives at most 3264x2448: at the rear's size no frame
 # came ("No frame from the camera", no photo; author, 2026-11-02).
 STILL_FRONT = (3200, 2400)
+# Photos without a mode switch (2026-11-17): beside the viewfinder, a raw
+# stream of the photo's own sensor mode (the rear's 12 MP, the front's
+# whole array), the viewfinder scaled from the same frames; the shutter
+# keeps the newest raw frame, the one on screen, and pro1x-develop makes it
+# the photo with the software ISP's steps and the frame's own white balance
+# gains and colour matrix, while the viewfinder runs on.  The frame comes
+# in 0.07 s instead of the 0.9 s of a switch to the photo's mode (3.4 s
+# before 2026-11-17).  Not for the rear 48 MP (another mode) nor videos.
+RAW = {0: (4000, 3000), 1: (3264, 2448)}
+# The sensors' black level in the tuning files (4096 of 65536).
+BLACK_LEVEL = 4096 / 65536
+DEVELOP = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                       "pro1x-develop")
 # The rear 16:9 viewfinder's part of a photo's frame: the fast 1080p mode
 # reads the full width but only 2160 of the 12 MP mode's 3000 rows
 # (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
@@ -284,6 +307,9 @@ class Camera(Gtk.Application):
         self.rec_timer = None
         self.busy = False
         self.shooting = False           # the view skips a photo's frames
+        self.raw_sink = None            # the raw stream's appsink (RAW)
+        self.no_raw = False             # the raw stream failed: switch modes
+        self.reserved = set()           # photo names being written
         self.portrait = True
         self.toggle = False
         self.last_photo = None
@@ -568,6 +594,7 @@ class Camera(Gtk.Application):
         for e in (self.src, self.caps, self.crop, tee, q1,
                   self.flip, convert, sink, q2, self.snap):
             self.pipeline.add(e)
+        self.raw_sink = self.raw_branch() if self.raw_mode() else None
         self.src.link(self.caps)
         self.caps.link(self.crop)
         self.crop.link(tee)
@@ -594,6 +621,35 @@ class Camera(Gtk.Application):
         self.apply_controls()
         self.pipeline.set_state(Gst.State.PLAYING)
         self.say(name.split(" ")[0], 2)
+
+    def raw_mode(self):
+        """Photos from the raw stream (RAW): photo mode, not the 48 MP."""
+        return (not self.video and not self.no_raw and self.cam in RAW
+                and os.access(DEVELOP, os.X_OK)
+                and not (self.cam == 0 and self.out()["size"] == "full"))
+
+    def raw_branch(self):
+        """The raw stream, from a pad of libcamerasrc's own, to an appsink
+        holding the newest frame.  Its size makes libcamera choose the
+        photo's sensor mode for both streams."""
+        pad = self.src.request_pad_simple("src_%u")
+        Gst.util_set_object_arg(pad, "stream-role", "raw")
+        caps = Gst.ElementFactory.make("capsfilter")
+        caps.set_property("caps", Gst.Caps.from_string(
+            "video/x-bayer,width=%d,height=%d" % RAW[self.cam]))
+        q = Gst.ElementFactory.make("queue")
+        q.set_property("leaky", 2)
+        q.set_property("max-size-buffers", 1)
+        sink = Gst.ElementFactory.make("appsink")
+        for k, v in (("drop", True), ("max-buffers", 1), ("sync", False),
+                     ("async", False), ("enable-last-sample", False)):
+            sink.set_property(k, v)
+        for e in (caps, q, sink):
+            self.pipeline.add(e)
+        pad.link(caps.get_static_pad("sink"))
+        caps.link(q)
+        q.link(sink)
+        return sink
 
     def recording_branch(self, path):
         """Frames at a steady size (the zoom changes the crop's), turned as
@@ -634,6 +690,12 @@ class Camera(Gtk.Application):
         if msg.type == Gst.MessageType.ERROR:
             err, debug = msg.parse_error()
             print("pipeline: %s (%s)" % (err.message, debug), flush=True)
+            if self.raw_sink is not None and not self.no_raw:
+                # Photos by the mode switch again, until the app restarts.
+                print("raw stream: failed, photos by a mode switch", flush=True)
+                self.no_raw = True
+                GLib.idle_add(self.restart)
+                return
             if self.recording:
                 self.say("Video stopped: %s" % err.message, 4)
                 self.recorded()
@@ -664,6 +726,11 @@ class Camera(Gtk.Application):
         self.stop()
         self.led(False)
         os._exit(0)
+
+    def restart(self):
+        self.stop()
+        self.start()
+        return False
 
     def stop(self):
         if self.pipeline:
@@ -826,7 +893,7 @@ class Camera(Gtk.Application):
         shape = self.out()["shape"]
         ratio = RATIOS[shape]
         w, h = self.still()
-        if shape == "16:9" and self.cam == 0:
+        if shape == "16:9" and self.cam == 0 and not self.raw_mode():
             w = w * VIEW_REGION_WIDTH
             h = w * 9 / 16
         return min(w, h * ratio), min(h, w / ratio)
@@ -876,7 +943,9 @@ class Camera(Gtk.Application):
         self.show_outputs()
         if not self.pipeline or self.busy:
             return
-        if self.view_size() != self.size:
+        if self.raw_mode() != (self.raw_sink is not None):
+            self.restart()
+        elif self.view_size() != self.size:
             self.resize(self.view_size())
         else:
             self.apply_zoom()
@@ -1274,6 +1343,8 @@ class Camera(Gtk.Application):
         return False
 
     def to_still(self):
+        if self.raw_sink is not None:
+            return self.take_raw()
         self.shooting = True
         self.resize(self.still(), self.current())
         held, front, portrait = self.held(), self.cam != 0, self.method()
@@ -1294,8 +1365,8 @@ class Camera(Gtk.Application):
         turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
         want = self.still()
-        # A 48 MP frame comes later: the first 9 s after the switch
-        # headless, and in a dark room none within 15 s in the app.
+        # A 48 MP frame comes later: the first 4.6 s after the switch
+        # headless (STILL_48), and once none within 15 s in the app.
         wait = 30 if want == STILL_48 else 5
         deadline = time.monotonic() + wait
         while got < SETTLE_FRAMES + 1 and time.monotonic() < deadline:
@@ -1328,6 +1399,151 @@ class Camera(Gtk.Application):
             except Exception as e:
                 error = e
         GLib.idle_add(self.saved, path, error, sample is not None)
+
+    def take_raw(self):
+        """The photo from the newest raw frame; the viewfinder runs on.
+        Night first sets its longer exposure (apply_controls)."""
+        held, method = self.held(), self.method()
+        want = None
+        if self.night:
+            cur = self.current()
+            if cur:
+                self.apply_controls(cur)
+                want = min(cur[0] * 4, 500000)
+        threading.Thread(target=self.raw_capture, args=(held, method, want),
+                         daemon=True).start()
+        return False
+
+    def raw_capture(self, held, method, want):
+        """The newest raw frame (with Night, the first one at its exposure,
+        within 4 s), its metadata, a file; then the developer, while the
+        shutter is free again."""
+        sample, deadline = None, time.monotonic() + 4
+        while time.monotonic() < deadline:
+            sample = self.raw_sink.try_pull_sample(2 * Gst.SECOND)
+            if not sample or not want:
+                break
+            exp = self.src.get_property("exposure-time")
+            if exp and abs(exp - want) < want * 0.1:
+                break
+        if not sample:
+            print("capture: no raw frame", flush=True)
+            GLib.idle_add(self.raw_taken, None, None)
+            return
+        try:
+            meta = self.raw_meta(sample)
+        except ValueError as e:
+            print("capture: %s" % e, flush=True)
+            GLib.idle_add(self.raw_taken, None, None)
+            return
+        print("capture: raw frame at %s, %s" % (self.since(), meta["order"]), flush=True)
+        raw = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+                           "pro1x-camera-%d.raw" % threading.get_ident())
+        buf = sample.get_buffer()
+        ok, mapping = buf.map(Gst.MapFlags.READ)
+        try:
+            with open(raw, "wb") as f:
+                f.write(mapping.data)
+            meta["stride"] = mapping.size // meta["height"]
+        finally:
+            buf.unmap(mapping)
+        del sample, buf
+        path = self.photo_path()
+        GLib.idle_add(self.raw_taken, path, meta)
+        error = None
+        try:
+            self.develop(raw, path, meta, held, method)
+            print("capture: saved %s at %s" % (path, self.since()), flush=True)
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            error, path = e, None
+        finally:
+            try:
+                os.remove(raw)
+            except OSError:
+                pass
+        GLib.idle_add(self.raw_saved, path, error)
+
+    def raw_meta(self, sample):
+        """What the developer needs: the frame's Bayer order and size, and
+        the white balance, colour matrix, gamma and contrast libcamera gave
+        it (the viewfinder's)."""
+        c = sample.get_caps().get_structure(0)
+        fmt = c.get_string("format") or ""
+        if not re.fullmatch(r"[rgb]{4}10p", fmt):
+            raise ValueError("raw format %s" % fmt)
+
+        def array(name, default):
+            try:
+                ok, arr = Gst.util_get_object_array(self.src, name)
+                vals = [float(arr.get_nth(i)) for i in range(arr.n_values)] if ok else []
+            except (TypeError, ValueError):
+                vals = []
+            return vals if len(vals) == len(default) else default
+        gains = array("colour-gains", [1.0, 1.0])
+        ccm = array("colour-correction-matrix", [1, 0, 0, 0, 1, 0, 0, 0, 1])
+        try:
+            gamma = float(self.src.get_property("gamma")) or 2.2
+            contrast = float(self.src.get_property("contrast"))
+        except (TypeError, ValueError):
+            gamma, contrast = 2.2, 1.0
+        return {"order": fmt[:4].upper(), "width": c.get_value("width"),
+                "height": c.get_value("height"), "gains": gains, "ccm": ccm,
+                "gamma": 1 / gamma,
+                # The software ISP's contrast exponent (ipa simple adjust).
+                "contrast": math.tan(min(max(contrast * math.pi / 4, 0.0),
+                                         math.pi / 2 - 0.00001))}
+
+    def develop(self, raw, path, meta, held, method):
+        """pro1x-develop: the photo's part of the frame (its shape, the
+        zoom), turned as write() turns frames, in JPEG."""
+        rw, rh = meta["width"], meta["height"]
+        w, h = self.photo_region()
+        w, h = int(w / self.zoom) // 2 * 2, int(h / self.zoom) // 2 * 2
+        x, y = (rw - w) // 4 * 2, (rh - h) // 4 * 2
+        r, b = meta["gains"]
+        args = [DEVELOP, raw, path, rw, rh, meta["stride"], meta["order"],
+                BLACK_LEVEL, r, 1.0, b] + meta["ccm"] + [
+                meta["gamma"], meta["contrast"], x, y, w, h,
+                self.turn(held, method), 2 if self.scale() < 1 else 1,
+                jpeg_quality()]
+        subprocess.run([str(a) for a in args], check=True, timeout=60,
+                       stdout=subprocess.DEVNULL)
+
+    def photo_path(self):
+        """IMG_date_time.jpg, or with _2, _3 when one is already there or
+        being written (photos less than a second apart)."""
+        os.makedirs(PHOTOS, exist_ok=True)
+        base = os.path.join(PHOTOS, time.strftime("IMG_%Y%m%d_%H%M%S"))
+        path, n = base + ".jpg", 1
+        while path in self.reserved or os.path.exists(path):
+            n += 1
+            path = "%s_%d.jpg" % (base, n)
+        self.reserved.add(path)
+        return path
+
+    def raw_taken(self, path, meta):
+        """The frame is kept: the shutter is free, Night's exposure and the
+        flash end."""
+        if self.fired:
+            self.led(False)
+        if self.night:
+            self.apply_controls()
+        self.busy = False
+        self.b_shutter.set_sensitive(True)
+        self.say("Saving" if path else "No frame from the camera", 0 if path else 4)
+        return False
+
+    def raw_saved(self, path, error):
+        if path:
+            self.reserved.discard(path)
+            self.last_photo = path
+            self.b_last.set_label("Last photo")
+            self.b_last.show()
+            self.say("Saved", 2)
+        elif error:
+            print("capture: not saved: %s" % error, flush=True)
+            self.say("Not saved: %s" % error, 4)
+        return False
 
     def resume(self):
         if self.fired:
@@ -1377,22 +1593,11 @@ class Camera(Gtk.Application):
         mirror image), then as the phone was held; a JPEG.  (The
         2026-11-01 finding that photos needed the opposite turn came from a
         viewfinder that was itself upside down in portrait, unnoticed.)"""
-        # Degrees counterclockwise, both turns in one: a 12 MP turn takes
-        # seconds (7.7 s to save with two, 3.2 s with none; 2026-11-16).
-        degrees = {"counterclockwise": 90, "clockwise": 270, "rotate-180": 180,
-                   "vertical-flip": 180}.get(method, 0)
-        portrait = method in ("counterclockwise", "clockwise")
-        # Then as held, when the display stayed portrait (the keyboard
-        # closed).  right-up is the keyboard landscape here (sway-autorotate's
-        # naming, swapped from Phosh's).  right-up needs the counterclockwise
-        # turn: the clockwise one gave an upside down photo, held as one
-        # taken right in the keyboard landscape (author, 2026-11-16).
-        turn = {"right-up": 90, "left-up": 270, "bottom-up": 180}.get(held)
-        print("capture: held %s" % held, flush=True)
-        if portrait and turn is not None:
-            degrees += turn
-        if degrees % 360:
-            pix = pix.rotate_simple(GdkPixbuf.PixbufRotation(degrees % 360))
+        # Both turns in one: a 12 MP turn takes seconds (7.7 s to save with
+        # two, 3.2 s with none; 2026-11-16).
+        degrees = self.turn(held, method)
+        if degrees:
+            pix = pix.rotate_simple(GdkPixbuf.PixbufRotation(degrees))
         scale = self.scale()
         if scale != 1.0:
             pix = pix.scale_simple(int(pix.get_width() * scale),
@@ -1403,6 +1608,23 @@ class Camera(Gtk.Application):
         pix.savev(path, "jpeg", ["quality"], [str(jpeg_quality())])
         print("capture: saved %s" % path, flush=True)
         return path
+
+    @staticmethod
+    def turn(held, method):
+        """Degrees counterclockwise: as the viewfinder turns the frames,
+        then as held, when the display stayed portrait (the keyboard
+        closed).  right-up is the keyboard landscape here (sway-autorotate's
+        naming, swapped from Phosh's).  right-up needs the counterclockwise
+        turn: the clockwise one gave an upside down photo, held as one taken
+        right in the keyboard landscape (author, 2026-11-16)."""
+        degrees = {"counterclockwise": 90, "clockwise": 270, "rotate-180": 180,
+                   "vertical-flip": 180}.get(method, 0)
+        portrait = method in ("counterclockwise", "clockwise")
+        turn = {"right-up": 90, "left-up": 270, "bottom-up": 180}.get(held)
+        print("capture: held %s" % held, flush=True)
+        if portrait and turn is not None:
+            degrees += turn
+        return degrees % 360
 
     def led(self, on):
         try:
