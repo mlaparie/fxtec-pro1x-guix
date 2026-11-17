@@ -104,6 +104,10 @@ RAW = {0: (4000, 3000), 1: (3264, 2448)}
 BLACK_LEVEL = 4096 / 65536
 DEVELOP = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                        "pro1x-develop")
+# The rear module's EEPROM (linux-pro1x's camera-eeprom patch): its lens
+# shading table corrects the photos' vignetting, about two stops in the
+# corners.  The front module has none.
+SHADING = "/sys/bus/i2c/devices/2-0050/eeprom"
 # The rear 16:9 viewfinder's part of a photo's frame: the fast 1080p mode
 # reads the full width but only 2160 of the 12 MP mode's 3000 rows
 # (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
@@ -1514,6 +1518,8 @@ class Camera(Gtk.Application):
                 meta["gamma"], meta["contrast"], x, y, w, h,
                 self.turn(held, method), 2 if self.scale() < 1 else 1,
                 jpeg_quality()]
+        if self.cam == 0 and os.access(SHADING, os.R_OK):
+            args.append(SHADING)
         subprocess.run([str(a) for a in args], check=True, timeout=60,
                        stdout=subprocess.DEVNULL)
 

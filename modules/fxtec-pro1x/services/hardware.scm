@@ -448,6 +448,14 @@ colours from the system configuration.")
           (call-with-output-file #$output
             (lambda (port)
               (display (call-with-input-file #$base get-string-all) port)
+              ;; The rear camera module's EEPROM (lens shading, for the
+              ;; camera app's photos): at24 makes it readable by root only.
+              (display (string-append
+                        "ACTION==\"bind\", SUBSYSTEM==\"i2c\","
+                        " DRIVER==\"at24\", KERNEL==\"2-0050\", RUN+=\""
+                        #$(file-append coreutils "/bin/chmod")
+                        " 0444 /sys%p/eeprom\"\n")
+                       port)
               (display #$extra port))))))
   (define base
     (local-file (repository-file "device/udev/60-pro1x.rules")

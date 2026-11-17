@@ -4,7 +4,7 @@
  *   pro1x-develop RAW OUT.jpg WIDTH HEIGHT STRIDE ORDER BLACK
  *                 GAIN_R GAIN_G GAIN_B  C0 C1 C2 C3 C4 C5 C6 C7 C8
  *                 GAMMA CONTRAST  CROP_X CROP_Y CROP_W CROP_H
- *                 TURN SCALE QUALITY
+ *                 TURN SCALE QUALITY [SHADING]
  *
  * RAW: 10-bit packed Bayer (MIPI CSI-2: four pixels in five bytes), rows of
  * STRIDE bytes; ORDER RGGB, GRBG, GBRG or BGGR.  BLACK: the black level, a
@@ -12,11 +12,14 @@
  * the frame's ColourGains and ColourCorrectionMatrix; GAMMA and CONTRAST as
  * the software ISP's shader applies them (1/2.2 and 1.0 by default).  The
  * crop is in raw pixels; TURN in degrees counterclockwise (0, 90, 180, 270);
- * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.
+ * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.  SHADING: the
+ * rear camera module's EEPROM (at24, /sys/bus/i2c/devices/2-0050/eeprom),
+ * whose lens shading table corrects the vignetting; left out, or not a
+ * table that makes sense, the frame stays as it is.
  *
  * The pipeline follows libcamera's bayer_1x_packed.frag (normalise above the
  * black level, white balance, clamp, colour matrix, clamp, contrast curve,
- * gamma), so a photo looks as the viewfinder did.  The demosaic is
+ * gamma), so a photo looks as the viewfinder did, but for the shading.  The demosaic is
  * Malvar-He-Cutler (gradient-corrected bilinear, IEEE ICASSP 2004), sharper
  * than the shader's bilinear one.  Rows are shared out among the CPU's
  * cores.
@@ -38,12 +41,24 @@
 
 #define LUT_SIZE 4096
 
+/* The module's lens shading table: 17 x 13 points over the whole array,
+ * each R, Gr, Gb, B, 16-bit big-endian, light relative to the brightest
+ * (1023, the centre).  The IMX582 module's layout, read on the phone. */
+#define SHADE_AT 0x21
+#define SHADE_W 17
+#define SHADE_H 13
+/* The share of the brightness falloff corrected: all of it multiplies the
+ * corners' noise by about 4; the colour falloff is corrected in full. */
+#define SHADE_LUMA 0.8f
+
 struct job {
 	const uint8_t *raw;
 	int width, height, stride;
 	int colour[4];			/* 0 R, 1 G, 2 B; by (y & 1) * 2 + (x & 1) */
 	float black, gain[3], ccm[9];
 	uint8_t lut[LUT_SIZE + 1];	/* contrast and gamma, 0..1 to 0..255 */
+	int shading;			/* shade is in use */
+	float shade[SHADE_H][SHADE_W][3];	/* gains, R G B */
 	int cx, cy, cw, ch;		/* the crop */
 	uint8_t *rgb;			/* cw x ch, 3 bytes a pixel */
 	int nthreads;
@@ -118,14 +133,34 @@ static void *develop_band(void *arg)
 	const float scale = 1.0f / (8.0f * 1023.0f);
 	const float black = j->black, range = 1.0f - j->black;
 
+	float row[SHADE_W][3];
+
 	for (int y = b->first; y < b->last; y++) {
 		uint8_t *out = j->rgb + (size_t)(y - j->cy) * j->cw * 3;
+		if (j->shading) {
+			/* This row of the gain grid, bilinear between its points. */
+			float gy = (float)y * (SHADE_H - 1) / (j->height - 1);
+			int i = gy >= SHADE_H - 1 ? SHADE_H - 2 : (int)gy;
+			float t = gy - i;
+			for (int g = 0; g < SHADE_W; g++)
+				for (int k = 0; k < 3; k++)
+					row[g][k] = j->shade[i][g][k] * (1 - t)
+						    + j->shade[i + 1][g][k] * t;
+		}
 		for (int x = j->cx; x < j->cx + j->cw; x++) {
 			int v[3];
-			float rgb[3], m[3];
+			float rgb[3], m[3], sg[3] = { 1, 1, 1 };
 			demosaic(j, x, y, v);
+			if (j->shading) {
+				float gx = (float)x * (SHADE_W - 1) / (j->width - 1);
+				int i = gx >= SHADE_W - 1 ? SHADE_W - 2 : (int)gx;
+				float t = gx - i;
+				for (int k = 0; k < 3; k++)
+					sg[k] = row[i][k] * (1 - t) + row[i + 1][k] * t;
+			}
 			for (int k = 0; k < 3; k++) {
-				float f = (v[k] * scale - black) / range * j->gain[k];
+				float f = (v[k] * scale - black) / range * j->gain[k]
+					  * sg[k];
 				rgb[k] = f < 0 ? 0 : f > 1 ? 1 : f;
 			}
 			for (int k = 0; k < 3; k++) {
@@ -139,6 +174,44 @@ static void *develop_band(void *arg)
 		}
 	}
 	return NULL;
+}
+
+/* The shading gains from the module's EEPROM at PATH; 0 when it has no table
+ * that makes sense (another module, an unprogrammed one). */
+static int read_shading(struct job *j, const char *path)
+{
+	uint8_t d[SHADE_AT + SHADE_W * SHADE_H * 8];
+	FILE *f = fopen(path, "rb");
+	if (!f) {
+		perror(path);
+		return 0;
+	}
+	size_t n = fread(d, 1, sizeof d, f);
+	fclose(f);
+	if (n != sizeof d)
+		return 0;
+	for (int y = 0; y < SHADE_H; y++)
+		for (int x = 0; x < SHADE_W; x++) {
+			const uint8_t *p = d + SHADE_AT + (y * SHADE_W + x) * 8;
+			float c[4];
+			for (int k = 0; k < 4; k++) {
+				int v = p[2 * k] << 8 | p[2 * k + 1];
+				if (v < 64 || v > 1023)
+					return 0;
+				c[k] = 1023.0f / v;
+			}
+			/* Green's falloff in part; red's and blue's against green
+			 * in full. */
+			float g = (c[1] + c[2]) / 2, luma = powf(g, SHADE_LUMA);
+			j->shade[y][x][0] = luma * c[0] / g;
+			j->shade[y][x][1] = luma;
+			j->shade[y][x][2] = luma * c[3] / g;
+		}
+	/* The brightest point is the centre's, at 1023. */
+	const uint8_t *mid = d + SHADE_AT + (SHADE_H / 2 * SHADE_W + SHADE_W / 2) * 8;
+	if ((mid[2] << 8 | mid[3]) < 1000)
+		return 0;
+	return 1;
 }
 
 /* The shader's S-curve, then its gamma. */
@@ -229,7 +302,7 @@ static int write_jpeg(const struct job *j, const char *path, int turn,
 
 int main(int argc, char **argv)
 {
-	if (argc != 29) {
+	if (argc != 29 && argc != 30) {
 		fprintf(stderr, "usage: see the comment at the top of pro1x-develop.c\n");
 		return 2;
 	}
@@ -259,6 +332,11 @@ int main(int argc, char **argv)
 	int turn = ((atoi(argv[26]) % 360) + 360) % 360;
 	int half = atoi(argv[27]) == 2;
 	int quality = atoi(argv[28]);
+	if (argc == 30 && strcmp(argv[29], "-") != 0) {
+		j.shading = read_shading(&j, argv[29]);
+		if (!j.shading)
+			fprintf(stderr, "%s: no lens shading table\n", argv[29]);
+	}
 	if (j.cx < 0 || j.cy < 0 || j.cw <= 0 || j.ch <= 0 ||
 	    j.cx + j.cw > j.width || j.cy + j.ch > j.height ||
 	    j.stride < j.width * 5 / 4) {
