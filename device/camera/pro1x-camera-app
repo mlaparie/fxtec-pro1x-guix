@@ -191,6 +191,12 @@ VIDEO_RATES = [15, 24, 30, 60]
 # lacked some of both (author, 2026-11-17).
 CONTRASTS = [("NORMAL", 1.0), ("MORE", 1.25), ("MOST", 1.5)]
 CLARITIES = [("OFF", 0.0), ("LOW", 0.3), ("HIGH", 0.6)]
+# Vibrance: the dull colours saturated more than the vivid ones.
+VIBRANCES = [("OFF", 0.0), ("LOW", 0.4), ("HIGH", 0.8)]
+# Pro mode's exposure times, µs (0: automatic); Night stack takes the
+# chosen one for each of its frames.
+SHUTTERS = [0, 500, 1000, 2000, 4000, 8000, 16667, 33333, 66667, 125000,
+            250000, 500000]
 # The shutter blink, in drawn frames (about 0.15 s): counted from the first
 # one drawn, so a busy moment after the shot cannot skip it (the front
 # camera, the end of a countdown; author, 2026-11-17).
@@ -289,6 +295,13 @@ scale slider { min-width: 28px; min-height: 28px; background: #ebdbb2;
                border-radius: 14px; }
 scale trough { min-width: 6px; background: rgba(235,219,178,0.4); }
 """
+
+
+def shutter_text(us):
+    """An exposure time as a photographer writes it: 1/250, 1/2, AUTO."""
+    if not us:
+        return "AUTO"
+    return "1/%d" % round(1e6 / us) if us < 1e6 else "%g S" % (us / 1e6)
 
 
 def ev_text(stops):
@@ -454,7 +467,8 @@ class Camera(Gtk.Application):
         self.win.show_all()
         self.b_last.set_visible(bool(self.last_photo))
         self.lens_row.set_visible(self.manual)
-        self.ev_row.hide()
+        self.ev_row.set_visible(self.pro)
+        self.pro_strip.set_visible(self.pro)
         self.settings_view.hide()
         self.layout()
         self.marks_timer = GLib.timeout_add(300, self.update_marks)
@@ -645,6 +659,29 @@ class Camera(Gtk.Application):
         for row in (self.lens_row, self.ev_row):
             self.slider_width.add_widget(row)
             self.overlay.add_overlay(row)
+        # Pro mode: horizontal sliders for the exposure time and ISO, at the
+        # bottom between the tags and the controls; the EV slider stays.
+        self.shutter_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, len(SHUTTERS) - 1, 1)
+        self.shutter_scale.set_round_digits(0)
+        self.shutter_scale.connect(
+            "format-value", lambda _s, v: "SHUTTER " + shutter_text(SHUTTERS[int(round(v))]))
+        self.shutter_scale.connect(
+            "value-changed", lambda sc: self.set_shutter(SHUTTERS[int(round(sc.get_value()))]))
+        self.iso_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 0, len(ISOS) - 1, 1)
+        self.iso_scale.set_round_digits(0)
+        self.iso_scale.connect(
+            "format-value", lambda _s, v: "ISO %s" % (ISOS[int(round(v))] or "AUTO"))
+        self.iso_scale.connect(
+            "value-changed", lambda sc: self.iso != ISOS[int(round(sc.get_value()))]
+            and self.set_iso(ISOS[int(round(sc.get_value()))]))
+        self.pro_strip = Gtk.Box(spacing=24, halign=Gtk.Align.CENTER,
+                                 valign=Gtk.Align.END, margin_bottom=16)
+        for sc in (self.shutter_scale, self.iso_scale):
+            sc.set_size_request(260, -1)
+            self.pro_strip.pack_start(sc, False, False, 0)
+        self.overlay.add_overlay(self.pro_strip)
         # ☰, bottom left: every setting over the view (refresh_settings()).
         self.b_menu = self.button("☰", self.on_menu)
         self.menu_corner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
@@ -669,6 +706,9 @@ class Camera(Gtk.Application):
         self.video_rate = VIDEO_RATE    # videos' frames a second
         self.contrast = 1.0             # photos' contrast factor
         self.clarity = 0.0              # photos' local contrast
+        self.vibrance = 0.0             # photos' vibrance
+        self.pro = False                # pro mode: shutter and ISO sliders
+        self.shutter = 0                # exposure time, µs (0: automatic)
         self.grid_on = False            # rule of thirds
         self.horizon_on = False         # level line from the accelerometer
         self.gravity = None             # its last reading, m/s²
@@ -1077,7 +1117,11 @@ class Camera(Gtk.Application):
             self.src.set_property("analogue-gain",
                                   self.iso / 100.0 if self.iso else gain)
             return
-        self.src.set_property("exposure-time-mode", 0)          # auto
+        if self.shutter:
+            self.src.set_property("exposure-time-mode", 1)      # manual
+            self.src.set_property("exposure-time", self.shutter)
+        else:
+            self.src.set_property("exposure-time-mode", 0)      # auto
         if self.iso:
             self.src.set_property("analogue-gain-mode", 1)       # manual
             self.src.set_property("analogue-gain", self.iso / 100.0)
@@ -1142,6 +1186,9 @@ class Camera(Gtk.Application):
                                      if wide else 4)
         self.lens_row.set_margin_end(self.controls.get_allocated_width() + 24
                                      if wide else 4)
+        # The pro strip above the controls in portrait.
+        self.pro_strip.set_margin_bottom(16 if wide else
+                                         self.controls.get_allocated_height() + 24)
         for scale in (self.lens_scale, self.ev_scale):
             scale.set_size_request(-1, int(min(w, h) * 0.7))
         return False
@@ -1158,6 +1205,12 @@ class Camera(Gtk.Application):
         if self.clarity:
             marks.append(("CLARITY " + dict((v, n) for n, v in CLARITIES)[self.clarity],
                           lambda: setattr(self, "clarity", 0.0)))
+        if self.vibrance:
+            marks.append(("VIBRANCE " + dict((v, n) for n, v in VIBRANCES)[self.vibrance],
+                          lambda: setattr(self, "vibrance", 0.0)))
+        if self.shutter:
+            marks.append(("SHUTTER " + shutter_text(self.shutter),
+                          lambda: self.set_shutter(0)))
         mode = "video" if self.video else "photo"
         shapes, sizes = self.choices()
         o = self.out()
@@ -1282,7 +1335,7 @@ class Camera(Gtk.Application):
                 box.pack_start(b, False, False, 0)
             flow.add(box)
 
-        def slider(title, scale_of):
+        def slider(title, scale_of, into):
             # About three columns wide, not across the screen (author).
             box = Gtk.Box(spacing=12, halign=Gtk.Align.START)
             head = Gtk.Label(label=title)
@@ -1293,7 +1346,7 @@ class Camera(Gtk.Application):
             scale.connect("format-value", lambda *a: scale_of.emit("format-value", a[1]))
             scale.set_size_request(300, -1)
             box.pack_start(scale, False, False, 0)
-            page.pack_start(box, False, False, 0)
+            into.pack_start(box, False, False, 0)
 
         top = row()
         column(top, "FLASH", [(m.upper(), m == self.flash,
@@ -1322,11 +1375,18 @@ class Camera(Gtk.Application):
                                lambda: self.manual and self.on_focus_mode()),
                               ("MF", self.manual,
                                lambda: self.manual or self.on_focus_mode())])
+        column(top, "MODE", [("AUTO", not self.pro, lambda: self.set_pro(False)),
+                             ("PRO", self.pro, lambda: self.set_pro(True))])
         column(top, "ZOOM", [("%g×" % z, abs(z - self.zoom) < 0.05,
                               lambda z=z: self.set_zoom(z)) for z in ZOOMS])
-        slider("EV", self.ev_scale)
+        # EV and the focus distance side by side in landscape, one above the
+        # other in portrait (author).
+        sliders = Gtk.Box(spacing=32, orientation=Gtk.Orientation.HORIZONTAL
+                          if wide else Gtk.Orientation.VERTICAL)
+        page.pack_start(sliders, False, False, 0)
+        slider("EV", self.ev_scale, sliders)
         if self.manual:
-            slider("FOCUS", self.lens_scale)
+            slider("FOCUS", self.lens_scale, sliders)
         bottom = row()
         column(bottom, "RATIO", [(v, v == o["shape"],
                                   lambda v=v: self.reset_output("shape", v)) for v in shapes])
@@ -1350,6 +1410,9 @@ class Camera(Gtk.Application):
         column(bottom, "CLARITY", [(n, abs(v - self.clarity) < 0.01,
                                     lambda v=v: setattr(self, "clarity", v))
                                    for n, v in CLARITIES])
+        column(bottom, "VIBRANCE", [(n, abs(v - self.vibrance) < 0.01,
+                                     lambda v=v: setattr(self, "vibrance", v))
+                                    for n, v in VIBRANCES])
         column(bottom, "GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
                                 ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
         column(bottom, "HORIZON", [("OFF", not self.horizon_on,
@@ -1440,6 +1503,21 @@ class Camera(Gtk.Application):
                         self.level_drawn = now
                         GLib.idle_add(self.marker.queue_draw)
         threading.Thread(target=read, daemon=True).start()
+
+    def set_pro(self, on):
+        """Pro mode: the shutter and ISO sliders and the EV slider shown;
+        out of it, the exposure automatic again."""
+        self.pro = on
+        self.pro_strip.set_visible(on)
+        self.ev_row.set_visible(on)
+        if not on and self.shutter:
+            self.set_shutter(0)
+            self.shutter_scale.set_value(0)
+
+    def set_shutter(self, us):
+        self.shutter = us
+        if self.pipeline and not self.busy:
+            self.apply_controls()
 
     def set_aid(self, attr, on):
         setattr(self, attr, on)
@@ -2232,8 +2310,11 @@ class Camera(Gtk.Application):
         w, h = int(w / self.zoom) // 2 * 2, int(h / self.zoom) // 2 * 2
         x, y = (rw - w) // 4 * 2, (rh - h) // 4 * 2
         r, b = meta["gains"]
+        # EV as the viewfinder shows it: a gain on every channel (libcamera
+        # patch 0033; the frame's colour gains are the white balance's).
+        k = 2 ** self.ev
         args = [DEVELOP, raw, path, rw, rh, meta["stride"], meta["order"],
-                BLACK_LEVEL, r, 1.0, b] + meta["ccm"] + [
+                BLACK_LEVEL, r * k, k, b * k] + meta["ccm"] + [
                 meta["gamma"], meta["contrast"], x, y, w, h,
                 self.turn(held, method), 2 if self.scale() < 1 else 1,
                 jpeg_quality()]
@@ -2247,7 +2328,8 @@ class Camera(Gtk.Application):
     def develop_env(self):
         """Contrast and clarity for pro1x-develop."""
         return dict(os.environ, PRO1X_CONTRAST=str(self.contrast),
-                    PRO1X_CLARITY=str(self.clarity))
+                    PRO1X_CLARITY=str(self.clarity),
+                    PRO1X_VIBRANCE=str(self.vibrance))
 
     def bulb_start(self):
         """Night bulb or smooth: every raw frame from now to the next press

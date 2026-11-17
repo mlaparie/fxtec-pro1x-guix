@@ -1,0 +1,65 @@
+From 992bc983f14c1fc93fcc2b79d660cdea54f7478a Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Wed, 18 Nov 2026 00:25:48 +0100
+Subject: [PATCH] ipa: simple: EV compensation as a digital gain
+
+In dim light the exposure sat at its limits (66 ms, gain 16) and the
+EV-moved target changed nothing in the view or the photo (seen in the
+Pro1X camera app's log: EV reached the IPA, the exposure never moved).
+EV is now a gain of 2^EV on every channel in awb's prepare, on top of
+the white balance, and no longer part of the exposure target.  The view
+shows it whatever the exposure can do; highlights clip above 1.  Tested:
+the shader's gains went to 1/4 at EV -2 and x4 at EV +2.
+---
+ src/ipa/simple/algorithms/agc.cpp | 9 ++++-----
+ src/ipa/simple/algorithms/awb.cpp | 9 ++++++++-
+ 2 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 5c36289..f30c1b4 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -361,12 +361,11 @@ void Agc::process(IPAContext &context,
+ 			<< ", target " << target;
+ 	}
+ 	/*
+-	 * EV compensation last, half a bin per stop, kept inside the
+-	 * histogram: it moves the picture also when highlights lowered the
+-	 * target (it did nothing then).
++	 * EV compensation is a digital gain (awb prepare), not the target: in
++	 * dim light the exposure is at its limits and a target moved by EV
++	 * changed nothing in the view or the photo.
+ 	 */
+-	target = std::clamp(target + 0.5 * context.activeState.agc.exposureValue,
+-			    1.2, kExposureBinsCount - 0.2);
++	target = std::clamp(target, 1.2, kExposureBinsCount - 0.2);
+ 
+ 	auto &agc = context.activeState.agc;
+ 	if (!(agc.manualGain && agc.manualExposure))
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index c0337b7..2861ba9 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include "awb.h"
+ 
++#include <cmath>
+ #include <numeric>
+ #include <stdint.h>
+ 
+@@ -62,7 +63,13 @@ void Awb::prepare(IPAContext &context,
+ 	auto &gains = context.activeState.awb.gains;
+ 
+ 	frameContext.gains = gains;
+-	params->gains = gains;
++	/*
++	 * EV compensation as a digital gain on every channel, so the view
++	 * shows it whatever the exposure can do (the app applies the same
++	 * factor to its photos); highlights clip above 1 as they would.
++	 */
++	const float ev = std::exp2(context.activeState.agc.exposureValue);
++	params->gains = gains * ev;
+ }
+ 
+ void Awb::process(IPAContext &context,

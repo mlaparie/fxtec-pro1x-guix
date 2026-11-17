@@ -19,7 +19,8 @@
  * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.  Environment:
  * PRO1X_CONTRAST multiplies the contrast exponent (1: as the viewfinder),
  * PRO1X_CLARITY (0 to 1) adds local contrast (the difference from a wide
- * blur of the brightness, added back).  In bulb (-sum, -mean),
+ * blur of the brightness, added back), PRO1X_VIBRANCE (0 to 1) saturates
+ * the dull colours more than the vivid ones.  In bulb (-sum, -mean),
  * PRO1X_PREVIEW=PATH writes there, every PRO1X_PREVIEW_EVERY frames, the
  * frame so far, 8 times smaller and turned PRO1X_PREVIEW_TURN degrees, for
  * the viewfinder.  SHADING: the
@@ -610,6 +611,27 @@ static void clarity(struct job *j, float amount)
 	free(count);
 }
 
+/* Vibrance: each pixel's colour pushed away from its grey by up to AMOUNT,
+ * the less saturated the more. */
+static void vibrance(struct job *j, float amount)
+{
+	size_t n = (size_t)j->cw * j->ch;
+	for (size_t i = 0; i < n; i++) {
+		uint8_t *p = j->rgb + i * 3;
+		int hi = p[0] > p[1] ? (p[0] > p[2] ? p[0] : p[2]) : (p[1] > p[2] ? p[1] : p[2]);
+		int lo = p[0] < p[1] ? (p[0] < p[2] ? p[0] : p[2]) : (p[1] < p[2] ? p[1] : p[2]);
+		if (hi == 0)
+			continue;
+		float sat = (float)(hi - lo) / hi;
+		float k = 1 + amount * (1 - sat);
+		float grey = 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2];
+		for (int c = 0; c < 3; c++) {
+			float v = grey + (p[c] - grey) * k;
+			p[c] = v < 0 ? 0 : v > 255 ? 255 : (uint8_t)(v + 0.5f);
+		}
+	}
+}
+
 static int write_jpeg(const struct job *j, const char *path, int turn,
 		      int half, int quality)
 {
@@ -774,5 +796,8 @@ developed_input:
 	const char *amount = getenv("PRO1X_CLARITY");
 	if (amount && atof(amount) > 0)
 		clarity(&j, atof(amount));
+	const char *vivid = getenv("PRO1X_VIBRANCE");
+	if (vivid && atof(vivid) > 0)
+		vibrance(&j, atof(vivid));
 	return write_jpeg(&j, out, turn, half, quality) ? 1 : 0;
 }

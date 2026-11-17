@@ -394,7 +394,8 @@ to build an FDE userdata image on the host before flashing.")
                 ;; second frame in the photo modes, for the autofocus,
                 ;; controls set while streaming no longer lost, EV
                 ;; compensation after the highlights, ratio exposure steps
-                ;; near the target, and the lens at a capped speed.
+                ;; near the target, the lens at a capped speed, EV as a
+                ;; digital gain, and white balance near real light sources.
                 "0020-ipa-simple-af-Manual-lens-position.patch"
                 "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"
                 "0022-ipa-simple-awb-AwbEnable-a-white-balance-lock.patch"
@@ -407,7 +408,9 @@ to build an FDE userdata image on the host before flashing.")
                 "0029-gstreamer-Apply-controls-only-to-a-request-that-is-q.patch"
                 "0030-ipa-simple-agc-Exposure-compensation-after-the-highl.patch"
                 "0031-ipa-simple-agc-Ratio-steps-near-the-target-as-well.patch"
-                "0032-ipa-simple-Lens-moves-at-a-capped-speed.patch"))))))
+                "0032-ipa-simple-Lens-moves-at-a-capped-speed.patch"
+                "0033-ipa-simple-EV-compensation-as-a-digital-gain.patch"
+                "0034-ipa-simple-awb-White-balance-kept-near-real-light-so.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:

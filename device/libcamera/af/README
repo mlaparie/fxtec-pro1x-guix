@@ -58,6 +58,13 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
   autofocus jumped across the range and the voice coil clacked (author).
   The kernel's pro1x-dw9800-ramp.patch ramps large moves too (the first
   one after power-up, which libcamera cannot see).
+- 0033 (ours, 2026-11-18): EV compensation is a digital gain (2^EV on
+  every channel), no longer the exposure target: in dim light the exposure
+  was at its limits and EV changed nothing (author; the app's log showed
+  EV arriving and the exposure pinned).  Undoes 0030's target change.
+- 0034 (ours, 2026-11-18): white balance gains kept near a line fitted to
+  this sensor's lamp and daylight gains: a bright screen in view gave red
+  0.5, blue 4 and a green picture (author).  A first estimate.
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

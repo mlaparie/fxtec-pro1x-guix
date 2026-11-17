@@ -1,0 +1,57 @@
+From 897955cc04702c7bd7ecf8004fb15965ed69c7c0 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Wed, 18 Nov 2026 00:26:57 +0100
+Subject: [PATCH] ipa: simple: awb: White balance kept near real light sources
+
+Grey world took a bright screen in the frame for the light (red 0.5,
+blue 4: a green picture, author's report).  The gains are now kept near
+the line along which this sensor's lamp and daylight gains lie
+(ln b = 0.148 - 0.74 (ln r - 1.386); red 1.3 to 4, blue within 0.2 of
+the line in ln).  The line comes from three logged scenes (lamp, day,
+indoor): a first estimate.
+---
+ src/ipa/simple/algorithms/awb.cpp | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index 2861ba9..cd39e62 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -24,6 +24,13 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
+ 
+ namespace ipa::soft::algorithms {
+ 
++/* Where white balance gains may go: near real light sources (process). */
++static constexpr float kRedMin = 1.3f;
++static constexpr float kLocusR0 = 1.386f;	/* ln 4.0, a lamp's red gain */
++static constexpr float kLocusB0 = 0.148f;	/* ln 1.16, its blue gain */
++static constexpr float kLocusSlope = -0.74f;
++static constexpr float kLocusSpread = 0.2f;
++
+ int Awb::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+ {
+ 	context.ctrlMap[&controls::AwbEnable] = ControlInfo(false, true, true);
+@@ -114,6 +121,23 @@ void Awb::process(IPAContext &context,
+ 		sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
+ 	} };
+ 
++	/*
++	 * Kept near real light sources: grey world took a bright screen in
++	 * the frame for the light and gave red 0.5, blue 4, a green picture.
++	 * On the Pro1X's IMX582 the gains of lamps and daylight lie along
++	 * ln b = kLocusB0 + kLocusSlope * (ln r - kLocusR0) (lamp r 4.0 b 1.16,
++	 * daylight r 2.0 b 1.6, indoor r 1.6 b 2.3); red is kept within
++	 * kRedMin..4 and blue within kLocusSpread of that line.
++	 */
++	const float r = std::clamp(gains.r(), kRedMin, 4.0f);
++	const float locus = kLocusB0 + kLocusSlope * (std::log(r) - kLocusR0);
++	const float lb = std::clamp(std::log(gains.b()), locus - kLocusSpread,
++				    locus + kLocusSpread);
++	if (r != gains.r() || lb != std::log(gains.b()))
++		LOG(IPASoftAwb, Debug)
++			<< "gains " << gains << " kept near the light sources";
++	gains = { { r, 1.0f, std::clamp(std::exp(lb), 1.0f, 4.0f) } };
++
+ 	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
+ 	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
+ 	metadata.set(controls::ColourTemperature, context.activeState.awb.temperatureK);
