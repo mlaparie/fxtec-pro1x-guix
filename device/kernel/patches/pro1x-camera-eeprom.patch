@@ -1,0 +1,32 @@
+arm64: dts: qcom: sm6115-pro1x: add the rear camera module's EEPROM
+
+The IMX582 module carries an 8 KiB EEPROM at 0x50 on the sensor's CCI
+bus: its AWB ratios, a 17x13 lens shading table per Bayer channel,
+autofocus and PDAF calibration, written at the factory for each unit.
+With it described, at24 exposes it read-only as
+/sys/bus/i2c/devices/2-0050/eeprom, and user space can correct the
+lens's vignetting (corners at about a quarter of the centre).
+
+CCI transfers are at most 8 bytes; regmap splits at24's reads to fit
+the adapter's quirks.  The EEPROM answered with the camera off on the
+phone (i2ctransfer, 2026-11-17), so VIO alone is given as its supply.
+
+Not yet run on the phone.
+
+--- a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
++++ b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+@@ -1012,6 +1012,14 @@ &cci_i2c0 {
+ 		vio-supply = <&vreg_l7p>;
+ 	};
+ 
++	/* rear module EEPROM: per-unit calibration (lens shading, AWB, AF) */
++	rear_eeprom: eeprom@50 {
++		compatible = "atmel,24c64";
++		reg = <0x50>;
++		read-only;
++		vcc-supply = <&vreg_l7p>;
++	};
++
+ 	rear_camera: camera@10 {
+ 		compatible = "sony,imx582";
+ 		reg = <0x10>;
