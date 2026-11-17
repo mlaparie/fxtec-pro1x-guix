@@ -310,6 +310,7 @@ class Camera(Gtk.Application):
         self.raw_sink = None            # the raw stream's appsink (RAW)
         self.no_raw = False             # the raw stream failed: switch modes
         self.reserved = set()           # photo names being written
+        self.cropped = (0, 0)           # the frames' size after the crop
         self.portrait = True
         self.toggle = False
         self.last_photo = None
@@ -920,6 +921,7 @@ class Camera(Gtk.Application):
         y = max(0, int((h - rh / self.zoom) / 4) * 2)
         for side, v in (("left", x), ("right", x), ("top", y), ("bottom", y)):
             self.crop.set_property(side, v)
+        self.cropped = (w - 2 * x, h - 2 * y)
 
     def on_shape(self, *_):
         self.cycle("shape", 0)
@@ -1364,10 +1366,13 @@ class Camera(Gtk.Application):
         """Frames at 12 MP, then the viewfinder back at once, and the photo
         turned and written meanwhile (author: saving should be snappier)."""
         sample, got = None, 0
-        want = self.still()
+        # The photo's frames as the crop leaves them (the shape, the zoom):
+        # compared with the uncropped size, a 16:9 48 MP frame (7680x4320)
+        # was never taken (2026-11-17).
+        want = self.cropped
         # A 48 MP frame comes later: the first 4.6 s after the switch
         # headless (STILL_48), and once none within 15 s in the app.
-        wait = 30 if want == STILL_48 else 5
+        wait = 30 if self.still() == STILL_48 else 5
         deadline = time.monotonic() + wait
         while got < SETTLE_FRAMES + 1 and time.monotonic() < deadline:
             s = self.snap.try_pull_sample(wait * Gst.SECOND)
@@ -1377,6 +1382,9 @@ class Camera(Gtk.Application):
             c = s.get_caps().get_structure(0)
             if (c.get_value("width"), c.get_value("height")) == want:
                 sample, got = s, got + 1
+            # Not held while waiting for the next: 48 MP has two buffers
+            # (libcamera patch 0025), and libcamera stopped with one here.
+            s = None
         if sample:
             caps = sample.get_caps().get_structure(0)
             print("capture: %d frames, last %dx%d" % (
