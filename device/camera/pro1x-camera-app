@@ -634,7 +634,8 @@ class Camera(Gtk.Application):
             self.overlay.add_overlay(row)
         # ☰, bottom left: every setting over the view (refresh_settings()).
         self.b_menu = self.button("☰", self.on_menu)
-        self.menu_corner = Gtk.Box(halign=Gtk.Align.START,
+        self.menu_corner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                   spacing=8, halign=Gtk.Align.START,
                                    valign=Gtk.Align.END,
                                    margin_bottom=16, margin_start=16)
         self.menu_corner.pack_start(self.b_menu, False, False, 0)
@@ -676,9 +677,10 @@ class Camera(Gtk.Application):
                       valign=Gtk.Align.START, margin_top=16)
         self.status = Gtk.Label(label="")
         self.status.get_style_context().add_class("status")
+        # The last photo or video: bottom left, below ☰ (author).
         self.b_last = self.button("Last photo", self.on_last)
+        self.menu_corner.pack_start(self.b_last, False, False, 0)
         top.pack_start(self.status, False, False, 0)
-        top.pack_start(self.b_last, False, False, 0)
         self.overlay.add_overlay(top)
 
         self.win.connect("size-allocate", self.on_size)
@@ -1089,8 +1091,11 @@ class Camera(Gtk.Application):
         w, h = self.win.get_size()
         wide = w > h
         vertical, horizontal = Gtk.Orientation.VERTICAL, Gtk.Orientation.HORIZONTAL
-        for box in (self.top, self.main, self.side, self.marks):
+        for box in (self.top, self.main):
             box.set_orientation(vertical if wide else horizontal)
+        # The tags in a column at the left in either orientation (author).
+        for box in (self.side, self.marks):
+            box.set_orientation(vertical)
         self.main.set_spacing(20 if wide else 28)
         if wide:
             self.controls.set_halign(Gtk.Align.END)
@@ -1107,9 +1112,9 @@ class Camera(Gtk.Application):
             self.controls.set_margin_end(0)
             self.controls.set_margin_bottom(16)
             self.side.set_halign(Gtk.Align.START)
-            self.side.set_valign(Gtk.Align.START)
-            self.side.set_margin_start(72)
-            self.side.set_margin_top(16)
+            self.side.set_valign(Gtk.Align.CENTER)
+            self.side.set_margin_start(8)
+            self.side.set_margin_top(0)
         # The menus open next to their buttons, toward the view.
         self.zoom_panel.set_position(Gtk.PositionType.LEFT if wide
                                      else Gtk.PositionType.TOP)
@@ -1225,11 +1230,11 @@ class Camera(Gtk.Application):
         # middle, the picture's options below (author, 2026-11-17).
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         wide = self.win.get_size()[0] > self.win.get_size()[1]
-        left = self.side.get_allocated_width() + 32 if wide else 16
+        left = self.side.get_allocated_width() + 24
         right = self.controls.get_allocated_width() + 32 if wide else 16
         page.set_margin_start(left)
         page.set_margin_end(right)
-        page.set_margin_top(16 if wide else self.side.get_allocated_height() + 32)
+        page.set_margin_top(16)
         page.set_margin_bottom(16 if wide else self.controls.get_allocated_height() + 32)
         shapes, sizes = self.choices()
         o = self.out()
