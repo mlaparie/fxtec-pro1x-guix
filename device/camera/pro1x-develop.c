@@ -19,7 +19,10 @@
  * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.  Environment:
  * PRO1X_CONTRAST multiplies the contrast exponent (1: as the viewfinder),
  * PRO1X_CLARITY (0 to 1) adds local contrast (the difference from a wide
- * blur of the brightness, added back).  SHADING: the
+ * blur of the brightness, added back).  In bulb (-sum, -mean),
+ * PRO1X_PREVIEW=PATH writes there, every PRO1X_PREVIEW_EVERY frames, the
+ * frame so far, 8 times smaller and turned PRO1X_PREVIEW_TURN degrees, for
+ * the viewfinder.  SHADING: the
  * rear camera module's EEPROM (at24, /sys/bus/i2c/devices/2-0050/eeprom),
  * whose lens shading table corrects the vignetting; left out, or not a
  * table that makes sense, the frame stays as it is.
@@ -256,6 +259,51 @@ static void *stack_band(void *arg)
 
 /* ── Bulb: frames from standard input, added or averaged ─────────────── */
 
+static int write_jpeg(const struct job *j, const char *path, int turn,
+		      int half, int quality);
+
+/* The bulb's frame so far, 8 times smaller: one pixel a block, from the
+ * block's top-left Bayer quad, through the same gains, matrix and curve. */
+static void bulb_preview(struct job *j, const uint32_t *sum, int n, int mean,
+			 int black, const char *path, int turn)
+{
+	int f = 8, w = j->width, lw = w / f, lh = j->height / f;
+	struct job p = *j;
+	p.cx = p.cy = 0;
+	p.cw = lw;
+	p.ch = lh;
+	p.rgb = malloc((size_t)lw * lh * 3);
+	if (!p.rgb)
+		return;
+	const float range = 1.0f - j->black;
+	for (int y = 0; y < lh; y++)
+		for (int x = 0; x < lw; x++) {
+			float c[3] = { 0, 0, 0 };
+			for (int q = 0; q < 4; q++) {
+				int xx = x * f + (q & 1), yy = y * f + (q >> 1);
+				int64_t v = sum[(size_t)yy * w + xx];
+				v = mean ? v / n : black + v - (int64_t)n * black;
+				float t = (v < 0 ? 0 : v > 1023 ? 1023 : v) / 1023.0f;
+				int k = j->colour[(yy & 1) * 2 + (xx & 1)];
+				c[k] += k == 1 ? t / 2 : t;
+			}
+			float rgb[3];
+			for (int k = 0; k < 3; k++) {
+				float v = (c[k] - j->black) / range * j->gain[k];
+				rgb[k] = v < 0 ? 0 : v > 1 ? 1 : v;
+			}
+			uint8_t *out = p.rgb + ((size_t)y * lw + x) * 3;
+			for (int k = 0; k < 3; k++) {
+				float v = j->ccm[3 * k] * rgb[0] + j->ccm[3 * k + 1] * rgb[1]
+					+ j->ccm[3 * k + 2] * rgb[2];
+				v = v < 0 ? 0 : v > 1 ? 1 : v;
+				out[k] = j->lut[(int)(v * LUT_SIZE + 0.5f)];
+			}
+		}
+	write_jpeg(&p, path, turn, 0, 80);
+	free(p.rgb);
+}
+
 struct accum {
 	const uint8_t *frame;
 	uint32_t *sum;
@@ -282,6 +330,11 @@ static uint8_t *bulb_frames(struct job *j, int mean, int black)
 	int n = 0;
 	if (!frame || !sum)
 		return NULL;
+	const char *preview = getenv("PRO1X_PREVIEW");
+	const char *every_s = getenv("PRO1X_PREVIEW_EVERY");
+	const char *turn_s = getenv("PRO1X_PREVIEW_TURN");
+	int every = every_s ? atoi(every_s) : 15;
+	int pturn = turn_s ? ((atoi(turn_s) % 360) + 360) % 360 : 0;
 	while (fread(frame, 1, size, stdin) == size) {
 		pthread_t threads[16];
 		struct accum bands[16];
@@ -294,6 +347,8 @@ static uint8_t *bulb_frames(struct job *j, int mean, int black)
 		for (int t = 0; t < j->nthreads; t++)
 			pthread_join(threads[t], NULL);
 		n++;
+		if (preview && every > 0 && n % every == 0)
+			bulb_preview(j, sum, n, mean, black, preview, pturn);
 	}
 	fprintf(stderr, "bulb: %d frames %s\n", n, mean ? "averaged" : "added");
 	if (!n)

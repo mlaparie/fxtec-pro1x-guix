@@ -175,14 +175,22 @@ TIMERS = [0, 3, 10]                            # seconds before the shot
 # press of the shutter to the next (at most BULB_SECONDS), every frame
 # added (bulb: more light, highlights may burn) or averaged (smooth: the
 # same exposure, moving things blurred), unaligned: on a support.
-NIGHT_MODES = ["off", "long", "stack", "bulb", "smooth"]
+NIGHT_MODES = ["off", "additive", "stack", "bulb-add", "bulb-stack"]
+NIGHT_LABELS = {"off": "OFF", "additive": "ADDITIVE", "stack": "STACK (AVG)",
+                "bulb-add": "BULB ADDITIVE", "bulb-stack": "BULB STACK"}
+# additive: frames added for this many seconds; stack: this many frames
+# averaged (author, 2026-11-17).
+ADDITIVE_SECONDS = [1, 2, 4, 8]
+STACK_COUNTS = [4, 8, 16]
 BULB_SECONDS = 60
+# The bulb's frame so far over the viewfinder, every this many frames.
+PREVIEW_EVERY = 15
+VIDEO_RATES = [15, 24, 30, 60]
 # Photos' contrast (a factor on the viewfinder's curve) and clarity (local
 # contrast), applied by pro1x-develop (raw-stream photos): the photos
 # lacked some of both (author, 2026-11-17).
 CONTRASTS = [("NORMAL", 1.0), ("MORE", 1.25), ("MOST", 1.5)]
 CLARITIES = [("OFF", 0.0), ("LOW", 0.3), ("HIGH", 0.6)]
-STACK_FRAMES = 8
 # The shutter blink, in drawn frames (about 0.15 s): counted from the first
 # one drawn, so a busy moment after the shot cannot skip it (the front
 # camera, the end of a countdown; author, 2026-11-17).
@@ -199,7 +207,7 @@ MAX_ZOOM = 4.0
 # with its 66 ms exposures): with videorate filling up to 30, the encoder
 # fell behind, its queue dropped the camera's frames, and a video kept
 # about 7 distinct ones a second (author, 2026-11-16).
-VIDEO_RATE = 30
+VIDEO_RATE = 30                 # the default, VIDEO_RATES the choices
 # The encoder ignores video_bitrate (8 Mbit/s asked, 51 measured, in
 # variable and constant mode); a quantizer floor bounds it instead (24:
 # 1.6 Mbit/s for a dark scene, 2026-11-16).
@@ -534,6 +542,11 @@ class Camera(Gtk.Application):
         self.marker.connect("draw", self.on_draw_marker)
         self.overlay.add_overlay(self.marker)
         self.overlay.set_overlay_pass_through(self.marker, True)
+        # The bulb's frame so far (show_preview), over the view.
+        self.preview_img = Gtk.Image(halign=Gtk.Align.CENTER,
+                                     valign=Gtk.Align.CENTER)
+        self.overlay.add_overlay(self.preview_img)
+        self.overlay.set_overlay_pass_through(self.preview_img, True)
         self.mark = None                # (x, y, colour), or None
         self.blink = None               # when the shutter blink started
 
@@ -564,7 +577,7 @@ class Camera(Gtk.Application):
         self.b_flashes = [self.tag(m.upper(), lambda _b, m=m: self.set_flash(m))
                           for m in FLASH_MODES]
         self.flash_menu = self.menu_for(self.b_flash, self.b_flashes)
-        self.b_nights = [self.tag(m.upper(), lambda _b, m=m: self.set_night(m))
+        self.b_nights = [self.tag(NIGHT_LABELS[m], lambda _b, m=m: self.set_night(m))
                          for m in NIGHT_MODES]
         self.night_menu = self.menu_for(self.b_night, self.b_nights)
         self.b_isos = [self.tag("ISO %s" % (i or "AUTO"),
@@ -651,6 +664,9 @@ class Camera(Gtk.Application):
             self.overlay.reorder_overlay(w, -1)
         self.hold_until = None          # Night: when the frames are kept
         self.bulb = None                # a bulb exposure running
+        self.additive_seconds = 2       # Night additive's exposure
+        self.stack_count = 8            # Night stack's frames
+        self.video_rate = VIDEO_RATE    # videos' frames a second
         self.contrast = 1.0             # photos' contrast factor
         self.clarity = 0.0              # photos' local contrast
         self.grid_on = False            # rule of thirds
@@ -922,12 +938,16 @@ class Camera(Gtk.Application):
             'v4l2h264enc extra-controls="controls,video_gop_size=%d,'
             "h264_i_frame_period=%d,h264_minimum_qp_value=%d,"
             'h264_i_frame_minimum_qp_value=%d,h264_p_frame_minimum_qp_value=%d;" ! '
-            "h264parse name=parse ! queue ! matroskamux name=mux ! "
+            # MP4 (H.264 from the hardware encoder, Opus), in fragments of
+            # 1 s, so a recording cut short stays playable (author: MP4
+            # rather than MKV; WebM would need a software VP8/VP9 encoder).
+            "h264parse name=parse ! queue ! mp4mux name=mux fragment-duration=1000 ! "
             "filesink name=file async=false "
             "pulsesrc name=mic ! queue ! audioconvert ! audioresample ! opusenc ! "
             "queue name=aq ! mux."
-            % (VIDEO_RATE, width, height, VIDEO_RATE, turn, VIDEO_RATE,
-               VIDEO_RATE, VIDEO_MIN_QP, VIDEO_MIN_QP, VIDEO_MIN_QP))
+            % (self.video_rate, width, height, self.video_rate, turn,
+               self.video_rate, self.video_rate, VIDEO_MIN_QP, VIDEO_MIN_QP,
+               VIDEO_MIN_QP))
         branch = Gst.parse_bin_from_description(desc, True)
         branch.get_by_name("file").set_property("location", path)
         return branch
@@ -1051,12 +1071,6 @@ class Camera(Gtk.Application):
             # switch the automatic exposure started from its minimum, and
             # the photo was black (seen, 2026-11-01).
             exp, gain = carry
-            if self.night == "long":
-                # Two stops more light for a dark scene: four times the
-                # viewfinder's exposure (which stops at 66 ms), at most
-                # 0.5 s, the gain unchanged.  Possible since libcamera
-                # raises the blanking (patch 0018); hold the phone still.
-                exp = min(exp * 4, 500000)
             self.src.set_property("exposure-time-mode", 1)      # manual
             self.src.set_property("exposure-time", int(exp))
             self.src.set_property("analogue-gain-mode", 1)
@@ -1177,6 +1191,16 @@ class Camera(Gtk.Application):
         setattr(self, attr, values[-1])
         handler()
 
+    def set_video_size(self, size):
+        """The videos' resolution, saved, whichever mode is shown."""
+        if self.busy or self.recording:
+            return
+        cam = self.settings.setdefault("rear" if self.cam == 0 else "front", {})
+        cam.setdefault("video", dict(DEFAULTS["video"]))["size"] = size
+        self.save_settings()
+        if self.video:
+            self.outputs_changed()
+
     def reset_output(self, key, value):
         if self.busy or self.recording:
             return
@@ -1243,7 +1267,7 @@ class Camera(Gtk.Application):
             flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
                                homogeneous=False, row_spacing=12,
                                column_spacing=12, valign=Gtk.Align.START)
-            flow.set_max_children_per_line(8)
+            flow.set_max_children_per_line(12)
             page.pack_start(flow, False, False, 0)
             return flow
 
@@ -1274,8 +1298,17 @@ class Camera(Gtk.Application):
         top = row()
         column(top, "FLASH", [(m.upper(), m == self.flash,
                                lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
-        column(top, "NIGHT", [(m.upper(), m == self.night,
-                               lambda m=m: self.set_night(m)) for m in NIGHT_MODES])
+        night = [(NIGHT_LABELS[m], m == self.night,
+                  lambda m=m: self.set_night(m)) for m in NIGHT_MODES]
+        if self.night == "additive":
+            night += [("  %d S" % t, t == self.additive_seconds,
+                       lambda t=t: self.set_night_option("additive_seconds", t))
+                      for t in ADDITIVE_SECONDS]
+        elif self.night == "stack":
+            night += [("  %d PHOTOS" % c, c == self.stack_count,
+                       lambda c=c: self.set_night_option("stack_count", c))
+                      for c in STACK_COUNTS]
+        column(top, "NIGHT", night)
         column(top, "TIMER", [("%d S" % t if t else "OFF", t == self.timer,
                                lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
                               for t in TIMERS])
@@ -1299,6 +1332,18 @@ class Camera(Gtk.Application):
                                   lambda v=v: self.reset_output("shape", v)) for v in shapes])
         column(bottom, "RESOLUTION", [(v.upper(), v == o["size"],
                                        lambda v=v: self.reset_output("size", v)) for v in sizes])
+        column(bottom, "CAMERA", [("MAIN", self.cam == 0,
+                                   lambda: self.cam != 0 and self.on_switch()),
+                                  ("FRONT", self.cam != 0,
+                                   lambda: self.cam == 0 and self.on_switch())])
+        vstore = self.settings.setdefault("rear" if self.cam == 0 else "front",
+                                          {}).setdefault("video", dict(DEFAULTS["video"]))
+        column(bottom, "VIDEO", [(v.upper(), vstore.get("size") == v,
+                                  lambda v=v: self.set_video_size(v))
+                                 for v in VIDEO_SIZES])
+        column(bottom, "FPS", [("%d" % r, r == self.video_rate,
+                                lambda r=r: setattr(self, "video_rate", r))
+                               for r in VIDEO_RATES])
         column(bottom, "CONTRAST", [(n, abs(v - self.contrast) < 0.01,
                                      lambda v=v: setattr(self, "contrast", v))
                                     for n, v in CONTRASTS])
@@ -1637,9 +1682,20 @@ class Camera(Gtk.Application):
         self.set_night(NIGHT_MODES[(NIGHT_MODES.index(self.night) + 1)
                                    % len(NIGHT_MODES)])
 
+    def night_label(self):
+        if self.night == "off":
+            return "NIGHT"
+        extra = {"additive": " %d S" % self.additive_seconds,
+                 "stack": " %d" % self.stack_count}.get(self.night, "")
+        return "NIGHT " + NIGHT_LABELS[self.night] + extra
+
+    def set_night_option(self, attr, value):
+        setattr(self, attr, value)
+        self.b_night.set_label(self.night_label())
+
     def set_night(self, mode):
         self.night = mode
-        self.b_night.set_label("NIGHT" if mode == "off" else "NIGHT " + mode.upper())
+        self.b_night.set_label(self.night_label())
         self.lit(self.b_night, mode != "off")
         for m, b in zip(NIGHT_MODES, self.b_nights):
             self.lit(b, m == mode)
@@ -1860,7 +1916,8 @@ class Camera(Gtk.Application):
         if self.video:
             self.start_recording()
             return
-        if self.night in ("bulb", "smooth") and self.raw_sink is not None:
+        if self.night in ("additive", "bulb-add", "bulb-stack") \
+           and self.raw_sink is not None:
             self.bulb_start()
             return
         self.busy = True
@@ -1888,7 +1945,7 @@ class Camera(Gtk.Application):
         """A recording branch on the running viewfinder's tee, its
         timestamps from 0; the LED on for Flash on or torch."""
         os.makedirs(VIDEOS, exist_ok=True)
-        path = os.path.join(VIDEOS, time.strftime("VID_%Y%m%d_%H%M%S.mkv"))
+        path = os.path.join(VIDEOS, time.strftime("VID_%Y%m%d_%H%M%S.mp4"))
         self.rec = self.recording_branch(path)
         self.rec_closed.clear()
         # The file is whole once the end of stream reaches the file sink.
@@ -2054,19 +2111,12 @@ class Camera(Gtk.Application):
         Night first sets its longer exposure (apply_controls)."""
         held, method = self.held(), self.method()
         want = None
-        if self.night == "long":
-            cur = self.current()
-            if cur:
-                self.apply_controls(cur)
-                want = min(cur[0] * 4, 500000)
-        # Night: how long to hold still, counted down until the frames are
-        # kept (raw_taken): the long exposure, or the burst's frames.
+        # Night stack: how long to hold still, counted down until the
+        # burst's frames are kept (raw_taken).
         cur = self.current()
         exposure = (cur[0] if cur else 66000) / 1e6
-        if self.night == "long":
-            self.hold_still(min(exposure * 4, 0.5) + 0.3)
-        elif self.night == "stack":
-            self.hold_still(STACK_FRAMES * max(exposure, 1 / 15) + 0.1)
+        if self.night == "stack":
+            self.hold_still(self.stack_count * max(exposure, 1 / 15) + 0.1)
         threading.Thread(target=self.raw_capture, args=(held, method, want),
                          daemon=True).start()
         return False
@@ -2111,7 +2161,7 @@ class Camera(Gtk.Application):
                             "pro1x-camera-%d" % threading.get_ident())
         files = []
         # Night stack: this frame and the next ones, each saved as it comes.
-        count = STACK_FRAMES if self.night == "stack" else 1
+        count = self.stack_count if self.night == "stack" else 1
         while sample and len(files) < count:
             name = "%s-%d.raw" % (base, len(files))
             buf = sample.get_buffer()
@@ -2204,15 +2254,25 @@ class Camera(Gtk.Application):
         of the shutter, streamed to pro1x-develop, which adds or averages
         them."""
         held, method = self.held(), self.method()
-        self.bulb = {"stop": False, "t0": time.monotonic()}
+        # Additive: a fixed time, no second press.
+        self.bulb = {"stop": False, "t0": time.monotonic(),
+                     "limit": self.additive_seconds if self.night == "additive"
+                     else BULB_SECONDS,
+                     "preview": os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
+                                             "pro1x-bulb-preview.jpg"),
+                     "shown": 0}
         self.b_shutter.set_sensitive(True)
         self.b_shutter.get_style_context().add_class("recording")
 
         def tick():
             if not self.bulb:
                 return False
-            self.say("%s %.1f s, press to stop" % (
-                self.night.upper(), time.monotonic() - self.bulb["t0"]))
+            t = time.monotonic() - self.bulb["t0"]
+            if self.night == "additive":
+                self.say("Hold still %.1f s" % max(0.0, self.additive_seconds - t))
+            else:
+                self.say("%s %.1f s, press to stop" % (NIGHT_LABELS[self.night], t))
+            self.show_preview()
             return True
         tick()
         GLib.timeout_add(100, tick)
@@ -2234,15 +2294,21 @@ class Camera(Gtk.Application):
         buf = sample.get_buffer()
         meta["stride"] = buf.get_size() // meta["height"]
         path = self.photo_path()
-        args = self.develop("-sum" if self.night == "bulb" else "-mean",
+        args = self.develop("-mean" if self.night == "bulb-stack" else "-sum",
                             path, meta, held, method)
+        env = self.develop_env()
+        if self.night != "additive":
+            # The frame so far, for the viewfinder (show_preview), turned
+            # as the view turns.
+            env.update(PRO1X_PREVIEW=run["preview"],
+                       PRO1X_PREVIEW_EVERY=str(PREVIEW_EVERY),
+                       PRO1X_PREVIEW_TURN=str(self.turn("undefined", method)))
         proc = subprocess.Popen(args, stdin=subprocess.PIPE,
-                                stdout=subprocess.DEVNULL,
-                                env=self.develop_env())
+                                stdout=subprocess.DEVNULL, env=env)
         frames = 0
         try:
             while sample and not run["stop"] and \
-                  time.monotonic() - run["t0"] < BULB_SECONDS:
+                  time.monotonic() - run["t0"] < run["limit"]:
                 buf = sample.get_buffer()
                 ok, mapping = buf.map(Gst.MapFlags.READ)
                 try:
@@ -2263,8 +2329,33 @@ class Camera(Gtk.Application):
         print("bulb: %d frames, %s" % (frames, error or path), flush=True)
         GLib.idle_add(self.bulb_done, None if error else path, error)
 
+    def show_preview(self):
+        """The bulb's latest preview over the view, fitted to the picture."""
+        run = self.bulb
+        try:
+            mtime = os.stat(run["preview"]).st_mtime
+        except OSError:
+            return
+        if mtime == run["shown"]:
+            return
+        run["shown"] = mtime
+        x, y, w, h = self.picture_rect(self.marker)
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(run["preview"],
+                                                          int(w), int(h), True)
+        except GLib.Error:
+            return
+        self.preview_img.set_from_pixbuf(pix)
+        self.preview_img.show()
+
     def bulb_kept(self, frames):
         """The frames are in: the view and the shutter are free again."""
+        if self.bulb:
+            try:
+                os.remove(self.bulb["preview"])
+            except OSError:
+                pass
+        self.preview_img.hide()
         self.bulb = None
         self.b_shutter.get_style_context().remove_class("recording")
         self.busy = False
@@ -2295,8 +2386,6 @@ class Camera(Gtk.Application):
         flash end."""
         if self.fired:
             self.led(False)
-        if self.night == "long":
-            self.apply_controls()
         self.hold_until = None
         self.busy = False
         self.b_shutter.set_sensitive(True)
@@ -2423,7 +2512,7 @@ class Camera(Gtk.Application):
         me = '[app_id="^org.pro1x.Camera$"]'
         subprocess.run(["swaymsg", me + " fullscreen disable, layout tabbed"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        video = self.last_photo.endswith(".mkv")
+        video = self.last_photo.endswith((".mp4", ".mkv"))
         try:
             viewer = subprocess.Popen(["mpv" if video else "loupe",
                                        self.last_photo])
