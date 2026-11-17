@@ -227,8 +227,10 @@ label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
 button.mark { background: rgba(0,0,0,0.2); color: #fbf1c7; border-radius: 0;
-              font-family: monospace; font-size: 11px; min-height: 22px;
+              font-family: monospace; font-size: 12px; min-height: 24px;
               padding: 1px 6px; }
+button.mark.on { background: rgba(215,153,33,0.75); color: #1d2021; }
+popover.panel { background: rgba(0,0,0,0.7); border: none; }
 grid.panel button { min-height: 44px; }
 scale { color: #ebdbb2; font-size: 15px; }
 scale slider { min-width: 28px; min-height: 28px; background: #ebdbb2;
@@ -412,34 +414,36 @@ class Camera(Gtk.Application):
         # the right hand, or in rows at the bottom in portrait (layout());
         # everything else in a menu over the view, so the view stays clear
         # (author, 2026-11-17).  Yellow shows a setting that is on.
-        self.b_flash = self.button("Flash off", self.on_flash)
+        self.b_flash = self.button("FLASH OFF", lambda *_: self.flash_menu.popup())
         self.b_timer = self.button("Timer off", self.on_timer)
         self.b_iso = self.button("ISO auto", self.on_iso)
         self.b_ev = self.button("EV 0", self.on_ev)
-        self.b_night = self.button("Night", self.on_night)
+        self.b_night = self.button("NIGHT", self.on_night)
+        for b in (self.b_flash, self.b_ev, self.b_night):
+            b.get_style_context().add_class("mark")
         self.b_focus = self.button("AF", self.on_focus_mode)
         self.b_wb = self.button("WB auto", self.on_wb)
         # What is saved: the shape and the resolution, for photos or videos.
         self.b_shape = self.button("", self.on_shape)
         self.b_res = self.button("", self.on_res)
-        self.panel = Gtk.Grid(row_spacing=10, column_spacing=10,
-                              row_homogeneous=True, column_homogeneous=True)
-        self.panel.get_style_context().add_class("panel")
-        for i, b in enumerate((self.b_timer, self.b_iso, self.b_wb,
-                               self.b_shape, self.b_res, self.b_focus)):
-            self.panel.attach(b, i % 3, i // 3, 1, 1)
-        self.overlay.add_overlay(self.panel)
-        self.b_menu = self.button("☰", lambda *_: self.toggle_menu(self.panel))
+        # Each menu a column next to its button (author, 2026-11-17).
+        self.b_menu = self.button("☰", lambda *_: self.panel.popup())
+        self.panel = self.menu_for(self.b_menu, (
+            self.b_timer, self.b_iso, self.b_wb, self.b_shape, self.b_res,
+            self.b_focus))
         # The zoom presets, in a menu of their own; the button shows the zoom.
-        self.zoom_panel = Gtk.Grid(row_spacing=10, column_spacing=10)
-        self.zoom_panel.get_style_context().add_class("panel")
+        self.b_zoom = self.button("1×", lambda *_: self.zoom_panel.popup())
         self.b_zooms = []
-        for i, z in enumerate(ZOOMS):
+        for z in ZOOMS:
             b = self.button("%g×" % z, lambda _b, z=z: self.pick_zoom(z))
             self.b_zooms.append((z, b))
-            self.zoom_panel.attach(b, i, 0, 1, 1)
-        self.overlay.add_overlay(self.zoom_panel)
-        self.b_zoom = self.button("1×", lambda *_: self.toggle_menu(self.zoom_panel))
+        self.zoom_panel = self.menu_for(self.b_zoom, [b for _, b in self.b_zooms])
+        # The flash modes, next to the flash tag.
+        self.b_flashes = [self.button(m.upper(), lambda _b, m=m: self.set_flash(m))
+                          for m in FLASH_MODES]
+        for b in self.b_flashes:
+            b.get_style_context().add_class("mark")
+        self.flash_menu = self.menu_for(self.b_flash, self.b_flashes)
         self.top = Gtk.Box(spacing=8)
         self.top.pack_start(self.b_menu, False, False, 0)
         self.top.pack_start(self.b_zoom, False, False, 0)
@@ -518,11 +522,9 @@ class Camera(Gtk.Application):
         self.ev_row.pack_start(plus, False, False, 0)
         self.ev_row.pack_start(self.ev_scale, True, True, 0)
         self.ev_row.pack_start(minus, False, False, 0)
+        self.ev_row.pack_start(self.button("0", lambda *_: self.ev_scale.set_value(0.0)),
+                               False, False, 0)
         self.overlay.add_overlay(self.ev_row)
-        # The menus above the sliders: the MF button lay under the focus
-        # slider and could not be pressed (author, 2026-11-17).
-        for menu in (self.panel, self.zoom_panel):
-            self.overlay.reorder_overlay(menu, -1)
         self.show_zoom()
         self.show_outputs()
 
@@ -564,8 +566,6 @@ class Camera(Gtk.Application):
         self.b_last.hide()
         self.lens_row.hide()
         self.ev_row.hide()
-        self.panel.hide()
-        self.zoom_panel.hide()
         self.layout()
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
@@ -962,23 +962,16 @@ class Camera(Gtk.Application):
             self.side.set_valign(Gtk.Align.START)
             self.side.set_margin_start(16)
             self.side.set_margin_top(16)
-        # The menus open beside the control bar.
-        bar_w = self.controls.get_allocated_width()
-        bar_h = self.controls.get_allocated_height()
+        # The menus open next to their buttons, toward the view.
         for menu in (self.panel, self.zoom_panel):
-            if wide:
-                menu.set_halign(Gtk.Align.END)
-                menu.set_valign(Gtk.Align.CENTER)
-                menu.set_margin_end(bar_w + 24)
-                menu.set_margin_bottom(0)
-            else:
-                menu.set_halign(Gtk.Align.CENTER)
-                menu.set_valign(Gtk.Align.END)
-                menu.set_margin_end(0)
-                menu.set_margin_bottom(bar_h + 24)
-        self.lens_row.set_margin_end(bar_w + 24 if wide else 12)
-        side_w = self.side.get_allocated_width() if wide else 0
-        self.ev_row.set_margin_start(side_w + 24 if wide else 12)
+            menu.set_position(Gtk.PositionType.LEFT if wide else Gtk.PositionType.TOP)
+        self.flash_menu.set_position(Gtk.PositionType.RIGHT if wide
+                                     else Gtk.PositionType.BOTTOM)
+        # Both sliders as far from their edges, past the wider bar.
+        edge = max(self.controls.get_allocated_width(),
+                   self.side.get_allocated_width()) + 24 if wide else 12
+        self.lens_row.set_margin_end(edge)
+        self.ev_row.set_margin_start(edge)
         for scale in (self.lens_scale, self.ev_scale):
             scale.set_size_request(-1, int(min(w, h) * 0.7))
         return False
@@ -986,14 +979,6 @@ class Camera(Gtk.Application):
     def marks_wanted(self):
         """(label, reset) for each setting away from its default."""
         marks = []
-        if self.flash != "off":
-            marks.append(("TORCH" if self.flash == "torch" else
-                          "FLASH " + self.flash.upper(),
-                          lambda: self.reset_cycle("flash", FLASH_MODES, self.on_flash)))
-        if self.night:
-            marks.append(("NIGHT", self.on_night))
-        if round(self.ev * 3):
-            marks.append(("EV " + ev_text(self.ev), lambda: self.ev_scale.set_value(0.0)))
         if self.manual:
             marks.append(("MF " + lens_text(self.lens),
                           lambda: self.lens_row.set_visible(not self.lens_row.get_visible())))
@@ -1045,16 +1030,26 @@ class Camera(Gtk.Application):
         self.save_settings()
         self.outputs_changed()
 
-    def toggle_menu(self, menu):
-        """One menu open at a time."""
-        show = not menu.get_visible()
-        for m in (self.panel, self.zoom_panel):
-            m.hide()
-        menu.set_visible(show)
+    def menu_for(self, button, items):
+        """A column of ITEMS next to BUTTON, closed by a tap elsewhere."""
+        menu = Gtk.Popover(relative_to=button)
+        menu.get_style_context().add_class("panel")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
+                      margin=8)
+        for b in items:
+            box.pack_start(b, False, False, 0)
+        box.show_all()
+        menu.add(box)
+        return menu
 
     def pick_zoom(self, z):
         self.set_zoom(z)
-        self.zoom_panel.hide()
+        self.zoom_panel.popdown()
+
+    def set_flash(self, mode):
+        self.flash = FLASH_MODES[FLASH_MODES.index(mode) - 1]
+        self.on_flash()
+        self.flash_menu.popdown()
 
     def method(self):
         rear, front = VIEW_TURN.get(getattr(self, "transform", "normal"),
@@ -1086,7 +1081,9 @@ class Camera(Gtk.Application):
     def on_flash(self, *_):
         self.flash = FLASH_MODES[(FLASH_MODES.index(self.flash) + 1)
                                  % len(FLASH_MODES)]
-        self.b_flash.set_label("Flash %s" % self.flash)
+        self.b_flash.set_label("FLASH %s" % self.flash.upper())
+        for m, b in zip(FLASH_MODES, self.b_flashes):
+            self.lit(b, m == self.flash)
         self.lit(self.b_flash, self.flash != "off")
         if not self.busy and not self.recording:
             self.led(self.flash == "torch")
@@ -1327,11 +1324,6 @@ class Camera(Gtk.Application):
         coordinates, as moWerk's camerabin patch maps it."""
         print("tap: %s at %.0f %.0f, busy %s" % (event.type, event.x, event.y,
                                                  self.busy), flush=True)
-        if self.panel.get_visible() or self.zoom_panel.get_visible():
-            # A tap beside a menu closes it, and focuses nowhere.
-            self.panel.hide()
-            self.zoom_panel.hide()
-            return False
         if self.busy:
             return False
         # The picture inside the view, with bars around it in other shapes.
