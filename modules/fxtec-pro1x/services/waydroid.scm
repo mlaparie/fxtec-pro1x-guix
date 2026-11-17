@@ -27,6 +27,7 @@
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module ((gnu packages file-systems) #:select (bindfs))
+  #:use-module ((gnu packages gawk) #:select (gawk))
   #:use-module (gnu packages linux)         ; util-linux, fuse, procps
   #:use-module ((gnu packages admin) #:select (inetutils)) ; logger
   #:use-module (gnu services)
@@ -50,6 +51,10 @@
   (storage-view waydroid-storage-view (default "/mnt/waydroid"))
   ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
   ;; SOURCE relative to the user's home or absolute.
+  ;; Mesa's tiled rendering in Android (#t, its default), or untiled
+  ;; (#f): an app whose shaders read back the screen (Tesla's 3D car) took
+  ;; seconds a frame tiled; untiled it is fast, but that car is not drawn.
+  (gpu-tiling? waydroid-gpu-tiling? (default #t))
   (shared-folders waydroid-shared-folders
                   (default '(("Documents" . "Documents")
                              ("Downloads" . "Download")
@@ -88,6 +93,29 @@
                #$(local-file (repository-file "device/waydroid/pro1x-waydroid-share"))
                (cdr (command-line))))))
 
+(define pro1x-waydroid-props-script
+  (program-file "pro1x-waydroid-props"
+    #~(begin
+        (setenv "PATH"
+                (string-append #$coreutils "/bin:" #$gawk "/bin:"
+                               #$util-linux "/bin:"
+                               ;; waydroid, to rebuild Android's properties.
+                               "/run/current-system/profile/bin"))
+        (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
+               #$(local-file (repository-file "device/waydroid/pro1x-waydroid-props"))
+               (cdr (command-line))))))
+
+(define (waydroid-props-shepherd-service config)
+  (shepherd-service
+   (provision '(waydroid-props))
+   (requirement '(file-systems))
+   (one-shot? #t)
+   (documentation "Mesa's rendering mode in Waydroid's Android (gpu-tiling?).")
+   (start #~(lambda _
+              (zero? (system* #$pro1x-waydroid-props-script
+                              #$(if (waydroid-gpu-tiling? config)
+                                    "tiled" "untiled")))))))
+
 (define (waydroid-share-arguments config)
   (append (list (waydroid-user config)
                 (or (waydroid-storage-view config) ""))
@@ -95,6 +123,10 @@
                       (waydroid-shared-folders config))))
 
 (define (waydroid-shepherd-services config)
+  (cons (waydroid-props-shepherd-service config)
+        (waydroid-share-shepherd-services config)))
+
+(define (waydroid-share-shepherd-services config)
   (if (or (waydroid-storage-view config)
           (pair? (waydroid-shared-folders config)))
       (let ((args (waydroid-share-arguments config)))

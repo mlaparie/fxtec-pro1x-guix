@@ -1,0 +1,55 @@
+#!/bin/sh
+# pro1x-waydroid-props tiled|untiled — Mesa's rendering mode in Waydroid's
+# Android (gpu-tiling? in config.scm), as root at boot, before Android
+# starts.
+#
+# tiled: Mesa's default (the freedreno driver renders the screen in tiles).
+# untiled: FD_MESA_DEBUG=sysmem, which Mesa reads on Android from the
+# properties mesa.fd.mesa.debug and debug.mesa.fd.mesa.debug.  An app whose
+# shaders read back what is already drawn (Tesla's 3D car) took 6-10 s a
+# frame tiled, each read-back flushing every tile; untiled it was usable,
+# though that car was not drawn (a freedreno bug; 2026-11-17).
+#
+# The setting goes into the [properties] of /var/lib/waydroid/waydroid.cfg,
+# which Waydroid copies into Android's properties when it rebuilds them
+# (waydroid upgrade --offline, run here only when the setting changed).
+# Nothing happens before Waydroid is set up (sudo waydroid init).
+
+set -u
+cfg=/var/lib/waydroid/waydroid.cfg
+[ -f "$cfg" ] || exit 0
+case "${1:-}" in
+    tiled) want= ;;
+    untiled) want=sysmem ;;
+    *) echo "usage: pro1x-waydroid-props tiled|untiled" >&2; exit 2 ;;
+esac
+
+# The value now in [properties] (empty when absent).
+have=$(awk -F' *= *' '
+    /^\[/ { section = $0; next }
+    section == "[properties]" && $1 == "mesa.fd.mesa.debug" { print $2 }' "$cfg")
+[ "$have" = "$want" ] && exit 0
+
+tmp=$cfg.pro1x
+awk -v want="$want" '
+    function add() {
+        if (want != "") {
+            print "mesa.fd.mesa.debug = " want
+            print "debug.mesa.fd.mesa.debug = " want
+        }
+        done = 1
+    }
+    /^\[/ {
+        if (section == "[properties]" && !done) add()
+        section = $0; print; next
+    }
+    section == "[properties]" && /^(debug\.)?mesa\.fd\.mesa\.debug *=/ { next }
+    { print }
+    END {
+        if (section == "[properties]" && !done) add()
+        else if (!done && want != "") { print "[properties]"; add() }
+    }' "$cfg" > "$tmp" && mv "$tmp" "$cfg" || exit 1
+logger -t pro1x-waydroid-props "Mesa rendering: ${want:-tiled}"
+waydroid upgrade --offline >/dev/null 2>&1 ||
+    logger -t pro1x-waydroid-props "waydroid upgrade --offline failed"
+exit 0
