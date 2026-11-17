@@ -1,0 +1,52 @@
+media: i2c: dw9800: ramp large focus moves
+
+A focus move across much of the range went to the DAC in one write, and
+the voice coil clacked against its end stops: when a camera started (the
+lens powered up to its last position, then sent to the autofocus' first
+one, 947 to 100 on the Pro1X) and during autofocus scans.  The power-up
+and park ramps (sfos-dw9800-soft) already avoid this.  A move of more
+than 64 codes now goes in steps of at most 64, 2 ms apart: the whole
+range in about 32 ms.
+
+Not yet run on the phone.
+
+--- a/drivers/media/i2c/dw9800.c
++++ b/drivers/media/i2c/dw9800.c
+@@ -32,6 +32,13 @@
+ /* Keep the lens powered this long after the last close (quick reopens). */
+ #define DW9800_AUTOSUSPEND_MS	2000
+
++/*
++ * Focus moves: at most this many codes a write, this long apart.  A jump
++ * across the range made the voice coil clack against its end stops.
++ */
++#define DW9800_MOVE_STEP	64
++#define DW9800_MOVE_DELAY_US	2000
++
+ #define DW9800_CTL_ADDR		0x02	/* bit 0: power down */
+ #define DW9800_MSB_ADDR		0x03	/* DAC[9:8] */
+ #define DW9800_LSB_ADDR		0x04	/* DAC[7:0] */
+@@ -121,9 +128,20 @@ static int dw9800_set_ctrl(struct v4l2_ctrl *ctrl)
+ 	if (!pm_runtime_get_if_in_use(&client->dev))
+ 		return 0;
+
+-	ret = dw9800_set_dac(client, ctrl->val);
+-	if (!ret)
+-		dw->dac_val = ctrl->val;
++	{
++		int from = dw->dac_val, to = ctrl->val, val, i, n;
++
++		n = max(1, DIV_ROUND_UP(abs(to - from), DW9800_MOVE_STEP));
++		for (i = 1; i <= n && !ret; i++) {
++			val = from + (to - from) * i / n;
++			ret = dw9800_set_dac(client, val);
++			if (!ret)
++				dw->dac_val = val;
++			if (i < n)
++				usleep_range(DW9800_MOVE_DELAY_US,
++					     DW9800_MOVE_DELAY_US + 100);
++		}
++	}
+ 	pm_runtime_put(&client->dev);
+
+ 	return ret;

@@ -1,0 +1,33 @@
+From 499f3eba88d9a0a347f64ac5359ca7d6421403e2 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 19:01:52 +0100
+Subject: [PATCH] ipa: simple: agc: Ratio steps near the target as well
+
+Near the target the proportional steps changed the exposure by 2% an
+update: one stop of EV compensation took some 9 s to show, too slow to
+expose by eye.  The step is now the ratio of the target to the mean
+sample value to the power 0.7 (damped against overshoot), as far from
+it, where it is capped at twice or half.
+---
+ src/ipa/simple/algorithms/agc.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index e877776..5c36289 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -198,6 +198,14 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ 	if (std::abs(error) > kExpFastError)
+ 		factor = std::clamp(static_cast<float>(target / std::max(exposureMSV, 0.5)),
+ 				    0.5f, 2.0f);
++	/*
++	 * Near it too, a part of that ratio: proportional steps of 2% an
++	 * update took some 9 s to show one stop of EV compensation, too slow
++	 * to expose by eye.
++	 */
++	else
++		factor = std::pow(static_cast<float>(target / std::max(exposureMSV, 0.5)),
++				  0.7f);
+ 
+ 	if (factor > 1.0f) {
+ 		/* Scene too dark: increase exposure first, then gain. */

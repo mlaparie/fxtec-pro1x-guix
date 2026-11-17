@@ -1,0 +1,60 @@
+From a00773a70815bca86bb0db596724caaa71e8728e Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 19:02:32 +0100
+Subject: [PATCH] ipa: simple: Lens moves at a capped speed
+
+The autofocus sent the lens across its range in one jump at the start
+of a scan or to the best position at its end, and the Pro1X's DW9800
+voice coil clacked against its stops.  The lens now moves at most 64
+VCM steps an update (every 2 to 4 frames) toward where the autofocus,
+or manual focus, wants it.
+---
+ src/ipa/simple/soft_simple.cpp | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 9fedf3c..44df5e3 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -5,6 +5,7 @@
+  * Simple Software Image Processing Algorithm module
+  */
+ 
++#include <algorithm>
+ #include <chrono>
+ #include <stdint.h>
+ #include <sys/mman.h>
+@@ -81,6 +82,9 @@ private:
+ 
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
++	/* The lens position last sent, and the most it moves an update */
++	int32_t lensSent_ = -1;
++	static constexpr int32_t kLensMaxStep = 64;
+ 	/* A previous streaming session, whose state a restart in the same mode keeps */
+ 	bool configured_ = false;
+ };
+@@ -410,9 +414,20 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 
+ 	ControlList lensCtrls(context_.lensControls);
+ 	if (context_.afEnabled &&
+-	    context_.lensControls.find(V4L2_CID_FOCUS_ABSOLUTE) != context_.lensControls.end())
+-		lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE,
+-			      static_cast<int32_t>(context_.activeState.af.focus));
++	    context_.lensControls.find(V4L2_CID_FOCUS_ABSOLUTE) != context_.lensControls.end()) {
++		/*
++		 * The lens goes where the autofocus wants it at a capped speed:
++		 * jumps across its range made the voice coil clack against its
++		 * stops.  64 steps an update (every 2 to 4 frames) is about the
++		 * pace that kept a manual slide silent on the Pro1X.
++		 */
++		const int32_t target = static_cast<int32_t>(context_.activeState.af.focus);
++		if (lensSent_ < 0)
++			lensSent_ = target;
++		else
++			lensSent_ += std::clamp(target - lensSent_, -kLensMaxStep, kLensMaxStep);
++		lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE, lensSent_);
++	}
+ 	setSensorControls.emit(ctrls, lensCtrls);
+ }
+ 

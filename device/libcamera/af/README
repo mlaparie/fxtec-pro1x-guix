@@ -51,6 +51,13 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
 - 0030 (ours, 2026-11-17): EV compensation is added after the highlight
   adjustment of 0023, which had lowered the target to its floor with or
   without it.
+- 0031 (ours, 2026-11-17): near the target the exposure steps by the
+  ratio to it, to the power 0.7: proportional steps of 2% took some 9 s to
+  show one stop of EV (author: EV must show live).
+- 0032 (ours, 2026-11-17): the lens moves at most 64 steps an update: the
+  autofocus jumped across the range and the voice coil clacked (author).
+  The kernel's pro1x-dw9800-ramp.patch ramps large moves too (the first
+  one after power-up, which libcamera cannot see).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

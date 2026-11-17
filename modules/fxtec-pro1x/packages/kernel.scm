@@ -58,10 +58,11 @@
         ;; The IMX582's whole array 4x4 binned (1984x1488): a fast 4:3
         ;; viewfinder that shows all of a 12 MP photo.
         ;; The rear module's calibration EEPROM, for lens shading.
+        ;; The lens driver ramps large focus moves (no clack).
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
-          "camera-eeprom"))))
+          "camera-eeprom" "dw9800-ramp"))))
 
 (define-public linux-pro1x
   (package

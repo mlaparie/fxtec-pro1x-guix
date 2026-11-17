@@ -392,8 +392,9 @@ to build an FDE userdata image on the host before flashing.")
                 ;; buffers at 48 MP, neutral highlights in the shaders, a
                 ;; faster exposure loop far from the target, stats every
                 ;; second frame in the photo modes, for the autofocus,
-                ;; controls set while streaming no longer lost, and EV
-                ;; compensation after the highlights.
+                ;; controls set while streaming no longer lost, EV
+                ;; compensation after the highlights, ratio exposure steps
+                ;; near the target, and the lens at a capped speed.
                 "0020-ipa-simple-af-Manual-lens-position.patch"
                 "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"
                 "0022-ipa-simple-awb-AwbEnable-a-white-balance-lock.patch"
@@ -404,7 +405,9 @@ to build an FDE userdata image on the host before flashing.")
                 "0027-ipa-simple-agc-Step-by-the-ratio-to-the-target-when-.patch"
                 "0028-software_isp-stats-every-second-frame-for-large-frames.patch"
                 "0029-gstreamer-Apply-controls-only-to-a-request-that-is-q.patch"
-                "0030-ipa-simple-agc-Exposure-compensation-after-the-highl.patch"))))))
+                "0030-ipa-simple-agc-Exposure-compensation-after-the-highl.patch"
+                "0031-ipa-simple-agc-Ratio-steps-near-the-target-as-well.patch"
+                "0032-ipa-simple-Lens-moves-at-a-capped-speed.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
