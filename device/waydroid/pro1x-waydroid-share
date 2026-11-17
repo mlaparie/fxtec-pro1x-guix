@@ -1,5 +1,5 @@
 #!/bin/sh
-# pro1x-waydroid-share start|stop USER VIEW [SOURCE TARGET]... — folders
+# pro1x-waydroid-share start|watch|stop USER VIEW [SOURCE TARGET]... — folders
 # shared between the phone and Waydroid (waydroid-service-type in
 # config.scm: storage-view, shared-folders).  As root, at boot.
 #
@@ -15,7 +15,16 @@
 # Waydroid is set up and Android started once; until then nothing is
 # mounted (the service is started again by hand, or at the next boot).
 #
-# State: written 2026-11-17, not yet run on the phone.
+# watch: each time Android starts, once it has booted, each share is
+# mounted again inside the container, on Android's data folder itself.
+# Android's storage service reads a copy of that folder made at its start
+# without the mounts below it, so apps saw the shares empty (only the shell
+# saw them in /data/media/0); a mount made there after the start reaches
+# that copy.  Android's init is looked for every 30 s (nothing in suspend).
+#
+# State (2026-11-17, on the phone): start mounted the shares; Android's
+# apps saw them only after the remount that watch does (done by hand: the
+# storage service's mounts then had them, a media scan indexed 99 images).
 
 set -u
 action=$1 user=$2 view=$3
@@ -53,6 +62,35 @@ case "$action" in
                 echo "could not show $media at $view"
         fi
         exit 0 ;;
+    watch)
+        targets=
+        while [ $# -ge 2 ]; do targets="$targets $2"; shift 2; done
+        last=
+        while sleep 30; do
+            pid=$(pgrep -f '^/system/bin/init second_stage' | head -n 1)
+            [ -n "$pid" ] && [ "$pid" != "$last" ] || continue
+            n=0
+            until [ "$(waydroid shell -- getprop sys.boot_completed 2>/dev/null |
+                       tr -d '\r\n')" = 1 ]; do
+                n=$((n + 1)); [ $n -gt 60 ] && continue 2
+                sleep 5
+            done
+            last=$pid
+            # Kept at a side path, the share's mounts removed, then mounted
+            # again on the data folder.
+            waydroid shell -- sh -c '
+                for d in '"$targets"'; do
+                    t=/data/media/0/$d
+                    grep -q " $t fuse" /proc/mounts || continue
+                    mkdir -p /dev/pro1x-share/$d
+                    mount --bind $t /dev/pro1x-share/$d || continue
+                    i=0
+                    while grep -q " $t fuse" /proc/mounts && [ $i -lt 4 ]; do
+                        umount $t; i=$((i + 1))
+                    done
+                    mount --bind /dev/pro1x-share/$d $t
+                done' && logger -t pro1x-waydroid-share "shares mounted in Android"
+        done ;;
     stop)
         # The view first: it sits on top of the shares.
         [ -n "$view" ] && mounted "$view" && umount "$view"
@@ -60,6 +98,6 @@ case "$action" in
             while read -r m; do umount "$m"; done
         exit 0 ;;
     *)
-        echo "usage: pro1x-waydroid-share start|stop USER VIEW [SOURCE TARGET]..." >&2
+        echo "usage: pro1x-waydroid-share start|watch|stop USER VIEW [SOURCE TARGET]..." >&2
         exit 2 ;;
 esac

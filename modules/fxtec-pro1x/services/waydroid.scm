@@ -25,7 +25,8 @@
   #:use-module (gnu packages base)          ; coreutils, grep, glibc (getent)
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module ((gnu packages file-systems) #:select (bindfs))
-  #:use-module (gnu packages linux)         ; util-linux, fuse
+  #:use-module (gnu packages linux)         ; util-linux, fuse, procps
+  #:use-module ((gnu packages admin) #:select (inetutils)) ; logger
   #:use-module (gnu services)
   #:use-module (gnu services dbus)
   #:use-module (gnu services shepherd)
@@ -62,7 +63,10 @@
                 (string-append #$coreutils "/bin:" #$grep "/bin:"
                                #$util-linux "/bin:" #$util-linux "/sbin:"
                                #$bindfs "/bin:" #$fuse "/bin:"
-                               #$glibc "/bin"))
+                               #$glibc "/bin:" #$procps "/bin:"
+                               #$inetutils "/bin:"
+                               ;; waydroid, for its shell (watch).
+                               "/run/current-system/profile/bin"))
         (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
                #$(local-file (repository-file "device/waydroid/pro1x-waydroid-share"))
                (cdr (command-line))))))
@@ -83,10 +87,18 @@
           (requirement '(file-systems))
           (documentation "Folders shared with Waydroid's Android:
 storage-view and shared-folders.")
-          (start #~(lambda _
-                     (zero? (apply system* #$pro1x-waydroid-share-script
-                                   "start" '#$args))))
-          (stop #~(lambda _
+          (start #~(lambda args
+                     (apply system* #$pro1x-waydroid-share-script
+                            "start" '#$args)
+                     ;; Then, at each Android start, the shares into its
+                     ;; storage service (pro1x-waydroid-share).
+                     (apply (make-forkexec-constructor
+                             (cons* #$pro1x-waydroid-share-script "watch"
+                                    '#$args)
+                             #:log-file "/var/log/waydroid-share.log")
+                            args)))
+          (stop #~(lambda (pid . _)
+                    ((make-kill-destructor) pid)
                     (apply system* #$pro1x-waydroid-share-script
                            "stop" '#$args)
                     #f)))))
