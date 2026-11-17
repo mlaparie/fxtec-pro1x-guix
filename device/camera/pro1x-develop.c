@@ -16,7 +16,10 @@
  * the frame's ColourGains and ColourCorrectionMatrix; GAMMA and CONTRAST as
  * the software ISP's shader applies them (1/2.2 and 1.0 by default).  The
  * crop is in raw pixels; TURN in degrees counterclockwise (0, 90, 180, 270);
- * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.  SHADING: the
+ * SCALE 1 or 2 (half size, averaged); QUALITY the JPEG's.  Environment:
+ * PRO1X_CONTRAST multiplies the contrast exponent (1: as the viewfinder),
+ * PRO1X_CLARITY (0 to 1) adds local contrast (the difference from a wide
+ * blur of the brightness, added back).  SHADING: the
  * rear camera module's EEPROM (at24, /sys/bus/i2c/devices/2-0050/eeprom),
  * whose lens shading table corrects the vignetting; left out, or not a
  * table that makes sense, the frame stays as it is.
@@ -473,6 +476,85 @@ static inline const uint8_t *source(const struct job *j, int turn, int x, int y,
 	return j->rgb + ((size_t)sy * j->cw + sx) * 3;
 }
 
+/* Clarity: each pixel's brightness pushed away from that of its wide
+ * surroundings by AMOUNT, the colours scaled with it so hues stay.  The
+ * surroundings: the brightness reduced CLARITY_SCALE times, box-blurred
+ * (radius CLARITY_RADIUS there, about 24 pixels here), read back bilinearly
+ * (a full-size blur took 3.7 s on the phone). */
+#define CLARITY_SCALE 8
+#define CLARITY_RADIUS 3
+
+static void box_blur(float *v, float *tmp, int w, int h, int r)
+{
+	for (int pass = 0; pass < 2; pass++) {
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++) {
+				float sum = 0;
+				for (int d = -r; d <= r; d++) {
+					int xx = x + d < 0 ? 0 : x + d >= w ? w - 1 : x + d;
+					sum += v[(size_t)y * w + xx];
+				}
+				tmp[(size_t)y * w + x] = sum / (2 * r + 1);
+			}
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++) {
+				float sum = 0;
+				for (int d = -r; d <= r; d++) {
+					int yy = y + d < 0 ? 0 : y + d >= h ? h - 1 : y + d;
+					sum += tmp[(size_t)yy * w + x];
+				}
+				v[(size_t)y * w + x] = sum / (2 * r + 1);
+			}
+	}
+}
+
+static inline float luma_of(const uint8_t *p)
+{
+	return 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2];
+}
+
+static void clarity(struct job *j, float amount)
+{
+	int w = j->cw, h = j->ch, f = CLARITY_SCALE;
+	int lw = (w + f - 1) / f, lh = (h + f - 1) / f;
+	float *low = calloc((size_t)lw * lh, sizeof *low);
+	float *tmp = malloc((size_t)lw * lh * sizeof *tmp);
+	int *count = calloc((size_t)lw * lh, sizeof *count);
+	if (!low || !tmp || !count)
+		return;
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			size_t i = (size_t)(y / f) * lw + x / f;
+			low[i] += luma_of(j->rgb + ((size_t)y * w + x) * 3);
+			count[i]++;
+		}
+	for (size_t i = 0; i < (size_t)lw * lh; i++)
+		low[i] /= count[i];
+	box_blur(low, tmp, lw, lh, CLARITY_RADIUS);
+	for (int y = 0; y < h; y++) {
+		float gy = (y + 0.5f) / f - 0.5f;
+		int y0 = gy < 0 ? 0 : (int)gy, y1 = y0 + 1 < lh ? y0 + 1 : y0;
+		float ty = gy < 0 ? 0 : gy - y0;
+		for (int x = 0; x < w; x++) {
+			float gx = (x + 0.5f) / f - 0.5f;
+			int x0 = gx < 0 ? 0 : (int)gx, x1 = x0 + 1 < lw ? x0 + 1 : x0;
+			float tx = gx < 0 ? 0 : gx - x0;
+			float b = (low[(size_t)y0 * lw + x0] * (1 - tx) + low[(size_t)y0 * lw + x1] * tx) * (1 - ty)
+				+ (low[(size_t)y1 * lw + x0] * (1 - tx) + low[(size_t)y1 * lw + x1] * tx) * ty;
+			uint8_t *p = j->rgb + ((size_t)y * w + x) * 3;
+			float l = luma_of(p), want = l + amount * (l - b);
+			float k = l > 1 ? want / l : 1;
+			for (int c = 0; c < 3; c++) {
+				float v = p[c] * k;
+				p[c] = v < 0 ? 0 : v > 255 ? 255 : (uint8_t)(v + 0.5f);
+			}
+		}
+	}
+	free(low);
+	free(tmp);
+	free(count);
+}
+
 static int write_jpeg(const struct job *j, const char *path, int turn,
 		      int half, int quality)
 {
@@ -554,7 +636,9 @@ int main(int argc, char **argv)
 		j.gain[k] = atof(argv[8 + k]);
 	for (int k = 0; k < 9; k++)
 		j.ccm[k] = atof(argv[11 + k]);
-	make_lut(&j, atof(argv[20]), atof(argv[21]));
+	const char *contrast = getenv("PRO1X_CONTRAST");
+	make_lut(&j, atof(argv[20]),
+		 atof(argv[21]) * (contrast ? atof(contrast) : 1.0f));
 	j.cx = atoi(argv[22]);
 	j.cy = atoi(argv[23]);
 	j.cw = atoi(argv[24]);
@@ -632,5 +716,8 @@ developed_input:
 	for (int t = 0; t < j.nthreads; t++)
 		pthread_join(threads[t], NULL);
 
+	const char *amount = getenv("PRO1X_CLARITY");
+	if (amount && atof(amount) > 0)
+		clarity(&j, atof(amount));
 	return write_jpeg(&j, out, turn, half, quality) ? 1 : 0;
 }

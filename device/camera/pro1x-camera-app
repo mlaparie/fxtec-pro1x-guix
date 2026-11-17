@@ -177,6 +177,11 @@ TIMERS = [0, 3, 10]                            # seconds before the shot
 # same exposure, moving things blurred), unaligned: on a support.
 NIGHT_MODES = ["off", "long", "stack", "bulb", "smooth"]
 BULB_SECONDS = 60
+# Photos' contrast (a factor on the viewfinder's curve) and clarity (local
+# contrast), applied by pro1x-develop (raw-stream photos): the photos
+# lacked some of both (author, 2026-11-17).
+CONTRASTS = [("NORMAL", 1.0), ("MORE", 1.25), ("MOST", 1.5)]
+CLARITIES = [("OFF", 0.0), ("LOW", 0.3), ("HIGH", 0.6)]
 STACK_FRAMES = 8
 # The shutter blink, in drawn frames (about 0.15 s): counted from the first
 # one drawn, so a busy moment after the shot cannot skip it (the front
@@ -645,6 +650,8 @@ class Camera(Gtk.Application):
             self.overlay.reorder_overlay(w, -1)
         self.hold_until = None          # Night: when the frames are kept
         self.bulb = None                # a bulb exposure running
+        self.contrast = 1.0             # photos' contrast factor
+        self.clarity = 0.0              # photos' local contrast
         self.grid_on = False            # rule of thirds
         self.horizon_on = False         # level line from the accelerometer
         self.gravity = None             # its last reading, m/s²
@@ -1124,6 +1131,12 @@ class Camera(Gtk.Application):
         if self.timer:
             marks.append(("TIMER %dS" % self.timer,
                           lambda: self.reset_cycle("timer", TIMERS, self.on_timer)))
+        if self.contrast != 1.0:
+            marks.append(("CONTRAST " + dict((v, n) for n, v in CONTRASTS)[self.contrast],
+                          lambda: setattr(self, "contrast", 1.0)))
+        if self.clarity:
+            marks.append(("CLARITY " + dict((v, n) for n, v in CLARITIES)[self.clarity],
+                          lambda: setattr(self, "clarity", 0.0)))
         mode = "video" if self.video else "photo"
         shapes, sizes = self.choices()
         o = self.out()
@@ -1239,14 +1252,16 @@ class Camera(Gtk.Application):
             flow.add(box)
 
         def slider(title, scale_of):
-            box = Gtk.Box(spacing=12)
+            # About three columns wide, not across the screen (author).
+            box = Gtk.Box(spacing=12, halign=Gtk.Align.START)
             head = Gtk.Label(label=title)
             head.get_style_context().add_class("head")
             box.pack_start(head, False, False, 0)
             scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL,
                               adjustment=scale_of.get_adjustment())
             scale.connect("format-value", lambda *a: scale_of.emit("format-value", a[1]))
-            box.pack_start(scale, True, True, 0)
+            scale.set_size_request(300, -1)
+            box.pack_start(scale, False, False, 0)
             page.pack_start(box, False, False, 0)
 
         top = row()
@@ -1277,6 +1292,12 @@ class Camera(Gtk.Application):
                                   lambda v=v: self.reset_output("shape", v)) for v in shapes])
         column(bottom, "RESOLUTION", [(v.upper(), v == o["size"],
                                        lambda v=v: self.reset_output("size", v)) for v in sizes])
+        column(bottom, "CONTRAST", [(n, abs(v - self.contrast) < 0.01,
+                                     lambda v=v: setattr(self, "contrast", v))
+                                    for n, v in CONTRASTS])
+        column(bottom, "CLARITY", [(n, abs(v - self.clarity) < 0.01,
+                                    lambda v=v: setattr(self, "clarity", v))
+                                   for n, v in CLARITIES])
         column(bottom, "GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
                                 ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
         column(bottom, "HORIZON", [("OFF", not self.horizon_on,
@@ -2164,7 +2185,12 @@ class Camera(Gtk.Application):
         if raw.startswith("-"):
             return [str(a) for a in args]
         subprocess.run([str(a) for a in args], check=True, timeout=60,
-                       stdout=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, env=self.develop_env())
+
+    def develop_env(self):
+        """Contrast and clarity for pro1x-develop."""
+        return dict(os.environ, PRO1X_CONTRAST=str(self.contrast),
+                    PRO1X_CLARITY=str(self.clarity))
 
     def bulb_start(self):
         """Night bulb or smooth: every raw frame from now to the next press
@@ -2204,7 +2230,8 @@ class Camera(Gtk.Application):
         args = self.develop("-sum" if self.night == "bulb" else "-mean",
                             path, meta, held, method)
         proc = subprocess.Popen(args, stdin=subprocess.PIPE,
-                                stdout=subprocess.DEVNULL)
+                                stdout=subprocess.DEVNULL,
+                                env=self.develop_env())
         frames = 0
         try:
             while sample and not run["stop"] and \
