@@ -1,4 +1,4 @@
-From 8c517fbde5d46b66a6e819f8476448a944dccab4 Mon Sep 17 00:00:00 2001
+From d35197a613f2dcd70bde05a558a273ad5d5866e5 Mon Sep 17 00:00:00 2001
 From: fxtec-pro1x-guix
 Date: Tue, 17 Nov 2026 10:33:07 +0100
 Subject: [PATCH] simple: Two buffers for frames of more than 24 MP
@@ -7,12 +7,17 @@ Four 48 MP buffers, raw (60 MB each) and processed (190 MB each), took
 2 s to allocate and about 1 GB of memory; with Android apps running the
 phone ran out of memory and froze.  A still camera needs no more than
 two: frames over 24 MP get at most two, internal and output.
+
+The count chosen by validate() follows the mode on the next validation:
+the gstreamer element validates the default (48 MP) configuration before
+its own, and the two buffers it kept for a 12 MP viewfinder and raw
+stream stalled both after one frame.
 ---
- src/libcamera/pipeline/simple/simple.cpp | 20 +++++++++++++++++---
- 1 file changed, 17 insertions(+), 3 deletions(-)
+ src/libcamera/pipeline/simple/simple.cpp | 33 ++++++++++++++++++++----
+ 1 file changed, 28 insertions(+), 5 deletions(-)
 
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index 3483b59..a20c271 100644
+index 3483b59..65dc096 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
 @@ -258,6 +258,17 @@ struct SimplePipelineInfo {
@@ -33,17 +38,38 @@ index 3483b59..a20c271 100644
  static const SimplePipelineInfo supportedDevices[] = {
  	{ "dcmipp", {}, false },
  	{ "imx7-csi", { { "pxp", 1 } }, true },
-@@ -1399,7 +1410,8 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+@@ -408,6 +419,8 @@ private:
+ 	const SimpleCameraData::Configuration *pipeConfig_;
+ 	bool needConversion_;
+ 	Transform combinedTransform_;
++	/* The buffer counts validate() chose, per stream, not the application */
++	std::vector<unsigned int> defaultCounts_;
+ };
  
+ class SimplePipelineHandler : public PipelineHandler
+@@ -1397,10 +1410,18 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 			cfg.frameSize = format.planes[0].size;
+ 		}
+ 
++		/*
++		 * A count chosen here for another mode follows the mode: the
++		 * gstreamer element validates the default (largest) size before
++		 * its own, and two buffers for a 12 MP stream starve it.
++		 */
  		const unsigned int bufferCount = cfg.bufferCount;
- 		if (!bufferCount)
+-		if (!bufferCount)
 -			cfg.bufferCount = kNumBuffersDefault;
+-		else if (bufferCount > kNumBuffersMax)
++		defaultCounts_.resize(config_.size());
++		if (!bufferCount || bufferCount == defaultCounts_[i]) {
 +			cfg.bufferCount = buffersFor(pipeConfig_->captureSize,
 +						     kNumBuffersDefault);
- 		else if (bufferCount > kNumBuffersMax)
++			defaultCounts_[i] = cfg.bufferCount;
++		} else if (bufferCount > kNumBuffersMax)
  			cfg.bufferCount = kNumBuffersMax;
  
-@@ -1650,7 +1662,7 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 		if (cfg.bufferCount != bufferCount) {
+@@ -1650,7 +1671,7 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
  	inputCfg.pixelFormat = videoFormat.toPixelFormat();
  	inputCfg.size = pipeConfig->captureSize;
  	inputCfg.stride = captureFormat.planes[0].bpl;
@@ -52,7 +78,7 @@ index 3483b59..a20c271 100644
  
  	if (data->converter_) {
  		return data->converter_->configure(inputCfg, outputCfgs);
-@@ -1703,7 +1715,9 @@ int SimplePipelineHandler::start(Camera *camera, [[maybe_unused]] const ControlL
+@@ -1703,7 +1724,9 @@ int SimplePipelineHandler::start(Camera *camera, [[maybe_unused]] const ControlL
  		 * When using the converter allocate a fixed number of internal
  		 * buffers.
  		 */

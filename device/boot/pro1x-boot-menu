@@ -6,6 +6,7 @@
 # Writes into DIR, from SRC, Guix's extlinux.conf (current system first, then
 # older generations, newest first):
 #   prev1.conf .. prevN.conf  one previous generation each, for U-Boot's menu
+#   noresume.conf             the current system, not resuming (hibernation)
 #   menu.env                  that menu's labels and countdown, loaded by
 #                             U-Boot with `env import -t' (see packages/uboot.scm)
 #
@@ -22,13 +23,19 @@
 # /var/guix/profiles/system), for its number and date.
 #
 # Hibernation: with --plain-area, the swap file's resume arguments, which
-# pro1x-swap keeps in /var/lib/pro1x/resume, are added to each entry's
-# APPEND line (the offset is known only once the file exists, so it cannot
-# be in config.scm's kernel arguments).  Without a plain area, Guix's own
-# extlinux.conf is what U-Boot reads, and they are not added.
+# pro1x-swap keeps in /var/lib/pro1x/resume, are added to the current
+# system's APPEND line (the offset is known only once the file exists, so it
+# cannot be in config.scm's kernel arguments).  A second menu line boots the
+# current system with `noresume' instead: a hibernated image that hangs the
+# resume is skipped, and swapon then discards it.  Older generations never
+# resume: an image is that of the kernel that wrote it.  Without a plain
+# area, Guix's own extlinux.conf is what U-Boot reads, and none of this is
+# added.
 #
 # State: tested in QEMU; on the encrypted phone (2026-11-06) a deploy's kernel
 # and initrd went to the plain area and the menu listed both generations.
+# The resume and no-resume lines: run on the phone's files (2026-11-17), not
+# yet booted.
 
 set -eu
 
@@ -117,7 +124,7 @@ if [ -n "$root" ]; then
         fi
         printf '%s\n' "$text" |
             sed 's#\(KERNEL\|INITRD\|FDTDIR\) */gnu/store/#\1 /files/#; s#/lib/dtbs$#/dtbs#' |
-            if [ -n "$resume" ]; then
+            if [ -n "$resume" ] && [ "$i" = 1 ]; then
                 sed "s#^\([[:space:]]*APPEND[[:space:]].*\)#\1 $resume#"
             else
                 cat
@@ -161,10 +168,29 @@ env_tmp="$dir/.menu.env.tmp"
 {
     echo "menu_delay=$delay"
     first=$(entry "$src" 1 | head -n 1 | sed 's/^[[:space:]]*LABEL[[:space:]]*//')
-    if [ -n "$first" ]; then
-        echo "bootmenu_0=$(current_label "$first" | tr -d =)=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/extlinux.conf; pause"
+    title=$(current_label "$first" | tr -d =)
+    if [ -n "$first" ] && [ -n "$root" ] && [ -n "$resume" ]; then
+        echo "bootmenu_0=$title, resume from hibernation=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/extlinux.conf; pause"
+        echo "bootmenu_1=$title, no resume=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/noresume.conf; pause"
+    elif [ -n "$first" ]; then
+        echo "bootmenu_0=$title=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/extlinux.conf; pause"
     fi
 } > "$env_tmp"
+
+if [ -n "$first" ] && [ -n "$root" ] && [ -n "$resume" ]; then
+    {
+        echo "TIMEOUT 0"
+        echo "PROMPT 0"
+        echo "DEFAULT $first"
+        entry "$src" 1 |
+            sed "s#[[:space:]]*$resume##; s#^\([[:space:]]*APPEND[[:space:]].*\)#\1 noresume#"
+    } > "$dir/.noresume.tmp"
+    mv -f "$dir/.noresume.tmp" "$dir/noresume.conf"
+    shift_by=1
+else
+    rm -f "$dir/noresume.conf"
+    shift_by=0
+fi
 
 i=1
 while [ "$i" -le "$n" ]; do
@@ -184,7 +210,10 @@ while [ "$i" -le "$n" ]; do
     mv -f "$dir/.prev$i.tmp" "$dir/prev$i.conf"
     title=$(menu_label "$label" | tr -d =)
     [ -n "$title" ] || title=$(printf '%s\n' "$label" | tr -d =)
-    echo "bootmenu_$i=$title=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/prev$i.conf; pause" >> "$env_tmp"
+    # U-Boot has N + 1 boot lines, compiled in (packages/uboot.scm): with
+    # the no-resume line, the oldest generation is left out of the menu.
+    [ $((i + shift_by)) -le "$n" ] &&
+    echo "bootmenu_$((i + shift_by))=$title=sysboot scsi 0#userdata any \${scriptaddr} /boot/extlinux/prev$i.conf; pause" >> "$env_tmp"
     i=$((i + 1))
 done
 for f in "$dir"/prev*.conf; do
