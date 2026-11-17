@@ -156,7 +156,6 @@ TAP_BACK = {
 # balance yet: green photos (2026-11-16).
 SETTLE_FRAMES = 0
 ISOS = [0, 100, 200, 400, 800, 1600]          # 0: auto
-EVS = [0.0, 0.7, 1.3, 2.0, -2.0, -1.3, -0.7]
 FLASH_LED = "/sys/class/leds/white:flash-0"
 # Off, a flash for each photo, a flash when the scene is dark, or the LED
 # on all along (photos and videos).
@@ -226,6 +225,16 @@ scale slider { min-width: 28px; min-height: 28px; background: #ebdbb2;
                border-radius: 14px; }
 scale trough { min-width: 6px; background: rgba(235,219,178,0.4); }
 """
+
+
+def ev_text(stops):
+    """An EV compensation in thirds of a stop: 0, +1/3, -1 2/3..."""
+    thirds = round(stops * 3)
+    if not thirds:
+        return "0"
+    whole, part = divmod(abs(thirds), 3)
+    text = ("%d" % whole if whole else "") + (" %d/3" % part if part else "")
+    return ("+" if thirds > 0 else "−") + text.strip()
 
 
 def lens_text(dioptres):
@@ -302,7 +311,7 @@ class Camera(Gtk.Application):
         self.cam = 0
         self.pipeline = None
         self.iso = 0
-        self.ev = 0
+        self.ev = 0.0                   # EV compensation, stops
         self.night = False
         self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
@@ -402,25 +411,32 @@ class Camera(Gtk.Application):
         self.b_shape = self.button("", self.on_shape)
         self.b_res = self.button("", self.on_res)
         self.panel = Gtk.Grid(row_spacing=10, column_spacing=10,
-                              halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
                               row_homogeneous=True, column_homogeneous=True)
         self.panel.get_style_context().add_class("panel")
-        for i, b in enumerate((self.b_flash, self.b_timer, self.b_night,
-                               self.b_iso, self.b_ev, self.b_wb,
+        for i, b in enumerate((self.b_timer, self.b_iso, self.b_wb,
                                self.b_shape, self.b_res, self.b_focus)):
             self.panel.attach(b, i % 3, i // 3, 1, 1)
         self.overlay.add_overlay(self.panel)
-        self.b_menu = self.button("☰", self.on_menu)
-        # The zoom presets.
-        self.zooms = Gtk.Box(spacing=8)
+        self.b_menu = self.button("☰", lambda *_: self.toggle_menu(self.panel))
+        # The zoom presets, in a menu of their own; the button shows the zoom.
+        self.zoom_panel = Gtk.Grid(row_spacing=10, column_spacing=10)
+        self.zoom_panel.get_style_context().add_class("panel")
         self.b_zooms = []
-        for z in ZOOMS:
-            b = self.button("%g×" % z, lambda _b, z=z: self.set_zoom(z))
+        for i, z in enumerate(ZOOMS):
+            b = self.button("%g×" % z, lambda _b, z=z: self.pick_zoom(z))
             self.b_zooms.append((z, b))
-            self.zooms.pack_start(b, False, False, 0)
+            self.zoom_panel.attach(b, i, 0, 1, 1)
+        self.overlay.add_overlay(self.zoom_panel)
+        self.b_zoom = self.button("1×", lambda *_: self.toggle_menu(self.zoom_panel))
         self.top = Gtk.Box(spacing=8)
         self.top.pack_start(self.b_menu, False, False, 0)
-        self.top.pack_start(self.zooms, False, False, 0)
+        self.top.pack_start(self.b_zoom, False, False, 0)
+        # Flash, Night and EV at hand on the other side: the left edge in
+        # landscape, the top in portrait (author, 2026-11-17).
+        self.side = Gtk.Box(spacing=12)
+        for b in (self.b_flash, self.b_night, self.b_ev):
+            self.side.pack_start(b, False, False, 0)
+        self.overlay.add_overlay(self.side)
         self.main = Gtk.Box(spacing=28)
         self.b_switch = self.button("⇆", self.on_switch)
         self.b_shutter = self.button("", self.on_shutter)
@@ -459,6 +475,26 @@ class Camera(Gtk.Application):
         self.lens_row.pack_start(self.lens_scale, True, True, 0)
         self.lens_row.pack_start(near, False, False, 0)
         self.overlay.add_overlay(self.lens_row)
+        # EV compensation: a vertical slider beside the side bar, +2 at the
+        # top, applied as it moves.
+        self.ev_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                              spacing=6, halign=Gtk.Align.START,
+                              valign=Gtk.Align.CENTER)
+        self.ev_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.VERTICAL, -2.0, 2.0, 1 / 3)
+        self.ev_scale.set_inverted(True)
+        self.ev_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.ev_scale.connect("format-value", lambda _s, v: ev_text(v))
+        self.ev_scale.add_mark(0.0, Gtk.PositionType.LEFT, None)
+        self.ev_scale.set_value(self.ev)
+        self.ev_scale.connect("value-changed", self.on_ev_scale)
+        plus, minus = Gtk.Label(label="+2"), Gtk.Label(label="−2")
+        for label in (plus, minus):
+            label.get_style_context().add_class("status")
+        self.ev_row.pack_start(plus, False, False, 0)
+        self.ev_row.pack_start(self.ev_scale, True, True, 0)
+        self.ev_row.pack_start(minus, False, False, 0)
+        self.overlay.add_overlay(self.ev_row)
         self.show_zoom()
         self.show_outputs()
 
@@ -499,7 +535,9 @@ class Camera(Gtk.Application):
         self.win.show_all()
         self.b_last.hide()
         self.lens_row.hide()
+        self.ev_row.hide()
         self.panel.hide()
+        self.zoom_panel.hide()
         self.layout()
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
@@ -695,9 +733,11 @@ class Camera(Gtk.Application):
         frame) stopped the camera, which has four.  The file sink does not
         wait for a preroll: added to a playing pipeline, it never got one
         and the muxer stalled (2026-11-17)."""
-        turn = {"counterclockwise": "counterclockwise", "clockwise": "clockwise",
-                "rotate-180": "rotate-180", "vertical-flip": "rotate-180"
-                }.get(self.method(), "none")
+        # Turned as a photo taken now would be (turn()): as the view, then
+        # as held when the display stayed portrait (author, 2026-11-17:
+        # videos played the wrong way round).
+        turn = {90: "counterclockwise", 270: "clockwise", 180: "rotate-180"
+                }.get(self.turn(self.held(), self.method()), "none")
         width, height = self.view_size()
         desc = (
             "queue max-size-buffers=1 leaky=downstream ! "
@@ -850,7 +890,7 @@ class Camera(Gtk.Application):
             self.src.set_property("analogue-gain", self.iso / 100.0)
         else:
             self.src.set_property("analogue-gain-mode", 0)       # auto
-        self.src.set_property("exposure-value", EVS[self.ev])
+        self.src.set_property("exposure-value", self.ev)
 
     # ── orientation ────────────────────────────────────────────────────
     def on_size(self, win, rect):
@@ -872,7 +912,7 @@ class Camera(Gtk.Application):
         w, h = self.win.get_size()
         wide = w > h
         vertical, horizontal = Gtk.Orientation.VERTICAL, Gtk.Orientation.HORIZONTAL
-        for box in (self.top, self.zooms, self.main):
+        for box in (self.top, self.main, self.side):
             box.set_orientation(vertical if wide else horizontal)
         self.main.set_spacing(20 if wide else 28)
         if wide:
@@ -880,18 +920,50 @@ class Camera(Gtk.Application):
             self.controls.set_valign(Gtk.Align.CENTER)
             self.controls.set_margin_end(16)
             self.controls.set_margin_bottom(0)
+            self.side.set_halign(Gtk.Align.START)
+            self.side.set_valign(Gtk.Align.CENTER)
+            self.side.set_margin_start(16)
+            self.side.set_margin_top(0)
         else:
             self.controls.set_halign(Gtk.Align.CENTER)
             self.controls.set_valign(Gtk.Align.END)
             self.controls.set_margin_end(0)
             self.controls.set_margin_bottom(16)
-        side = self.controls.get_allocated_width() if wide else 0
-        self.lens_row.set_margin_end(side + 24 if wide else 12)
-        self.lens_scale.set_size_request(-1, int(min(w, h) * 0.7))
+            self.side.set_halign(Gtk.Align.START)
+            self.side.set_valign(Gtk.Align.START)
+            self.side.set_margin_start(16)
+            self.side.set_margin_top(16)
+        # The menus open beside the control bar.
+        bar_w = self.controls.get_allocated_width()
+        bar_h = self.controls.get_allocated_height()
+        for menu in (self.panel, self.zoom_panel):
+            if wide:
+                menu.set_halign(Gtk.Align.END)
+                menu.set_valign(Gtk.Align.CENTER)
+                menu.set_margin_end(bar_w + 24)
+                menu.set_margin_bottom(0)
+            else:
+                menu.set_halign(Gtk.Align.CENTER)
+                menu.set_valign(Gtk.Align.END)
+                menu.set_margin_end(0)
+                menu.set_margin_bottom(bar_h + 24)
+        self.lens_row.set_margin_end(bar_w + 24 if wide else 12)
+        side_w = self.side.get_allocated_width() if wide else 0
+        self.ev_row.set_margin_start(side_w + 24 if wide else 12)
+        for scale in (self.lens_scale, self.ev_scale):
+            scale.set_size_request(-1, int(min(w, h) * 0.7))
         return False
 
-    def on_menu(self, *_):
-        self.panel.set_visible(not self.panel.get_visible())
+    def toggle_menu(self, menu):
+        """One menu open at a time."""
+        show = not menu.get_visible()
+        for m in (self.panel, self.zoom_panel):
+            m.hide()
+        menu.set_visible(show)
+
+    def pick_zoom(self, z):
+        self.set_zoom(z)
+        self.zoom_panel.hide()
 
     def method(self):
         rear, front = VIEW_TURN.get(getattr(self, "transform", "normal"),
@@ -953,11 +1025,10 @@ class Camera(Gtk.Application):
         self.show_zoom()
 
     def show_zoom(self):
-        """The preset that is on, or the zoom in figures after a pinch."""
+        """The zoom on its menu's button; the preset that is on."""
         for z, b in self.b_zooms:
             self.lit(b, abs(z - self.zoom) < 0.05)
-        if not any(abs(z - self.zoom) < 0.05 for z in ZOOMS):
-            self.say("%.1f×" % self.zoom, 2)
+        self.b_zoom.set_label("%g×" % round(self.zoom, 1))
 
     def photo_region(self):
         """The photo's part of the still frame, before its size scale."""
@@ -1112,11 +1183,15 @@ class Camera(Gtk.Application):
         (ctx.add_class if on else ctx.remove_class)("on")
 
     def on_ev(self, *_):
-        self.ev = (self.ev + 1) % len(EVS)
-        v = EVS[self.ev]
-        self.b_ev.set_label("EV %+.1f" % v if v else "EV 0")
-        if not self.busy:
-            self.apply_controls()
+        """The EV slider shown or hidden."""
+        self.ev_row.set_visible(not self.ev_row.get_visible())
+
+    def on_ev_scale(self, scale):
+        self.ev = round(scale.get_value() * 3) / 3
+        self.b_ev.set_label("EV " + ev_text(self.ev))
+        self.lit(self.b_ev, self.ev != 0)
+        if self.pipeline and not self.busy:
+            self.src.set_property("exposure-value", self.ev)
 
     def on_win_press(self, win, event):
         """A press on the window: a tap on the view, in its coordinates."""
@@ -1147,9 +1222,10 @@ class Camera(Gtk.Application):
         coordinates, as moWerk's camerabin patch maps it."""
         print("tap: %s at %.0f %.0f, busy %s" % (event.type, event.x, event.y,
                                                  self.busy), flush=True)
-        if self.panel.get_visible():
-            # A tap beside the menu closes it, and focuses nowhere.
+        if self.panel.get_visible() or self.zoom_panel.get_visible():
+            # A tap beside a menu closes it, and focuses nowhere.
             self.panel.hide()
+            self.zoom_panel.hide()
             return False
         if self.busy:
             return False
