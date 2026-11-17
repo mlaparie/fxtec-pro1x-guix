@@ -60,6 +60,23 @@ led_asleep() {
     echo "0 255 255" > "$led/multi_intensity"
     echo "6 1000 6 1000" > "$led/pattern"
 }
+# Hibernating: the same cyan, breathing (author, 2026-11-17), from the
+# PMIC's own pattern generator (hw_pattern), which runs without the CPU.
+# The PMI632's LPG steps through a table at a fixed pace, no ramps nor
+# ping-pong: 24 steps of 200 ms, up, down and a dark pause, 4.8 s.  The
+# first write after boot was once refused (EINVAL, cause not found), so a
+# refusal is retried.  Whether the pattern outlives the power-off at the
+# end of hibernation is not yet known.
+led_hibernating() {
+    [ -w "$led/hw_pattern" ] || return 0
+    p=
+    for b in 0 1 2 3 4 6 8 10 12 14 16 16 14 12 10 8 6 4 3 2 1 0 0 0; do
+        p="$p $b 200 $b 0"
+    done
+    echo pattern > "$led/trigger"
+    echo "0 255 255" > "$led/multi_intensity"
+    echo $p > "$led/hw_pattern" 2>/dev/null || echo $p > "$led/hw_pattern"
+}
 # The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
 # rang only once something else woke it): the RTC's wake alarm, 5 s
 # (author: 20 was too long, waking is quick) before the earliest ring_time Clocks keeps (dconf reads the user's
@@ -96,9 +113,11 @@ hibernate_ready() {
 }
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"
+    led_hibernating
     sync
     echo disk > /sys/power/state ||
         logger -t pro1x-sleep "hibernation failed"
+    led_awake
 }
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
