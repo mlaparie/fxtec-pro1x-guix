@@ -99,10 +99,15 @@ in the app by the author after these changes.
 *** WAIT [#A] Camera: photos from a raw stream, no mode switch (generation 59, 2026-11-17)
 The viewfinder is scaled from the photo's sensor mode beside a raw stream (libcamera 0024); the
 shutter keeps the newest raw frame, pro1x-develop makes the JPEG.  Rear 12 MP in the app: frame
-0.02 s after the shutter, saved at 1.2 s (3.4 s to the frame in the morning).  Not yet tried in
-light by the author; front only headless in the dark; Night and flash with it not run.
-*** TODO [#B] Camera: lens shading from the module EEPROM (rear: CCI bus 2, 0x50)
-8 KB, readable only while the camera is powered, 8 bytes per transfer (CCI).  0x00 header,
+0.02 s after the shutter, saved at 1.2 s (3.4 s to the frame in the morning).  Generations 60:
+the view froze after one frame and photos were green (0025 kept the 2 buffers of libcamerasrc's
+first, 48 MP validation); fixed in 61 (d3e884f): rear and front 16-19 fps, ceiling photo neutral.
+Not yet tried in light by the author; Night and flash with it not run.
+*** WAIT [#B] Camera: lens shading from the module EEPROM (rear: CCI bus 2, 0x50)
+Done in pro1x-develop and the app (2e4d76d), tested with the dump on a ceiling frame; kernel
+node (pro1x-camera-eeprom.patch) on CI run 44087402084 (branch ci-eeprom), then deploy.  The
+viewfinder (libcamera's shader) still has no shading.
+8 KB, answers with the camera off too (2026-11-17), 8 bytes per transfer (CCI).  0x00 header,
 0x10 AWB ratios, 0x21 lens shading 17x13 x R/Gr/Gb/B (16-bit BE, 1023 at the centre, corners
 211-287: about two stops of vignetting), 0x70f AF, 0x71f PDAF.  No room for QSC.  Plan: an at24
 node with the sensor's supplies (nvmem), then pro1x-develop (and later the shader) applies it.
@@ -127,9 +132,12 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
-*** WAIT [#B] Hibernation: first test with the author (generation 60, 2026-11-17)
-Swap file 8 GiB on (/swap subvolume), resume arguments in every boot entry (pro1x-boot-menu).
-Needs one reboot, then Hibernate from the power menu with the author ready at the boot menu.
+*** WAIT [#B] Hibernation: first test with the author (generation 61, 2026-11-17)
+Swap file 8 GiB on (/swap subvolume); offset from btrfs inspect-internal map-swapfile, checked
+against its physical start / 4096 (the author's guix-config#1).  Generation 61: resume only on
+the current system's line, a second line with noresume; U-Boot with a sixth slot built (4c044f6),
+to flash with scripts/flash.sh --boot-only.  Needs one reboot, then Hibernate from the power menu
+with the author ready at the boot menu.
 Unknown: whether arm64 hibernation restores this SoC's remoteprocs, GPU and display.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)

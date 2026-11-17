@@ -407,6 +407,22 @@
         "confidence": "inferred",
         "date": "2026-11-17",
         "source": "src/libcamera/software_isp/swstats_cpu.cpp SWSTATS_ACCUMULATE_LINE_STATS; device/libcamera/af/0023-*.patch; commit f5da17d"
+      },
+      {
+        "title": "A pipeline's buffer count chosen at validation can stick from an earlier, larger configuration",
+        "general": "libcamera's gstreamer element validates the camera's default configuration (the largest size) before its negotiated one, on the same configuration object. A pipeline handler that fills bufferCount only when it is 0 keeps the first value: a count lowered for big frames then applies to small ones. With a raw stream whose buffers the app's queue and appsink hold, two buffers stall both streams after one frame (no error).",
+        "instance": "Pro¹x, libcamera 0.7.2 simple pipeline with our patch 0025 (2 buffers over 24 MP): rear 1472x1104 + 4000x3000 raw got 2 buffers from the 8000x6000 default; view and raw 0 fps, white balance stuck at the first frame (green photos). Fix: remember the counts validate() chose and recompute them. After: 15-19 fps both cameras.",
+        "confidence": "confirmed",
+        "date": "2026-11-17",
+        "source": "d3e884f; libcamera debug log (Adjusting bufferCount from 0 to 2 at the 48 MP validation)"
+      },
+      {
+        "title": "The IMX582 module EEPROM's lens shading table is interleaved per grid point",
+        "general": "Qualcomm-style module OTP lens shading tables (17x13) store R, Gr, Gb, B for each point in turn, 16-bit, with the brightest point (the centre) at 1023; the gain is 1023/value. Reading them as four planes gives nonsense (corners above the centre).",
+        "instance": "Pro¹x rear module, EEPROM at 0x50 on CCI bus 2, table at 0x21 (884 values, big-endian): corners R 211-231, G 259-279, B 272-287. Applied after demosaic with bilinear interpolation over the whole array: corners brighter, a pink centre cast gone, no extra time (1.1 s for 12 MP). The EEPROM answered with the camera off.",
+        "confidence": "confirmed",
+        "date": "2026-11-17",
+        "source": "2e4d76d; dump read with i2ctransfer (kept out of git)"
       }
     ],
     "haptics": [
