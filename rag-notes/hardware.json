@@ -375,6 +375,38 @@
         "confidence": "confirmed that the option fixes it; mechanism inferred",
         "date": "2026-11-04",
         "source": "media-ctl and cam -l on the phone; moWerk kernel/sfos.fragment:70 and HANDOVER.md; device/kernel/pro1x-7.3.fragment"
+      },
+      {
+        "title": "libcamerasrc copies every frame whose row stride is not the tight width; GPU output rows are padded to 256 bytes",
+        "general": "libcamerasrc compares libcamera's stream stride with the stride GStreamer computes for the caps; when they differ and downstream does not accept video meta, it copies each frame with the CPU into a pool of its own. Reading GPU-written (uncached) dma-buf memory is slow: pick widths whose rows need no padding, or make downstream accept GstVideoMeta.",
+        "instance": "Pro¹x, libcamera 0.7.2 software ISP (GPU debayer): 48 MP at 7984 wide (rows 31936 bytes) was copied, 2.3 s per 190 MB frame (\"Downstream doesn't support video meta, need to copy frame\"); 7936 wide (rows of 31 KiB) is not, first frame 4.6 s after the switch instead of 8, then one every 0.6 s. 3968 (12 MP) was never copied.",
+        "confidence": "confirmed",
+        "date": "2026-11-17",
+        "source": "src/gstreamer/gstlibcamerasrc.cpp gst_libcamera_src_negotiate/gst_libcamera_create_video_pool; GST_DEBUG=libcamerasrc:5 on the phone; commit e2a9955"
+      },
+      {
+        "title": "The simple pipeline gives a raw stream beside the processed one, from the same sensor mode: photos without a mode switch",
+        "general": "With the software ISP the simple pipeline handler exposes two streams, processed and raw. Asking for a raw stream of the full sensor size makes libcamera pick that mode for both, the processed one scaled by the GPU debayer: the viewfinder runs from the photo's mode and the newest raw frame is the photo, developed outside libcamera with the frame's ColourGains and ColourCorrectionMatrix metadata. libcamerasrc needs caps names for the CSI-2 packed Bayer formats to offer such a pad.",
+        "instance": "Pro¹x IMX582: viewfinder 1472x1104 plus raw 4000x3000 rggb10p (stride 5000), both 17 fps in a dark room, 68% of one core; raw frame taken 0.02 s after the shutter, developed (Malvar-He-Cutler, 8 threads, JPEG q98) in about 1.1 s; colours match the viewfinder. Front S5K4H7: raw 3264x2448 grbg10p, stride 4080. Patch 0024 names bggr10p...rggb10p.",
+        "confidence": "confirmed",
+        "date": "2026-11-17",
+        "source": "device/camera/pro1x-develop.c, device/libcamera/af/0024-*.patch, commit e2a9955; headless tests and the app on the phone"
+      },
+      {
+        "title": "Rear camera module EEPROM: CCI bus 2 at 0x50, 8 KB, readable only while the sensor is powered, 8 bytes per transfer",
+        "general": "Qualcomm camera modules keep per-unit calibration in an EEPROM on the sensor's CCI bus, powered by the sensor's supplies. The CCI controller rejects long reads (16 bytes: EOPNOTSUPP), so read in small chunks, with the camera streaming or the supplies on.",
+        "instance": "Pro¹x IMX582 module: i2c-2 0x50 (0x51-0x57 absent), 16-bit addresses, wraps at 8 KB, 0x000-0xcbf used. 0x00 header (01 69 57 01 01 16 03 18), 0x10 AWB ratios, 0x21 lens shading 17x13 x 4 channels, 16-bit big-endian, 1023 at the centre and 211-287 in the corners (about two stops of vignetting), 0x70f AF calibration, 0x71f PDAF data. No QSC table (no room). The stock vendor sensor module file names an EEPROM driver and eepromSlaveAddress. The S5K4H7 (bus 3) not checked.",
+        "confidence": "confirmed",
+        "date": "2026-11-17",
+        "source": "i2ctransfer -y 2 w2@0x50 HI LO r8 while libcamera streamed; dump kept locally, not in git"
+      },
+      {
+        "title": "libcamera's soft AGC histogram is of raw values, before white balance: count clipping from the white point after the gains",
+        "general": "The software ISP's luminance histogram is computed from the raw Bayer samples. With large white balance gains (red about 4 under tungsten) the output clips long before the raw top bin, so a highlight limit on the top bin alone never triggers.",
+        "instance": "Pro¹x, patch 0023 (second version): a white area clips at raw luminance 0.299/gR + 0.587 + 0.114/gB of the range (0.76 with gains 4 and 1.16); samples from that bin up count. Compiled, deployed in generation 58; not yet seen on a bright scene.",
+        "confidence": "inferred",
+        "date": "2026-11-17",
+        "source": "src/libcamera/software_isp/swstats_cpu.cpp SWSTATS_ACCUMULATE_LINE_STATS; device/libcamera/af/0023-*.patch; commit f5da17d"
       }
     ],
     "haptics": [

@@ -96,15 +96,21 @@ with a drain froze the phone twice (reproduced headless); two headless recording
 cleanly.  Focus held in auto mode, tap focuses and meters there (libcamera 0020, 0021), manual
 focus slider, photo shapes 16:9 / 4:3 / 1:1, JPEG quality a config.scm field (98).  Not yet run
 in the app by the author after these changes.
-*** TODO [#B] Camera: fast 4:3 viewfinder (kernel IMX582 1984x1488 mode), then 4:3 at 12 MP
-Kernel patch pro1x-imx582-4x3 (not built or run yet).  After the reboot: check that libcamera
-picks it for a 4:3 viewfinder (960x720) and its frame rate, then let the 4:3 shape use the whole
-12 MP frame (VIEW_REGION per shape) and add a size selector with the modes.
-*** TODO [#C] Camera: 48 MP mode (8000x6000, the sensor's remosaic)
-Register table found in the stock vendor file com.qti.sensormodule.lce_imx582.bin (super,
-vendor_a): 32 registers differ from 12 MP, binning off, 0x3620/0x3621 = 1 (remosaic, inferred),
-about 9 fps (estimated).  Needs a driver mode with its own link frequency, then a test of
-whether the output is ordinary Bayer, and of libcamera's software ISP on 48 MP frames.
+*** WAIT [#A] Camera: photos from a raw stream, no mode switch (generation 59, 2026-11-17)
+The viewfinder is scaled from the photo's sensor mode beside a raw stream (libcamera 0024); the
+shutter keeps the newest raw frame, pro1x-develop makes the JPEG.  Rear 12 MP in the app: frame
+0.02 s after the shutter, saved at 1.2 s (3.4 s to the frame in the morning).  Not yet tried in
+light by the author; front only headless in the dark; Night and flash with it not run.
+*** TODO [#B] Camera: lens shading from the module EEPROM (rear: CCI bus 2, 0x50)
+8 KB, readable only while the camera is powered, 8 bytes per transfer (CCI).  0x00 header,
+0x10 AWB ratios, 0x21 lens shading 17x13 x R/Gr/Gb/B (16-bit BE, 1023 at the centre, corners
+211-287: about two stops of vignetting), 0x70f AF, 0x71f PDAF.  No room for QSC.  Plan: an at24
+node with the sensor's supplies (nvmem), then pro1x-develop (and later the shader) applies it.
+Dump kept out of git (per unit).
+*** TODO [#C] Camera: 48 MP slow and blotchy
+Works since generation 59 plus 9adf958 (7936x5952, two buffers, any shape): frame 12.6 s after
+the switch in the app, 4.6 s headless; 0.73 GB in use.  Colour blotches in low light (gain 16),
+cause unknown (not QSC from the EEPROM).
 *** TODO [#C] Camera: white balance presets
 libcamera's software AWB has no manual mode.  Inverting its generic colour temperature estimate
 gives gains that are not monotonic with temperature: presets need the vendor's AWB reference
@@ -121,6 +127,10 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
+*** WAIT [#B] Hibernation: first test with the author (generation 60, 2026-11-17)
+Swap file 8 GiB on (/swap subvolume), resume arguments in every boot entry (pro1x-boot-menu).
+Needs one reboot, then Hibernate from the power menu with the author ready at the boot menu.
+Unknown: whether arm64 hibernation restores this SoC's remoteprocs, GPU and display.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
