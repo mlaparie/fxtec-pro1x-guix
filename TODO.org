@@ -112,6 +112,15 @@ viewfinder (libcamera's shader) still has no shading.
 211-287: about two stops of vignetting), 0x70f AF, 0x71f PDAF.  No room for QSC.  Plan: an at24
 node with the sensor's supplies (nvmem), then pro1x-develop (and later the shader) applies it.
 Dump kept out of git (per unit).
+*** TODO [#B] Camera: stacked night photos (author, 2026-11-17)
+A burst of ~8 raw frames at a shorter exposure, aligned (whole-frame shift, then tiles as
+HDR+) and merged with a robust average in pro1x-develop: about 1.5 stops less noise without
+Night's blur.  Measure the CPU time per photo first.
+*** WAIT [#B] Camera: generation 67 to try (2026-11-17)
+libcamera 0029 (controls set while streaming were lost: MF, tap windows, EV), 0028 (AF stats
+every 2nd frame in photo modes), 0030 (EV after highlights); menus, side tags, sensor-apps
+rotation, video turn, Last photo, front landscapes, lens speed cap.  Author to check: tap AF
+and AF in the 48 MP shapes, EV live, MF without clacking, front rotation, Last photo.
 *** TODO [#C] Camera: 48 MP slow and blotchy
 Works since generation 59 plus 9adf958 (7936x5952, two buffers, any shape): frame 12.6 s after
 the switch in the app, 4.6 s headless; 0.73 GB in use.  Colour blotches in low light (gain 16),
