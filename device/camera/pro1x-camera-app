@@ -186,6 +186,10 @@ VIDEO_MIN_QP = 24
 # 100 dw9800 steps each); 0 is infinity, 10 is 10 cm.
 LENS_MAX = 10.0
 LENS_STEP = 0.1
+# The lens moves at most LENS_MAX_STEP dioptres (100 voice coil steps each)
+# every LENS_TICK_MS while the slider moves: the whole range in about 1.5 s.
+LENS_MAX_STEP = 0.25
+LENS_TICK_MS = 40
 
 
 def jpeg_quality():
@@ -319,6 +323,8 @@ class Camera(Gtk.Application):
         self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
         self.lens = 1.0                 # dioptres
+        self.lens_at = 1.0              # where the lens was last sent
+        self.lens_step = None           # the timer moving it there
         self.settings = self.load_settings()
         self.wide = False               # the rear camera has its 48 MP mode
         self.flash = "off"
@@ -477,7 +483,7 @@ class Camera(Gtk.Application):
                                 valign=Gtk.Align.CENTER)
         self.lens_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.VERTICAL, 0.0, LENS_MAX, LENS_STEP)
-        self.lens_scale.set_value_pos(Gtk.PositionType.LEFT)
+        self.lens_scale.set_value_pos(Gtk.PositionType.RIGHT)
         self.lens_scale.connect("format-value", lambda _s, v: lens_text(v))
         self.lens_scale.set_value(self.lens)
         self.lens_scale.connect("value-changed", self.on_lens)
@@ -498,7 +504,7 @@ class Camera(Gtk.Application):
         self.ev_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.VERTICAL, -2.0, 2.0, 1 / 3)
         self.ev_scale.set_inverted(True)
-        self.ev_scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.ev_scale.set_value_pos(Gtk.PositionType.LEFT)
         self.ev_scale.connect("format-value", lambda _s, v: ev_text(v))
         self.ev_scale.add_mark(0.0, Gtk.PositionType.LEFT, None)
         self.ev_scale.set_value(self.ev)
@@ -510,6 +516,10 @@ class Camera(Gtk.Application):
         self.ev_row.pack_start(self.ev_scale, True, True, 0)
         self.ev_row.pack_start(minus, False, False, 0)
         self.overlay.add_overlay(self.ev_row)
+        # The menus above the sliders: the MF button lay under the focus
+        # slider and could not be pressed (author, 2026-11-17).
+        for menu in (self.panel, self.zoom_panel):
+            self.overlay.reorder_overlay(menu, -1)
         self.show_zoom()
         self.show_outputs()
 
@@ -866,6 +876,7 @@ class Camera(Gtk.Application):
         if self.manual:
             self.src.set_property("af-mode", 0)
             self.src.set_property("lens-position", self.lens)
+            self.lens_at = self.lens
         else:
             self.src.set_property("af-mode", 1)
 
@@ -1209,9 +1220,23 @@ class Camera(Gtk.Application):
             self.focus_controls()
 
     def on_lens(self, scale):
+        """The lens follows the slider at a capped speed: jumps of the
+        voice coil clack, and could wear it (author, 2026-11-17)."""
         self.lens = scale.get_value()
-        if self.manual and self.pipeline and not self.busy:
-            self.src.set_property("lens-position", self.lens)
+        if self.lens_step is None:
+            self.lens_step = GLib.timeout_add(LENS_TICK_MS, self.step_lens)
+
+    def step_lens(self):
+        if not (self.manual and self.pipeline) or self.busy:
+            self.lens_step = None
+            return False
+        delta = self.lens - self.lens_at
+        if abs(delta) < 1e-3:
+            self.lens_step = None
+            return False
+        self.lens_at += max(-LENS_MAX_STEP, min(LENS_MAX_STEP, delta))
+        self.src.set_property("lens-position", self.lens_at)
+        return True
 
     def on_win_touch(self, win, event):
         """Two fingers: the zoom follows their distance from where they
