@@ -1,0 +1,65 @@
+#!/bin/sh
+# pro1x-waydroid-share start|stop USER VIEW [SOURCE TARGET]... — folders
+# shared between the phone and Waydroid (waydroid-service-type in
+# config.scm: storage-view, shared-folders).  As root, at boot.
+#
+# VIEW (/mnt/waydroid, or "" for none): Android's internal storage seen
+# from the phone, every file owned by USER (bindfs --mirror, as in
+# Waydroid's documentation).
+# SOURCE TARGET: a folder of the phone (relative: in USER's home) shown in
+# Android's storage as TARGET (Documents, Download...).  Through bindfs,
+# USER's files are Android's media user (1023) there and the files Android
+# writes are USER's on the phone, so both sides can write.
+#
+# Android's storage, ~USER/.local/share/waydroid/data/media/0, exists once
+# Waydroid is set up and Android started once; until then nothing is
+# mounted (the service is started again by hand, or at the next boot).
+#
+# State: written 2026-11-17, not yet run on the phone.
+
+set -u
+action=$1 user=$2 view=$3
+shift 3
+home=$(getent passwd "$user" | cut -d: -f6)
+media=$home/.local/share/waydroid/data/media/0
+uid=$(id -u "$user") gid=$(id -g "$user")
+android=1023                            # media_rw, Android's storage owner
+
+mounted() { grep -q " $1 fuse" /proc/mounts; }
+
+case "$action" in
+    start)
+        if [ ! -d "$media" ]; then
+            echo "no Waydroid storage yet: $media"
+            exit 0
+        fi
+        while [ $# -ge 2 ]; do
+            src=$1 target=$media/$2
+            shift 2
+            case "$src" in /*) ;; *) src=$home/$src ;; esac
+            [ -d "$src" ] || continue
+            mounted "$target" && continue
+            if [ ! -d "$target" ]; then
+                mkdir -p "$target" &&
+                    chown "$android:$android" "$target" && chmod 2770 "$target"
+            fi
+            bindfs -o allow_other,nonempty \
+                   --map="$uid/$android:@$gid/@$android" "$src" "$target" ||
+                echo "could not share $src as $target"
+        done
+        if [ -n "$view" ] && ! mounted "$view"; then
+            mkdir -p "$view"
+            bindfs -o allow_other --mirror="$user" "$media" "$view" ||
+                echo "could not show $media at $view"
+        fi
+        exit 0 ;;
+    stop)
+        # The view first: it sits on top of the shares.
+        [ -n "$view" ] && mounted "$view" && umount "$view"
+        grep " $media/[^ ]* fuse" /proc/mounts | cut -d' ' -f2 |
+            while read -r m; do umount "$m"; done
+        exit 0 ;;
+    *)
+        echo "usage: pro1x-waydroid-share start|stop USER VIEW [SOURCE TARGET]..." >&2
+        exit 2 ;;
+esac

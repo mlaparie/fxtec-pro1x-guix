@@ -107,6 +107,9 @@ Waydroid: `waydroid-configuration` in `(fxtec-pro1x services waydroid)`.
 | field | default | |
 |---|---|---|
 | `autostart?` | `#f` | start Android at login (Sway and Phosh), once its image is downloaded; with "Sleep when unused" on in quick actions it freezes after its screen timeout while none of its apps is shown |
+| `user` | `"user"` | whose Waydroid it is, for the shared folders |
+| `storage-view` | `"/mnt/waydroid"` | Android's internal storage seen from the phone, every file owned by `user` (bindfs); `#f` not shown |
+| `shared-folders` | Documents, Downloads, Music, Pictures, Videos, `/tmp` | the phone's folders shown in Android's storage as Documents, Download, Music, Pictures, Movies and tmp: `(SOURCE . TARGET)` pairs, SOURCE in the user's home or absolute; both sides can write (owners mapped by bindfs).  Mounted at boot once Android has been set up and started once |
 
 `(delete waydroid-service-type)` in `modify-services` leaves it out;
 a downloaded Android image stays in `/var/lib/waydroid` until removed by

@@ -238,7 +238,15 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;    (waydroid-service-type
   ;;     config => (waydroid-configuration
   ;;                (inherit config)
-  ;;                (autostart? #f)))            ; #t: Android starts at login
+  ;;                (autostart? #f)              ; #t: Android starts at login
+  ;;                Android's storage seen from the phone, owned by user (#f: not shown),
+  ;;                and the phone's folders shown in Android, both sides writing
+  ;;                ((SOURCE . TARGET); SOURCE in the user's home or absolute).
+  ;;                (user \"user\")
+  ;;                (storage-view \"/mnt/waydroid\")
+  ;;                (shared-folders '((\"Documents\" . \"Documents\") (\"Downloads\" . \"Download\")
+  ;;                                  (\"Music\" . \"Music\") (\"Pictures\" . \"Pictures\")
+  ;;                                  (\"Videos\" . \"Movies\") (\"/tmp\" . \"tmp\")))))
   ;;    Or (delete waydroid-service-type): no Waydroid.
   ;;    (pro1x-modem-service-type
   ;;     config => (pro1x-modem-configuration
