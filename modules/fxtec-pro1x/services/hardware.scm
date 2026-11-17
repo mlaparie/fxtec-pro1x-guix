@@ -208,7 +208,7 @@
   ;; a single press elsewhere left-clicks where the pointer is (right with
   ;; Fn), held the touchscreen is a touchpad (with Super: a window drag).
   (camera-triple-press pro1x-hardware-camera-triple-press
-                       (default "pro1x-camera-app"))
+                       (default "pro1x-camera-open"))
   ;; Notification LED colours, for feedbackd: a list of (EVENT COLOUR) or
   ;; (EVENT COLOUR PERIOD-MS); COLOUR is "red", "green", "blue", "white" or
   ;; "#RRGGBB".  Events not listed keep feedbackd's defaults.  Default

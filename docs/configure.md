@@ -83,7 +83,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `sensor-apps` | `'("org.pro1x.Camera")` | apps that turn with the phone while focused (the accelerometer with the keyboard closed, landscape with it out), whatever the rotation mode set in quick actions |
 | hardware `fullscreen-apps` | Calls, Camera, Snapshot | app_ids made fullscreen when they open (Sway) |
 | hardware `lock-screen-apps` | Calls, Camera | app_ids allowed to open over the lock screen: an incoming call, the camera button's triple press, `shake-action`; the session unlocks for them and locks again when they lose the focus |
-| hardware `camera-triple-press` | `"pro1x-camera-app"` | shell command for a triple press of the camera button (default: the camera; not while the proximity sensor reads near); a press in the camera app (or Snapshot) takes a picture, a single press elsewhere is a left click where the pointer is (a right click with Fn held); held, the touchscreen is a touchpad moving the pointer, and with Super held too a window drag |
+| hardware `camera-triple-press` | `"pro1x-camera-open"` | shell command for a triple press of the camera button (default: the camera; not while the proximity sensor reads near); a press in the camera app (or Snapshot) takes a picture, a single press elsewhere is a left click where the pointer is (a right click with Fn held); held, the touchscreen is a touchpad moving the pointer, and with Super held too a window drag |
 | hardware `display-top-gap`, `display-bottom-gap` | `0` | rows blacked out, touch adjusted |
 | hardware `serial-enable?` | `#f` | USB serial rescue console |
 
@@ -118,6 +118,7 @@ Camera: `pro1x-camera-configuration` in `(fxtec-pro1x services camera)`.
 | field | default | |
 |---|---|---|
 | `jpeg-quality` | `98` | the camera app's JPEG quality, 1 to 100 |
+| `standby?` | `#f` | keep the camera app in the background after login and once closed, for a quicker start (1.0 s instead of 2.8 s); meanwhile it has no window, the camera is closed and no sensor or timer runs (no CPU, about 60 MB of memory) |
 
 Root SSH: deploys keep the PC's key in root's keys whatever this file
 says; `#:root-ssh-keys` matters only for root SSH after an on-phone

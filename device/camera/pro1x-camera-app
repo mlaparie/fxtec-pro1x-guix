@@ -378,8 +378,66 @@ class Camera(Gtk.Application):
         return v.unpack() if v else "undefined"
 
     def do_activate(self):
-        Gst.init(None)
+        """Each launch: the first builds the window; with
+        PRO1X_CAMERA_STANDBY=1 (at login) it then stays hidden, the camera
+        closed.  A later launch reaches this process and shows it."""
+        if getattr(self, "win", None) is None:
+            self.build()
+            if os.environ.pop("PRO1X_CAMERA_STANDBY", "") == "1":
+                self.standing = True
+                self.hold()             # the process stays without a window
+                print("standby: ready", flush=True)
+                return
+        self.wake()
+
+    def wake(self):
+        """Shown, the camera open, the accelerometer and the tags' timer
+        running."""
+        if self.awake:
+            self.win.present()
+            return
+        self.awake = True
         self.claim_accelerometer()
+        self.win.fullscreen()
+        self.win.show_all()
+        self.b_last.set_visible(bool(self.last_photo))
+        self.lens_row.set_visible(self.manual)
+        self.ev_row.hide()
+        self.layout()
+        self.marks_timer = GLib.timeout_add(300, self.update_marks)
+        if not self.cams:
+            self.cams = cameras()
+        if not self.cams:
+            self.say("No camera found")
+            return
+        self.start()
+
+    def standby(self):
+        """Closed to the background: no window, no camera, no sensor, no
+        timer, so nothing runs until the next launch (author, 2026-11-17:
+        like foot's server, for a quick start)."""
+        self.awake = False
+        self.win.hide()
+        if self.marks_timer:
+            GLib.source_remove(self.marks_timer)
+            self.marks_timer = None
+        self.stop()
+        self.led(False)
+        if self.accel:
+            try:
+                self.accel.call_sync("ReleaseAccelerometer", None,
+                                     Gio.DBusCallFlags.NONE, 2000, None)
+            except GLib.Error:
+                pass
+            self.accel = None
+        print("standby: closed", flush=True)
+
+    def build(self):
+        Gst.init(None)
+        self.awake = False
+        self.standing = False           # closing goes to standby
+        self.marks_timer = None
+        self.cams = []
         style = Gtk.CssProvider()
         style.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(
@@ -460,7 +518,6 @@ class Camera(Gtk.Application):
         self.side.pack_start(self.marks, False, False, 8)
         self.overlay.add_overlay(self.side)
         self.marked = None
-        GLib.timeout_add(300, self.update_marks)
         self.main = Gtk.Box(spacing=28)
         self.b_switch = self.button("⇆", self.on_switch)
         self.b_shutter = self.button("", self.on_shutter)
@@ -560,21 +617,12 @@ class Camera(Gtk.Application):
         # and touches logged on the window, none on the view, an overlay
         # layer in between); buttons take theirs before it.
         self.win.connect("button-press-event", self.on_win_press)
-        self.win.fullscreen()
         self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
-        self.win.show_all()
-        self.b_last.hide()
-        self.lens_row.hide()
-        self.ev_row.hide()
-        self.layout()
+        # The window manager's close (Super+Backspace) is a close too.
+        self.win.connect("delete-event", lambda *_: (self.quit_now(), True)[1])
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                              self.on_signal)
-        self.cams = cameras()
-        if not self.cams:
-            self.say("No camera found")
-            return
-        self.start()
 
     def button(self, label, handler):
         b = Gtk.Button(label=label)
@@ -823,12 +871,16 @@ class Camera(Gtk.Application):
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             threading.Timer(5, os._exit, (0,)).start()
             return
-        threading.Timer(1.5, os._exit, (0,)).start()
-        self.win.hide()
         if self.rec:
             # The video's end first, so its file is whole.
             self.close_branch()
             self.rec_closed.wait(1)
+            self.recorded()
+        if self.standing:
+            self.standby()
+            return
+        threading.Timer(1.5, os._exit, (0,)).start()
+        self.win.hide()
         self.stop()
         self.led(False)
         os._exit(0)
@@ -1446,7 +1498,8 @@ class Camera(Gtk.Application):
 
     # ── photos ─────────────────────────────────────────────────────────
     def on_signal(self):
-        self.on_shutter()
+        if self.awake:
+            self.on_shutter()
         return True
 
     def on_shutter(self, *_):

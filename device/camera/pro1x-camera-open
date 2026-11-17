@@ -1,0 +1,26 @@
+#!/bin/sh
+# pro1x-camera-open [--standby] — open the camera app quickly
+#
+#   pro1x-camera-open            show the camera: wake the instance waiting
+#                                in standby, else start the app
+#   pro1x-camera-open --standby  at login: start it hidden, if camera-standby?
+#                                is #t in config.scm (/etc/pro1x/camera.conf)
+#
+# In standby the app has no window, the camera closed, no accelerometer
+# claim and no timer: it used no CPU over 20 s on the phone (58 MB of
+# memory).  Woken by a D-Bus call, not by a second Python process, the
+# camera streamed after 1.0 s, against 2.8 s for a cold start (2026-11-17).
+# Closing it puts it back in standby; closing it over the lock screen ends
+# it, as before.
+
+CAMERA_STANDBY=no
+[ -r /etc/pro1x/camera.conf ] && . /etc/pro1x/camera.conf
+
+if [ "${1:-}" = --standby ]; then
+    [ "$CAMERA_STANDBY" = yes ] || exit 0
+    PRO1X_CAMERA_STANDBY=1 exec pro1x-camera-app
+fi
+
+gdbus call --session --dest org.pro1x.Camera --object-path /org/pro1x/Camera \
+      --method org.freedesktop.Application.Activate '{}' >/dev/null 2>&1 ||
+    exec pro1x-camera-app

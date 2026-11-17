@@ -165,7 +165,7 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (shake-torch? #t)
   ;;                (shake-action 'torch)
   ;;                The camera button's triple press: a shell command.
-  ;;                (camera-triple-press \"pro1x-camera-app\")
+  ;;                (camera-triple-press \"pro1x-camera-open\")
   ;;                Apps, by Wayland app_id (swaymsg -t get_tree): portrait or landscape while
   ;;                focused, fullscreen when opened, allowed over the lock screen.
   ;;                (portrait-apps '(\"org.gnome.Calls\" \"org.gnome.Snapshot\"))
@@ -262,7 +262,10 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;    (pro1x-camera-service-type          ; (fxtec-pro1x services camera)
   ;;     config => (pro1x-camera-configuration
   ;;                (inherit config)
-  ;;                (jpeg-quality 98)))          ; the camera app's photos, 1-100
+  ;;                (jpeg-quality 98)            ; the camera app's photos, 1-100
+  ;;                Kept in the background after login and once closed, for a quick start;
+  ;;                meanwhile the camera is closed and no sensor or timer runs.
+  ;;                (standby? #f)))
   ;;    (pro1x-snapshots-service-type       ; (fxtec-pro1x services snapshots)
   ;;     config => (pro1x-snapshots-configuration
   ;;                (inherit config)

@@ -426,6 +426,7 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
     (arguments
      (list
       #:install-plan ''(("pro1x-camera-app" "bin/")
+                        ("pro1x-camera-open" "bin/")
                         ("pro1x-develop" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
@@ -443,6 +444,15 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
                                             (string-append (cdr input) sub))
                                           inputs)))))
                 (chmod bin #o755)
+                ;; The launcher: the app and gdbus by their store paths.
+                (let ((open (string-append #$output "/bin/pro1x-camera-open")))
+                  (chmod open #o755)
+                  (substitute* open
+                    (("^#!/bin/sh")
+                     (string-append "#!" (search-input-file inputs "/bin/sh")))
+                    (("exec pro1x-camera-app") (string-append "exec " bin))
+                    (("^gdbus ")
+                     (string-append (search-input-file inputs "/bin/gdbus") " "))))
                 (substitute* bin
                   (("^#!/usr/bin/env python3")
                    (string-append "#!" (search-input-file inputs "/bin/python3"))))
@@ -469,7 +479,7 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
 Type=Application
 Name=Camera
 Comment=Photos and videos with tap to focus, zoom, timer and flash (libcamera)
-Exec=~a/bin/pro1x-camera-app
+Exec=~a/bin/pro1x-camera-open
 Icon=camera-photo
 Categories=AudioVideo;Video;
 StartupNotify=false
@@ -480,7 +490,9 @@ StartupNotify=false
      ;; context (without it: "Couldn't find foreign struct converter for
      ;; 'cairo.Context'", no square; 2026-11-02).
      ;; gst-plugins-bad: h264parse, for videos.
+     ;; glib:bin: gdbus, for pro1x-camera-open.
      (list bash-minimal python python-pygobject python-pycairo
+           (list glib "bin")
            gobject-introspection gtk+
            gdk-pixbuf pango libjpeg-turbo
            gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad

@@ -21,7 +21,12 @@
   pro1x-camera-configuration make-pro1x-camera-configuration
   pro1x-camera-configuration?
   ;; The camera app's JPEG quality, 1-100 (/etc/pro1x/camera.conf).
-  (jpeg-quality pro1x-camera-jpeg-quality (default 98)))
+  (jpeg-quality pro1x-camera-jpeg-quality (default 98))
+  ;; Keep the camera app in the background after login and after it is
+  ;; closed, for a quicker start (1.0 s instead of 2.8).  Meanwhile it has
+  ;; no window, the camera is closed and no sensor is held: it uses no
+  ;; CPU, only memory (about 60 MB).  Off by default.
+  (standby? pro1x-camera-standby? (default #f)))
 
 ;;; /etc/xdg/user-dirs.defaults — system-wide FreeDesktop default XDG dirs.
 ;;; xdg-user-dirs-update reads this on first login to initialise ~/.config/user-dirs.dirs.
@@ -31,8 +36,9 @@
   (list
    `("pro1x/camera.conf"
      ,(plain-file "camera.conf"
-                  (format #f "JPEG_QUALITY=~a~%"
-                          (pro1x-camera-jpeg-quality config))))
+                  (format #f "JPEG_QUALITY=~a~%CAMERA_STANDBY=~a~%"
+                          (pro1x-camera-jpeg-quality config)
+                          (if (pro1x-camera-standby? config) "yes" "no"))))
    `("xdg/user-dirs.defaults"
      ,(plain-file "user-dirs.defaults"
                   "DESKTOP=Desktop\n\
