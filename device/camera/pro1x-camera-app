@@ -453,6 +453,25 @@ class Camera(Gtk.Application):
             return
         self.start()
 
+    def on_active(self, win, _param):
+        if self.inactive_timer:
+            GLib.source_remove(self.inactive_timer)
+            self.inactive_timer = None
+        if win.is_active():
+            if self.awake and not self.pipeline and self.cams:
+                self.start()
+            return
+        self.inactive_timer = GLib.timeout_add_seconds(2, self.on_inactive)
+
+    def on_inactive(self):
+        self.inactive_timer = None
+        if self.awake and not self.win.is_active() and self.pipeline \
+           and not (self.recording or self.bulb or self.busy):
+            print("camera: closed while the window is inactive", flush=True)
+            self.stop()
+            self.led(False)
+        return False
+
     def standby(self):
         """Closed to the background: no window, no camera, no sensor, no
         timer, so nothing runs until the next launch (author, 2026-11-17:
@@ -667,6 +686,10 @@ class Camera(Gtk.Application):
         self.win.connect("destroy", lambda *_: (self.stop(), self.led(False)))
         # The window manager's close (Super+Backspace) is a close too.
         self.win.connect("delete-event", lambda *_: (self.quit_now(), True)[1])
+        # Behind another window or workspace, the camera closes after 2 s
+        # and opens again on return: it kept streaming hidden (2026-11-17).
+        self.win.connect("notify::is-active", self.on_active)
+        self.inactive_timer = None
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                              self.on_signal)
