@@ -108,8 +108,6 @@ DEVELOP = os.path.join(os.path.dirname(os.path.realpath(__file__)),
 # shading table corrects the photos' vignetting, about two stops in the
 # corners.  The front module has none.
 SHADING = "/sys/bus/i2c/devices/2-0050/eeprom"
-# The shutter blink's length: the view dims to 40% and back.
-BLINK_SECONDS = 0.15
 # The rear 16:9 viewfinder's part of a photo's frame: the fast 1080p mode
 # reads the full width but only 2160 of the 12 MP mode's 3000 rows
 # (moWerk's 1080p patch: 4x4 binned, cropped), and 1280x720 takes its
@@ -135,13 +133,15 @@ DEFAULTS = {"photo": {"shape": "4:3", "size": "binned"},
 # vertical-flip and clockwise, so horizontal-flip (a mirror, as a selfie
 # view) and counterclockwise.  180 and 270 are those turned half way.
 # The front's landscapes were mirrors while its portrait was a plain turn,
-# so going from portrait to landscape showed it upside down (author,
-# 2026-11-17): plain turns throughout, as for the rear.
+# and then turned the rear's way, upside down both times (author,
+# 2026-11-17): its frames are mirrored, so a turn of the display turns
+# them the other way round: from counterclockwise in portrait, none at 90
+# and a half turn at 270.
 VIEW_TURN = {
     "normal": ("clockwise", "counterclockwise"),
-    "90": ("none", "rotate-180"),
+    "90": ("none", "none"),
     "180": ("counterclockwise", "clockwise"),
-    "270": ("rotate-180", "none"),
+    "270": ("rotate-180", "rotate-180"),
 }
 # A tap at (x, y) in the view, back to the frame's (u, v), per method.
 TAP_BACK = {
@@ -168,6 +168,12 @@ FLASH_MODES = ["off", "on", "auto", "torch"]
 AUTO_FLASH_EXPOSURE = 50000                    # µs
 AUTO_FLASH_GAIN = 4.0
 TIMERS = [0, 3, 10]                            # seconds before the shot
+# Night: off; long, four times the viewfinder's exposure (at most 0.5 s).
+NIGHT_MODES = ["off", "long"]
+# The shutter blink, in drawn frames (about 0.15 s): counted from the first
+# one drawn, so a busy moment after the shot cannot skip it (the front
+# camera, the end of a countdown; author, 2026-11-17).
+BLINK_FRAMES = 9
 # Digital zoom: a centred crop of the frames, the same in the viewfinder,
 # the photo and the video.  4x leaves a 992x744 photo.
 ZOOMS = [1.0, 2.0, 4.0]
@@ -193,6 +199,15 @@ LENS_STEP = 0.1
 # every LENS_TICK_MS while the slider moves: the whole range in about 1.5 s.
 LENS_MAX_STEP = 0.25
 LENS_TICK_MS = 40
+
+
+def camera_standby():
+    """camera standby? in config.scm (/etc/pro1x/camera.conf)."""
+    try:
+        with open("/etc/pro1x/camera.conf") as f:
+            return any(line.strip() == "CAMERA_STANDBY=yes" for line in f)
+    except OSError:
+        return False
 
 
 def jpeg_quality():
@@ -226,10 +241,13 @@ button.on { background: #d79921; color: #1d2021; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
-button.mark { background: rgba(0,0,0,0.2); color: #fbf1c7; border-radius: 0;
+button.mark { background: rgba(128,128,128,0.35); color: #ffffff; border-radius: 0;
               font-family: monospace; font-size: 12px; min-height: 24px;
               padding: 1px 6px; }
-button.mark.on { background: rgba(215,153,33,0.75); color: #1d2021; }
+button.mark.on { background: #d79921; color: #000000; }
+scrolledwindow.settings { background: rgba(0,0,0,0.55); }
+label.head { color: #ffffff; font-family: monospace; font-size: 12px;
+             font-weight: bold; }
 popover.panel { background: rgba(0,0,0,0.7); border: none; }
 grid.panel button { min-height: 44px; }
 scale { color: #ebdbb2; font-size: 15px; }
@@ -324,7 +342,7 @@ class Camera(Gtk.Application):
         self.pipeline = None
         self.iso = 0
         self.ev = 0.0                   # EV compensation, stops
-        self.night = False
+        self.night = "off"
         self.wb_locked = False          # white balance kept as it is
         self.manual = False             # manual focus, at self.lens
         self.lens = 1.0                 # dioptres
@@ -403,8 +421,10 @@ class Camera(Gtk.Application):
         self.b_last.set_visible(bool(self.last_photo))
         self.lens_row.set_visible(self.manual)
         self.ev_row.hide()
+        self.settings_view.hide()
         self.layout()
         self.marks_timer = GLib.timeout_add(300, self.update_marks)
+        self.level_sensor(self.horizon_on)
         if not self.cams:
             self.cams = cameras()
         if not self.cams:
@@ -423,6 +443,7 @@ class Camera(Gtk.Application):
             self.marks_timer = None
         self.stop()
         self.led(False)
+        self.level_sensor(False)
         if self.accel:
             try:
                 self.accel.call_sync("ReleaseAccelerometer", None,
@@ -435,7 +456,10 @@ class Camera(Gtk.Application):
     def build(self):
         Gst.init(None)
         self.awake = False
-        self.standing = False           # closing goes to standby
+        # Closing goes to standby when camera standby is on in config.scm,
+        # however this instance was started (author: closed from Sway, it
+        # ended).
+        self.standing = camera_standby()
         self.marks_timer = None
         self.cams = []
         style = Gtk.CssProvider()
@@ -469,51 +493,46 @@ class Camera(Gtk.Application):
         self.blink = None               # when the shutter blink started
 
         # The controls in one column at the right edge in landscape, for
-        # the right hand, or in rows at the bottom in portrait (layout());
-        # everything else in a menu over the view, so the view stays clear
-        # (author, 2026-11-17).  Yellow shows a setting that is on.
-        self.b_flash = self.button("FLASH OFF", lambda *_: self.flash_menu.popup())
+        # the right hand, or in rows at the bottom in portrait (layout()):
+        # AF/MF and the zoom above the shutter.  On the other side, tags:
+        # FLASH, NIGHT, EV, ISO and WB always, each with its own menu or
+        # slider, then one for each other setting away from its default.
+        # ☰ (top left) shows every setting over the view.  Tags are white
+        # on grey, black on yellow when on (author, 2026-11-17).
+        self.b_flash = self.tag("FLASH OFF", lambda *_: self.flash_menu.popup())
+        self.b_night = self.tag("NIGHT", lambda *_: self.night_menu.popup())
+        self.b_ev = self.tag("EV 0", self.on_ev)
+        self.b_iso = self.tag("ISO AUTO", lambda *_: self.iso_menu.popup())
+        self.b_wb = self.tag("WB AUTO", self.on_wb)
         self.b_timer = self.button("Timer off", self.on_timer)
-        self.b_iso = self.button("ISO auto", self.on_iso)
-        self.b_ev = self.button("EV 0", self.on_ev)
-        self.b_night = self.button("NIGHT", self.on_night)
-        for b in (self.b_flash, self.b_ev, self.b_night):
-            b.get_style_context().add_class("mark")
         self.b_focus = self.button("AF", self.on_focus_mode)
-        self.b_wb = self.button("WB auto", self.on_wb)
         # What is saved: the shape and the resolution, for photos or videos.
         self.b_shape = self.button("", self.on_shape)
         self.b_res = self.button("", self.on_res)
         # Each menu a column next to its button (author, 2026-11-17).
-        self.b_menu = self.button("☰", lambda *_: self.panel.popup())
-        self.panel = self.menu_for(self.b_menu, (
-            self.b_timer, self.b_iso, self.b_wb, self.b_shape, self.b_res,
-            self.b_focus))
-        # The zoom presets, in a menu of their own; the button shows the zoom.
         self.b_zoom = self.button("1×", lambda *_: self.zoom_panel.popup())
         self.b_zooms = []
         for z in ZOOMS:
             b = self.button("%g×" % z, lambda _b, z=z: self.pick_zoom(z))
             self.b_zooms.append((z, b))
         self.zoom_panel = self.menu_for(self.b_zoom, [b for _, b in self.b_zooms])
-        # The flash modes, next to the flash tag.
-        self.b_flashes = [self.button(m.upper(), lambda _b, m=m: self.set_flash(m))
+        self.b_flashes = [self.tag(m.upper(), lambda _b, m=m: self.set_flash(m))
                           for m in FLASH_MODES]
-        for b in self.b_flashes:
-            b.get_style_context().add_class("mark")
         self.flash_menu = self.menu_for(self.b_flash, self.b_flashes)
+        self.b_nights = [self.tag(m.upper(), lambda _b, m=m: self.set_night(m))
+                         for m in NIGHT_MODES]
+        self.night_menu = self.menu_for(self.b_night, self.b_nights)
+        self.b_isos = [self.tag("ISO %s" % (i or "AUTO"),
+                                lambda _b, i=i: self.set_iso(i)) for i in ISOS]
+        self.iso_menu = self.menu_for(self.b_iso, self.b_isos)
         self.top = Gtk.Box(spacing=8)
-        self.top.pack_start(self.b_menu, False, False, 0)
+        self.top.pack_start(self.b_focus, False, False, 0)
         self.top.pack_start(self.b_zoom, False, False, 0)
-        # Flash, Night and EV at hand on the other side: the left edge in
-        # landscape, the top in portrait (author, 2026-11-17).
-        self.side = Gtk.Box(spacing=12)
-        for b in (self.b_flash, self.b_night, self.b_ev):
+        self.side = Gtk.Box(spacing=8)
+        for b in (self.b_flash, self.b_night, self.b_ev, self.b_iso, self.b_wb):
             self.side.pack_start(b, False, False, 0)
-        # Below or after them, a tag for each setting that is not at its
-        # default, so one is always seen; a tap on a tag resets it (MF:
-        # shows the focus slider).  Small, square, monospace (author,
-        # 2026-11-17).
+        # Then a tag for each other setting not at its default, so one is
+        # always seen; a tap resets it.
         self.marks = Gtk.Box(spacing=4)
         self.side.pack_start(self.marks, False, False, 8)
         self.overlay.add_overlay(self.side)
@@ -539,49 +558,52 @@ class Camera(Gtk.Application):
             box.set_halign(Gtk.Align.CENTER)
             box.set_valign(Gtk.Align.CENTER)
         self.overlay.add_overlay(self.controls)
-        # Manual focus: a vertical slider on the right, the short edge's
-        # length in either orientation, infinity at the top and the
-        # nearest the lens goes at the bottom, the distance by the knob.
-        self.lens_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                spacing=6, halign=Gtk.Align.END,
-                                valign=Gtk.Align.CENTER)
+        # Manual focus and EV: vertical sliders the short edge's length,
+        # the same width (a size group), their ends buttons to the extremes:
+        # focus at the right, infinity at the top; EV at the left, +2 at
+        # the top.  Both act as they move.
         self.lens_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.VERTICAL, 0.0, LENS_MAX, LENS_STEP)
-        self.lens_scale.set_value_pos(Gtk.PositionType.RIGHT)
         self.lens_scale.connect("format-value", lambda _s, v: lens_text(v))
         self.lens_scale.set_value(self.lens)
         self.lens_scale.connect("value-changed", self.on_lens)
-        far, near = Gtk.Label(label="∞"), Gtk.Label(label="min")
-        for label in (far, near):
-            label.get_style_context().add_class("status")
-        self.lens_row.pack_start(far, False, False, 0)
-        self.lens_row.pack_start(self.lens_scale, True, True, 0)
-        self.lens_row.pack_start(near, False, False, 0)
-        self.lens_row.pack_start(self.button("AF", self.on_focus_mode),
-                                 False, False, 0)
-        self.overlay.add_overlay(self.lens_row)
-        # EV compensation: a vertical slider beside the side bar, +2 at the
-        # top, applied as it moves.
-        self.ev_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                              spacing=6, halign=Gtk.Align.START,
-                              valign=Gtk.Align.CENTER)
+        self.lens_row = self.slider_column(
+            self.lens_scale, Gtk.Align.END,
+            ("∞", lambda *_: self.lens_scale.set_value(0.0)),
+            ("MIN", lambda *_: self.lens_scale.set_value(LENS_MAX)),
+            ("AF", self.on_focus_mode))
         self.ev_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.VERTICAL, -2.0, 2.0, 1 / 3)
         self.ev_scale.set_inverted(True)
-        self.ev_scale.set_value_pos(Gtk.PositionType.LEFT)
         self.ev_scale.connect("format-value", lambda _s, v: ev_text(v))
-        self.ev_scale.add_mark(0.0, Gtk.PositionType.LEFT, None)
         self.ev_scale.set_value(self.ev)
         self.ev_scale.connect("value-changed", self.on_ev_scale)
-        plus, minus = Gtk.Label(label="+2"), Gtk.Label(label="−2")
-        for label in (plus, minus):
-            label.get_style_context().add_class("status")
-        self.ev_row.pack_start(plus, False, False, 0)
-        self.ev_row.pack_start(self.ev_scale, True, True, 0)
-        self.ev_row.pack_start(minus, False, False, 0)
-        self.ev_row.pack_start(self.button("0", lambda *_: self.ev_scale.set_value(0.0)),
-                               False, False, 0)
-        self.overlay.add_overlay(self.ev_row)
+        self.ev_row = self.slider_column(
+            self.ev_scale, Gtk.Align.START,
+            ("+2", lambda *_: self.ev_scale.set_value(2.0)),
+            ("−2", lambda *_: self.ev_scale.set_value(-2.0)),
+            ("0", lambda *_: self.ev_scale.set_value(0.0)))
+        self.slider_width = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        for row in (self.lens_row, self.ev_row):
+            self.slider_width.add_widget(row)
+            self.overlay.add_overlay(row)
+        # ☰, top left: every setting over the view (settings_view()).
+        self.b_menu = self.button("☰", self.on_menu)
+        self.menu_corner = Gtk.Box(halign=Gtk.Align.START,
+                                   valign=Gtk.Align.START,
+                                   margin_top=16, margin_start=16)
+        self.menu_corner.pack_start(self.b_menu, False, False, 0)
+        self.overlay.add_overlay(self.menu_corner)
+        self.settings_view = Gtk.ScrolledWindow(halign=Gtk.Align.FILL,
+                                           valign=Gtk.Align.FILL)
+        self.settings_view.get_style_context().add_class("settings")
+        self.settings_view.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                 Gtk.PolicyType.AUTOMATIC)
+        self.overlay.add_overlay(self.settings_view)
+        self.overlay.reorder_overlay(self.menu_corner, -1)
+        self.grid_on = False            # rule of thirds
+        self.horizon_on = False         # level line from the accelerometer
+        self.gravity = None             # its last reading, m/s²
         self.show_zoom()
         self.show_outputs()
 
@@ -628,6 +650,25 @@ class Camera(Gtk.Application):
         b = Gtk.Button(label=label)
         b.connect("clicked", handler)
         return b
+
+    def tag(self, label, handler):
+        """A small square monospace button (a setting's tag)."""
+        b = self.button(label, handler)
+        b.get_style_context().add_class("mark")
+        return b
+
+    def slider_column(self, scale, side, top, bottom, extra):
+        """SCALE between two buttons (label, handler), EXTRA below them, at
+        SIDE of the screen, its value toward the middle."""
+        scale.set_value_pos(Gtk.PositionType.LEFT if side == Gtk.Align.END
+                            else Gtk.PositionType.RIGHT)
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                         halign=side, valign=Gtk.Align.CENTER)
+        column.pack_start(self.tag(*top), False, False, 0)
+        column.pack_start(scale, True, True, 0)
+        column.pack_start(self.tag(*bottom), False, False, 0)
+        column.pack_start(self.button(*extra), False, False, 0)
+        return column
 
     def say(self, text, seconds=0):
         self.status.set_text(text)
@@ -953,7 +994,7 @@ class Camera(Gtk.Application):
             # switch the automatic exposure started from its minimum, and
             # the photo was black (seen, 2026-11-01).
             exp, gain = carry
-            if self.night:
+            if self.night == "long":
                 # Two stops more light for a dark scene: four times the
                 # viewfinder's exposure (which stops at 66 ms), at most
                 # 0.5 s, the gain unchanged.  Possible since libcamera
@@ -1012,13 +1053,14 @@ class Camera(Gtk.Application):
             self.controls.set_margin_bottom(16)
             self.side.set_halign(Gtk.Align.START)
             self.side.set_valign(Gtk.Align.START)
-            self.side.set_margin_start(16)
+            self.side.set_margin_start(72)
             self.side.set_margin_top(16)
         # The menus open next to their buttons, toward the view.
-        for menu in (self.panel, self.zoom_panel):
-            menu.set_position(Gtk.PositionType.LEFT if wide else Gtk.PositionType.TOP)
-        self.flash_menu.set_position(Gtk.PositionType.RIGHT if wide
-                                     else Gtk.PositionType.BOTTOM)
+        self.zoom_panel.set_position(Gtk.PositionType.LEFT if wide
+                                     else Gtk.PositionType.TOP)
+        for menu in (self.flash_menu, self.night_menu, self.iso_menu):
+            menu.set_position(Gtk.PositionType.RIGHT if wide
+                              else Gtk.PositionType.BOTTOM)
         # Both sliders as far from their edges, past the wider bar.
         edge = max(self.controls.get_allocated_width(),
                    self.side.get_allocated_width()) + 24 if wide else 12
@@ -1031,17 +1073,9 @@ class Camera(Gtk.Application):
     def marks_wanted(self):
         """(label, reset) for each setting away from its default."""
         marks = []
-        if self.manual:
-            marks.append(("MF " + lens_text(self.lens),
-                          lambda: self.lens_row.set_visible(not self.lens_row.get_visible())))
-        if self.iso:
-            marks.append(("ISO %d" % self.iso,
-                          lambda: self.reset_cycle("iso", ISOS, self.on_iso)))
         if self.timer:
             marks.append(("TIMER %dS" % self.timer,
                           lambda: self.reset_cycle("timer", TIMERS, self.on_timer)))
-        if self.wb_locked:
-            marks.append(("WB LOCK", self.on_wb))
         mode = "video" if self.video else "photo"
         shapes, sizes = self.choices()
         o = self.out()
@@ -1102,6 +1136,180 @@ class Camera(Gtk.Application):
         self.flash = FLASH_MODES[FLASH_MODES.index(mode) - 1]
         self.on_flash()
         self.flash_menu.popdown()
+        self.refresh_settings()
+
+    def on_menu(self, *_):
+        """Every setting over the view, or the view again."""
+        if self.settings_view.get_visible():
+            self.settings_view.hide()
+            return
+        self.settings_shown = True
+        self.refresh_settings()
+        self.settings_view.show_all()
+
+    def refresh_settings(self):
+        """The settings overlay: a column for each setting, its choices in
+        lines (the one in use yellow), EV and focus as sliders."""
+        if not getattr(self, "settings_view", None) or \
+           not (self.settings_view.get_visible() or getattr(self, "settings_shown", False)):
+            return
+        self.settings_shown = False
+        child = self.settings_view.get_child()
+        if child:
+            self.settings_view.remove(child)
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                           homogeneous=False, row_spacing=16,
+                           column_spacing=16, margin=72,
+                           valign=Gtk.Align.START)
+        flow.set_max_children_per_line(8)
+        shapes, sizes = self.choices()
+        o = self.out()
+
+        def column(title, items):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            head = Gtk.Label(label=title)
+            head.get_style_context().add_class("head")
+            box.pack_start(head, False, False, 0)
+            for label, on, handler in items:
+                b = self.tag(label, lambda _b, h=handler: (h(), self.refresh_settings()))
+                self.lit(b, on)
+                box.pack_start(b, False, False, 0)
+            flow.add(box)
+
+        def slider(title, scale_of):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            head = Gtk.Label(label=title)
+            head.get_style_context().add_class("head")
+            box.pack_start(head, False, False, 0)
+            scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL,
+                              adjustment=scale_of.get_adjustment())
+            scale.set_size_request(180, -1)
+            scale.connect("format-value", lambda *a: scale_of.emit("format-value", a[1]))
+            box.pack_start(scale, False, False, 0)
+            flow.add(box)
+
+        column("FLASH", [(m.upper(), m == self.flash,
+                          lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
+        column("NIGHT", [(m.upper(), m == self.night,
+                          lambda m=m: self.set_night(m)) for m in NIGHT_MODES])
+        column("TIMER", [("%d S" % t if t else "OFF", t == self.timer,
+                          lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
+                         for t in TIMERS])
+        column("ISO", [("%s" % (i or "AUTO"), i == self.iso,
+                        lambda i=i: self.set_iso(i)) for i in ISOS])
+        column("WB", [("AUTO", not self.wb_locked,
+                       lambda: self.wb_locked and self.on_wb()),
+                      ("LOCK", self.wb_locked,
+                       lambda: self.wb_locked or self.on_wb())])
+        column("FOCUS", [("AF", not self.manual,
+                          lambda: self.manual and self.on_focus_mode()),
+                         ("MF", self.manual,
+                          lambda: self.manual or self.on_focus_mode())])
+        slider("EV", self.ev_scale)
+        if self.manual:
+            slider("FOCUS DISTANCE", self.lens_scale)
+        column("SHAPE", [(v, v == o["shape"],
+                          lambda v=v: self.reset_output("shape", v)) for v in shapes])
+        column("RESOLUTION", [(v.upper(), v == o["size"],
+                               lambda v=v: self.reset_output("size", v)) for v in sizes])
+        column("ZOOM", [("%g×" % z, abs(z - self.zoom) < 0.05,
+                         lambda z=z: self.set_zoom(z)) for z in ZOOMS])
+        column("GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
+                        ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
+        column("HORIZON", [("OFF", not self.horizon_on,
+                            lambda: self.set_aid("horizon_on", False)),
+                           ("ON", self.horizon_on,
+                            lambda: self.set_aid("horizon_on", True))])
+        self.settings_view.add(flow)
+        self.settings_view.show_all()
+
+    def picture_rect(self, area):
+        """The picture's rectangle in AREA: the shape's region fitted in,
+        bars around it (as on_tap maps a tap)."""
+        w, h = area.get_allocated_width(), area.get_allocated_height()
+        if not getattr(self, "size", None):
+            return 0, 0, w, h
+        rw, rh = self.region()
+        aspect = rw / rh
+        if self.method() in ("clockwise", "counterclockwise"):
+            aspect = 1 / aspect
+        dw, dh = (h * aspect, h) if w / h > aspect else (w, w / aspect)
+        return (w - dw) / 2, (h - dh) / 2, dw, dh
+
+    def draw_aids(self, area, cr):
+        """The rule of thirds and the level line, over the picture."""
+        if not (self.grid_on or self.horizon_on):
+            return
+        x, y, w, h = self.picture_rect(area)
+        if self.grid_on:
+            cr.set_source_rgba(1, 1, 1, 0.45)
+            cr.set_line_width(1)
+            for i in (1, 2):
+                cr.move_to(x + w * i / 3, y)
+                cr.line_to(x + w * i / 3, y + h)
+                cr.move_to(x, y + h * i / 3)
+                cr.line_to(x + w, y + h * i / 3)
+            cr.stroke()
+        g = self.gravity
+        if self.horizon_on and g:
+            gx, gy, gz = g
+            # The sensor's axes on the window, for the display's turn: in
+            # the keyboard landscape (90) gravity lies along the sensor's
+            # +X when the phone is held level (seen on the phone).
+            wx, wy = {"normal": (gx, -gy), "90": (gy, gx), "180": (-gx, gy),
+                      "270": (-gy, -gx)}.get(getattr(self, "transform", "normal"),
+                                             (gx, -gy))
+            if math.hypot(wx, wy) < 2.0:      # lying flat: no level to show
+                return
+            angle = math.atan2(wy, wx) - math.pi / 2     # 0 when level
+            tilt = math.degrees(angle)
+            tilt = (tilt + 180) % 360 - 180
+            level = abs(tilt) < 1.0
+            cr.set_source_rgba(*((0.3, 0.9, 0.3, 0.9) if level else (1, 1, 1, 0.8)))
+            cr.set_line_width(2)
+            cx, cy, r = x + w / 2, y + h / 2, min(w, h) * 0.35
+            cr.move_to(cx - r * math.cos(angle), cy - r * math.sin(angle))
+            cr.line_to(cx + r * math.cos(angle), cy + r * math.sin(angle))
+            cr.stroke()
+
+    def level_sensor(self, on):
+        """The accelerometer's readings (libssc's ssccli, about 30 a
+        second) while the level line is shown and the camera open."""
+        proc = getattr(self, "level_proc", None)
+        if not on:
+            if proc:
+                proc.terminate()
+                self.level_proc = None
+            self.gravity = None
+            return
+        if proc:
+            return
+        try:
+            proc = subprocess.Popen(["ssccli", "--sensor", "accelerometer"],
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+        except OSError as e:
+            print("level: %s" % e, flush=True)
+            return
+        self.level_proc = proc
+        pattern = re.compile(r"X=(-?[0-9.]+) Y=(-?[0-9.]+) Z=(-?[0-9.]+)")
+
+        def read():
+            for line in proc.stdout:
+                m = pattern.search(line)
+                if m:
+                    self.gravity = tuple(float(v) for v in m.groups())
+                    now = time.monotonic()
+                    if now - getattr(self, "level_drawn", 0) > 0.1:
+                        self.level_drawn = now
+                        GLib.idle_add(self.marker.queue_draw)
+        threading.Thread(target=read, daemon=True).start()
+
+    def set_aid(self, attr, on):
+        setattr(self, attr, on)
+        if attr == "horizon_on":
+            self.level_sensor(on)
+        self.marker.queue_draw()
 
     def method(self):
         rear, front = VIEW_TURN.get(getattr(self, "transform", "normal"),
@@ -1249,7 +1457,7 @@ class Camera(Gtk.Application):
         fills the frame), or let them follow the scene again.  Presets
         would need calibrated gains (TODO.org)."""
         self.wb_locked = not self.wb_locked
-        self.b_wb.set_label("WB lock" if self.wb_locked else "WB auto")
+        self.b_wb.set_label("WB LOCK" if self.wb_locked else "WB AUTO")
         self.lit(self.b_wb, self.wb_locked)
         if self.pipeline and not self.busy:
             self.wb_controls()
@@ -1321,14 +1529,31 @@ class Camera(Gtk.Application):
         return False
 
     def on_iso(self, *_):
-        self.iso = ISOS[(ISOS.index(self.iso) + 1) % len(ISOS)]
-        self.b_iso.set_label("ISO %s" % (self.iso or "auto"))
+        self.set_iso(ISOS[(ISOS.index(self.iso) + 1) % len(ISOS)])
+
+    def set_iso(self, iso):
+        self.iso = iso
+        self.b_iso.set_label("ISO %s" % (self.iso or "AUTO"))
+        self.lit(self.b_iso, bool(self.iso))
+        for i, b in zip(ISOS, self.b_isos):
+            self.lit(b, i == self.iso)
+        self.iso_menu.popdown()
         if not self.busy:
             self.apply_controls()
+        self.refresh_settings()
 
     def on_night(self, *_):
-        self.night = not self.night
-        self.lit(self.b_night, self.night)
+        self.set_night(NIGHT_MODES[(NIGHT_MODES.index(self.night) + 1)
+                                   % len(NIGHT_MODES)])
+
+    def set_night(self, mode):
+        self.night = mode
+        self.b_night.set_label("NIGHT" if mode == "off" else "NIGHT " + mode.upper())
+        self.lit(self.b_night, mode != "off")
+        for m, b in zip(NIGHT_MODES, self.b_nights):
+            self.lit(b, m == mode)
+        self.night_menu.popdown()
+        self.refresh_settings()
 
     def lit(self, button, on):
         """A toggle that is on stands out (author: Night on and off looked
@@ -1376,6 +1601,8 @@ class Camera(Gtk.Application):
         coordinates, as moWerk's camerabin patch maps it."""
         print("tap: %s at %.0f %.0f, busy %s" % (event.type, event.x, event.y,
                                                  self.busy), flush=True)
+        if self.settings_view.get_visible():
+            return False
         if self.busy:
             return False
         # The picture inside the view, with bars around it in other shapes.
@@ -1467,25 +1694,28 @@ class Camera(Gtk.Application):
         return False
 
     def shutter_blink(self):
-        """The view dims and comes back in 0.15 s when a photo's frame is
-        kept, so the photo is seen to be taken: not black or white, which
+        """The view dims and comes back in about 0.15 s when a photo's frame
+        is kept, so the photo is seen to be taken: not black or white, which
         dazzle or vanish at night."""
-        self.blink = time.monotonic()
+        self.blink = 0
+        self.marker.queue_draw()
         self.marker.add_tick_callback(self.on_blink_tick)
 
     def on_blink_tick(self, area, clock):
+        if self.blink is None:
+            return False
+        self.blink += 1
         area.queue_draw()
-        if self.blink and time.monotonic() - self.blink < BLINK_SECONDS:
+        if self.blink < BLINK_FRAMES:
             return True
         self.blink = None
         return False
 
     def on_draw_marker(self, area, cr):
-        if self.blink:
-            left = 1 - (time.monotonic() - self.blink) / BLINK_SECONDS
-            if left > 0:
-                cr.set_source_rgba(0, 0, 0, 0.6 * left)
-                cr.paint()
+        if self.blink is not None:
+            cr.set_source_rgba(0, 0, 0, 0.6 * (1 - self.blink / BLINK_FRAMES))
+            cr.paint()
+        self.draw_aids(area, cr)
         if not self.mark:
             return False
         x, y, (r, g, b) = self.mark
@@ -1727,7 +1957,7 @@ class Camera(Gtk.Application):
         Night first sets its longer exposure (apply_controls)."""
         held, method = self.held(), self.method()
         want = None
-        if self.night:
+        if self.night == "long":
             cur = self.current()
             if cur:
                 self.apply_controls(cur)
@@ -1850,7 +2080,7 @@ class Camera(Gtk.Application):
         flash end."""
         if self.fired:
             self.led(False)
-        if self.night:
+        if self.night == "long":
             self.apply_controls()
         self.busy = False
         self.b_shutter.set_sensitive(True)

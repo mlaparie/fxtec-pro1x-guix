@@ -242,9 +242,9 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                Android's storage seen from the phone, owned by user (#f: not shown),
   ;;                and the phone's folders shown in Android, both sides writing
   ;;                ((SOURCE . TARGET); SOURCE in the user's home or absolute).
-  ;;                Mesa's tiled rendering (#t, its default), or untiled (#f): an app whose
-  ;;                shaders read back the screen (Tesla's 3D car) is very slow tiled; untiled
-  ;;                it is fast, but that car is not drawn.
+  ;;                Mesa's tiled rendering (#t, its default), or untiled (#f): worth a try
+  ;;                when an Android app with 3D elements is very slow (some 3D elements may
+  ;;                then not be drawn).
   ;;                (gpu-tiling? #t)
   ;;                (user \"user\")
   ;;                (storage-view \"/mnt/waydroid\")

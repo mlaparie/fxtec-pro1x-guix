@@ -3,6 +3,7 @@
 
 (define-module (fxtec-pro1x services camera)
   #:use-module (fxtec-pro1x packages misc)
+  #:use-module (fxtec-pro1x packages sensors)   ; libssc
   #:use-module (gnu packages video)       ; v4l-utils
   #:use-module (gnu packages gnome)       ; snapshot (GNOME camera)
   #:use-module (gnu packages linux)       ; kmod
@@ -53,7 +54,8 @@ VIDEOS=Videos\n"))))
 ;;; /etc/environment.d file did that on NixOS, but nothing reads it here.
 
 (define (pro1x-camera-packages config)
-  (list libcamera-pro1x cameractrl v4l-utils))
+  ;; libssc: ssccli, the camera app's level line (accelerometer readings).
+  (list libcamera-pro1x cameractrl v4l-utils libssc))
 
 ;;; A sensor that does not answer while it probes is gone until its driver
 ;;; is loaded again, and camss registers no camera at all without it: on

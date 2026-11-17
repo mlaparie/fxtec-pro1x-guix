@@ -450,9 +450,10 @@ S5K4H7 5 MP front sensor and IMX582 48 MP rear sensor with DW9800 AF driver.")))
                   (substitute* open
                     (("^#!/bin/sh")
                      (string-append "#!" (search-input-file inputs "/bin/sh")))
-                    (("exec pro1x-camera-app") (string-append "exec " bin))
-                    (("^gdbus ")
-                     (string-append (search-input-file inputs "/bin/gdbus") " "))))
+                    (("pro1x-camera-app$") bin)
+                    (("gdbus call")
+                     (string-append (search-input-file inputs "/bin/gdbus")
+                                    " call"))))
                 (substitute* bin
                   (("^#!/usr/bin/env python3")
                    (string-append "#!" (search-input-file inputs "/bin/python3"))))

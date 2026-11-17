@@ -52,8 +52,8 @@
   ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
   ;; SOURCE relative to the user's home or absolute.
   ;; Mesa's tiled rendering in Android (#t, its default), or untiled
-  ;; (#f): an app whose shaders read back the screen (Tesla's 3D car) took
-  ;; seconds a frame tiled; untiled it is fast, but that car is not drawn.
+  ;; (#f): worth a try when an Android app with 3D elements is very slow;
+  ;; some 3D elements may then not be drawn.
   (gpu-tiling? waydroid-gpu-tiling? (default #t))
   (shared-folders waydroid-shared-folders
                   (default '(("Documents" . "Documents")

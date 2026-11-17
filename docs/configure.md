@@ -107,7 +107,7 @@ Waydroid: `waydroid-configuration` in `(fxtec-pro1x services waydroid)`.
 | field | default | |
 |---|---|---|
 | `autostart?` | `#f` | start Android at login (Sway and Phosh), once its image is downloaded; with "Sleep when unused" on in quick actions it freezes after its screen timeout while none of its apps is shown |
-| `gpu-tiling?` | `#t` | Mesa's tiled rendering in Android (its default), or `#f` untiled (`FD_MESA_DEBUG=sysmem`): an app whose shaders read back the screen, like Tesla's 3D car, took 6-10 s a frame tiled; untiled it is usable, but that car is not drawn (a freedreno bug) |
+| `gpu-tiling?` | `#t` | Mesa's tiled rendering in Android (its default), or `#f` untiled (`FD_MESA_DEBUG=sysmem`): worth a try when an Android app with 3D elements is very slow; some 3D elements may then not be drawn |
 | `user` | `"user"` | whose Waydroid it is, for the shared folders |
 | `storage-view` | `"/mnt/waydroid"` | Android's internal storage seen from the phone, every file owned by `user` (bindfs); `#f` not shown |
 | `shared-folders` | Documents, Downloads, Music, Pictures, Videos, `/tmp` | the phone's folders shown in Android's storage as Documents, Download, Music, Pictures, Movies and tmp: `(SOURCE . TARGET)` pairs, SOURCE in the user's home or absolute; both sides can write (owners mapped by bindfs).  Mounted at boot once Android has been set up and started once |

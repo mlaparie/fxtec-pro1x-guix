@@ -11,14 +11,29 @@
 # memory).  Woken by a D-Bus call, not by a second Python process, the
 # camera streamed after 1.0 s, against 2.8 s for a cold start (2026-11-17).
 # Closing it puts it back in standby; closing it over the lock screen ends
-# it, as before.
+# it, as before, and this loop starts a new hidden one (also after a crash),
+# once no instance holds the app's name on the bus, so none is ever shown
+# by accident (author, 2026-11-17).
 
 CAMERA_STANDBY=no
 [ -r /etc/pro1x/camera.conf ] && . /etc/pro1x/camera.conf
 
+running() {
+    gdbus call --session --dest org.freedesktop.DBus \
+          --object-path /org/freedesktop/DBus \
+          --method org.freedesktop.DBus.NameHasOwner org.pro1x.Camera \
+          2>/dev/null | grep -q true
+}
+
 if [ "${1:-}" = --standby ]; then
     [ "$CAMERA_STANDBY" = yes ] || exit 0
-    PRO1X_CAMERA_STANDBY=1 exec pro1x-camera-app
+    while :; do
+        while running; do sleep 30; done
+        start=$(date +%s)
+        PRO1X_CAMERA_STANDBY=1 pro1x-camera-app
+        # Ended at once (no camera, an error): not in a tight loop.
+        if [ $(($(date +%s) - start)) -lt 10 ]; then sleep 60; else sleep 2; fi
+    done
 fi
 
 gdbus call --session --dest org.pro1x.Camera --object-path /org/pro1x/Camera \

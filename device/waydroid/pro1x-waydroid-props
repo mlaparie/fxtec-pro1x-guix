@@ -5,10 +5,11 @@
 #
 # tiled: Mesa's default (the freedreno driver renders the screen in tiles).
 # untiled: FD_MESA_DEBUG=sysmem, which Mesa reads on Android from the
-# properties mesa.fd.mesa.debug and debug.mesa.fd.mesa.debug.  An app whose
-# shaders read back what is already drawn (Tesla's 3D car) took 6-10 s a
-# frame tiled, each read-back flushing every tile; untiled it was usable,
-# though that car was not drawn (a freedreno bug; 2026-11-17).
+# properties mesa.fd.mesa.debug and debug.mesa.fd.mesa.debug.  Worth a try
+# when an Android app with 3D elements is very slow: an app whose shaders
+# read back what is already drawn took 6-10 s a frame tiled, each read-back
+# flushing every tile; untiled it was usable, though its 3D model was not
+# drawn (a freedreno bug; 2026-11-17).
 #
 # The setting goes into the [properties] of /var/lib/waydroid/waydroid.cfg,
 # which Waydroid copies into Android's properties when it rebuilds them
