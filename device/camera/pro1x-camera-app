@@ -283,6 +283,7 @@ class Camera(Gtk.Application):
         self.rec_closed = threading.Event()
         self.rec_timer = None
         self.busy = False
+        self.shooting = False           # the view skips a photo's frames
         self.portrait = True
         self.toggle = False
         self.last_photo = None
@@ -530,7 +531,6 @@ class Camera(Gtk.Application):
         self.caps.set_property(
             "caps", Gst.Caps.from_string(
                 "video/x-raw,width=%d,height=%d" % size))
-        convert = Gst.ElementFactory.make("videoconvert")
         # The zoom, before the tee: what the view shows is what is kept.
         self.crop = Gst.ElementFactory.make("videocrop")
         self.flip = Gst.ElementFactory.make("videoflip")
@@ -539,34 +539,44 @@ class Camera(Gtk.Application):
         # Only the newest frame waits: the view never falls behind.
         q1.set_property("leaky", 2)
         q1.set_property("max-size-buffers", 1)
+        # A photo's frames stay out of the view: GTK scaled each 12 or
+        # 48 MP frame on the CPU while the photo was saved.
+        q1.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER,
+                                            self.on_view_buffer)
+        # Only the view's frames are converted, for the sink; the photo's
+        # stay as libcamera made them (RGBA).
+        convert = Gst.ElementFactory.make("videoconvert")
         sink = Gst.ElementFactory.make("gtksink")
         sink.set_property("sync", False)
+        # No wait for a first frame at a state change: during a photo the
+        # view gets none.
+        sink.set_property("async", False)
         q2 = Gst.ElementFactory.make("queue")
         q2.set_property("leaky", 2)
         q2.set_property("max-size-buffers", 1)
-        convert2 = Gst.ElementFactory.make("videoconvert")
-        rgb = Gst.ElementFactory.make("capsfilter")
-        rgb.set_property("caps", Gst.Caps.from_string("video/x-raw,format=RGB"))
+        # The photo's branch holds libcamera's own buffers, uncopied: it
+        # takes frames only during a photo, and keeps none after it, or
+        # libcamera runs short of buffers and stops (2026-11-17).
+        q2.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER,
+                                            self.on_snap_buffer)
         self.snap = Gst.ElementFactory.make("appsink")
         for k, v in (("drop", True), ("max-buffers", 1), ("sync", False),
-                     ("emit-signals", False)):
+                     ("emit-signals", False), ("enable-last-sample", False)):
             self.snap.set_property(k, v)
 
         self.pipeline = Gst.Pipeline.new("camera")
-        for e in (self.src, self.caps, convert, self.crop, tee, q1,
-                  self.flip, sink, q2, convert2, rgb, self.snap):
+        for e in (self.src, self.caps, self.crop, tee, q1,
+                  self.flip, convert, sink, q2, self.snap):
             self.pipeline.add(e)
         self.src.link(self.caps)
-        self.caps.link(convert)
-        convert.link(self.crop)
+        self.caps.link(self.crop)
         self.crop.link(tee)
         tee.link(q1)
         q1.link(self.flip)
-        self.flip.link(sink)
+        self.flip.link(convert)
+        convert.link(sink)
         tee.link(q2)
-        q2.link(convert2)
-        convert2.link(rgb)
-        rgb.link(self.snap)
+        q2.link(self.snap)
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message", self.on_message)
@@ -613,6 +623,12 @@ class Camera(Gtk.Application):
         branch = Gst.parse_bin_from_description(desc, True)
         branch.get_by_name("file").set_property("location", path)
         return branch
+
+    def on_view_buffer(self, pad, info):
+        return Gst.PadProbeReturn.DROP if self.shooting else Gst.PadProbeReturn.OK
+
+    def on_snap_buffer(self, pad, info):
+        return Gst.PadProbeReturn.OK if self.shooting else Gst.PadProbeReturn.DROP
 
     def on_message(self, bus, msg):
         if msg.type == Gst.MessageType.ERROR:
@@ -1258,6 +1274,7 @@ class Camera(Gtk.Application):
         return False
 
     def to_still(self):
+        self.shooting = True
         self.resize(self.still(), self.current())
         held, front, portrait = self.held(), self.cam != 0, self.method()
         threading.Thread(target=self.capture, args=(held, front, portrait),
@@ -1315,6 +1332,7 @@ class Camera(Gtk.Application):
     def resume(self):
         if self.fired:
             self.led(False)
+        self.shooting = False
         self.resize(self.view_size())
         self.say("Saving")
         return False
@@ -1344,10 +1362,12 @@ class Camera(Gtk.Application):
         if not ok:
             raise RuntimeError("cannot read the frame")
         try:
-            # GLib.Bytes holds its own copy of the data.
+            # GLib.Bytes holds its own copy of the data.  libcamera's RGBA
+            # (or RGBx) keeps its fourth byte; the JPEG drops it.
+            alpha = info.stride[0] >= 4 * info.width
             pix = GdkPixbuf.Pixbuf.new_from_bytes(
                 GLib.Bytes.new(mapping.data), GdkPixbuf.Colorspace.RGB,
-                False, 8, info.width, info.height, info.stride[0])
+                alpha, 8, info.width, info.height, info.stride[0])
         finally:
             buf.unmap(mapping)
         return pix
