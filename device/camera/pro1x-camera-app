@@ -171,8 +171,12 @@ TIMERS = [0, 3, 10]                            # seconds before the shot
 # Night: off; long, four times the viewfinder's exposure (at most 0.5 s);
 # stack, a burst of STACK_FRAMES at the viewfinder's exposure, aligned and
 # averaged by pro1x-develop (about 1.5 stops less noise, no long-exposure
-# blur; 0.7 s more to develop on the phone).
-NIGHT_MODES = ["off", "long", "stack"]
+# blur; 0.7 s more to develop on the phone); bulb and smooth, from one
+# press of the shutter to the next (at most BULB_SECONDS), every frame
+# added (bulb: more light, highlights may burn) or averaged (smooth: the
+# same exposure, moving things blurred), unaligned: on a support.
+NIGHT_MODES = ["off", "long", "stack", "bulb", "smooth"]
+BULB_SECONDS = 60
 STACK_FRAMES = 8
 # The shutter blink, in drawn frames (about 0.15 s): counted from the first
 # one drawn, so a busy moment after the shot cannot skip it (the front
@@ -604,11 +608,11 @@ class Camera(Gtk.Application):
         for row in (self.lens_row, self.ev_row):
             self.slider_width.add_widget(row)
             self.overlay.add_overlay(row)
-        # ☰, top left: every setting over the view (settings_view()).
+        # ☰, bottom left: every setting over the view (refresh_settings()).
         self.b_menu = self.button("☰", self.on_menu)
         self.menu_corner = Gtk.Box(halign=Gtk.Align.START,
-                                   valign=Gtk.Align.START,
-                                   margin_top=16, margin_start=16)
+                                   valign=Gtk.Align.END,
+                                   margin_bottom=16, margin_start=16)
         self.menu_corner.pack_start(self.b_menu, False, False, 0)
         self.overlay.add_overlay(self.menu_corner)
         self.settings_view = Gtk.ScrolledWindow(halign=Gtk.Align.FILL,
@@ -617,7 +621,11 @@ class Camera(Gtk.Application):
         self.settings_view.set_policy(Gtk.PolicyType.AUTOMATIC,
                                  Gtk.PolicyType.AUTOMATIC)
         self.overlay.add_overlay(self.settings_view)
-        self.overlay.reorder_overlay(self.menu_corner, -1)
+        # The tags, the controls and ☰ stay above the overlay, usable.
+        for w in (self.side, self.controls, self.menu_corner):
+            self.overlay.reorder_overlay(w, -1)
+        self.hold_until = None          # Night: when the frames are kept
+        self.bulb = None                # a bulb exposure running
         self.grid_on = False            # rule of thirds
         self.horizon_on = False         # level line from the accelerometer
         self.gravity = None             # its last reading, m/s²
@@ -1174,15 +1182,29 @@ class Camera(Gtk.Application):
         child = self.settings_view.get_child()
         if child:
             self.settings_view.remove(child)
-        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
-                           homogeneous=False, row_spacing=16,
-                           column_spacing=16, margin=72,
-                           valign=Gtk.Align.START)
-        flow.set_max_children_per_line(8)
+        # Between the tags and the controls, so nothing overlaps them: the
+        # choices above, EV (and the focus distance in MF) across the
+        # middle, the picture's options below (author, 2026-11-17).
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        wide = self.win.get_size()[0] > self.win.get_size()[1]
+        left = self.side.get_allocated_width() + 32 if wide else 16
+        right = self.controls.get_allocated_width() + 32 if wide else 16
+        page.set_margin_start(left)
+        page.set_margin_end(right)
+        page.set_margin_top(16 if wide else self.side.get_allocated_height() + 32)
+        page.set_margin_bottom(16 if wide else self.controls.get_allocated_height() + 32)
         shapes, sizes = self.choices()
         o = self.out()
 
-        def column(title, items):
+        def row():
+            flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                               homogeneous=False, row_spacing=12,
+                               column_spacing=12, valign=Gtk.Align.START)
+            flow.set_max_children_per_line(8)
+            page.pack_start(flow, False, False, 0)
+            return flow
+
+        def column(flow, title, items):
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             head = Gtk.Label(label=title)
             head.get_style_context().add_class("head")
@@ -1194,50 +1216,51 @@ class Camera(Gtk.Application):
             flow.add(box)
 
         def slider(title, scale_of):
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            box = Gtk.Box(spacing=12)
             head = Gtk.Label(label=title)
             head.get_style_context().add_class("head")
             box.pack_start(head, False, False, 0)
             scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL,
                               adjustment=scale_of.get_adjustment())
-            scale.set_size_request(180, -1)
             scale.connect("format-value", lambda *a: scale_of.emit("format-value", a[1]))
-            box.pack_start(scale, False, False, 0)
-            flow.add(box)
+            box.pack_start(scale, True, True, 0)
+            page.pack_start(box, False, False, 0)
 
-        column("FLASH", [(m.upper(), m == self.flash,
-                          lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
-        column("NIGHT", [(m.upper(), m == self.night,
-                          lambda m=m: self.set_night(m)) for m in NIGHT_MODES])
-        column("TIMER", [("%d S" % t if t else "OFF", t == self.timer,
-                          lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
-                         for t in TIMERS])
-        column("ISO", [("%s" % (i or "AUTO"), i == self.iso,
-                        lambda i=i: self.set_iso(i)) for i in ISOS])
-        column("WB", [("AUTO", not self.wb_locked,
-                       lambda: self.wb_locked and self.on_wb()),
-                      ("LOCK", self.wb_locked,
-                       lambda: self.wb_locked or self.on_wb())])
-        column("FOCUS", [("AF", not self.manual,
-                          lambda: self.manual and self.on_focus_mode()),
-                         ("MF", self.manual,
-                          lambda: self.manual or self.on_focus_mode())])
+        top = row()
+        column(top, "FLASH", [(m.upper(), m == self.flash,
+                               lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
+        column(top, "NIGHT", [(m.upper(), m == self.night,
+                               lambda m=m: self.set_night(m)) for m in NIGHT_MODES])
+        column(top, "TIMER", [("%d S" % t if t else "OFF", t == self.timer,
+                               lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
+                              for t in TIMERS])
+        column(top, "ISO", [("%s" % (i or "AUTO"), i == self.iso,
+                             lambda i=i: self.set_iso(i)) for i in ISOS])
+        column(top, "WB", [("AUTO", not self.wb_locked,
+                            lambda: self.wb_locked and self.on_wb()),
+                           ("LOCK", self.wb_locked,
+                            lambda: self.wb_locked or self.on_wb())])
+        column(top, "FOCUS", [("AF", not self.manual,
+                               lambda: self.manual and self.on_focus_mode()),
+                              ("MF", self.manual,
+                               lambda: self.manual or self.on_focus_mode())])
+        column(top, "ZOOM", [("%g×" % z, abs(z - self.zoom) < 0.05,
+                              lambda z=z: self.set_zoom(z)) for z in ZOOMS])
         slider("EV", self.ev_scale)
         if self.manual:
-            slider("FOCUS DISTANCE", self.lens_scale)
-        column("SHAPE", [(v, v == o["shape"],
-                          lambda v=v: self.reset_output("shape", v)) for v in shapes])
-        column("RESOLUTION", [(v.upper(), v == o["size"],
-                               lambda v=v: self.reset_output("size", v)) for v in sizes])
-        column("ZOOM", [("%g×" % z, abs(z - self.zoom) < 0.05,
-                         lambda z=z: self.set_zoom(z)) for z in ZOOMS])
-        column("GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
-                        ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
-        column("HORIZON", [("OFF", not self.horizon_on,
-                            lambda: self.set_aid("horizon_on", False)),
-                           ("ON", self.horizon_on,
-                            lambda: self.set_aid("horizon_on", True))])
-        self.settings_view.add(flow)
+            slider("FOCUS", self.lens_scale)
+        bottom = row()
+        column(bottom, "RATIO", [(v, v == o["shape"],
+                                  lambda v=v: self.reset_output("shape", v)) for v in shapes])
+        column(bottom, "RESOLUTION", [(v.upper(), v == o["size"],
+                                       lambda v=v: self.reset_output("size", v)) for v in sizes])
+        column(bottom, "GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
+                                ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
+        column(bottom, "HORIZON", [("OFF", not self.horizon_on,
+                                    lambda: self.set_aid("horizon_on", False)),
+                                   ("ON", self.horizon_on,
+                                    lambda: self.set_aid("horizon_on", True))])
+        self.settings_view.add(page)
         self.settings_view.show_all()
 
     def picture_rect(self, area):
@@ -1757,6 +1780,9 @@ class Camera(Gtk.Application):
             self.countdown = None
             self.say("")
             return
+        if self.bulb:
+            self.bulb["stop"] = True       # the second press ends it
+            return
         if self.recording:
             self.stop_recording()
             return
@@ -1782,6 +1808,9 @@ class Camera(Gtk.Application):
     def shoot(self):
         if self.video:
             self.start_recording()
+            return
+        if self.night in ("bulb", "smooth") and self.raw_sink is not None:
+            self.bulb_start()
             return
         self.busy = True
         self.b_shutter.set_sensitive(False)
@@ -1979,11 +2008,30 @@ class Camera(Gtk.Application):
             if cur:
                 self.apply_controls(cur)
                 want = min(cur[0] * 4, 500000)
-        if self.night == "stack":
-            self.say("Hold still")
+        # Night: how long to hold still, counted down until the frames are
+        # kept (raw_taken): the long exposure, or the burst's frames.
+        cur = self.current()
+        exposure = (cur[0] if cur else 66000) / 1e6
+        if self.night == "long":
+            self.hold_still(min(exposure * 4, 0.5) + 0.3)
+        elif self.night == "stack":
+            self.hold_still(STACK_FRAMES * max(exposure, 1 / 15) + 0.1)
         threading.Thread(target=self.raw_capture, args=(held, method, want),
                          daemon=True).start()
         return False
+
+    def hold_still(self, seconds):
+        """Shows "Hold still" and the seconds left, until raw_taken ends it."""
+        self.hold_until = time.monotonic() + seconds
+
+        def tick():
+            if self.hold_until is None:
+                return False
+            left = max(0.0, self.hold_until - time.monotonic())
+            self.say("Hold still %.1f s" % left)
+            return True
+        tick()
+        GLib.timeout_add(100, tick)
 
     def raw_capture(self, held, method, want):
         """The newest raw frame (with Night, the first one at its exposure,
@@ -2090,8 +2138,88 @@ class Camera(Gtk.Application):
                 jpeg_quality()]
         if self.cam == 0 and os.access(SHADING, os.R_OK):
             args.append(SHADING)
+        if raw.startswith("-"):
+            return [str(a) for a in args]
         subprocess.run([str(a) for a in args], check=True, timeout=60,
                        stdout=subprocess.DEVNULL)
+
+    def bulb_start(self):
+        """Night bulb or smooth: every raw frame from now to the next press
+        of the shutter, streamed to pro1x-develop, which adds or averages
+        them."""
+        held, method = self.held(), self.method()
+        self.bulb = {"stop": False, "t0": time.monotonic()}
+        self.b_shutter.set_sensitive(True)
+        self.b_shutter.get_style_context().add_class("recording")
+
+        def tick():
+            if not self.bulb:
+                return False
+            self.say("%s %.1f s, press to stop" % (
+                self.night.upper(), time.monotonic() - self.bulb["t0"]))
+            return True
+        tick()
+        GLib.timeout_add(100, tick)
+        threading.Thread(target=self.bulb_run, args=(held, method),
+                         daemon=True).start()
+
+    def bulb_run(self, held, method):
+        run = self.bulb
+        sample = self.raw_sink.try_pull_sample(2 * Gst.SECOND)
+        meta = None
+        if sample:
+            try:
+                meta = self.raw_meta(sample)
+            except ValueError as e:
+                print("bulb: %s" % e, flush=True)
+        if not meta:
+            GLib.idle_add(self.bulb_done, None, None)
+            return
+        buf = sample.get_buffer()
+        meta["stride"] = buf.get_size() // meta["height"]
+        path = self.photo_path()
+        args = self.develop("-sum" if self.night == "bulb" else "-mean",
+                            path, meta, held, method)
+        proc = subprocess.Popen(args, stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL)
+        frames = 0
+        try:
+            while sample and not run["stop"] and \
+                  time.monotonic() - run["t0"] < BULB_SECONDS:
+                buf = sample.get_buffer()
+                ok, mapping = buf.map(Gst.MapFlags.READ)
+                try:
+                    proc.stdin.write(mapping.data)
+                finally:
+                    buf.unmap(mapping)
+                frames += 1
+                del buf
+                sample = self.raw_sink.try_pull_sample(Gst.SECOND)
+            sample = None
+            proc.stdin.close()
+            GLib.idle_add(self.bulb_kept, frames)
+            proc.wait(timeout=120)
+            error = None if proc.returncode == 0 else \
+                "pro1x-develop failed (%d)" % proc.returncode
+        except (OSError, subprocess.SubprocessError) as e:
+            error = e
+        print("bulb: %d frames, %s" % (frames, error or path), flush=True)
+        GLib.idle_add(self.bulb_done, None if error else path, error)
+
+    def bulb_kept(self, frames):
+        """The frames are in: the view and the shutter are free again."""
+        self.bulb = None
+        self.b_shutter.get_style_context().remove_class("recording")
+        self.busy = False
+        self.b_shutter.set_sensitive(True)
+        self.shutter_blink()
+        self.say("Saving %d frames" % frames)
+        return False
+
+    def bulb_done(self, path, error):
+        if self.bulb:
+            self.bulb_kept(0)
+        return self.raw_saved(path, error)
 
     def photo_path(self):
         """IMG_date_time.jpg, or with _2, _3 when one is already there or
@@ -2112,6 +2240,7 @@ class Camera(Gtk.Application):
             self.led(False)
         if self.night == "long":
             self.apply_controls()
+        self.hold_until = None
         self.busy = False
         self.b_shutter.set_sensitive(True)
         if path:

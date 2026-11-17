@@ -9,7 +9,9 @@
  * RAW: 10-bit packed Bayer (MIPI CSI-2: four pixels in five bytes), rows of
  * STRIDE bytes; several files separated by commas are a burst, stacked
  * first (Night stack: aligned on the first, averaged, moved pixels left
- * out); ORDER RGGB, GRBG, GBRG or BGGR.  BLACK: the black level, a
+ * out); "-sum" or "-mean" reads frames from standard input until it ends
+ * and adds them (bulb: more light, highlights may burn) or averages them
+ * (smooth: the same exposure, moving things blurred), unaligned; ORDER RGGB, GRBG, GBRG or BGGR.  BLACK: the black level, a
  * fraction of the range.  The gains and the colour matrix (row major) are
  * the frame's ColourGains and ColourCorrectionMatrix; GAMMA and CONTRAST as
  * the software ISP's shader applies them (1/2.2 and 1.0 by default).  The
@@ -247,6 +249,60 @@ static void *stack_band(void *arg)
 			pk_set(s->out, s->stride, x, y, (sum + count / 2) / count);
 		}
 	return NULL;
+}
+
+/* ── Bulb: frames from standard input, added or averaged ─────────────── */
+
+struct accum {
+	const uint8_t *frame;
+	uint32_t *sum;
+	int w, stride, first, last;
+};
+
+static void *accum_band(void *arg)
+{
+	struct accum *a = arg;
+	for (int y = a->first; y < a->last; y++)
+		for (int x = 0; x < a->w; x++)
+			a->sum[(size_t)y * a->w + x] += pk(a->frame, a->stride, x, y);
+	return NULL;
+}
+
+/* Every frame on standard input, added; then one frame: their mean, or
+ * their sum above the black level (BLACK, 0..1023), clipped. */
+static uint8_t *bulb_frames(struct job *j, int mean, int black)
+{
+	int w = j->width, h = j->height, stride = j->stride;
+	size_t size = (size_t)stride * h;
+	uint8_t *frame = malloc(size);
+	uint32_t *sum = calloc((size_t)w * h, sizeof *sum);
+	int n = 0;
+	if (!frame || !sum)
+		return NULL;
+	while (fread(frame, 1, size, stdin) == size) {
+		pthread_t threads[16];
+		struct accum bands[16];
+		for (int t = 0; t < j->nthreads; t++) {
+			bands[t] = (struct accum){ frame, sum, w, stride,
+						   h * t / j->nthreads,
+						   h * (t + 1) / j->nthreads };
+			pthread_create(&threads[t], NULL, accum_band, &bands[t]);
+		}
+		for (int t = 0; t < j->nthreads; t++)
+			pthread_join(threads[t], NULL);
+		n++;
+	}
+	fprintf(stderr, "bulb: %d frames %s\n", n, mean ? "averaged" : "added");
+	if (!n)
+		return NULL;
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			int64_t v = sum[(size_t)y * w + x];
+			v = mean ? (v + n / 2) / n : black + v - (int64_t)n * black;
+			pk_set(frame, stride, x, y, v < 0 ? 0 : v > 1023 ? 1023 : (int)v);
+		}
+	free(sum);
+	return frame;
 }
 
 /* The burst FRAMES stacked into one frame of the same layout. */
@@ -521,6 +577,17 @@ int main(int argc, char **argv)
 	long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
 	j.nthreads = ncpu < 1 ? 1 : ncpu > 16 ? 16 : (int)ncpu;
 
+	/* Bulb: frames from standard input. */
+	if (!strcmp(in, "-sum") || !strcmp(in, "-mean")) {
+		j.raw = bulb_frames(&j, !strcmp(in, "-mean"),
+				    (int)(j.black * 1023 + 0.5f));
+		if (!j.raw) {
+			fprintf(stderr, "bulb: no frame\n");
+			return 1;
+		}
+		goto developed_input;
+	}
+
 	/* The frame, or the burst's frames (comma separated) stacked. */
 	const uint8_t *frames[64];
 	int nframes = 0;
@@ -547,6 +614,7 @@ int main(int argc, char **argv)
 		nframes++;
 	}
 	j.raw = nframes > 1 ? stack_frames(&j, frames, nframes) : frames[0];
+developed_input:
 	j.rgb = malloc((size_t)j.cw * j.ch * 3);
 	if (!j.rgb) {
 		perror("malloc");
