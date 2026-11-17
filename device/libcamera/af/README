@@ -38,6 +38,10 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
 - 0027 (ours, 2026-11-17): the exposure steps by the ratio to the target
   (at most 2x an update) when more than 0.75 bin off, instead of 15%: a
   camera start took about 5 s to settle over 4 stops (author's report).
+- 0028 (ours, 2026-11-17): stats every second frame for frames of 7 MP or
+  more (the photo modes, about 15 fps), for the autofocus; the exposure
+  still acts on every fourth.  AF updates doubled against the exposure's
+  on the phone (30 to 17 in one run).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

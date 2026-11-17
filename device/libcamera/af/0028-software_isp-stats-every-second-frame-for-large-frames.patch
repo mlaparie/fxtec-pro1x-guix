@@ -1,0 +1,110 @@
+From 294c554947d9e0e3f26f0660ff39869d0e8f9823 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 17:00:29 +0100
+Subject: [PATCH] software_isp: stats every second frame for large frames
+
+The photos' sensor modes (12 MP rear, 8 MP front) run at about 15 fps,
+so with stats every fourth frame the autofocus got under 4 updates a
+second, half of video's.  Frames of 7 MP or more now get stats every
+second frame; the exposure still acts on every fourth, as an exposure
+change takes up to 3 frames to show.
+---
+ .../libcamera/internal/software_isp/swstats_cpu.h    | 10 ++++++++--
+ src/ipa/simple/algorithms/agc.cpp                    | 12 ++++++++++--
+ src/libcamera/software_isp/swstats_cpu.cpp           |  4 +++-
+ 3 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 0f4d1ac..3ceaafa 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -57,7 +57,7 @@ public:
+ 
+ 	void processLine0(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
+ 	{
+-		if (frame % kStatPerNumFrames)
++		if (frame % statPerNumFrames_)
+ 			return;
+ 
+ 		if ((y & ySkipMask_) || y < static_cast<unsigned int>(window_.y) ||
+@@ -71,7 +71,7 @@ public:
+ 
+ 	void processLine2(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
+ 	{
+-		if (frame % kStatPerNumFrames)
++		if (frame % statPerNumFrames_)
+ 			return;
+ 
+ 		if ((y & ySkipMask_) || y < static_cast<unsigned int>(window_.y) ||
+@@ -94,6 +94,12 @@ private:
+ 	 * exposure changes have been applied.
+ 	 */
+ 	static constexpr uint32_t kStatPerNumFrames = 4;
++	/*
++	 * Frames of 7 MP or more (the photos' sensor modes, about 15 fps) get
++	 * stats every second frame, for the autofocus; the exposure still
++	 * acts on every fourth (ipa simple agc).
++	 */
++	uint32_t statPerNumFrames_ = kStatPerNumFrames;
+ 
+ 	int setupStandardBayerOrder(BayerFormat::Order order);
+ 	/* Bayer 8 bpp unpacked */
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 01056ee..65ec248 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -82,6 +82,9 @@ static constexpr float kExpMaxStep = 0.15;
+  */
+ static constexpr float kExpFastError = 0.75;
+ 
++/* The exposure acts on the stats of every fourth frame only. */
++static constexpr uint32_t kAgcPerNumFrames = 4;
++
+ Agc::Agc()
+ {
+ }
+@@ -237,7 +240,7 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ }
+ 
+ void Agc::process(IPAContext &context,
+-		  [[maybe_unused]] const uint32_t frame,
++		  const uint32_t frame,
+ 		  IPAFrameContext &frameContext,
+ 		  const SwIspStats *stats,
+ 		  ControlList &metadata)
+@@ -257,7 +260,12 @@ void Agc::process(IPAContext &context,
+ 		context.activeState.agc.valid = true;
+ 	}
+ 
+-	if (!stats->valid) {
++	/*
++	 * Stats may come every second frame (large frames, for the
++	 * autofocus); an exposure change takes up to 3 frames to show, so the
++	 * exposure acts on every fourth.
++	 */
++	if (!stats->valid || frame % kAgcPerNumFrames) {
+ 		/*
+ 		 * Use the new exposure and gain values calculated the last time
+ 		 * there were valid stats.
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index ed36230..4fe6ba8 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -530,6 +530,8 @@ int SwStatsCpu::setupStandardBayerOrder(BayerFormat::Order order)
+ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount)
+ {
+ 	stride_ = inputCfg.stride;
++	statPerNumFrames_ = inputCfg.size.width * inputCfg.size.height >= 7000000
++				    ? 2 : kStatPerNumFrames;
+ 	stats_.resize(statsBufferCount);
+ 	sharpness_ = nullptr;
+ 
+@@ -744,7 +746,7 @@ void SwStatsCpu::processFrame(uint32_t frame, uint32_t bufferId, MappedFrameBuff
+  */
+ bool SwStatsCpu::updating(uint32_t frame)
+ {
+-	return frame % kStatPerNumFrames == 0;
++	return frame % statPerNumFrames_ == 0;
+ }
+ 
+ } /* namespace libcamera */

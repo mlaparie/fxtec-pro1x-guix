@@ -389,8 +389,9 @@ to build an FDE userdata image on the host before flashing.")
                 ;; Ours: a manual focus position, exposure for the tapped
                 ;; spot, a white balance lock, highlights kept, the raw
                 ;; stream's packed format in libcamerasrc caps, two
-                ;; buffers at 48 MP, neutral highlights in the shaders, and
-                ;; a faster exposure loop far from the target.
+                ;; buffers at 48 MP, neutral highlights in the shaders, a
+                ;; faster exposure loop far from the target, and stats every
+                ;; second frame in the photo modes, for the autofocus.
                 "0020-ipa-simple-af-Manual-lens-position.patch"
                 "0021-ipa-simple-agc-Spot-metering-on-the-autofocus-area.patch"
                 "0022-ipa-simple-awb-AwbEnable-a-white-balance-lock.patch"
@@ -398,7 +399,8 @@ to build an FDE userdata image on the host before flashing.")
                 "0024-gstreamer-Name-the-10-bit-CSI-2-packed-Bayer-formats.patch"
                 "0025-simple-Two-buffers-for-frames-of-more-than-24-MP.patch"
                 "0026-debayer-egl-shaders-fade-to-neutral-near-saturation.patch"
-                "0027-ipa-simple-agc-Step-by-the-ratio-to-the-target-when-.patch"))))))
+                "0027-ipa-simple-agc-Step-by-the-ratio-to-the-target-when-.patch"
+                "0028-software_isp-stats-every-second-frame-for-large-frames.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:
