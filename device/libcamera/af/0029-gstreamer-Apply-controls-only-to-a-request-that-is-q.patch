@@ -1,0 +1,46 @@
+From 6b3210f453593da55a5eee3f04cf1f6117cd9576 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 17:41:47 +0100
+Subject: [PATCH] gstreamer: Apply controls only to a request that is queued
+
+queueRequest() moved the pending controls into each new request before
+it had buffers; a request dropped for lack of buffers took them along.
+The task tries several requests a frame, so most controls set while
+streaming never reached the camera: manual focus kept its first lens
+position, exposure compensation its first value (seen on the Pro1X:
+LensPosition logged by the IPA once, the lens never moving).
+---
+ src/gstreamer/gstlibcamerasrc.cpp | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/gstreamer/gstlibcamerasrc.cpp b/src/gstreamer/gstlibcamerasrc.cpp
+index b87704a..28e9d30 100644
+--- a/src/gstreamer/gstlibcamerasrc.cpp
++++ b/src/gstreamer/gstlibcamerasrc.cpp
+@@ -186,12 +186,6 @@ int GstLibcameraSrcState::queueRequest()
+ 	if (!request)
+ 		return -ENOMEM;
+ 
+-	/* Apply controls, set and read under lock_ from other threads */
+-	{
+-		GLibLocker locker(&lock_);
+-		controls_.applyControls(request);
+-	}
+-
+ 	std::unique_ptr<RequestWrap> wrap =
+ 		std::make_unique<RequestWrap>(std::move(request));
+ 
+@@ -217,6 +211,13 @@ int GstLibcameraSrcState::queueRequest()
+ 
+ 	{
+ 		GLibLocker locker(&lock_);
++		/*
++		 * The controls only now, set and read under lock_ from other
++		 * threads: a request dropped for lack of buffers took them
++		 * along, and most changes made while streaming were lost (the
++		 * task tries several requests a frame).
++		 */
++		controls_.applyControls(wrap->request_);
+ 		cam_->queueRequest(wrap->request_.get());
+ 		queuedRequests_.push(std::move(wrap));
+ 	}

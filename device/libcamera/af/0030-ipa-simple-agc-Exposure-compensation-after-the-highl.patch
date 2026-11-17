@@ -1,0 +1,54 @@
+From 7c048386e2a2a8a90bfc2ba0c2494176de76f4cf Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Tue, 17 Nov 2026 17:41:56 +0100
+Subject: [PATCH] ipa: simple: agc: Exposure compensation after the highlights
+
+With highlights clipped the target dropped to its floor, with or without
+EV compensation, which then changed nothing.  The compensation is now
+added after the highlight adjustment.
+---
+ src/ipa/simple/algorithms/agc.cpp | 20 +++++++++++---------
+ 1 file changed, 11 insertions(+), 9 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 65ec248..e877776 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -323,12 +323,8 @@ void Agc::process(IPAContext &context,
+ 		LOG(IPASoftExposure, Debug) << "Spot mean " << mean << ", MSV " << exposureMSV;
+ 	}
+ 
+-	/*
+-	 * EV compensation moves the target of the mean sample value (bins 1..5):
+-	 * half a bin per stop, kept inside the histogram.
+-	 */
+-	double target = std::clamp(kExposureOptimal + 0.5 * context.activeState.agc.exposureValue,
+-				   1.2, kExposureBinsCount - 0.2);
++	/* The target of the mean sample value (bins 1..5). */
++	double target = kExposureOptimal;
+ 
+ 	/*
+ 	 * A tapped spot is exposed as asked; otherwise highlights are kept.
+@@ -351,13 +347,19 @@ void Agc::process(IPAContext &context,
+ 		clippedSamples += histogram[i];
+ 	const double clipped = denom ? static_cast<double>(clippedSamples) / denom : 0.0;
+ 	if (!(context.activeState.agc.spot && stats->spotSamples) && clipped > kMaxClipped) {
+-		target = std::max(target - std::min((clipped - kMaxClipped) * 20.0,
+-						    kMaxHighlightDrop),
+-				  1.2);
++		target -= std::min((clipped - kMaxClipped) * 20.0, kMaxHighlightDrop);
+ 		LOG(IPASoftExposure, Debug)
+ 			<< "Clipped " << clipped << " from bin " << whiteBin
+ 			<< ", target " << target;
+ 	}
++	/*
++	 * EV compensation last, half a bin per stop, kept inside the
++	 * histogram: it moves the picture also when highlights lowered the
++	 * target (it did nothing then).
++	 */
++	target = std::clamp(target + 0.5 * context.activeState.agc.exposureValue,
++			    1.2, kExposureBinsCount - 0.2);
++
+ 	auto &agc = context.activeState.agc;
+ 	if (!(agc.manualGain && agc.manualExposure))
+ 		updateExposure(context, frameContext, exposureMSV, target);

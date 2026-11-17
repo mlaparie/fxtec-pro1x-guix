@@ -42,6 +42,15 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
   more (the photo modes, about 15 fps), for the autofocus; the exposure
   still acts on every fourth.  AF updates doubled against the exposure's
   on the phone (30 to 17 in one run).
+- 0029 (ours, 2026-11-17): libcamerasrc put the pending controls into
+  requests it then dropped for lack of buffers (several a frame), so most
+  controls set while streaming were lost: manual focus kept its first lens
+  position, taps' focus windows and EV changes rarely arrived.  After: the
+  lens followed each LensPosition within 150 ms (read on the dw9800).
+  Upstream material.
+- 0030 (ours, 2026-11-17): EV compensation is added after the highlight
+  adjustment of 0023, which had lowered the target to its floor with or
+  without it.
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The
