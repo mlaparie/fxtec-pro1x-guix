@@ -65,6 +65,10 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
 - 0034 (ours, 2026-11-18): white balance gains kept near a line fitted to
   this sensor's lamp and daylight gains: a bright screen in view gave red
   0.5, blue 4 and a green picture (author).  A first estimate.
+- 0035 (ours, 2026-11-18): EV moves the exposure target again (so -EV
+  keeps highlights), and a digital gain gives what the exposure cannot at
+  its limits (DigitalGain in the metadata, for photos).  Supersedes 0033's
+  digital-only EV (author: combine).
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The

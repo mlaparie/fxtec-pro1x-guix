@@ -1,0 +1,105 @@
+From d14ea7db46f298821c01a4c7f46f0488b6c2b2d2 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Wed, 18 Nov 2026 00:45:17 +0100
+Subject: [PATCH] ipa: simple: agc: EV by the exposure first, digitally where
+ it cannot
+
+EV moves the exposure target again (0033 had made it only a digital
+gain), so -EV keeps highlights where the exposure has room.  Where the
+exposure is at its limit, a digital gain gives the rest: at the longest
+exposure and highest gain, +EV the ratio of the target to the mean (at
+most 2^EV) and -EV its full 2^EV; at the shortest, -EV the ratio.  The
+frame's DigitalGain metadata says it, for the app's photos.  Tested in
+the dark on the Pro1X: digital 0.25 at EV -2, 3.5 at +2, 1 at 0.
+---
+ src/ipa/simple/algorithms/agc.cpp | 33 +++++++++++++++++++++++++++----
+ src/ipa/simple/algorithms/awb.cpp |  9 ++++-----
+ src/ipa/simple/ipa_context.h      |  2 ++
+ 3 files changed, 35 insertions(+), 9 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index f30c1b4..a06bfb3 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -111,6 +111,7 @@ int Agc::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+ 	context.activeState.agc.manualGainValue = 1.0;
+ 	context.activeState.agc.manualExposureUs = 10000;
+ 	context.activeState.agc.exposureValue = 0.0f;
++	context.activeState.agc.digitalGain = 1.0f;
+ 	context.activeState.agc.spot = false;
+ 	return 0;
+ }
+@@ -361,11 +362,35 @@ void Agc::process(IPAContext &context,
+ 			<< ", target " << target;
+ 	}
+ 	/*
+-	 * EV compensation is a digital gain (awb prepare), not the target: in
+-	 * dim light the exposure is at its limits and a target moved by EV
+-	 * changed nothing in the view or the photo.
++	 * EV compensation moves the target, half a bin per stop, after the
++	 * highlights; where the exposure is at a limit (at its longest and
++	 * highest gain in the dark, its shortest in bright light) a digital
++	 * gain gives what it cannot: the ratio of the target to the mean,
++	 * at most the EV's 2^EV (awb prepare applies it).  In dim light the
++	 * exposure sat at its limit and EV changed nothing (author).
+ 	 */
+-	target = std::clamp(target, 1.2, kExposureBinsCount - 0.2);
++	const float ev = context.activeState.agc.exposureValue;
++	target = std::clamp(target + 0.5 * ev, 1.2, kExposureBinsCount - 0.2);
++	{
++		const auto &cfg = context.configuration.agc;
++		const auto &sensor = frameContext.sensor;
++		const bool atMax = sensor.exposure >= cfg.exposureMaxAuto &&
++				   sensor.gain >= cfg.againMax;
++		const bool atMin = sensor.exposure <= cfg.exposureMin &&
++				   sensor.gain <= cfg.againMin;
++		const float wanted = std::exp2(ev);
++		const float ratio = static_cast<float>(target / std::max(exposureMSV, 0.5f));
++		float digital = 1.0f;
++		if (ev > 0 && atMax)
++			digital = std::clamp(ratio, 1.0f, wanted);
++		else if (ev < 0 && atMax)
++			/* Darker than even the lowered target: the view darkens */
++			digital = wanted;
++		else if (ev < 0 && atMin)
++			digital = std::clamp(ratio, wanted, 1.0f);
++		context.activeState.agc.digitalGain = digital;
++		metadata.set(controls::DigitalGain, digital);
++	}
+ 
+ 	auto &agc = context.activeState.agc;
+ 	if (!(agc.manualGain && agc.manualExposure))
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index cd39e62..4b41d05 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -71,12 +71,11 @@ void Awb::prepare(IPAContext &context,
+ 
+ 	frameContext.gains = gains;
+ 	/*
+-	 * EV compensation as a digital gain on every channel, so the view
+-	 * shows it whatever the exposure can do (the app applies the same
+-	 * factor to its photos); highlights clip above 1 as they would.
++	 * The part of EV compensation the exposure could not give (agc), as a
++	 * gain on every channel; the frame's DigitalGain metadata says it, so
++	 * the app applies it to its photos.  Highlights clip above 1.
+ 	 */
+-	const float ev = std::exp2(context.activeState.agc.exposureValue);
+-	params->gains = gains * ev;
++	params->gains = gains * context.activeState.agc.digitalGain;
+ }
+ 
+ void Awb::process(IPAContext &context,
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 01fa3e3..27c7ff9 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -64,6 +64,8 @@ struct IPAActiveState {
+ 		double manualGainValue;
+ 		int32_t manualExposureUs;
+ 		float exposureValue;	/* EV compensation in stops */
++		/* The part of EV the exposure could not give (awb prepare) */
++		float digitalGain;
+ 		bool spot;		/* AeMeteringMode spot: the autofocus area */
+ 	} agc;
+ 
