@@ -65,6 +65,9 @@
       #~(begin
           (use-modules (guix build utils))
           (setenv "PATH" (string-append #$gcc-toolchain "/bin"))
+          ;; What a profile with the toolchain would set.
+          (setenv "C_INCLUDE_PATH" (string-append #$gcc-toolchain "/include"))
+          (setenv "LIBRARY_PATH" (string-append #$gcc-toolchain "/lib"))
           (invoke "gcc" "-O2" "-Wall" "-o" #$output
                   #$(local-file
                      (repository-file "device/waydroid/pro1x-nsbind.c")))))))
