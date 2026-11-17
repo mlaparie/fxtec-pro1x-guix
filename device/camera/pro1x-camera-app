@@ -219,7 +219,18 @@ button.shutter:disabled { background: #665c54; }
 button.on { background: #d79921; color: #1d2021; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
+grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
+grid.panel button { min-height: 44px; }
+scale { color: #ebdbb2; font-size: 15px; }
+scale slider { min-width: 28px; min-height: 28px; background: #ebdbb2;
+               border-radius: 14px; }
+scale trough { min-width: 6px; background: rgba(235,219,178,0.4); }
 """
+
+
+def lens_text(dioptres):
+    """A lens position (dioptres) as the distance in focus."""
+    return "∞" if dioptres < 0.05 else "%.2f m" % (1 / dioptres)
 
 
 def cameras():
@@ -376,67 +387,78 @@ class Camera(Gtk.Application):
         self.mark = None                # (x, y, colour), or None
         self.blink = None               # when the shutter blink started
 
-        # From the bottom: camera, shutter and mode; the zoom presets; the
-        # settings.  Short labels; yellow shows a setting that is on.
-        bars = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
-                       halign=Gtk.Align.CENTER, valign=Gtk.Align.END,
-                       margin_bottom=16)
-        settings = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        # The controls in one column at the right edge in landscape, for
+        # the right hand, or in rows at the bottom in portrait (layout());
+        # everything else in a menu over the view, so the view stays clear
+        # (author, 2026-11-17).  Yellow shows a setting that is on.
         self.b_flash = self.button("Flash off", self.on_flash)
         self.b_timer = self.button("Timer off", self.on_timer)
         self.b_iso = self.button("ISO auto", self.on_iso)
         self.b_ev = self.button("EV 0", self.on_ev)
         self.b_night = self.button("Night", self.on_night)
-        for b in (self.b_flash, self.b_timer, self.b_iso, self.b_ev,
-                  self.b_night):
-            settings.pack_start(b, False, False, 0)
-        # The zoom presets, autofocus or manual, the white balance.
-        zooms = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        self.b_focus = self.button("AF", self.on_focus_mode)
+        self.b_wb = self.button("WB auto", self.on_wb)
+        # What is saved: the shape and the resolution, for photos or videos.
+        self.b_shape = self.button("", self.on_shape)
+        self.b_res = self.button("", self.on_res)
+        self.panel = Gtk.Grid(row_spacing=10, column_spacing=10,
+                              halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                              row_homogeneous=True, column_homogeneous=True)
+        self.panel.get_style_context().add_class("panel")
+        for i, b in enumerate((self.b_flash, self.b_timer, self.b_night,
+                               self.b_iso, self.b_ev, self.b_wb,
+                               self.b_shape, self.b_res, self.b_focus)):
+            self.panel.attach(b, i % 3, i // 3, 1, 1)
+        self.overlay.add_overlay(self.panel)
+        self.b_menu = self.button("☰", self.on_menu)
+        # The zoom presets.
+        self.zooms = Gtk.Box(spacing=8)
         self.b_zooms = []
         for z in ZOOMS:
             b = self.button("%g×" % z, lambda _b, z=z: self.set_zoom(z))
             self.b_zooms.append((z, b))
-            zooms.pack_start(b, False, False, 0)
-        self.b_focus = self.button("AF", self.on_focus_mode)
-        self.b_wb = self.button("WB auto", self.on_wb)
-        zooms.pack_start(self.b_focus, False, False, 0)
-        zooms.pack_start(self.b_wb, False, False, 0)
-        # Manual focus: far on the left, near on the right.
-        self.lens_row = Gtk.Box(spacing=6, halign=Gtk.Align.FILL,
-                                margin_start=24, margin_end=24)
-        self.lens_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, 0.0, LENS_MAX, LENS_STEP)
-        self.lens_scale.set_draw_value(False)
-        self.lens_scale.set_value(self.lens)
-        self.lens_scale.connect("value-changed", self.on_lens)
-        self.lens_row.pack_start(
-            self.button("−", lambda *_: self.lens_scale.set_value(
-                self.lens_scale.get_value() - LENS_STEP)), False, False, 0)
-        self.lens_row.pack_start(self.lens_scale, True, True, 0)
-        self.lens_row.pack_start(
-            self.button("+", lambda *_: self.lens_scale.set_value(
-                self.lens_scale.get_value() + LENS_STEP)), False, False, 0)
-        main = Gtk.Box(spacing=28, halign=Gtk.Align.CENTER)
+            self.zooms.pack_start(b, False, False, 0)
+        self.top = Gtk.Box(spacing=8)
+        self.top.pack_start(self.b_menu, False, False, 0)
+        self.top.pack_start(self.zooms, False, False, 0)
+        self.main = Gtk.Box(spacing=28)
         self.b_switch = self.button("⇆", self.on_switch)
         self.b_shutter = self.button("", self.on_shutter)
         self.b_shutter.get_style_context().add_class("shutter")
         self.b_mode = self.button("Video", self.on_mode)
         for b in (self.b_switch, self.b_shutter, self.b_mode):
-            main.pack_start(b, False, False, 0)
+            self.main.pack_start(b, False, False, 0)
         # The camera switch as large as Video beside it (author, 2026-11-16).
         self.sides = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.BOTH)
         self.sides.add_widget(self.b_switch)
         self.sides.add_widget(self.b_mode)
-        # What is saved: the shape and the resolution, for photos or videos.
-        outputs = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
-        self.b_shape = self.button("", self.on_shape)
-        self.b_res = self.button("", self.on_res)
-        outputs.pack_start(self.b_shape, False, False, 0)
-        outputs.pack_start(self.b_res, False, False, 0)
-        bars.set_halign(Gtk.Align.FILL)
-        for row in (self.lens_row, settings, zooms, outputs, main):
-            bars.pack_start(row, False, False, 0)
-        self.overlay.add_overlay(bars)
+        self.controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                spacing=24)
+        self.controls.pack_start(self.top, False, False, 0)
+        self.controls.pack_start(self.main, False, False, 0)
+        for box in (self.top, self.main):
+            box.set_halign(Gtk.Align.CENTER)
+            box.set_valign(Gtk.Align.CENTER)
+        self.overlay.add_overlay(self.controls)
+        # Manual focus: a vertical slider on the right, the short edge's
+        # length in either orientation, infinity at the top and the
+        # nearest the lens goes at the bottom, the distance by the knob.
+        self.lens_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                spacing=6, halign=Gtk.Align.END,
+                                valign=Gtk.Align.CENTER)
+        self.lens_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.VERTICAL, 0.0, LENS_MAX, LENS_STEP)
+        self.lens_scale.set_value_pos(Gtk.PositionType.LEFT)
+        self.lens_scale.connect("format-value", lambda _s, v: lens_text(v))
+        self.lens_scale.set_value(self.lens)
+        self.lens_scale.connect("value-changed", self.on_lens)
+        far, near = Gtk.Label(label="∞"), Gtk.Label(label="min")
+        for label in (far, near):
+            label.get_style_context().add_class("status")
+        self.lens_row.pack_start(far, False, False, 0)
+        self.lens_row.pack_start(self.lens_scale, True, True, 0)
+        self.lens_row.pack_start(near, False, False, 0)
+        self.overlay.add_overlay(self.lens_row)
         self.show_zoom()
         self.show_outputs()
 
@@ -477,6 +499,8 @@ class Camera(Gtk.Application):
         self.win.show_all()
         self.b_last.hide()
         self.lens_row.hide()
+        self.panel.hide()
+        self.layout()
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                              self.on_signal)
@@ -835,6 +859,39 @@ class Camera(Gtk.Application):
             self.transform = transform
             self.portrait = transform in ("normal", "180")
             self.orient()
+        size = (rect.width, rect.height)
+        if size != getattr(self, "laid_out", None):
+            self.laid_out = size
+            GLib.idle_add(self.layout)
+
+    def layout(self):
+        """Landscape: the controls in a column at the right edge, the
+        shutter in its middle, the focus slider beside it.  Portrait: rows
+        at the bottom, the slider at the right edge.  The slider is about
+        the short edge long either way (author, 2026-11-17)."""
+        w, h = self.win.get_size()
+        wide = w > h
+        vertical, horizontal = Gtk.Orientation.VERTICAL, Gtk.Orientation.HORIZONTAL
+        for box in (self.top, self.zooms, self.main):
+            box.set_orientation(vertical if wide else horizontal)
+        self.main.set_spacing(20 if wide else 28)
+        if wide:
+            self.controls.set_halign(Gtk.Align.END)
+            self.controls.set_valign(Gtk.Align.CENTER)
+            self.controls.set_margin_end(16)
+            self.controls.set_margin_bottom(0)
+        else:
+            self.controls.set_halign(Gtk.Align.CENTER)
+            self.controls.set_valign(Gtk.Align.END)
+            self.controls.set_margin_end(0)
+            self.controls.set_margin_bottom(16)
+        side = self.controls.get_allocated_width() if wide else 0
+        self.lens_row.set_margin_end(side + 24 if wide else 12)
+        self.lens_scale.set_size_request(-1, int(min(w, h) * 0.7))
+        return False
+
+    def on_menu(self, *_):
+        self.panel.set_visible(not self.panel.get_visible())
 
     def method(self):
         rear, front = VIEW_TURN.get(getattr(self, "transform", "normal"),
@@ -1002,18 +1059,11 @@ class Camera(Gtk.Application):
         self.lens_row.set_visible(self.manual)
         if self.pipeline and not self.busy:
             self.focus_controls()
-        if self.manual:
-            self.show_lens()
 
     def on_lens(self, scale):
         self.lens = scale.get_value()
         if self.manual and self.pipeline and not self.busy:
             self.src.set_property("lens-position", self.lens)
-        self.show_lens()
-
-    def show_lens(self):
-        self.say("Focus %s" % ("∞" if self.lens < 0.05 else
-                               "%.2f m" % (1 / self.lens)), 2)
 
     def on_win_touch(self, win, event):
         """Two fingers: the zoom follows their distance from where they
@@ -1097,6 +1147,10 @@ class Camera(Gtk.Application):
         coordinates, as moWerk's camerabin patch maps it."""
         print("tap: %s at %.0f %.0f, busy %s" % (event.type, event.x, event.y,
                                                  self.busy), flush=True)
+        if self.panel.get_visible():
+            # A tap beside the menu closes it, and focuses nowhere.
+            self.panel.hide()
+            return False
         if self.busy:
             return False
         # The picture inside the view, with bars around it in other shapes.
