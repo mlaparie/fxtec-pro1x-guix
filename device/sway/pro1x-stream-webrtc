@@ -110,7 +110,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 </style>
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
 <div id="bar"><button id="bq">QA</button><button id="ba">APPS</button>
-<button id="bw">WIN</button><button id="bo">OSK</button><button id="bk">KEYS</button>
+<button id="bw">WIN</button><button id="bo">OSK</button><button id="bk">TKB</button>
 <button id="bt">MOUSE</button><button id="bm">CANVAS</button>
 <button id="bi">INFO</button><button id="br">RELOAD</button></div>
 <div id="info"></div>
