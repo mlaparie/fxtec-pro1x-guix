@@ -1388,6 +1388,23 @@ screen, for entering the password without a hardware keyboard.")
                (origin-patches (package-source swayfx)))))))))
 (define-public sway/pro1x (with-json-c/pro1x sway))
 
+;;; xdg-desktop-portal-wlr with one frame at a time on ext-image-copy-capture:
+;;; 0.8.4 asked Sway for a second frame while one was pending, Sway ended the
+;;; connection ("session already has a frame object"), and no screen-cast
+;;; frame ever reached PipeWire (2026-11-18, the interactive stream's
+;;; PipeWire capture).
+(define-public xdg-desktop-portal-wlr/pro1x
+  (package
+    (inherit xdg-desktop-portal-wlr)
+    (source
+     (origin
+       (inherit (package-source xdg-desktop-portal-wlr))
+       (patches
+        (cons (local-file
+               (repository-file "device/patches/xdg-desktop-portal-wlr-one-frame.patch")
+               "xdg-desktop-portal-wlr-one-frame.patch")
+              (origin-patches (package-source xdg-desktop-portal-wlr))))))))
+
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
 ;;; freedesktop's phone sounds were too old-fashioned and harsh (author).

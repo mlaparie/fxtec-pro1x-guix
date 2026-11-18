@@ -1,0 +1,25 @@
+screencast: no second ext-image-copy frame while one is pending
+
+ext_register_frame_cb created a frame whenever PipeWire asked for one,
+even with the previous frame not yet ready or failed.  The compositor
+(Sway with wlroots' ext-image-copy-capture) then raised duplicate_frame,
+"session already has a frame object", and the portal's connection ended
+with a protocol error: no frame reached the stream.  Skip the request;
+the pending frame is on its way.
+
+--- a/src/screencast/ext_image_copy.c
++++ b/src/screencast/ext_image_copy.c
+@@ -288,6 +288,13 @@ static int ext_register_session_cb(struct xdpw_screencast_instance *cast) {
+ }
+ 
+ static void ext_register_frame_cb(struct xdpw_screencast_instance *cast) {
++	/* A frame not yet ready or failed: the compositor refuses a second one
++	 * (duplicate_frame, "session already has a frame object"), which ends
++	 * the connection; this capture is already on its way. */
++	if (cast->ext_session.frame) {
++		logprint(TRACE, "ext: a frame is still pending");
++		return;
++	}
+ 	if (!cast->ext_session.capture_session) {
+ 		if (ext_register_session_cb(cast) != 0) {
+ 			logprint(ERROR, "ext: failed to register session");
