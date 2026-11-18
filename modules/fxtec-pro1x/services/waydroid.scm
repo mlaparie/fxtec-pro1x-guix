@@ -170,6 +170,7 @@ memory-limit, cpu-cores, cpu-priority.")
     #~(begin
         (setenv "PATH"
                 (string-append #$coreutils "/bin:" #$grep "/bin:" #$sed "/bin:"
+                               #$(file-append glibc "/bin") ":"   ; getent
                                #$e2fsprogs "/sbin:" #$inetutils "/bin:"
                                #$(file-append modem-manager-1.24 "/bin") ":"
                                "/run/current-system/profile/bin"))
@@ -201,7 +202,9 @@ Android start, its permissions and, with gps?, the phone's position.")
                             #$waydroid-bt-overlay)
                    (apply (make-forkexec-constructor
                            (list #$pro1x-waydroid-bt-script "watch"
-                                 #$@(if (waydroid-gps? config) '("gps") '()))
+                                 #$@(if (waydroid-gps? config)
+                                        (list "gps" (waydroid-user config))
+                                        '()))
                            #:log-file "/var/log/waydroid-bt.log")
                           args)))
         (stop #~(make-kill-destructor))))

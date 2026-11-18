@@ -4,7 +4,7 @@
 # Opened by Super+q, or the gear in the bar (--bar), in a floating foot
 # (app id quickactions).  One line
 # per setting with its current state, like Phosh's tiles: Wi-Fi, mobile
-# data, SIM, Bluetooth, airplane mode, auto-rotation, keep screen on
+# data, SIM, Bluetooth, location, NFC, airplane mode, auto-rotation, keep screen on
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications, operator,
@@ -819,6 +819,16 @@ rotation_mode() {               # sensor, keyboard or fixed
 
 onoff() { [ "$1" = enabled ] || [ "$1" = on ] && echo on || echo off; }
 
+# Location: the phone's GPS for its apps and Android's (pro1x-waydroid-bt
+# reads this file); off turns the modem's GPS off now.  On by default.
+location_now() { cat "$statedir/location" 2>/dev/null || echo on; }
+# NFC through rfkill, as Bluetooth; "none" while the kernel shows no NFC
+# device (the device tree does not describe the chip yet, 2026-11-18).
+nfc_now() {
+    if ls /sys/class/nfc/ 2>/dev/null | grep -q .; then blocked nfc
+    else echo none; fi
+}
+
 blocked() {                     # rfkill type -> on/off (on = not blocked)
     if rfkill list "$1" 2>/dev/null | grep -q "Soft blocked: yes"; then
         echo off
@@ -1078,6 +1088,8 @@ lines() {
         "operator    Operator             $(operator_shown "$kv")" \
         "sim         SIM                  $(sim_state "$kv")" \
         "bluetooth   Bluetooth            $(dim "$bt")" \
+        "location    Location             $(dim "$(location_now)")" \
+        "nfc         NFC                  $(dim "$(nfc_now)")" \
         "airplane    Airplane mode        $(dim "$plane")" \
         "rotation    Rotation             $(rotation_mode)" \
         "orient      Orientation          $orient_shown" \
@@ -1184,6 +1196,17 @@ set_to() {
         airplane)
             if [ "$2" = on ]; then airplane_enter; else airplane_leave; fi ;;
         rotation) sway-autorotate "$2" ;;
+        location)
+            mkdir -p "$statedir"
+            echo "$2" > "$statedir/location"
+            # On: whoever needs the GPS turns it on (Satellite, Android's
+            # watcher); off: now, for all.
+            [ "$2" = off ] &&
+                { mmcli -m any --location-disable-gps-raw \
+                        --location-disable-gps-nmea >/dev/null 2>&1 & } ;;
+        nfc)
+            [ "$(nfc_now)" = none ] && { why "no NFC device"; return 1; }
+            if [ "$2" = on ]; then rfkill unblock nfc; else rfkill block nfc; fi ;;
         caffeine)
             [ "$(cat "$caffeine" 2>/dev/null || echo off)" = "$2" ] && return
             echo "$2" > "$caffeine"
@@ -1228,6 +1251,8 @@ state_of() {                    # state_of <setting>: on or off
         wifi) onoff "$(nmcli radio wifi)" ;;
         wwan) onoff "$(nmcli radio wwan)" ;;
         bluetooth) blocked bluetooth ;;
+        location) location_now ;;
+        nfc) nfc_now ;;
         airplane) airplane_now ;;
         rotation) cat "$statedir/sway-autorotate" 2>/dev/null || echo off ;;
         caffeine) cat "$caffeine" 2>/dev/null || echo off ;;

@@ -6,9 +6,10 @@
 #                   overlay, with a build.prop that gives Bluetooth time to
 #                   start, and mount waydroid-bt-host's socket directory into
 #                   the container (an lxc.include at the end of its config)
-#   watch [gps]     at each Android start, grant the Bluetooth app its runtime
-#                   permissions; with gps, give Android the phone's position
-#                   while it runs
+#   watch [gps USER] at each Android start, grant the Bluetooth app its
+#                   runtime permissions; with gps, give Android the phone's
+#                   position while it runs and USER's Location toggle
+#                   (quick actions) is on
 #
 # Waydroid's image strips the Bluetooth app (waydroid-bt-overlay brings it
 # back) and has no Bluetooth HAL (the overlay's soft HCI HAL, which talks to
@@ -122,8 +123,14 @@ gps_off() {
         log "modem GPS off"
 }
 
+# Quick actions' Location toggle, in USER's state directory: on unless off.
+location_on() {
+    [ "$(cat "$home/.local/state/pro1x/location" 2>/dev/null)" != off ]
+}
+
 watch() {
     gps=${1:-}
+    home=$(getent passwd "${2:-user}" | cut -d: -f6)
     last= on=
     while sleep 10; do
         lxc_include
@@ -135,11 +142,20 @@ watch() {
         }
         if [ "$id" != "$last" ]; then
             booted || continue
-            last=$id
+            last=$id on=
             grant
-            [ -n "$gps" ] && { providers; gps_on && on=1; }
         fi
-        [ -n "$on" ] || continue
+        [ -n "$gps" ] || continue
+        if location_on; then
+            [ -n "$on" ] || { providers; gps_on && on=1; }
+        else
+            [ -n "$on" ] && {
+                gps_off
+                in_android 'cmd location set-location-enabled false' >/dev/null
+                on=
+            }
+            continue
+        fi
         set -- $(fix)
         [ $# -eq 3 ] || continue
         in_android "cmd location providers set-test-provider-location gps --location $1,$2 --accuracy 10 --altitude $3
@@ -150,6 +166,6 @@ cmd location providers set-test-provider-location network --location $1,$2 --acc
 case "${1:-}" in
     setup) [ $# -eq 2 ] || { echo "usage: pro1x-waydroid-bt setup OVERLAY" >&2; exit 2; }
            setup "$2" ;;
-    watch) watch "${2:-}" ;;
-    *) echo "usage: pro1x-waydroid-bt setup OVERLAY | watch [gps]" >&2; exit 2 ;;
+    watch) watch "${2:-}" "${3:-}" ;;
+    *) echo "usage: pro1x-waydroid-bt setup OVERLAY | watch [gps USER]" >&2; exit 2 ;;
 esac
