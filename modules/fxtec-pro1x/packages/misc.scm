@@ -1588,11 +1588,11 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "Close window        s-<backspace>\n"
                      "Help                C-s-h\n"
                      "Power menu          power key (long press)\n"
+                     "Touchpad            s-t      or camera button (hold)\n"
                      "Click               camera button\n"
                      "Right click         Fn + camera button\n"
                      "Double click        camera button twice\n"
-                     "Open the camera     camera button 3 times\n"
-                     "Touchpad            camera button (hold)")
+                     "Open the camera     camera button 3 times")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
             (invoke "convert" "dark-high.png" "help.png"
                     "-gravity" "center" "-geometry" "+0+255" "-composite"
