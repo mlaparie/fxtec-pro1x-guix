@@ -92,8 +92,9 @@ led_hibernating() {
 # The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
 # rang only once something else woke it): the RTC's wake alarm, 5 s
 # (author: 20 was too long, waking is quick) before the earliest ring_time Clocks keeps (dconf reads the user's
-# settings without a session bus).  The RTC restarts from 0 at each boot,
-# so the alarm is set relative ("+seconds").  A wake by the RTC keeps the
+# settings without a session bus).  The RTC does not hold the wall time
+# here (it counts from an arbitrary start, also through power-off), so the
+# alarm is set relative ("+seconds").  A wake by the RTC keeps the
 # phone up (suspend_loop), and Clocks rings.
 rtcwake=/sys/class/rtc/rtc0/wakealarm
 # check_at: the next look at the battery while asleep (epoch seconds),
@@ -146,11 +147,12 @@ hibernate_ready() {
 # no use for the ADSP's wakeups, so the driver is unloaded meanwhile.
 # After a restore from a powered-off phone the DSPs (modem, ADSP, CDSP) are
 # off while the kernel still takes them for running: each is restarted,
-# which loads its firmware again.  The RTC starts from 0 at every boot, so
-# a lower reading after the restore than before means a power cycle.  The
-# modem's restart is the author's exception to never stopping it
-# (2026-11-18): it is not running then anyway.  Not yet run on the phone.
-rtc_clock=/sys/class/rtc/rtc0/since_epoch
+# which loads its firmware again.  Without it, Wi-Fi (its firmware is the
+# modem's), Bluetooth and the modem were dead after the first resume, and
+# the phone froze and rebooted a minute later (2026-11-18).  A successful
+# return from "disk" in shutdown mode always follows a power cycle (the RTC
+# keeps counting through it, so it cannot tell).  The modem's restart is the
+# author's exception to never stopping it: it is not running then anyway.
 restart_dsps() {
     for r in /sys/class/remoteproc/remoteproc*; do
         name=$(cat "$r/name")
@@ -160,6 +162,11 @@ restart_dsps() {
         echo start > "$r/state" ||
             logger -t pro1x-sleep "could not start $name"
     done
+    # What talks to the ADSP, as after its crash (adsp_recover).
+    herd restart pro1x-hexagonrpcd >/dev/null 2>&1
+    herd start iio-sensor-proxy >/dev/null 2>&1
+    herd start pro1x-pocket >/dev/null 2>&1
+    herd restart pro1x-shake-torch >/dev/null 2>&1
 }
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"
@@ -173,12 +180,11 @@ hibernate_now() {
     wod=/sys/module/qrtr/parameters/wake_on_data
     wod_was=$(cat "$wod" 2>/dev/null)
     [ -w "$wod" ] && echo N > "$wod"
-    before=$(cat "$rtc_clock" 2>/dev/null || echo 0)
+    echo shutdown > /sys/power/disk
     if echo disk > /sys/power/state; then
-        after=$(cat "$rtc_clock" 2>/dev/null || echo 0)
-        logger -t pro1x-sleep "back from hibernation (RTC $before, then $after)"
+        logger -t pro1x-sleep "back from hibernation"
         mkdir -p "${disarmed%/*}" && : > "$disarmed"
-        [ "$after" -lt "$before" ] && restart_dsps
+        restart_dsps
     else
         logger -t pro1x-sleep "hibernation failed"
     fi
