@@ -51,6 +51,11 @@ jobs:
       # ── Install Guix ──────────────────────────────────────────────────────
       - name: Install Guix
         run: |
+          # codeberg.org's name did not resolve during an outage
+          # (2026-11-18, run 44282796481); its address is pinned meanwhile,
+          # only when the lookup fails.
+          getent hosts codeberg.org >/dev/null ||
+            echo "217.197.84.140 codeberg.org" | sudo tee -a /etc/hosts
           curl -fsSL https://codeberg.org/guix/guix/raw/branch/master/etc/guix-install.sh \
             -o /tmp/guix-install.sh
           chmod +x /tmp/guix-install.sh
