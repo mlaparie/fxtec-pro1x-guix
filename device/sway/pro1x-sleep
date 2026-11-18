@@ -166,6 +166,13 @@ hibernate_now() {
     led_hibernating
     sync
     rmmod smp2p_sleepstate 2>/dev/null && ss=1 || ss=
+    # Modem messages wake the phone from suspend (pro1x-qrtr-modem-wake,
+    # set by suspend_loop and left on): each aborted hibernation as it
+    # froze the kernel threads or quiesced the devices (2026-11-18,
+    # qrtr-modem's count up 2; with it off, test_resume restored).
+    wod=/sys/module/qrtr/parameters/wake_on_data
+    wod_was=$(cat "$wod" 2>/dev/null)
+    [ -w "$wod" ] && echo N > "$wod"
     before=$(cat "$rtc_clock" 2>/dev/null || echo 0)
     if echo disk > /sys/power/state; then
         after=$(cat "$rtc_clock" 2>/dev/null || echo 0)
@@ -175,6 +182,7 @@ hibernate_now() {
     else
         logger -t pro1x-sleep "hibernation failed"
     fi
+    [ -n "$wod_was" ] && echo "$wod_was" > "$wod"
     # sudo drops the variable that tells Guix's modprobe where modules are.
     [ -n "$ss" ] &&
         LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules \
