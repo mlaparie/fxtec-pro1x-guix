@@ -319,7 +319,12 @@ send_interactive() {
     hw_source
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
-    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --interactive "$webrtc_port" \
+    # The whole screen through the ScreenCast portal (half wf-recorder's
+    # CPU); a window, or a failed portal, through wf-recorder.
+    portal=()
+    [ -z "$target" ] && portal=(--portal "$turn")
+    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" "${portal[@]}" \
+        --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
         wf-recorder "${scale[@]}" -D -r "$rate" -m ivf -c libvpx \
             -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \

@@ -194,13 +194,15 @@ Chromecast receivers.")
                     ,(in "/lib/girepository-1.0"
                          '("glib" "gobject-introspection" "gstreamer"
                            "gst-plugins-base" "gst-plugins-bad")))
+                  ;; pipewiresrc and pw-dump, for the ScreenCast portal.
                   `("GST_PLUGIN_SYSTEM_PATH" ":" prefix
                     ,(in "/lib/gstreamer-1.0"
                          '("gstreamer" "gst-plugins-base" "gst-plugins-good"
-                           "gst-plugins-bad" "libnice"))))))))))
+                           "gst-plugins-bad" "libnice" "pipewire")))
+                  `("PATH" ":" suffix ,(in "/bin" '("pipewire"))))))))))
     (inputs
      (list glib gobject-introspection gst-plugins-bad gst-plugins-base
-           gst-plugins-good gstreamer libnice python python-evdev
+           gst-plugins-good gstreamer libnice pipewire python python-evdev
            python-pygobject))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Serve an H.264 stream to a browser by WebRTC")

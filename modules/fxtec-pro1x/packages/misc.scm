@@ -1407,7 +1407,12 @@ screen, for entering the password without a hardware keyboard.")
                             name))
               '("xdg-desktop-portal-wlr-one-frame.patch"
                 "xdg-desktop-portal-wlr-dmabuf-size.patch"))
-         (origin-patches (package-source xdg-desktop-portal-wlr))))))))
+         (origin-patches (package-source xdg-desktop-portal-wlr))))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments xdg-desktop-portal-wlr)
+       ;; Its config from /etc/xdg (system/mobile.scm), not from the store.
+       ((#:configure-flags flags #~'())
+        #~(cons "--sysconfdir=/etc" #$flags))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds
