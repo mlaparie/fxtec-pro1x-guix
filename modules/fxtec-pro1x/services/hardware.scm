@@ -362,7 +362,9 @@ white, #RRGGBB or #f")
   ;; was a little weak (author, 2026-11-01): 0.8 for 25 ms; stronger again
   ;; (author, 2026-11-02): 1.0 for 35 ms.  In the quiet profile, so in quiet
   ;; and full.  The menu swipes and the power key's hold play button-pressed
-  ;; too (fbcli, pro1x-gestures and pro1x-power-button).
+  ;; too (fbcli, pro1x-gestures and pro1x-power-button).  The lock screen's
+  ;; fingerprint (gtklock-fingerprint): one 60 ms buzz for a match, two for
+  ;; a finger not recognised (author, 2026-11-18).
   (define (entry spec)
     (match spec
       ((event colour . rest)
@@ -389,7 +391,11 @@ blue, white or #RRGGBB")
           \"magnitudes\": [1.0, 0.0, 1.0, 0.0, 1.0],
           \"durations\": [600, 150, 600, 150, 600] },
         { \"event-name\": \"message-new-instant\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [300, 120, 300] }"
+          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [300, 120, 300] },
+        { \"event-name\": \"fingerprint-match\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0], \"durations\": [60] },
+        { \"event-name\": \"fingerprint-nomatch\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [60, 90, 60] }"
    (if haptics?
        ",
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",

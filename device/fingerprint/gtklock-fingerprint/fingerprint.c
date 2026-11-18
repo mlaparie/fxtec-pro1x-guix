@@ -6,7 +6,8 @@
  * While gtklock runs, the module keeps one "identify" request open on the
  * daemon's socket; the daemon reads the sensor only for it, and not while
  * the panel is off.  A match ends gtklock as a right password does; a miss
- * shows in the error line, and the password keeps working.  When gtklock
+ * shows in the error line, and the password keeps working.  Each gives a
+ * vibration, one buzz for a match and two for a miss.  When gtklock
  * goes, the connection closes and the daemon stops reading the sensor.
  *
  * gtklock 4.0's structures are in gtklock-module.h, as in its other
@@ -55,6 +56,20 @@ static void show(const char *text)
 		gtk_label_set_text(GTK_LABEL(w->error_label), text);
 }
 
+/*
+ * A vibration through feedbackd (its fxtec,pro1x theme, so the feedback
+ * profile applies): fbcli ends the feedback when its input ends, so a
+ * sleep feeds it, and it outlives gtklock after a match.
+ */
+static void buzz(const char *event)
+{
+	gchar *cmd = g_strdup_printf("sh -c 'sleep 1 | fbcli -E %s >/dev/null 2>&1'",
+				     event);
+
+	g_spawn_command_line_async(cmd, NULL);
+	g_free(cmd);
+}
+
 static void got_line(GObject *src, GAsyncResult *res, gpointer data)
 {
 	GError *err = NULL;
@@ -73,12 +88,14 @@ static void got_line(GObject *src, GAsyncResult *res, gpointer data)
 	}
 	if (g_str_has_prefix(line, "match ")) {
 		g_free(line);
+		buzz("fingerprint-match");
 		stop(FALSE);
 		g_application_quit(G_APPLICATION(lock->app));
 		return;
 	}
 	if (!strcmp(line, "nomatch")) {
 		show("Fingerprint not recognised");
+		buzz("fingerprint-nomatch");
 	} else if (g_str_has_prefix(line, "error ")) {
 		/* No finger enrolled, or the sensor is down: the password only. */
 		g_message("fingerprint: %s", line + 6);
