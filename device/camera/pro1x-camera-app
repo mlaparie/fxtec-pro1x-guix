@@ -1393,12 +1393,13 @@ class Camera(Gtk.Application):
         o = self.out()
 
         def row():
-            # From the left: a group growing pushes only what is to its right
+            # The page's whole width (halign START shrank it to one column a
+            # line, 2026-11-18); each column kept at its own width from the
+            # left, so a group growing pushes only what is to its right
             # (author).
             flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
                                homogeneous=False, row_spacing=12,
-                               column_spacing=12, valign=Gtk.Align.START,
-                               halign=Gtk.Align.START)
+                               column_spacing=12, valign=Gtk.Align.START)
             flow.set_max_children_per_line(12)
             page.pack_start(flow, False, False, 0)
             return flow
@@ -1505,6 +1506,10 @@ class Camera(Gtk.Application):
             ("HORIZON", [("OFF", not self.horizon_on, lambda: self.set_aid("horizon_on", False)),
                          ("ON", self.horizon_on, lambda: self.set_aid("horizon_on", True))])],
             2, pick))
+        # Columns at their own width, not stretched to share a line's room.
+        for flow in (top, bottom):
+            for child in flow.get_children():
+                child.set_halign(Gtk.Align.START)
         self.settings_view.add(page)
         self.settings_view.show_all()
 
