@@ -140,6 +140,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <div id="bar"><button class="x" id="bq">QA</button><button class="x" id="ba">APPS</button>
 <button class="x" id="bw">WIN</button><button class="x" id="bo">OSK</button>
 <button class="x" id="bk">LKB</button><button class="x" id="bt">TOUCH</button>
+<button class="x" id="bp">FREE</button>
 <button class="x" id="bu">MUTED</button><button class="x" id="bs">SET</button>
 <button class="x" id="bm">VIDEO</button><button class="x" id="bi">INFO</button>
 <button class="x" id="br">RELOAD</button><button id="bc"></button></div>
@@ -176,10 +177,13 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, sound: true, touch: true,
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, sound: true, input: "touch",
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
-if (P.get("input")) cfg.touch = P.get("input") !== "mouse";
+// Settings kept before the touchpad mode had touch true or false.
+if (cfg.touch === false && !store.get("settings", {}).input) cfg.input = "mouse";
+delete cfg.touch;
+if (["touch", "mouse", "pad"].includes(P.get("input"))) cfg.input = P.get("input");
 let saving = null;
 function save() {
   store.set("settings", cfg);
@@ -308,10 +312,12 @@ addEventListener("pointerdown", e => {
 for (const [id, name] of [["bq", "quickactions"], ["ba", "launcher"],
                           ["bw", "windowswitcher"], ["bo", "osk"]])
   document.getElementById(id).onclick = () => send({t: "action", name});
-// Touch: the Pro1x gets touches, as from its own screen; mouse: a pointer.
-function showInput() { document.getElementById("bt").textContent = cfg.touch ? "TOUCH" : "MOUSE"; }
+// The input mode, shown as in use: TOUCH, then MOUSE, then PAD.
+const MODES = ["touch", "mouse", "pad"];
+function showInput() { document.getElementById("bt").textContent = cfg.input.toUpperCase(); }
 document.getElementById("bt").onclick = () => {
-  cfg.touch = !cfg.touch; save(); showInput(); log({ev: "input-mode", touch: cfg.touch});
+  cfg.input = MODES[(MODES.indexOf(cfg.input) + 1) % MODES.length];
+  save(); showInput(); log({ev: "input-mode", input: cfg.input});
 };
 // The capture rate is the phone's: shown from its status, and a change
 // makes it restart the capture, then this page connects again.
@@ -374,7 +380,8 @@ async function connect() {
   try {
     const kept = await (await fetch(withKey("/settings"))).json();
     if (P.get("mode")) delete kept.canvas;
-    if (P.get("input")) delete kept.touch;
+    if (P.get("input")) delete kept.input;
+    delete kept.touch;
     Object.assign(cfg, kept);
     store.set("settings", cfg);
     refresh();
@@ -469,7 +476,7 @@ setInterval(async () => {
     for (let i = 0; i < ev.length; i += 3) rows.push("  " + ev.slice(i, i + 3).join("  "));
     it.textContent = [
       `screen  ${s.w}x${s.h}  video ${s.video}`,
-      `mode    ${s.mode}, ${cfg.touch ? "touch" : "mouse"}, ${v.muted ? "muted" : "sound"}`,
+      `mode    ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
       `fps     ${s.fps}  decoded ${s.decoded}  dropped ${s.dropped}`,
       `rate    ${s.kbps} kbit/s  (set ${cfg.rate} Mbit/s, ${cfg.fps} fps)`,
       `data    ${s.mb} MB so far`,
@@ -482,8 +489,11 @@ setInterval(async () => {
   if (++ticks % 10 === 0) log(Object.assign({ev: "stats"}, s));
 }, 1000);
 
-// Touches: a tap clicks, a drag drags, a long press right-clicks, two
-// fingers scroll.  Positions in the picture, 0 to 1.
+// Touch: touches, as on the Pro1x's own screen.  Mouse: an absolute pointer
+// (a tap clicks, a drag drags, a long press right-clicks, two fingers
+// scroll).  Pad: a touchpad moving the Pro1x's pointer from where it is (a
+// tap clicks, two fingers tap to right-click and drag to scroll, a press
+// held then moved drags).  Positions in the picture, 0 to 1.
 function norm(e) {
   const r = (cfg.canvas ? c : v).getBoundingClientRect();
   const vw = v.videoWidth || r.width, vh = v.videoHeight || r.height;
@@ -494,19 +504,41 @@ function norm(e) {
 }
 const active = new Map();
 let down = false, start = null, scrollAt = null, timer = null, moved = false;
+let padLast = null, padStart = 0, padMax = 0, padHeld = false;
 function centre() {
   let x = 0, y = 0;
   for (const p of active.values()) { x += p.clientX; y += p.clientY; }
   return {x: x / active.size, y: y / active.size};
 }
+function scroll() {
+  const p = centre(), dy = p.y - scrollAt.y, dx = p.x - scrollAt.x, step = 20;
+  if (Math.abs(dy) >= step || Math.abs(dx) >= step) {
+    send({t: "scroll", v: Math.round(dy / step), h: Math.round(-dx / step)});
+    scrollAt = p;
+  }
+}
 function press(e) {
+  if (captured) return;
   if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
   e.preventDefault();
   active.set(e.pointerId, e);
   if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
-  if (cfg.touch) {
+  if (cfg.input === "touch") {
     const n = norm(e);
     send({t: "tdown", id: e.pointerId, x: n.x, y: n.y});
+    return;
+  }
+  if (cfg.input === "pad") {
+    if (active.size === 1) {
+      padLast = {x: e.clientX, y: e.clientY}; padStart = Date.now(); padMax = 1;
+      moved = false; padHeld = false;
+      timer = setTimeout(() => {
+        if (!moved) { padHeld = true; send({t: "rbtn", b: "left", d: 1}); }
+      }, 400);
+    } else {
+      clearTimeout(timer); padMax = Math.max(padMax, active.size);
+      scrollAt = centre();
+    }
     return;
   }
   if (active.size === 1) {
@@ -524,12 +556,26 @@ function press(e) {
   }
 }
 function move(e) {
-  if (!active.has(e.pointerId)) return;
+  if (captured || !active.has(e.pointerId)) return;
   e.preventDefault();
   active.set(e.pointerId, e);
-  if (cfg.touch) {
+  if (cfg.input === "touch") {
     const n = norm(e);
     send({t: "tmove", id: e.pointerId, x: n.x, y: n.y});
+    return;
+  }
+  if (cfg.input === "pad") {
+    if (active.size === 1 && padLast) {
+      const dx = e.clientX - padLast.x, dy = e.clientY - padLast.y;
+      if (Math.abs(dx) + Math.abs(dy) > 0) {
+        if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+        send({t: "rel", dx: dx * 1.5, dy: dy * 1.5});
+        padLast = {x: e.clientX, y: e.clientY};
+      }
+    } else if (active.size >= 2 && scrollAt) {
+      moved = true;
+      scroll();
+    }
     return;
   }
   if (active.size === 1 && down) {
@@ -537,18 +583,30 @@ function move(e) {
     const n = norm(e);
     send({t: "move", x: n.x, y: n.y});
   } else if (active.size === 2 && scrollAt) {
-    const p = centre(), dy = p.y - scrollAt.y, dx = p.x - scrollAt.x;
-    const step = 20;
-    if (Math.abs(dy) >= step || Math.abs(dx) >= step) {
-      send({t: "scroll", v: Math.round(dy / step), h: Math.round(-dx / step)});
-      scrollAt = p;
-    }
+    scroll();
   }
 }
 function release(e) {
   if (!active.has(e.pointerId)) return;
   active.delete(e.pointerId);
-  if (cfg.touch) { send({t: "tup", id: e.pointerId}); return; }
+  if (cfg.input === "touch") { send({t: "tup", id: e.pointerId}); return; }
+  if (cfg.input === "pad") {
+    clearTimeout(timer);
+    if (active.size === 0) {
+      if (padHeld) send({t: "rbtn", b: "left", d: 0});
+      else if (!moved && Date.now() - padStart < 300) {
+        const b = padMax >= 2 ? "right" : "left";
+        send({t: "rbtn", b, d: 1}); send({t: "rbtn", b, d: 0});
+      }
+      padLast = null; scrollAt = null; padHeld = false;
+    } else {
+      // The finger left takes over the moving.
+      const p = active.values().next().value;
+      padLast = {x: p.clientX, y: p.clientY};
+      if (active.size < 2) scrollAt = null;
+    }
+    return;
+  }
   clearTimeout(timer);
   if (down && active.size === 0) { send({t: "up"}); down = false; }
   if (active.size < 2) scrollAt = null;
@@ -557,6 +615,73 @@ addEventListener("pointerdown", press, {passive: false});
 addEventListener("pointermove", move, {passive: false});
 addEventListener("pointerup", release);
 addEventListener("pointercancel", release);
+
+// Capture: fullscreen, the keyboard locked (Chromium's Keyboard Lock: Super,
+// Alt+Tab and the like come here instead of the computer's desktop, where
+// its compositor allows it) and the mouse pointer locked (relative moves).
+// Every key goes to the Pro1x, down and up, until Esc is held (the
+// browser's way out) or capture is turned off; then any key still down is
+// released.
+let captured = false;
+const bp = document.getElementById("bp");
+function showCapture() { bp.textContent = captured ? "CAPTURED" : "FREE"; }
+async function capture() {
+  try { await document.documentElement.requestFullscreen(); } catch (e) {}
+  try { if (navigator.keyboard && navigator.keyboard.lock) await navigator.keyboard.lock(); }
+  catch (e) { log({ev: "keyboard-lock-failed", err: String(e)}); }
+  try { await (cfg.canvas ? c : v).requestPointerLock(); }
+  catch (e) { log({ev: "pointer-lock-failed", err: String(e)}); }
+}
+function release_capture() {
+  try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) {}
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+bp.onclick = () => { if (captured) release_capture(); else capture(); };
+function captureChanged() {
+  const now = !!document.pointerLockElement;
+  if (now === captured) return;
+  captured = now;
+  if (!captured) { send({t: "allup"}); release_capture(); }
+  showCapture();
+  log({ev: "capture", on: captured});
+}
+document.addEventListener("pointerlockchange", captureChanged);
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && captured) release_capture();
+});
+const BUTTONS = ["left", "middle", "right"];
+document.addEventListener("mousemove", e => {
+  if (captured && (e.movementX || e.movementY)) send({t: "rel", dx: e.movementX, dy: e.movementY});
+});
+document.addEventListener("mousedown", e => {
+  if (!captured) return;
+  e.preventDefault();
+  send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 1});
+});
+document.addEventListener("mouseup", e => {
+  if (!captured) return;
+  e.preventDefault();
+  send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 0});
+});
+document.addEventListener("wheel", e => {
+  if (!captured) return;
+  e.preventDefault();
+  const v = Math.sign(-e.deltaY), h = Math.sign(e.deltaX);
+  if (v || h) send({t: "scroll", v, h});
+}, {passive: false});
+document.addEventListener("keydown", e => {
+  if (!captured || !e.code) return;
+  e.preventDefault();
+  if (!e.repeat) send({t: "kd", code: e.code});
+}, {capture: true});
+document.addEventListener("keyup", e => {
+  if (!captured || !e.code) return;
+  e.preventDefault();
+  send({t: "ku", code: e.code});
+}, {capture: true});
+document.addEventListener("contextmenu", e => { if (captured) e.preventDefault(); });
+showCapture();
 
 // Keys: the key's position when the browser gives it, else the text typed.
 k.addEventListener("keydown", e => {
@@ -647,7 +772,15 @@ CODES = {**{f"Key{c}": f"KEY_{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
          "BracketLeft": "KEY_LEFTBRACE", "BracketRight": "KEY_RIGHTBRACE",
          "Backslash": "KEY_BACKSLASH", "Semicolon": "KEY_SEMICOLON",
          "Quote": "KEY_APOSTROPHE", "Comma": "KEY_COMMA", "Period": "KEY_DOT",
-         "Slash": "KEY_SLASH", "Backquote": "KEY_GRAVE"}
+         "Slash": "KEY_SLASH", "Backquote": "KEY_GRAVE",
+         # Captured keyboards also send these, down and up.
+         "ShiftLeft": "KEY_LEFTSHIFT", "ShiftRight": "KEY_RIGHTSHIFT",
+         "ControlLeft": "KEY_LEFTCTRL", "ControlRight": "KEY_RIGHTCTRL",
+         "AltLeft": "KEY_LEFTALT", "AltRight": "KEY_RIGHTALT",
+         "MetaLeft": "KEY_LEFTMETA", "MetaRight": "KEY_RIGHTMETA",
+         "CapsLock": "KEY_CAPSLOCK", "Insert": "KEY_INSERT",
+         "PrintScreen": "KEY_SYSRQ", "ContextMenu": "KEY_COMPOSE",
+         "IntlBackslash": "KEY_102ND"}
 # Typed text to keys on a US layout (the remote keyboard's, pro1x.conf).
 SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
 PLAIN = {"`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft",
@@ -686,6 +819,14 @@ class Remote:
                              (ecodes.ABS_MT_POSITION_Y, axis)]},
             name="pro1x-remote-touch", vendor=0x1234, product=0x567C,
             input_props=[ecodes.INPUT_PROP_DIRECT])
+        # The touchpad mode and a captured mouse: moves from where the
+        # pointer is.
+        self.mouse = UInput(
+            {ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE],
+             ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y]},
+            name="pro1x-remote-mouse", vendor=0x1234, product=0x567D)
+        self.held = set()                   # captured keys down
+        self.rest = [0.0, 0.0]              # fractions of a move left over
         self.slots, self.tracking = {}, 0
         self.lock = threading.Lock()
         self.turn, self.turn_at = "normal", 0.0
@@ -806,6 +947,38 @@ class Remote:
             if kind == "action":
                 self.action(m.get("name"))
                 return
+            if kind == "rel":
+                mouse = self.mouse
+                for i, axis in enumerate((e.REL_X, e.REL_Y)):
+                    try:
+                        self.rest[i] += float(m.get(("dx", "dy")[i], 0))
+                    except (TypeError, ValueError):
+                        return
+                    step = int(self.rest[i])
+                    self.rest[i] -= step
+                    if step:
+                        mouse.write(e.EV_REL, axis, step)
+                mouse.syn()
+                return
+            if kind == "rbtn":
+                button = {"left": e.BTN_LEFT, "right": e.BTN_RIGHT,
+                          "middle": e.BTN_MIDDLE}.get(m.get("b"))
+                if button is not None:
+                    self.mouse.write(e.EV_KEY, button, 1 if m.get("d") else 0)
+                    self.mouse.syn()
+                return
+            if kind in ("kd", "ku") and m.get("code") in CODES:
+                key = getattr(e, CODES[m["code"]])
+                self.keyboard.write(e.EV_KEY, key, 1 if kind == "kd" else 0)
+                self.keyboard.syn()
+                (self.held.add if kind == "kd" else self.held.discard)(key)
+                return
+            if kind == "allup":
+                for key in self.held:
+                    self.keyboard.write(e.EV_KEY, key, 0)
+                self.keyboard.syn()
+                self.held.clear()
+                return
             if kind == "move":
                 self.at(m["x"], m["y"])
             elif kind in ("down", "up"):
@@ -868,6 +1041,14 @@ class Session:
             + AUDIO + " ! w."
         )
         self.webrtc = self.pipeline.get_by_name("w")
+        # Picture and sound as two streams: in one, the browser lip-synced
+        # them, and with the picture's timestamps counted from frames and the
+        # sound's from its clock, it held the sound back 1.5 s and cut it
+        # now and then (author, 2026-11-18).  Apart, each plays as it comes;
+        # the page's a/v setting lines them up.
+        for i, pad in enumerate(self.webrtc.sinkpads):
+            if pad.find_property("msid"):
+                pad.set_property("msid", f"pro1x-{i}")
         self.webrtc.connect("on-negotiation-needed", self.negotiate)
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
