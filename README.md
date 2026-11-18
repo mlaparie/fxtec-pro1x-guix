@@ -41,7 +41,7 @@ Double tap to wake               Working
 Fingerprint reader               Working    unlocks the lock screen
 Android apps (Waydroid)          Working    with or without Google Play
 Suspend                          Working    calls and SMS wake it
-GPS                              Working    no GPS or map app packaged yet
+GPS                              Working    Satellite app; not yet passed to Android apps
 Video encoding (Venus)           Working    hardware H.264 for screen streaming
 Video decoding (Venus)           Untested
 NFC                              Untested
