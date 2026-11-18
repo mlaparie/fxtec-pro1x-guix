@@ -1392,7 +1392,8 @@ screen, for entering the password without a hardware keyboard.")
 ;;; 0.8.4 asked Sway for a second frame while one was pending, Sway ended the
 ;;; connection ("session already has a frame object"), and no screen-cast
 ;;; frame ever reached PipeWire (2026-11-18, the interactive stream's
-;;; PipeWire capture).
+;;; PipeWire capture).  And DMA-BUF planes announced with their size: at 0,
+;;; GStreamer's pipewiresrc got no memory from them.
 (define-public xdg-desktop-portal-wlr/pro1x
   (package
     (inherit xdg-desktop-portal-wlr)
@@ -1400,10 +1401,13 @@ screen, for entering the password without a hardware keyboard.")
      (origin
        (inherit (package-source xdg-desktop-portal-wlr))
        (patches
-        (cons (local-file
-               (repository-file "device/patches/xdg-desktop-portal-wlr-one-frame.patch")
-               "xdg-desktop-portal-wlr-one-frame.patch")
-              (origin-patches (package-source xdg-desktop-portal-wlr))))))))
+        (append
+         (map (lambda (name)
+                (local-file (repository-file (string-append "device/patches/" name))
+                            name))
+              '("xdg-desktop-portal-wlr-one-frame.patch"
+                "xdg-desktop-portal-wlr-dmabuf-size.patch"))
+         (origin-patches (package-source xdg-desktop-portal-wlr))))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-sounds — the "pro1x" sound theme: calmer ringtone and message sounds

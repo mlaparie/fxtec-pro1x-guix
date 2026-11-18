@@ -1,0 +1,24 @@
+screencast: DMA-BUF planes with their size
+
+The planes of a DMA-BUF buffer were announced with size 0 (maxsize 0, and a
+placeholder chunk size).  GStreamer's pipewiresrc wraps each fd by that
+size and got no memory ("gst_buffer_insert_memory: assertion 'mem !=
+NULL' failed", or glupload's "could not find memory 0"), so no frame got
+through.  Take the size from the DMA-BUF itself (lseek to its end).
+
+--- a/src/screencast/screencast_common.c
++++ b/src/screencast/screencast_common.c
+@@ -209,6 +209,13 @@ struct xdpw_buffer *xdpw_buffer_create(struct xdpw_screencast_instance *cast,
+ 				xdpw_buffer_destroy(buffer);
+ 				return NULL;
+ 			}
++			/* The plane's size, from its DMA-BUF: left at 0, consumers that
++			 * wrap the fd by size (GStreamer's pipewiresrc) got no memory. */
++			off_t end = lseek(buffer->fd[plane], 0, SEEK_END);
++			if (end > (off_t)buffer->offset[plane]) {
++				buffer->size[plane] = end - buffer->offset[plane];
++			}
++			lseek(buffer->fd[plane], 0, SEEK_SET);
+ 
+ 			zwp_linux_buffer_params_v1_add(params, buffer->fd[plane], plane,
+ 				buffer->offset[plane], buffer->stride[plane], buffer->modifier >> 32,
