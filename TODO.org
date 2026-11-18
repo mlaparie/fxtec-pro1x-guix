@@ -59,6 +59,10 @@ The author wants calls fixed before the release (2026-11-05).
 WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 (=media.gmp-gmpopenh264.enabled=); catt on a Chromecast; Network Displays.
 *** WAIT [#B] Hotspot: devices with IP and name, stream to one; expel, ban, band, hidden name, auto-off, data used
+*** TODO [#B] Car stream: the Pro¹x's screen in the car's browser, low delay
+Plan in docs/car-stream.md (branch =streaming=, 2026-11-18): headless output,
+hardware H.264 and Opus by WebRTC, input back over a data channel, over the
+hotspot; keeps streaming while driving (author).  First step M0 in the car.
 *** WAIT [#C] Hotspot QR as an image
 *** CANCELLED 5 GHz hotspot
 ath10k keeps a world-regulatory chip's 5 GHz channels "no IR" unless
