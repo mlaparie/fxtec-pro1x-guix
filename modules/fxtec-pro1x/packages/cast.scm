@@ -200,9 +200,11 @@ Chromecast receivers.")
                            "gst-plugins-bad" "libnice"))))))))))
     (inputs
      (list glib gobject-introspection gst-plugins-bad gst-plugins-base
-           gst-plugins-good gstreamer libnice python python-pygobject))
+           gst-plugins-good gstreamer libnice python python-evdev
+           python-pygobject))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Serve an H.264 stream to a browser by WebRTC")
     (description "This package serves a web page, and sends the H.264 video of
-a command to the browser that opens it, by WebRTC.")
+a command to the browser that opens it, by WebRTC.  With --interactive, the
+page's touches and keys are played on the device by virtual input devices.")
     (license license:gpl3+)))

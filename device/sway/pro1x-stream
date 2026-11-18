@@ -281,6 +281,36 @@ send_webrtc() {
     go_to_source
 }
 
+# The interactive stream (docs/interactive-stream.md): the whole screen by
+# hardware WebRTC, and the viewer's touches and keys back.  For a car's
+# browser on the hotspot.
+send_interactive() {
+    area=() target=
+    ip=$(own_address)
+    [ -n "$ip" ] || return
+    stop_stream
+    hw_source
+    rate=$(fps)
+    mapfile -t scale < <(scale_args "$(out_size)")
+    setsid pro1x-stream-webrtc --raw "$hw_size" --interactive "$webrtc_port" \
+        wf-recorder "${hw_capture[@]}" -- \
+        wf-recorder "${scale[@]}" -D -r "$rate" -m ivf -c libvpx \
+            -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \
+            -p b=4000000 -p g="$rate" -f pipe:1 \
+        >/dev/null 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    url="http://$ip:$webrtc_port/"
+    echo "interactive, $url" > "$to_file"
+    sleep 1
+    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    clear_screen
+    printf 'Open in the browser on the other device:  %s\n' "$url"
+    printf 'Touches and keys there act here.  One viewer at a time; it keeps\n'
+    printf 'running until Stop.  The log: ~/.local/state/pro1x/interactive-stream.log\n\n'
+    show_qr "$url"
+    read -rsn1
+}
+
 try_catt() {
     clear_screen
     echo "Looking for Chromecasts…"
@@ -314,6 +344,7 @@ while :; do
             mjpeg "Browser (MJPEG)   no app, any browser; heavy on bandwidth, no sound" \
             webrtc "Browser (WebRTC)  no app, one viewer, software" \
             webrtchw "WebRTC, hardware  a little less CPU, 1920 at most" \
+            interactive "Interactive       screen, touch and keys from a browser (car)" \
             catt "Chromecast (catt) sends a video or file; the TV plays it itself" \
             miracast "Network Displays  mirrors to a Miracast or Chromecast display" \
             fps "Capture rate      $(fps) fps, lower saves CPU" \
@@ -326,6 +357,7 @@ while :; do
         mjpeg) send_mjpeg ;;
         webrtc) send_webrtc ;;
         webrtchw) use_hw=1 send_webrtc ;;
+        interactive) send_interactive ;;
         fps) pick_fps ;;
         size) pick_size ;;
         catt) try_catt ;;

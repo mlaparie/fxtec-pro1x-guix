@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
+
+With --interactive (the interactive stream, docs/interactive-stream.md), the
+page also sends touches and keys back over a WebRTC data channel, which a
+virtual pointer and keyboard (uinput) play on the Pro1x: a tap clicks, a
+drag drags, a long press right-clicks, two fingers scroll, and the page's
+keyboard button opens the browser's keyboard.  The page can draw the video
+on a canvas instead of a video element, shows what the browser reports
+(screen size, codec, frames, delay), and logs it and the events it gets to
+~/.local/state/pro1x/interactive-stream.log, for testing a car's browser.
+No sound yet.
 
 COMMAND writes H.264 (constrained baseline) to its standard output.  With a size
 and rate it writes raw NV12 frames instead, for the hardware H.264 encoder.
@@ -21,10 +31,13 @@ State: VP8 played in a browser (author, 2026-11-10).  The hardware path encodes
 real screen frames on the phone; not yet seen in a browser.
 """
 
+import json
+import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import gi
@@ -76,6 +89,216 @@ pc.ontrack = e => {
 """
 
 
+INTERACTIVE_PAGE = b"""<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Pro1x</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;
+  -webkit-user-select:none;user-select:none}
+#v,#c{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
+  touch-action:none}
+#c{display:none}
+#bar{position:fixed;top:6px;right:6px;display:flex;gap:6px;opacity:.6;z-index:2}
+#bar button{font:18px monospace;background:#222;color:#eee;border:1px solid #555;
+  border-radius:6px;padding:10px 14px}
+#info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
+  background:rgba(0,0,0,.75);padding:8px;white-space:pre;display:none;z-index:2}
+#k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
+</style>
+<video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
+<div id="bar"><button id="bk">KEYS</button><button id="bm">CANVAS</button>
+<button id="bi">INFO</button><button id="br">RELOAD</button></div>
+<div id="info"></div>
+<input id="k" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+<script>
+const v = document.getElementById("v"), c = document.getElementById("c");
+const ctx = c.getContext("2d"), info = document.getElementById("info");
+const k = document.getElementById("k");
+const P = new URLSearchParams(location.search);
+let canvas = P.get("mode") === "canvas", chan = null, logged = 0;
+const counts = {};
+function log(o) {
+  o.t = Date.now();
+  try { fetch("/log", {method: "POST", body: JSON.stringify(o), keepalive: true}); }
+  catch (e) {}
+}
+function send(o) {
+  counts[o.t] = (counts[o.t] || 0) + 1;
+  if (chan && chan.readyState === "open") chan.send(JSON.stringify(o));
+}
+log({ev: "page", ua: navigator.userAgent, w: innerWidth, h: innerHeight,
+     dpr: devicePixelRatio, pointer: !!window.PointerEvent,
+     touch: "ontouchstart" in window, rvfc: "requestVideoFrameCallback" in
+     HTMLVideoElement.prototype, webcodecs: "VideoDecoder" in window});
+addEventListener("resize", () => log({ev: "resize", w: innerWidth, h: innerHeight}));
+
+// The picture: in the video element, or drawn on a canvas from it.
+function draw() {
+  if (canvas && v.videoWidth) {
+    if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
+    ctx.drawImage(v, 0, 0);
+  }
+  if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(draw);
+  else requestAnimationFrame(draw);
+}
+function showMode() {
+  c.style.display = canvas ? "block" : "none";
+  v.style.opacity = canvas ? "0" : "1";
+  document.getElementById("bm").textContent = canvas ? "VIDEO" : "CANVAS";
+  log({ev: "mode", canvas});
+}
+document.getElementById("bm").onclick = () => { canvas = !canvas; showMode(); };
+document.getElementById("bi").onclick = () =>
+  info.style.display = info.style.display === "block" ? "none" : "block";
+document.getElementById("br").onclick = () => location.reload();
+document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
+showMode();
+
+const pc = new RTCPeerConnection();
+pc.ondatachannel = e => {
+  chan = e.channel;
+  chan.onopen = () => log({ev: "channel-open"});
+};
+pc.ontrack = e => {
+  // As little buffering as the browser allows.
+  try { e.receiver.playoutDelayHint = 0; } catch (x) {}
+  try { e.receiver.jitterBufferTarget = 0; } catch (x) {}
+  v.srcObject = e.streams[0] || new MediaStream([e.track]);
+  v.play().catch(err => log({ev: "play-failed", err: String(err)}));
+  draw();
+};
+(async () => {
+  const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
+  const codec = P.get("codec")
+    || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
+  log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
+  const offer = await (await fetch("/offer?codec=" + codec)).text();
+  await pc.setRemoteDescription({type: "offer", sdp: offer});
+  await pc.setLocalDescription(await pc.createAnswer());
+  await new Promise(done => {
+    if (pc.iceGatheringState === "complete") return done();
+    pc.onicegatheringstatechange = () =>
+      pc.iceGatheringState === "complete" && done();
+    setTimeout(done, 2000);
+  });
+  await fetch("/answer", {method: "POST", body: pc.localDescription.sdp});
+  if (codec === "h264") setTimeout(async () => {
+    let decoded = 0;
+    (await pc.getStats()).forEach(r => {
+      if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
+    });
+    if (!decoded) location.replace("/?codec=vp8" + (canvas ? "&mode=canvas" : ""));
+  }, 5000);
+})();
+
+// What the browser reports, every second; logged every 10 s.
+let last = {frames: 0, at: 0}, ticks = 0;
+setInterval(async () => {
+  const s = {w: innerWidth, h: innerHeight, video: v.videoWidth + "x" + v.videoHeight,
+             mode: canvas ? "canvas" : "video", hidden: document.hidden};
+  (await pc.getStats()).forEach(r => {
+    if (r.type === "inbound-rtp" && r.kind === "video") {
+      s.fps = Math.round((r.framesDecoded - last.frames) * 1000 / (r.timestamp - last.at));
+      last = {frames: r.framesDecoded, at: r.timestamp};
+      s.decoded = r.framesDecoded; s.dropped = r.framesDropped;
+      if (r.jitterBufferEmittedCount)
+        s.buffer_ms = Math.round(1000 * r.jitterBufferDelay / r.jitterBufferEmittedCount);
+    }
+    if (r.type === "codec" && /video/.test(r.mimeType)) s.codec = r.mimeType;
+    if (r.type === "candidate-pair" && r.nominated && r.currentRoundTripTime)
+      s.rtt_ms = Math.round(1000 * r.currentRoundTripTime);
+  });
+  s.events = counts;
+  info.textContent = Object.entries(s).map(([a, b]) =>
+    a + ": " + (typeof b === "object" ? JSON.stringify(b) : b)).join("\\n");
+  if (++ticks % 10 === 0) log(Object.assign({ev: "stats"}, s));
+}, 1000);
+
+// Touches: a tap clicks, a drag drags, a long press right-clicks, two
+// fingers scroll.  Positions in the picture, 0 to 1.
+function norm(e) {
+  const r = (canvas ? c : v).getBoundingClientRect();
+  const vw = v.videoWidth || r.width, vh = v.videoHeight || r.height;
+  const s = Math.min(r.width / vw, r.height / vh), dw = vw * s, dh = vh * s;
+  const x = (e.clientX - r.left - (r.width - dw) / 2) / dw;
+  const y = (e.clientY - r.top - (r.height - dh) / 2) / dh;
+  return {x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y))};
+}
+const active = new Map();
+let down = false, start = null, scrollAt = null, timer = null, moved = false;
+function centre() {
+  let x = 0, y = 0;
+  for (const p of active.values()) { x += p.clientX; y += p.clientY; }
+  return {x: x / active.size, y: y / active.size};
+}
+function press(e) {
+  if (e.target.closest && e.target.closest("#bar")) return;
+  e.preventDefault();
+  active.set(e.pointerId, e);
+  if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
+  if (active.size === 1) {
+    const n = norm(e);
+    send({t: "move", x: n.x, y: n.y});
+    send({t: "down", x: n.x, y: n.y});
+    down = true; moved = false; start = {x: e.clientX, y: e.clientY};
+    timer = setTimeout(() => {
+      if (down && !moved) { send({t: "up"}); down = false; send({t: "right"}); }
+    }, 700);
+  } else if (active.size === 2) {
+    clearTimeout(timer);
+    if (down) { send({t: "up"}); down = false; }
+    scrollAt = centre();
+  }
+}
+function move(e) {
+  if (!active.has(e.pointerId)) return;
+  e.preventDefault();
+  active.set(e.pointerId, e);
+  if (active.size === 1 && down) {
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) moved = true;
+    const n = norm(e);
+    send({t: "move", x: n.x, y: n.y});
+  } else if (active.size === 2 && scrollAt) {
+    const p = centre(), dy = p.y - scrollAt.y, dx = p.x - scrollAt.x;
+    const step = 20;
+    if (Math.abs(dy) >= step || Math.abs(dx) >= step) {
+      send({t: "scroll", v: Math.round(dy / step), h: Math.round(-dx / step)});
+      scrollAt = p;
+    }
+  }
+}
+function release(e) {
+  if (!active.has(e.pointerId)) return;
+  active.delete(e.pointerId);
+  clearTimeout(timer);
+  if (down && active.size === 0) { send({t: "up"}); down = false; }
+  if (active.size < 2) scrollAt = null;
+}
+addEventListener("pointerdown", press, {passive: false});
+addEventListener("pointermove", move, {passive: false});
+addEventListener("pointerup", release);
+addEventListener("pointercancel", release);
+
+// Keys: the key's position when the browser gives it, else the text typed.
+k.addEventListener("keydown", e => {
+  if (logged++ < 40) log({ev: "keydown", key: e.key, code: e.code, keyCode: e.keyCode});
+  if (e.code && e.code !== "Unidentified" && e.key !== "Process") {
+    e.preventDefault();
+    send({t: "key", code: e.code, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey});
+  }
+});
+k.addEventListener("input", e => {
+  if (k.value) {
+    if (logged++ < 40) log({ev: "input", data: k.value});
+    send({t: "text", text: k.value});
+  }
+  k.value = "";
+});
+</script>
+"""
+
+
 def hardware(size):
     """Elements from raw NV12 frames to H.264, by the phone's encoder."""
     dimensions, fps = size.split("@")
@@ -108,6 +331,137 @@ def keep_keyframes(pipeline):
     return GLib.timeout_add_seconds(1, ask)
 
 
+# Browser key positions (KeyboardEvent.code) to Linux key names.
+CODES = {**{f"Key{c}": f"KEY_{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
+         **{f"Digit{d}": f"KEY_{d}" for d in "0123456789"},
+         **{f"F{n}": f"KEY_F{n}" for n in range(1, 13)},
+         "Enter": "KEY_ENTER", "Backspace": "KEY_BACKSPACE", "Tab": "KEY_TAB",
+         "Escape": "KEY_ESC", "Space": "KEY_SPACE", "Delete": "KEY_DELETE",
+         "ArrowUp": "KEY_UP", "ArrowDown": "KEY_DOWN", "ArrowLeft": "KEY_LEFT",
+         "ArrowRight": "KEY_RIGHT", "Home": "KEY_HOME", "End": "KEY_END",
+         "PageUp": "KEY_PAGEUP", "PageDown": "KEY_PAGEDOWN",
+         "Minus": "KEY_MINUS", "Equal": "KEY_EQUAL",
+         "BracketLeft": "KEY_LEFTBRACE", "BracketRight": "KEY_RIGHTBRACE",
+         "Backslash": "KEY_BACKSLASH", "Semicolon": "KEY_SEMICOLON",
+         "Quote": "KEY_APOSTROPHE", "Comma": "KEY_COMMA", "Period": "KEY_DOT",
+         "Slash": "KEY_SLASH", "Backquote": "KEY_GRAVE"}
+# Typed text to keys on a US layout (the remote keyboard's, pro1x.conf).
+SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
+PLAIN = {"`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft",
+         "]": "BracketRight", "\\": "Backslash", ";": "Semicolon",
+         "'": "Quote", ",": "Comma", ".": "Period", "/": "Slash",
+         " ": "Space", "\n": "Enter", "\t": "Tab"}
+
+
+class Remote:
+    """The viewer's touches and keys on the Pro1x: an absolute pointer with
+    a wheel, mapped to the panel and turned with it by Sway like the
+    touchscreen (pro1x.conf), and a keyboard."""
+
+    def __init__(self):
+        from evdev import AbsInfo, UInput, ecodes
+        self.e = ecodes
+        axis = AbsInfo(value=0, min=0, max=65535, fuzz=0, flat=0, resolution=0)
+        self.pointer = UInput(
+            {ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT],
+             ecodes.EV_ABS: [(ecodes.ABS_X, axis), (ecodes.ABS_Y, axis)],
+             ecodes.EV_REL: [ecodes.REL_WHEEL, ecodes.REL_HWHEEL]},
+            name="pro1x-remote-pointer", vendor=0x1234, product=0x567A)
+        keys = sorted({getattr(ecodes, n) for n in CODES.values()}
+                      | {ecodes.KEY_LEFTSHIFT, ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTALT})
+        self.keyboard = UInput({ecodes.EV_KEY: keys},
+                               name="pro1x-remote-keyboard",
+                               vendor=0x1234, product=0x567B)
+        self.lock = threading.Lock()
+        self.turn, self.turn_at = "normal", 0.0
+
+    def transform(self):
+        """The panel's turn, read again every few seconds."""
+        if time.monotonic() - self.turn_at > 3:
+            try:
+                outputs = json.loads(subprocess.run(
+                    ["swaymsg", "-t", "get_outputs", "-r"],
+                    capture_output=True, text=True, timeout=2).stdout)
+                self.turn = next(o["transform"] for o in outputs if o.get("active"))
+            except (OSError, ValueError, StopIteration, subprocess.TimeoutExpired):
+                pass
+            self.turn_at = time.monotonic()
+        return self.turn
+
+    def at(self, x, y):
+        """A point of the picture (0 to 1, as shown) on the panel, which
+        Sway then turns (wlroots' output transform, undone here)."""
+        x, y = {"90": (y, 1 - x), "180": (1 - x, 1 - y),
+                "270": (1 - y, x)}.get(self.transform(), (x, y))
+        e = self.e
+        self.pointer.write(e.EV_ABS, e.ABS_X, int(x * 65535))
+        self.pointer.write(e.EV_ABS, e.ABS_Y, int(y * 65535))
+
+    def tap(self, key, shift=False, ctrl=False, alt=False):
+        e, kb = self.e, self.keyboard
+        mods = [m for m, on in ((e.KEY_LEFTSHIFT, shift), (e.KEY_LEFTCTRL, ctrl),
+                                (e.KEY_LEFTALT, alt)) if on]
+        for m in mods:
+            kb.write(e.EV_KEY, m, 1)
+        kb.write(e.EV_KEY, key, 1)
+        kb.syn()
+        kb.write(e.EV_KEY, key, 0)
+        for m in mods:
+            kb.write(e.EV_KEY, m, 0)
+        kb.syn()
+
+    def text(self, text):
+        for ch in text:
+            shift = ch.isupper() or ch in SHIFTED
+            base = SHIFTED.get(ch, ch.lower())
+            code = (f"Key{base.upper()}" if base.isalpha() and base.isascii()
+                    else f"Digit{base}" if base.isdigit() else PLAIN.get(base))
+            if code in CODES:
+                self.tap(getattr(self.e, CODES[code]), shift=shift)
+
+    def handle(self, message):
+        try:
+            m = json.loads(message)
+        except ValueError:
+            return
+        e, p = self.e, self.pointer
+        with self.lock:
+            kind = m.get("t")
+            if kind == "move":
+                self.at(m["x"], m["y"])
+            elif kind in ("down", "up"):
+                if "x" in m:
+                    self.at(m["x"], m["y"])
+                p.write(e.EV_KEY, e.BTN_LEFT, 1 if kind == "down" else 0)
+            elif kind == "right":
+                p.write(e.EV_KEY, e.BTN_RIGHT, 1)
+                p.syn()
+                p.write(e.EV_KEY, e.BTN_RIGHT, 0)
+            elif kind == "scroll":
+                if m.get("v"):
+                    p.write(e.EV_REL, e.REL_WHEEL, int(m["v"]))
+                if m.get("h"):
+                    p.write(e.EV_REL, e.REL_HWHEEL, int(m["h"]))
+            elif kind == "key" and m.get("code") in CODES:
+                self.tap(getattr(e, CODES[m["code"]]), m.get("shift"),
+                         m.get("ctrl"), m.get("alt"))
+            elif kind == "text":
+                self.text(str(m.get("text", ""))[:200])
+            p.syn()
+
+
+remote = None
+LOG = os.path.join(os.environ.get("XDG_STATE_HOME")
+                   or os.path.expanduser("~/.local/state"),
+                   "pro1x", "interactive-stream.log")
+
+
+def log_line(text):
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text.strip() + "\n")
+
+
 class Session:
     """One viewer: the capture command, the pipeline, and its offer."""
 
@@ -131,6 +485,13 @@ class Session:
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
         self.keyframes = keep_keyframes(self.pipeline)
+        if remote:
+            # The viewer's input, in the same connection, made before the
+            # offer so that the offer carries it.
+            self.pipeline.set_state(Gst.State.READY)
+            self.channel = self.webrtc.emit("create-data-channel", "input", None)
+            self.channel.connect("on-message-string",
+                                 lambda _c, text: remote.handle(text))
         self.pipeline.set_state(Gst.State.PLAYING)
 
     def negotiate(self, _element):
@@ -217,7 +578,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/":
-            self.reply(PAGE, "text/html; charset=utf-8")
+            self.reply(INTERACTIVE_PAGE if remote else PAGE,
+                       "text/html; charset=utf-8")
         elif self.path.startswith("/offer"):
             codec = "h264" if self.path.endswith("=h264") else "vp8"
             created = {"done": threading.Event()}
@@ -233,6 +595,11 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(b"not found", code=404)
 
     def do_POST(self):
+        if self.path == "/log":
+            text = self.rfile.read(min(int(self.headers["Content-Length"]), 4096))
+            log_line(self.client_address[0] + " " + text.decode(errors="replace"))
+            self.reply(b"ok")
+            return
         if self.path != "/answer":
             self.reply(b"not found", code=404)
             return
@@ -286,9 +653,14 @@ def main():
     if sys.argv[1:2] == ["udp"] and len(sys.argv) > 5:
         send_udp(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5:])
         return
+    global remote
     args = sys.argv[1:]
     if args[:1] == ["--raw"]:
         Handler.size, args = args[1], args[2:]
+    if args[:1] == ["--interactive"]:
+        args = args[1:]
+        remote = Remote()
+        log_line("started")
     if "--" not in args[1:]:
         sys.exit(__doc__.splitlines()[0])
     split = args.index("--", 1)
