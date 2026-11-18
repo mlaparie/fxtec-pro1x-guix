@@ -36,7 +36,8 @@
 # A low battery hibernates it (HIBERNATE_BATTERY, hibernate-battery in
 # config.scm, author 2026-11-18): at that percentage or less, on battery,
 # with no call, stream, sound or heavy load.  Asleep, the RTC wakes the
-# phone every 30 minutes to look; awake, watch looks every 2 minutes while
+# phone to look, rarely while the battery is far above the threshold (see
+# next_check); awake, watch looks every 2 minutes while
 # the phone is locked or blanked.  After a resume it waits until the battery
 # climbs above the threshold or charges, so the phone can still be used at
 # that level.
@@ -98,7 +99,17 @@ rtcwake=/sys/class/rtc/rtc0/wakealarm
 # check_at: the next look at the battery while asleep (epoch seconds),
 # empty for none.
 check_at=
-CHECK_EVERY=1800
+# The next look: half the time the battery would take to reach the
+# threshold at 3% an hour (a guess, faster than this phone's measured
+# suspend drain should be), 30 minutes at the least: at 60% with a 10%
+# threshold, after about 8 hours; near the threshold, every 30 minutes
+# (author, 2026-11-18: not every 30 minutes all night).
+next_check() {
+    level=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 0)
+    gap=$(( (level - HIBERNATE_BATTERY) * 3600 / 3 / 2 ))
+    [ "$gap" -lt 1800 ] && gap=1800
+    echo $(( $(date +%s) + gap ))
+}
 alarm_wake() {
     [ -w "$rtcwake" ] || return 0
     echo 0 > "$rtcwake"
@@ -366,7 +377,7 @@ suspend_loop() {
                         woke=hibernate
                         break
                     fi
-                    check_at=$(( $(date +%s) + CHECK_EVERY ))
+                    check_at=$(next_check)
                     alarm_wake
                     continue
                 fi
@@ -386,7 +397,7 @@ case "${1:-}" in
             panel on
             exit
         fi
-        [ -n "$HIBERNATE_BATTERY" ] && check_at=$(( $(date +%s) + CHECK_EVERY ))
+        [ -n "$HIBERNATE_BATTERY" ] && check_at=$(next_check)
         while :; do
             herd stop pro1x-shake-torch >/dev/null 2>&1
             panel off
