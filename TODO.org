@@ -81,9 +81,19 @@ the CPU), the server about 76% (frame copies).  PipeWire capture (portal) under 
   the NV12 as DMA-BUF straight to v4l2h264enc (output-io-mode=dmabuf-import).
 Test script: scratch portal-test.py (portal handshake, pipewiresrc, CPU per process).
 *** WAIT [#C] Hotspot QR as an image
-*** CANCELLED 5 GHz hotspot
-ath10k keeps a world-regulatory chip's 5 GHz channels "no IR" unless
-=ATH_REG_DYNAMIC_USER_REG_HINTS= is set; the author declined.
+*** WAIT [#B] 5 GHz hotspot
+Starts with nmcli on channels 149 and 36 (2026-11-18), with the
+=ATH_REG_*= options in the kernel.  While the phone is a Wi-Fi client
+the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
+a user hint, and the client link drops when the hotspot starts.  The
+menu stopped checking beforehand (2ce4e2d); not deployed.
+*** TODO [#A] Tesla leaves the hotspot without internet
+Trace 2026-11-18 17:54: DHCP fine (10.42.0.196), then it asks DNS for
+connman.vn.tesla.services, tesla.com, microsoft.com, google.com and
+apple.com, gets REFUSED (no upstream: mobile data was off), releases
+the lease and leaves within a second.  No TCP was tried.  Next: test
+with mobile data on; for offline use, answer those names locally and
+serve a connectivity check.
 ** Sway session
 *** WAIT [#B] Auto-sleep quick action (1-60 min locked) and config.scm =auto-sleep=
 Built; not deployed.
