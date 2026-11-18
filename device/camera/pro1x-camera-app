@@ -1193,7 +1193,9 @@ class Camera(Gtk.Application):
         # (author, 2026-11-17).
         self.ev_row.set_margin_start(self.side.get_allocated_width() + 24
                                      if wide else 4)
-        self.lens_row.set_margin_end(self.controls.get_allocated_width() + 24
+        # Further from the controls than EV from the tags: 24 left it too
+        # close to the main bar (author).
+        self.lens_row.set_margin_end(self.controls.get_allocated_width() + 56
                                      if wide else 4)
         # The pro strip above the controls in portrait.
         self.pro_strip.set_margin_bottom(16 if wide else
