@@ -1336,6 +1336,7 @@ class Session:
         if self.keyframes:
             GLib.source_remove(self.keyframes)
         self.pipeline.set_state(Gst.State.NULL)
+        last_stop[0] = time.monotonic()
         if self.portal:
             self.portal.close()
         if not self.proc:
@@ -1508,6 +1509,11 @@ def end_session(old):
 
 
 rate_restart = [None]
+# When the last session stopped: the next waits until 3 s after it.  Every
+# power-off with the portal capture came as one session's encoder closed and
+# the next opened at once (2026-11-18); with wf-recorder the next encoder
+# opens only after its first frame, a second later.
+last_stop = [0.0]
 
 
 def new_session(command, codec, size, created):
@@ -1520,6 +1526,9 @@ def new_session(command, codec, size, created):
         old, session = session, None
     if old:
         old.stop()
+    wait = last_stop[0] + 3 - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
     with session_lock:
         session = Session(command, codec, size, Handler.mbps)
         created["session"] = session
