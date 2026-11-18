@@ -1564,35 +1564,46 @@ class Camera(Gtk.Application):
 
     def level_sensor(self, on):
         """The accelerometer's readings (libssc's ssccli, about 30 a
-        second) while the level line is shown and the camera open."""
-        proc = getattr(self, "level_proc", None)
+        second) while the level line is shown and the camera open.  ssccli
+        ends by itself after about 180 readings (10-15 s, measured
+        2026-11-18: the line froze), so it is started again each time."""
         if not on:
+            self.level_on = False
+            proc = getattr(self, "level_proc", None)
             if proc:
                 proc.terminate()
                 self.level_proc = None
             self.gravity = None
             return
-        if proc:
+        if getattr(self, "level_on", False):
             return
-        try:
-            proc = subprocess.Popen([ssccli(), "--sensor", "accelerometer"],
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL, text=True)
-        except OSError as e:
-            print("level: %s" % e, flush=True)
-            return
-        self.level_proc = proc
+        self.level_on = True
+        # One reader at a time: an off and on again ends the old one.
+        self.level_gen = gen = getattr(self, "level_gen", 0) + 1
         pattern = re.compile(r"X=(-?[0-9.]+) Y=(-?[0-9.]+) Z=(-?[0-9.]+)")
 
         def read():
-            for line in proc.stdout:
-                m = pattern.search(line)
-                if m:
-                    self.gravity = tuple(float(v) for v in m.groups())
-                    now = time.monotonic()
-                    if now - getattr(self, "level_drawn", 0) > 0.1:
-                        self.level_drawn = now
-                        GLib.idle_add(self.marker.queue_draw)
+            while self.level_on and gen == self.level_gen:
+                try:
+                    proc = subprocess.Popen([ssccli(), "--sensor", "accelerometer"],
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, text=True)
+                except OSError as e:
+                    print("level: %s" % e, flush=True)
+                    return
+                self.level_proc = proc
+                started = time.monotonic()
+                for line in proc.stdout:
+                    m = pattern.search(line)
+                    if m:
+                        self.gravity = tuple(float(v) for v in m.groups())
+                        now = time.monotonic()
+                        if now - getattr(self, "level_drawn", 0) > 0.1:
+                            self.level_drawn = now
+                            GLib.idle_add(self.marker.queue_draw)
+                proc.wait()
+                # Not in a tight loop if it fails at once.
+                time.sleep(0.1 if time.monotonic() - started > 2 else 2)
         threading.Thread(target=read, daemon=True).start()
 
     def set_pro(self, on):
