@@ -8,11 +8,12 @@
 ;;; 512 MiB: a kernel and its initrd are about 60 MiB, and the area holds the
 ;;; current system and four previous ones (services/boot.scm), 300 MiB at most.
 ;;;
-;;; A loop device exposes the container because `cryptsetup open' for LUKS2
-;;; does not take --offset.  The initrd has no udev and no losetup: the partition
-;;; is found through sysfs and the loop set up by pro1x-loop-offset, a small static
-;;; program (the initrd's static Guile has no ioctl).  The rest is Guix's own
-;;; luks-device-mapping.
+;;; A device-mapper linear target, /dev/mapper/pro1x-part, exposes the container
+;;; because `cryptsetup open' for LUKS2 does not take --offset.  The initrd has no
+;;; udev and no dmsetup: the partition is found through sysfs and the mapping set
+;;; up by pro1x-dm-offset, a small static program (the initrd's static Guile has
+;;; no ioctl).  The rest is Guix's own luks-device-mapping.  Until 2026-11-18 this
+;;; was a loop device, whose frozen workqueue hung hibernation.
 ;;;
 ;;; Nothing in the configuration says which layout a phone has: it cannot be set
 ;;; wrong.  Every system has the unlock tools in its initrd (about 1.6 MB), which
@@ -28,7 +29,7 @@
   #:use-module (guix gexp)
   #:use-module (ice-9 match)
   #:autoload   (gnu packages cryptsetup) (cryptsetup-static)
-  #:autoload   (fxtec-pro1x packages misc) (pro1x-loop-offset)
+  #:autoload   (fxtec-pro1x packages misc) (pro1x-dm-offset)
   #:export (%pro1x-boot-area-mib
             %pro1x-fde-mapped-devices
             pro1x-fde-initrd
@@ -36,11 +37,11 @@
 
 (define %pro1x-boot-area-mib 512)
 
-;; CONFIG_BLK_DEV_LOOP=y, CONFIG_BLK_DEV_LOOP_MIN_COUNT=8: it exists at boot,
-;; and nothing else uses a loop device in the initrd.
-(define %pro1x-luks-loop "/dev/loop0")
+;; The container, under the name pro1x-dm-offset gives it.
+(define %pro1x-luks-part-name "pro1x-part")
+(define %pro1x-luks-part (string-append "/dev/mapper/" %pro1x-luks-part-name))
 
-;; Guix's own LUKS mapping, as on any Guix system, opening the loop device; only
+;; Guix's own LUKS mapping, as on any Guix system, opening that mapping; only
 ;; the step before it is the port's.  SOURCE is the name of the partition holding
 ;; the container.
 (define* (open-luks-pro1x source targets . options)
@@ -82,13 +83,13 @@
         ;; Otherwise nothing to do: Guix goes on to find the root by its label.
         (or (not device)
             (not (encrypted-layout? device))
-            (and (zero? (system* #$(file-append pro1x-loop-offset
-                                                "/bin/pro1x-loop-offset")
-                                 #$%pro1x-luks-loop device
+            (and (zero? (system* #$(file-append pro1x-dm-offset
+                                                "/bin/pro1x-dm-offset")
+                                 #$%pro1x-luks-part-name device
                                  #$(number->string
                                     (* %pro1x-boot-area-mib 1024 1024))))
                  #$(apply (mapped-device-kind-open luks-device-mapping)
-                          %pro1x-luks-loop targets options))))))
+                          %pro1x-luks-part targets options))))))
 
 (define luks-pro1x-device-mapping
   (mapped-device-kind

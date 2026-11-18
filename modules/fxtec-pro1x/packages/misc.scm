@@ -76,7 +76,7 @@
             tqftpserv
             rmtfs
             hexagonrpcd
-            pro1x-loop-offset
+            pro1x-dm-offset
             pro1x-xts-encrypt
             libcamera-pro1x
             cameractrl
@@ -250,14 +250,14 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
     (license license:bsd-3)))
 
 ;;; ---------------------------------------------------------------------------
-;;; pro1x-loop-offset — for an encrypted system's initrd (services/fde.scm)
+;;; pro1x-dm-offset — for an encrypted system's initrd (services/fde.scm)
 
-(define-public pro1x-loop-offset
+(define-public pro1x-dm-offset
   (package
-    (name "pro1x-loop-offset")
+    (name "pro1x-dm-offset")
     (version "0.1")
-    (source (local-file (repository-file "device/fde/loop-offset.c")
-                        "loop-offset.c"))
+    (source (local-file (repository-file "device/fde/dm-offset.c")
+                        "dm-offset.c"))
     (build-system trivial-build-system)
     (arguments
      (let ((toolchain (@ (gnu packages commencement) gcc-toolchain)))
@@ -271,18 +271,18 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
               (setenv "PATH" (string-append #$toolchain "/bin"))
               ;; Static and stripped: the initrd gets this file alone.
               (invoke "gcc" "-O2" "-static" "-s"
-                      "-o" (string-append bin "/pro1x-loop-offset")
+                      "-o" (string-append bin "/pro1x-dm-offset")
                       #$source
                       (string-append "-I" #$linux-libre-headers "/include")
                       (string-append "-L" #$toolchain:static "/lib"))
               ;; Paths in strings of the static libc, never opened here.
               (remove-store-references
-               (string-append bin "/pro1x-loop-offset")))))))
+               (string-append bin "/pro1x-dm-offset")))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-    (synopsis "Attach a loop device at an offset, for the initrd")
+    (synopsis "Map a block device from an offset, for the initrd")
     (description
-     "pro1x-loop-offset attaches a loop device to a block device from a byte
-offset.  It is static, for an initrd without losetup.")
+     "pro1x-dm-offset maps a block device from a byte offset to its end as a
+device-mapper linear target.  It is static, for an initrd without dmsetup.")
     (license license:gpl3+)))
 
 ;;; pro1x-xts-encrypt — host tool: offline AES-XTS-plain64 for FDE image creation

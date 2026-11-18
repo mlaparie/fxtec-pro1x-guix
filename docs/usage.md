@@ -147,9 +147,9 @@ downloads them (mobile internet pauses briefly).
   carry it).
 - Another account's, as root: `sudo passwd NAME`.
 - The disk passphrase (encrypted phones): it is in the LUKS header on
-  `/dev/loop0`, and `cryptsetup luksChangeKey /dev/loop0` changes it (`sudo
-  guix shell cryptsetup -- cryptsetup luksChangeKey /dev/loop0`; not yet
-  tried on the phone).  The prompt at boot has the US layout.
+  `/dev/mapper/pro1x-part`, and `sudo guix shell cryptsetup -- cryptsetup
+  luksChangeKey /dev/mapper/pro1x-part` changes it (not yet tried on the
+  phone; before 2026-11-18 the container was on `/dev/loop0`).  The prompt at boot has the US layout.
 
 ## Changing the system: the loop
 
