@@ -121,6 +121,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
   background:rgba(0,0,0,.75);padding:8px;display:none;z-index:2}
 #info pre{margin:0;font:inherit}
+#note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
+  z-index:3;background:#222;color:#ff0;font:16px monospace;padding:10px 14px;
+  border-radius:6px;max-width:80%}
 #set{position:fixed;right:6px;top:64px;font:16px monospace;color:#eee;z-index:2;
   background:rgba(0,0,0,.8);padding:10px;display:none;border-radius:6px}
 #set label{display:block;margin:8px 0}
@@ -152,7 +155,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
 <div style="font-size:13px;opacity:.7">fps: the capture rate; a change restarts the picture</div>
 <button id="sy">RESYNC</button></div>
-<div id="info"><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div><div id="clock"></div>
+<div id="note"></div><div id="info"><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div><div id="clock"></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
  spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
@@ -623,12 +626,24 @@ addEventListener("pointercancel", release);
 // browser's way out) or capture is turned off; then any key still down is
 // released.
 let captured = false;
+function note(text) {
+  const n = document.getElementById("note");
+  n.textContent = text; n.style.display = "block";
+  setTimeout(() => n.style.display = "none", 6000);
+}
 const bp = document.getElementById("bp");
 function showCapture() { bp.textContent = captured ? "CAPTURED" : "FREE"; }
 async function capture() {
   try { await document.documentElement.requestFullscreen(); } catch (e) {}
-  try { if (navigator.keyboard && navigator.keyboard.lock) await navigator.keyboard.lock(); }
-  catch (e) { log({ev: "keyboard-lock-failed", err: String(e)}); }
+  if (navigator.keyboard && navigator.keyboard.lock) {
+    try { await navigator.keyboard.lock(); }
+    catch (e) { log({ev: "keyboard-lock-failed", err: String(e)}); }
+  } else {
+    // Firefox has no Keyboard Lock: the desktop keeps its shortcuts (Super).
+    note("This browser cannot capture Super and other desktop shortcuts: " +
+         "use a Chromium-based one, or a pass-through mode of your desktop");
+    log({ev: "keyboard-lock-missing"});
+  }
   try { await (cfg.canvas ? c : v).requestPointerLock(); }
   catch (e) { log({ev: "pointer-lock-failed", err: String(e)}); }
 }
@@ -778,6 +793,7 @@ CODES = {**{f"Key{c}": f"KEY_{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
          "ControlLeft": "KEY_LEFTCTRL", "ControlRight": "KEY_RIGHTCTRL",
          "AltLeft": "KEY_LEFTALT", "AltRight": "KEY_RIGHTALT",
          "MetaLeft": "KEY_LEFTMETA", "MetaRight": "KEY_RIGHTMETA",
+         "OSLeft": "KEY_LEFTMETA", "OSRight": "KEY_RIGHTMETA",   # older Firefox
          "CapsLock": "KEY_CAPSLOCK", "Insert": "KEY_INSERT",
          "PrintScreen": "KEY_SYSRQ", "ContextMenu": "KEY_COMPOSE",
          "IntlBackslash": "KEY_102ND"}
