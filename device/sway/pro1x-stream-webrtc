@@ -131,8 +131,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #set button{font:16px monospace;background:#222;color:#eee;border:1px solid #555;
   border-radius:6px;padding:8px 12px}
 #k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
-#clock{position:fixed;left:6px;bottom:6px;font:bold 40px monospace;color:#ff0;
-  background:#000;padding:4px 8px;display:none;z-index:2}
+#clock{font:bold 16px monospace;color:#ff0;margin-bottom:4px}
 #gate{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
   z-index:3;background:#222;color:#eee;font:20px monospace;padding:16px;
   border-radius:8px;text-align:center}
@@ -154,8 +153,10 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
 <label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
 <div style="font-size:13px;opacity:.7">fps: the capture rate; a change restarts the picture</div>
+<label>heat &nbsp;<input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
+<div style="font-size:13px;opacity:.7">heat: above it the phone lowers the fps, 5 at a time, and raises it back once 5 C cooler</div>
 <button id="sy">RESYNC</button></div>
-<div id="note"></div><div id="info"><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div><div id="clock"></div>
+<div id="note"></div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
  spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
@@ -180,7 +181,7 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, sound: true, input: "touch",
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch",
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
 // Settings kept before the touchpad mode had touch true or false.
@@ -233,7 +234,7 @@ document.getElementById("bm").onclick = () => {
 // delay (both clocks set by NTP).
 const clock = document.getElementById("clock");
 function tick() {
-  if (clock.style.display !== "block") return;
+  if (info.style.display !== "block") return;
   const d = new Date();
   clock.textContent = d.toTimeString().slice(0, 8) + "." +
     String(d.getMilliseconds()).padStart(3, "0");
@@ -241,7 +242,7 @@ function tick() {
 }
 document.getElementById("bi").onclick = () => {
   const on = info.style.display !== "block";
-  info.style.display = clock.style.display = on ? "block" : "none";
+  info.style.display = on ? "block" : "none";
   if (on) { tick(); drawTemps(); }
 };
 document.getElementById("br").onclick = () => location.reload();
@@ -332,13 +333,26 @@ sf.onchange = async () => {
   try { await fetch(withKey("/fps?fps=" + sf.value), {method: "POST"}); } catch (e) {}
   location.reload();
 };
-function refresh() { showFps(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
+// The heat limit: kept with the settings on the phone, which acts on it.
+const sh = document.getElementById("sh"), shv = document.getElementById("shv");
+function showHeat() {
+  sh.value = cfg.heat < 50 ? 0 : cfg.heat;
+  shv.textContent = cfg.heat < 50 ? "off" : cfg.heat + " C";
+}
+sh.oninput = () => { cfg.heat = Number(sh.value); showHeat(); };
+sh.onchange = () => { save(); log({ev: "setting", name: "heat", value: cfg.heat}); };
+function refresh() { showHeat(); showFps(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
 
 const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
   chan = e.channel;
   chan.onopen = () => { log({ev: "channel-open"}); sendRate(); };
+  // The phone restarts its capture (a new fps): connect again.
+  chan.onmessage = m => {
+    try { if (JSON.parse(m.data).t === "reconnect") setTimeout(() => location.reload(), 500); }
+    catch (e) {}
+  };
 };
 // Picture and sound in one stream, played by the video element.
 const media = new MediaStream();
@@ -439,8 +453,9 @@ let phone = {}, ticks = 0;
 async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
-    if (phone.fps && phone.fps !== cfg.fps && document.activeElement !== sf) {
-      cfg.fps = phone.fps; showFps();
+    // The fps chosen, not the one the heat limit holds it to.
+    if (phone.target && phone.target !== cfg.fps && document.activeElement !== sf) {
+      cfg.fps = phone.target; showFps();
     }
     if (phone.cpu !== undefined) { temps.push(phone.cpu); if (temps.length > 120) temps.shift(); }
     if (info.style.display === "block") drawTemps();
@@ -481,7 +496,8 @@ setInterval(async () => {
       `screen  ${s.w}x${s.h}  video ${s.video}`,
       `mode    ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
       `fps     ${s.fps}  decoded ${s.decoded}  dropped ${s.dropped}`,
-      `rate    ${s.kbps} kbit/s  (set ${cfg.rate} Mbit/s, ${cfg.fps} fps)`,
+      `rate    ${s.kbps} kbit/s  (set ${cfg.rate} Mbit/s)`,
+      `fps     capture ${phone.fps || "?"}${phone.fps < phone.target ? " (held by heat, chosen " + phone.target + ")" : ""}`,
       `data    ${s.mb} MB so far`,
       `buffer  video ${s.buffer_ms} ms, sound ${s.audio_buffer_ms} ms`,
       `set     smooth ${cfg.smooth} ms, a/v ${cfg.av} ms`,
@@ -1169,10 +1185,11 @@ def capture_fps():
     return int(Handler.size.split("@")[1]) if Handler.size else None
 
 
-def set_fps(fps):
-    """A new capture rate from the page: the capture commands, the raw
-    frames' rate and the keyframe period change, the menu's setting with
-    them, and the viewer's session ends; its page connects again."""
+def set_fps(fps, chosen=True):
+    """A new capture rate, from the page or the heat limit: the capture
+    commands, the raw frames' rate and the keyframe period change (and the
+    menu's setting, when chosen), and the viewer's session ends; its page,
+    told so, connects again."""
     Handler.size = Handler.size.split("@")[0] + f"@{fps}"
     for command in Handler.capture.values():
         for i, arg in enumerate(command[:-1]):
@@ -1181,16 +1198,76 @@ def set_fps(fps):
             elif arg == "-p" and command[i + 1].startswith("g="):
                 command[i + 1] = f"g={fps}"
     state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    try:
-        with open(os.path.join(state, "pro1x-stream-fps"), "w") as f:
-            f.write(f"{fps}\n")
-    except OSError:
-        pass
-    log_line(f"capture rate {fps} fps")
+    if chosen:
+        try:
+            with open(os.path.join(state, "pro1x-stream-fps"), "w") as f:
+                f.write(f"{fps}\n")
+        except OSError:
+            pass
+    log_line(f"capture rate {fps} fps" + ("" if chosen else " (heat limit)"))
     with session_lock:
         current = session
     if current:
-        GLib.idle_add(end_session, current)
+        channel = getattr(current, "channel", None)
+        if channel is not None:
+            GLib.idle_add(lambda: channel.emit("send-string", '{"t":"reconnect"}')
+                          and False)
+        GLib.timeout_add(300, end_session, current)
+
+
+# The heat limit (the page's "heat", in the kept settings): every 15 s,
+# above it the capture rate drops 5 fps (down to 10), and 5 degrees under it
+# climbs back towards the rate chosen, a minute at least between steps.
+last_step = [0.0]
+
+
+def heat_check():
+    if not Handler.size or not Handler.target:
+        return GLib.SOURCE_CONTINUE
+    try:
+        with open(SETTINGS) as f:
+            limit = float(json.load(f).get("heat", 0))
+    except (OSError, ValueError, AttributeError):
+        limit = 0
+    temp, fps = cpu_temperature(), capture_fps()
+    if limit < 50 or temp is None or time.monotonic() - last_step[0] < 60:
+        return GLib.SOURCE_CONTINUE
+    if temp > limit and fps > 10:
+        set_fps(max(10, fps - 5), chosen=False)
+        last_step[0] = time.monotonic()
+    elif temp < limit - 5 and fps < Handler.target:
+        set_fps(min(Handler.target, fps + 5), chosen=False)
+        last_step[0] = time.monotonic()
+    return GLib.SOURCE_CONTINUE
+
+
+# The screen stays on while the stream runs: the phone hung when it blanked
+# during a stream (author, 2026-11-18).  Caffeine (quick actions) is turned
+# on if it was off, and back off at the end.
+CAFFEINE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-caffeine")
+
+
+def caffeine_on():
+    try:
+        with open(CAFFEINE) as f:
+            if f.read().strip() == "on":
+                return False
+    except OSError:
+        pass
+    subprocess.run(["sway-quick-actions", "--act", "caffeine"], timeout=10,
+                   stdin=subprocess.DEVNULL, capture_output=True)
+    return True
+
+
+def caffeine_off():
+    try:
+        with open(CAFFEINE) as f:
+            if f.read().strip() != "on":
+                return
+    except OSError:
+        return
+    subprocess.run(["sway-quick-actions", "--act", "caffeine"], timeout=10,
+                   stdin=subprocess.DEVNULL, capture_output=True)
 
 
 def end_session(old):
@@ -1218,6 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
     # Not "command": the HTTP request's method goes there.
     capture = {}
     size = ""
+    target = 0        # the capture rate chosen (the heat limit may hold it lower)
     key = ""          # --key: every request carries it as ?k=
 
     def allowed(self):
@@ -1251,7 +1329,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(b"ok")
         elif path == "/status":
             self.reply(json.dumps({"cpu": cpu_temperature(),
-                                   "fps": capture_fps()}).encode(),
+                                   "fps": capture_fps(),
+                                   "target": Handler.target}).encode(),
                        "application/json")
         elif path == "/settings":
             try:
@@ -1287,6 +1366,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 5 <= fps <= 60 or not self.size:
                 self.reply(b"bad rate", code=400)
                 return
+            Handler.target = fps
             set_fps(fps)
             self.reply(b"ok")
             return
@@ -1372,10 +1452,18 @@ def main():
         Handler.size, args = args[1], args[2:]
     if args[:1] == ["--key"]:
         Handler.key, args = args[1], args[2:]
+    if Handler.size:
+        Handler.target = int(Handler.size.split("@")[1])
+    caffeinated = False
     if args[:1] == ["--interactive"]:
         args = args[1:]
         remote = Remote()
         log_line("started")
+        try:
+            caffeinated = caffeine_on()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        GLib.timeout_add_seconds(15, heat_check)
     if "--" not in args[1:]:
         sys.exit(__doc__.splitlines()[0])
     split = args.index("--", 1)
@@ -1386,6 +1474,11 @@ def main():
     try:
         loop.run()
     finally:
+        if caffeinated:
+            try:
+                caffeine_off()
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         with session_lock:
             current = session
         if current:
