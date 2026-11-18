@@ -1,0 +1,93 @@
+drm/msm/a6xx: load the zap shader again after hibernation
+
+a6xx_zap_shader_init() loads the zap shader into the secure world once
+and remembers it in a static flag.  A hibernation image carries the flag
+across a power cycle that emptied the secure world, so after the restore
+CP_SET_SECURE_MODE ran without a zap shader: "CP | opcode error" and
+hangcheck recoveries on every submit, sway the offending task, no display
+(Pro¹x, Adreno 610, 2026-11-18).  The restore callback now asks for the
+shader to be loaded again; if the secure world refuses because it still
+has it (test_resume, no power cycle), the old one is kept.
+
+Not yet built.
+
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gpu.c
+@@ -1126,17 +1126,39 @@
+ 	return 0;
+ }
+ 
++/*
++ * The zap shader stays loaded in the secure world across suspend, so it is
++ * loaded once.  A hibernation image carries "loaded" across a power cycle
++ * that emptied the secure world: restore asks for it to be loaded again.
++ */
++static bool zap_loaded;
++static bool zap_reload;
++
++void a6xx_zap_shader_reload(void)
++{
++	if (zap_loaded)
++		zap_reload = true;
++}
++
+ int a6xx_zap_shader_init(struct msm_gpu *gpu)
+ {
+-	static bool loaded;
+ 	int ret;
+ 
+-	if (loaded)
++	if (zap_loaded && !zap_reload)
+ 		return 0;
+ 
+ 	ret = adreno_zap_shader_load(gpu, GPU_PAS_ID);
+ 
+-	loaded = !ret;
++	/*
++	 * Refused while still loaded: a restore without a power cycle (the
++	 * test_resume mode, or a boot kernel that ran the GPU).
++	 */
++	if (ret && zap_reload) {
++		dev_info(&gpu->pdev->dev, "zap shader kept from before hibernation\n");
++		ret = 0;
++	}
++	zap_reload = false;
++	zap_loaded = !ret;
+ 	return ret;
+ }
+ 
+--- a/drivers/gpu/drm/msm/adreno/adreno_device.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
+@@ -400,8 +400,21 @@
+ 	return pm_runtime_force_resume(dev);
+ }
+ 
++/* After hibernation the secure world may have lost the zap shader. */
++static int adreno_system_restore(struct device *dev)
++{
++	if (dev_to_gpu(dev))
++		a6xx_zap_shader_reload();
++	return adreno_system_resume(dev);
++}
++
+ static const struct dev_pm_ops adreno_pm_ops = {
+-	SYSTEM_SLEEP_PM_OPS(adreno_system_suspend, adreno_system_resume)
++	.suspend = pm_sleep_ptr(adreno_system_suspend),
++	.resume = pm_sleep_ptr(adreno_system_resume),
++	.freeze = pm_sleep_ptr(adreno_system_suspend),
++	.thaw = pm_sleep_ptr(adreno_system_resume),
++	.poweroff = pm_sleep_ptr(adreno_system_suspend),
++	.restore = pm_sleep_ptr(adreno_system_restore),
+ 	RUNTIME_PM_OPS(adreno_runtime_suspend, adreno_runtime_resume, NULL)
+ };
+ 
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.h
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.h
+@@ -674,6 +674,7 @@
+  * out of secure mode
+  */
+ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid);
++void a6xx_zap_shader_reload(void);
+ 
+ /* ringbuffer helpers (the parts that are adreno specific) */
+ 

@@ -63,11 +63,12 @@
         ;; (the ADSP's sensor raises aborted every hibernation).
         ;; Hibernation debugging: a kept console log (ramoops), progress
         ;; lines while making the snapshot, a watchdog that can stay on.
+        ;; The GPU loads its zap shader again after hibernation.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
-          "hibernate-debug"))))
+          "hibernate-debug" "adreno-zap-hibernate"))))
 
 (define-public linux-pro1x
   (package
