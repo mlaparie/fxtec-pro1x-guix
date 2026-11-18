@@ -264,6 +264,43 @@ send_mjpeg() {
     go_to_source
 }
 
+# The capture starts when a viewer connects, and stops when it leaves.  The
+# phone's encoder (1920 pixels at most); the whole screen through the
+# ScreenCast portal, a window through wf-recorder.  VP8 in software is the
+# fallback for browsers without H.264.
+send_webrtc() {
+    pick_source || return
+    ip=$(own_address)
+    [ -n "$ip" ] || return
+    stop_stream
+    hw_source
+    rate=$(fps)
+    mapfile -t scale < <(scale_args "$(out_size)")
+    portal=()
+    [ -z "$target" ] && portal=(--portal "$turn")
+    # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
+    # after it connects, and without frames none comes, so the picture stays
+    # black.
+    setsid pro1x-stream-webrtc --raw "$hw_size" "${portal[@]}" "$webrtc_port" \
+        wf-recorder "${area[@]}" "${hw_capture[@]}" -- \
+        wf-recorder "${area[@]}" "${scale[@]}" -D -r "$rate" \
+            -m ivf -c libvpx \
+            -x yuv420p -p deadline=realtime -p cpu-used=8 -p threads=4 \
+            -p b=4000000 -p g="$rate" -f pipe:1 \
+        >/dev/null 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    url="http://$ip:$webrtc_port/"
+    echo "browser, $url" > "$to_file"
+    sleep 1
+    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    clear_screen
+    printf 'Open in a browser on the other device:  %s\n' "$url"
+    printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
+    show_qr "$url"
+    read -rsn1
+    go_to_source
+}
+
 # The interactive stream (docs/interactive-stream.md): the whole screen by
 # hardware WebRTC, and the viewer's touches and keys back.  For a car's
 # browser on the hotspot.
@@ -343,6 +380,7 @@ while :; do
         if streaming; then printf 'stop\tStop: %s\n' "$(cat "$to_file")"; fi
         printf '%s\t%s\n' \
             interactive "Interactive       a browser: screen, sound, touch and keys (recommended)" \
+            webrtc "Browser, watch    screen and sound, or a window; no input" \
             mjpeg "Browser, simple   any browser, no sound; heavy on bandwidth" \
             udp "VLC               ${to:+to $to; }needs VLC on the other device" \
             catt "Chromecast        sends a video or file; the TV plays it itself" \
@@ -361,6 +399,7 @@ while :; do
                  send_udp "$to"
              fi ;;
         mjpeg) send_mjpeg ;;
+        webrtc) send_webrtc ;;
         interactive) send_interactive ;;
         fps) pick_fps ;;
         size) pick_size ;;
