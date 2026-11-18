@@ -36,6 +36,22 @@ gtklock runs (author's wish).
 *** TODO [#B] Recover a dead TA instance (restart the loader, then pro1x-fpd) by itself
 *** TODO [#C] Match rate (moWerk: about one touch in three)
 ** Waydroid
+*** TODO [#A] Bluetooth in Waydroid (the Tesla app's phone key)
+The image (LineageOS 20, TQ3A.230901.001, GAPPS) has no Bluetooth HAL and no Bluetooth app
+(Waydroid strips it from the btservices apex; "Package not found: com.android.bluetooth").
+Candidate: isyourbrainfoss/waydroid-host-stack (MIT, experimental, largely machine-written;
+reported, not verified): a soft-HCI HAL in the guest talks over a socket to a Rust host daemon
+on BlueZ, which keeps the adapter (BLE GATT only, phone-key apps reported working, a Tesla
+document).  Needs the same-build Bluetooth.apk and libbluetooth_jni.so from a LineageOS 20
+arm64 ROM in the overlay (the JNI patched for BOOTTIME), the HAL built with the Android NDK,
+the daemon with cargo, and its systemd units as Shepherd services.  Not started.
+*** TODO [#A] Location: the modem's GPS
+ModemManager has only 3gpp-lac-ci and cdma-bs on (cell towers), no GeoClue service exists, so
+any position is a cell or Wi-Fi guess.  Enabling gps-nmea/gps-raw (2026-11-18): "couldn't
+setup required NMEA traces: Operation timed out", no sentences; the modem lists its LOC
+service (16).  Next: the QMI LOC exchange (qmicli --loc-*), what the NixOS port and moWerk's
+port do for GNSS; then GeoClue's modem source, and the host-stack's GeoClue to Waydroid
+forwarding for Android.
 *** WAIT [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
 Packaged after phodina's Guix series (bug #51737); image downloaded.  Not yet started:
 the container under Guix's LXC and cgroup v2, the session in Sway and Phosh, Google
