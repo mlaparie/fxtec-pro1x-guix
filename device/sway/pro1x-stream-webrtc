@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
@@ -26,7 +26,9 @@ and rate it writes raw NV12 frames instead, for the hardware H.264 encoder.
 VP8-COMMAND writes VP8 in IVF.  One of them
 runs while a viewer is connected.  A browser gets a page from
 http://ADDRESS:PORT/ and plays the video with no application; one viewer at a
-time, and a new one replaces the last.
+time, and a new one replaces the last.  With --key, every request needs
+?k=KEY (the link carries it), else 403: on a shared network, only who has
+the link sees the screen and acts on it.
 
 The page tries H.264, which costs the phone less, then VP8 if no picture comes:
 LibreWolf lists H.264 but needs media.gmp-gmpopenh264.enabled to decode it, and
@@ -40,6 +42,7 @@ State: VP8 played in a browser (author, 2026-11-10).  The hardware path encodes
 real screen frames on the phone; not yet seen in a browser.
 """
 
+import hmac
 import json
 import os
 import signal
@@ -47,6 +50,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import gi
@@ -125,9 +129,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
 <div id="bar"><button class="x" id="bq">QA</button><button class="x" id="ba">APPS</button>
 <button class="x" id="bw">WIN</button><button class="x" id="bo">OSK</button>
-<button class="x" id="bk">LKB</button><button class="x" id="bt">MOUSE</button>
-<button class="x" id="bu">SOUND</button><button class="x" id="bs">SET</button>
-<button class="x" id="bm">CANVAS</button><button class="x" id="bi">INFO</button>
+<button class="x" id="bk">LKB</button><button class="x" id="bt">TOUCH</button>
+<button class="x" id="bu">MUTED</button><button class="x" id="bs">SET</button>
+<button class="x" id="bm">VIDEO</button><button class="x" id="bi">INFO</button>
 <button class="x" id="br">RELOAD</button><button id="bc"></button></div>
 <div id="set">
 <label>smooth <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
@@ -142,11 +146,14 @@ const v = document.getElementById("v"), c = document.getElementById("c");
 const ctx = c.getContext("2d"), info = document.getElementById("info");
 const k = document.getElementById("k");
 const P = new URLSearchParams(location.search);
+// The access key of the link, sent back with each request.
+const key = P.get("k") ? "k=" + encodeURIComponent(P.get("k")) : "";
+const withKey = path => key ? path + (path.includes("?") ? "&" : "?") + key : path;
 let canvas = P.get("mode") === "canvas", chan = null, logged = 0;
 const counts = {};
 function log(o) {
   o.t = Date.now();
-  try { fetch("/log", {method: "POST", body: JSON.stringify(o), keepalive: true}); }
+  try { fetch(withKey("/log"), {method: "POST", body: JSON.stringify(o), keepalive: true}); }
   catch (e) {}
 }
 function send(o) {
@@ -171,7 +178,7 @@ function draw() {
 function showMode() {
   c.style.display = canvas ? "block" : "none";
   v.style.opacity = canvas ? "0" : "1";
-  document.getElementById("bm").textContent = canvas ? "VIDEO" : "CANVAS";
+  document.getElementById("bm").textContent = canvas ? "CANVAS" : "VIDEO";
   log({ev: "mode", canvas});
 }
 document.getElementById("bm").onclick = () => { canvas = !canvas; showMode(); };
@@ -233,7 +240,7 @@ document.getElementById("sy").onclick = () => {
 };
 // Sound: browsers start a page muted; the first touch turns it on.
 const bu = document.getElementById("bu");
-function showSound() { bu.textContent = v.muted ? "SOUND" : "MUTE"; }
+function showSound() { bu.textContent = v.muted ? "MUTED" : "SOUND"; }
 function sound(on) {
   v.muted = !on; cfg.sound = on; store.set("sound", on);
   v.play().catch(() => {});
@@ -253,7 +260,7 @@ for (const [id, name] of [["bq", "quickactions"], ["ba", "launcher"],
 // Touch: the Pro1x gets touches, as from its own screen; mouse: a pointer.
 let touch = P.get("input") !== "mouse";
 function showInput() {
-  document.getElementById("bt").textContent = touch ? "MOUSE" : "TOUCH";
+  document.getElementById("bt").textContent = touch ? "TOUCH" : "MOUSE";
   log({ev: "input-mode", touch});
 }
 document.getElementById("bt").onclick = () => { touch = !touch; showInput(); };
@@ -282,7 +289,7 @@ pc.ontrack = e => {
   const codec = P.get("codec")
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
-  const offer = await (await fetch("/offer?codec=" + codec)).text();
+  const offer = await (await fetch(withKey("/offer?codec=" + codec))).text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
   await pc.setLocalDescription(await pc.createAnswer());
   await new Promise(done => {
@@ -291,13 +298,13 @@ pc.ontrack = e => {
       pc.iceGatheringState === "complete" && done();
     setTimeout(done, 2000);
   });
-  await fetch("/answer", {method: "POST", body: pc.localDescription.sdp});
+  await fetch(withKey("/answer"), {method: "POST", body: pc.localDescription.sdp});
   if (codec === "h264") setTimeout(async () => {
     let decoded = 0;
     (await pc.getStats()).forEach(r => {
       if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
     });
-    if (!decoded) location.replace("/?codec=vp8" + (canvas ? "&mode=canvas" : ""));
+    if (!decoded) location.replace(withKey("/?codec=vp8" + (canvas ? "&mode=canvas" : "")));
   }, 5000);
 })();
 
@@ -818,6 +825,17 @@ class Handler(BaseHTTPRequestHandler):
     # Not "command": the HTTP request's method goes there.
     capture = {}
     size = ""
+    key = ""          # --key: every request carries it as ?k=
+
+    def allowed(self):
+        if not self.key:
+            return True
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        given = query.get("k", [""])[0]
+        if hmac.compare_digest(given.encode(), self.key.encode()):
+            return True
+        self.reply(b"forbidden: the link's key is missing or wrong", code=403)
+        return False
 
     def reply(self, body, kind="text/plain", code=200):
         self.send_response(code)
@@ -828,11 +846,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self.allowed():
+            return
         if self.path.split("?")[0] == "/":
             self.reply(INTERACTIVE_PAGE if remote else PAGE,
                        "text/html; charset=utf-8")
         elif self.path.startswith("/offer"):
-            codec = "h264" if self.path.endswith("=h264") else "vp8"
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            codec = "h264" if query.get("codec") == ["h264"] else "vp8"
             created = {"done": threading.Event()}
             GLib.idle_add(new_session, self.capture[codec], codec, self.size, created)
             if (
@@ -846,12 +867,15 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(b"not found", code=404)
 
     def do_POST(self):
-        if self.path == "/log":
+        if not self.allowed():
+            return
+        path = self.path.split("?")[0]
+        if path == "/log":
             text = self.rfile.read(min(int(self.headers["Content-Length"]), 4096))
             log_line(self.client_address[0] + " " + text.decode(errors="replace"))
             self.reply(b"ok")
             return
-        if self.path != "/answer":
+        if path != "/answer":
             self.reply(b"not found", code=404)
             return
         text = self.rfile.read(int(self.headers["Content-Length"])).decode()
@@ -911,6 +935,8 @@ def main():
     args = sys.argv[1:]
     if args[:1] == ["--raw"]:
         Handler.size, args = args[1], args[2:]
+    if args[:1] == ["--key"]:
+        Handler.key, args = args[1], args[2:]
     if args[:1] == ["--interactive"]:
         args = args[1:]
         remote = Remote()
