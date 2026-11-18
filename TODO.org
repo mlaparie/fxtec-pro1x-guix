@@ -158,8 +158,13 @@ Unknown: whether arm64 hibernation restores this SoC's remoteprocs, GPU and disp
 causes, both fixed: Android's system_server held EPOLLWAKEUP timers (block_suspend out of the
 container's caps, fda4378), and the smp2p-sleepstate driver turned the ADSP's sensor-stream
 raises into hard wakeups (unloaded while hibernating, 3cba0e8).  pm_test freezer now passes
-(confirmed); a full hibernation and resume not yet run.  Later: a kernel fix (the driver to
-handle PM_HIBERNATION_PREPARE) instead of the rmmod.
+(confirmed).  Later: a kernel fix (the driver to handle PM_HIBERNATION_PREPARE) instead of the
+rmmod (7246bfa, not yet built).
+Then it hangs (black, no LED, long press needed; confirmed 4 times): pm_test devices, platform,
+processors and core all pass and return; test_resume, disk=reboot and a /dev/snapshot test that
+writes nothing (SNAPSHOT_CREATE_IMAGE) all hang.  So making the snapshot hangs, in
+swsusp_arch_suspend or swsusp_save, after CPUs are off.  No log survives (no pstore set up).
+Next: a debug kernel with ramoops (a reserved-memory region) and PSTORE_CONSOLE to see where.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
