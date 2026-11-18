@@ -326,14 +326,27 @@ k.addEventListener("input", e => {
 """
 
 
+def raw_source(fd, size):
+    """The pipe of raw frames, read a frame at a time.  fdsrc's 4 KiB reads
+    held the encoder to 9 frames a second at 1920x960, against 28 so
+    (2026-11-18), and the frames waiting in the pipe became seconds of
+    delay."""
+    width, height = map(int, size.split("@")[0].split("x"))
+    return f"fdsrc fd={fd} blocksize={width * height * 3 // 2}"
+
+
 def hardware(size):
-    """Elements from raw NV12 frames to H.264, by the phone's encoder."""
+    """Elements from raw NV12 frames to H.264, by the phone's encoder.  If
+    the encoder falls behind, the oldest frame waiting is dropped, so the
+    delay cannot grow."""
     dimensions, fps = size.split("@")
     width, height = map(int, dimensions.split("x"))
     return (
         f"rawvideoparse width={width} height={height} format=nv12 "
         f'framerate={fps}/1 plane-strides="<{width},{width}>" '
         f'plane-offsets="<0,{width * height}>" ! '
+        "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
+        "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
         f'video_bitrate=6000000,video_gop_size={fps},h264_i_frame_period={fps};" ! '
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
@@ -580,7 +593,9 @@ class Session:
                    "application/x-rtp,media=video,encoding-name=VP8,payload=96",
         }[codec]
         self.pipeline = Gst.parse_launch(
-            f"fdsrc fd={self.proc.stdout.fileno()} ! {payload} ! "
+            (raw_source(self.proc.stdout.fileno(), size) if size
+             else f"fdsrc fd={self.proc.stdout.fileno()}")
+            + f" ! {payload} ! "
             "webrtcbin name=w bundle-policy=max-bundle latency=0"
         )
         self.webrtc = self.pipeline.get_by_name("w")
@@ -738,7 +753,7 @@ def main_loop():
 def send_udp(host, port, size, command):
     proc = subprocess.Popen(command, stdout=subprocess.PIPE)
     pipeline = Gst.parse_launch(
-        f"fdsrc fd={proc.stdout.fileno()} ! {hardware(size)} ! "
+        f"{raw_source(proc.stdout.fileno(), size)} ! {hardware(size)} ! "
         f"mpegtsmux alignment=7 ! udpsink host={host} port={port} sync=false"
     )
     loop = main_loop()
