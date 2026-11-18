@@ -13,13 +13,20 @@ set -eu
 
 waydroid=/run/current-system/profile/bin/waydroid
 
+# Init and upgrade write Waydroid's container config again, with
+# block_suspend, which let Android abort every hibernation: taken out again
+# (as pro1x-waydroid-props does at boot).
+no_block_suspend() {
+    sed -i '/^lxc.cap.keep/s/ block_suspend//g' /var/lib/waydroid/lxc/waydroid/config
+}
+
 case "${1:-}" in
     init)
         case "${2:-}" in
-            VANILLA|GAPPS) exec "$waydroid" init -s "$2" ;;
+            VANILLA|GAPPS) "$waydroid" init -s "$2"; no_block_suspend ;;
             *) echo "init VANILLA or GAPPS" >&2; exit 2 ;;
         esac ;;
-    upgrade) exec "$waydroid" upgrade ;;
+    upgrade) "$waydroid" upgrade; no_block_suspend ;;
     android-id)
         "$waydroid" shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db \
             \"select value from main where name = 'android_id';\"" ;;
