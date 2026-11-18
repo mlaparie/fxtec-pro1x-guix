@@ -758,6 +758,16 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      (simple-service 'phosh-pam pam-root-service-type
        (list (unix-pam-service "phosh")))
 
+     ;; Real-time scheduling for the audio group.  PipeWire's module-rt asks
+     ;; for priority 88 and got none (limit 0), so under load its audio
+     ;; thread waited and players missed their deadlines: heard as crackling,
+     ;; on the speaker and in the interactive stream (2026-11-18: mpv 5614
+     ;; errors in pw-top during one stream).  pam_limits sets these at login.
+     (service pam-limits-service-type
+       (list (pam-limits-entry "@audio" 'both 'rtprio 95)
+             (pam-limits-entry "@audio" 'both 'nice -19)
+             (pam-limits-entry "@audio" 'both 'memlock 'unlimited)))
+
      ;; Console font for tuigreet: Terminus 28 bold doubled (setfont -d),
      ;; 28x56, about 77x19 cells in landscape (author: bigger; it was
      ;; sun12x22 doubled, 24x44, and 16x32 before that).  Guix's
