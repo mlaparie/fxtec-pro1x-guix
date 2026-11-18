@@ -306,6 +306,12 @@ scale trough { min-width: 6px; background: rgba(235,219,178,0.4); }
 """
 
 
+def level_mark(levels, value):
+    """+ or ++ for the second or third of LEVELS ((name, value), ...)."""
+    i = min(range(len(levels)), key=lambda i: abs(levels[i][1] - value))
+    return "+" * i
+
+
 def shutter_text(us):
     """An exposure time as a photographer writes it: 1/250, 1/2, AUTO."""
     if not us:
@@ -620,6 +626,11 @@ class Camera(Gtk.Application):
         # always seen; a tap resets it.
         self.marks = Gtk.Box(spacing=4)
         self.side.pack_start(self.marks, False, False, 8)
+        # As wide as its longest tag can be, whatever is shown, so the
+        # sliders beside it never move (author).
+        widest = self.tag("NIGHT STACK (AVG) 16 AUTO", lambda _b: None)
+        widest.show_all()               # a hidden widget measures 0
+        self.side.set_size_request(widest.get_preferred_width()[1], -1)
         self.overlay.add_overlay(self.side)
         self.marked = None
         self.main = Gtk.Box(spacing=28)
@@ -1211,16 +1222,16 @@ class Camera(Gtk.Application):
             marks.append(("TIMER %dS" % self.timer,
                           lambda: self.reset_cycle("timer", TIMERS, self.on_timer)))
         if self.contrast != 1.0:
-            marks.append(("CONTRAST " + dict((v, n) for n, v in CONTRASTS)[self.contrast],
+            marks.append(("CONTR " + level_mark(CONTRASTS, self.contrast),
                           lambda: setattr(self, "contrast", 1.0)))
         if self.clarity:
-            marks.append(("CLARITY " + dict((v, n) for n, v in CLARITIES)[self.clarity],
+            marks.append(("CLARI " + level_mark(CLARITIES, self.clarity),
                           lambda: setattr(self, "clarity", 0.0)))
         if self.vibrance:
-            marks.append(("VIBRANCE " + dict((v, n) for n, v in VIBRANCES)[self.vibrance],
+            marks.append(("VIBR " + level_mark(VIBRANCES, self.vibrance),
                           lambda: setattr(self, "vibrance", 0.0)))
         if self.shutter:
-            marks.append(("SHUTTER " + shutter_text(self.shutter),
+            marks.append((shutter_text(self.shutter),
                           lambda: self.set_shutter(0)))
         mode = "video" if self.video else "photo"
         shapes, sizes = self.choices()
@@ -1828,10 +1839,12 @@ class Camera(Gtk.Application):
     def night_label(self):
         if self.night == "off":
             return "NIGHT"
-        extra = {"additive": " %d S" % self.additive_seconds,
-                 "stack": " %d %s" % (self.stack_count,
-                                      shutter_text(self.stack_shutter))}.get(self.night, "")
-        return "NIGHT " + NIGHT_LABELS[self.night] + extra
+        # Short where the full name made the tags' column wide (author).
+        return {"additive": "NIGHT ADDIT %dS" % self.additive_seconds,
+                "stack": "NIGHT STACK (AVG) %d %s" % (
+                    self.stack_count, shutter_text(self.stack_shutter)),
+                "bulb-add": "BULB ADDIT",
+                "bulb-stack": "BULB STACK"}[self.night]
 
     def set_night_option(self, attr, value):
         setattr(self, attr, value)
