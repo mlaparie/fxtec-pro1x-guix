@@ -59,10 +59,12 @@
         ;; viewfinder that shows all of a 12 MP photo.
         ;; The rear module's calibration EEPROM, for lens shading.
         ;; The lens driver ramps large focus moves (no clack).
+        ;; The SMP2P sleep state driver makes no wakeups while hibernating
+        ;; (the ADSP's sensor raises aborted every hibernation).
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
-          "camera-eeprom" "dw9800-ramp"))))
+          "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"))))
 
 (define-public linux-pro1x
   (package

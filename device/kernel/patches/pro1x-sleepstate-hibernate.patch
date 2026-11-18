@@ -1,0 +1,52 @@
+soc: qcom: smp2p-sleepstate: no wakeups while hibernating
+
+The driver (moWerk's 0032) told the ADSP's sensor framework about suspend
+only.  While hibernating, the SEE kept raising its sleepstate_see bit
+(about twice a second with an accelerometer stream), and each raise, a
+hard wakeup, aborted the freeze of the kernel threads ("Freezing remaining
+freezable tasks aborted", 2026-11-18).  The awake bit is now cleared for
+hibernation too, and no wakeup event made meanwhile: the system powers off
+once the image is saved.
+
+Not yet built.  The same effect, by unloading the module (pro1x-sleep),
+let the pm_test freezer run pass on the phone.
+
+--- a/drivers/soc/qcom/smp2p-sleepstate.c
++++ b/drivers/soc/qcom/smp2p-sleepstate.c
+@@ -23,6 +23,7 @@ struct sleepstate {
+ 	struct qcom_smem_state *state;
+ 	struct wakeup_source *ws;
+ 	struct notifier_block nb;
++	bool hibernating;
+ };
+ 
+ static int sleepstate_pm_notifier(struct notifier_block *nb,
+@@ -37,6 +38,18 @@ static int sleepstate_pm_notifier(struct notifier_block *nb,
+ 	case PM_POST_SUSPEND:
+ 		qcom_smem_state_update_bits(ss->state, AWAKE_BIT, AWAKE_BIT);
+ 		break;
++	/*
++	 * The system powers off once the image is saved, so the SEE's
++	 * wakeups have nothing to wake: they would only abort the freeze.
++	 */
++	case PM_HIBERNATION_PREPARE:
++		WRITE_ONCE(ss->hibernating, true);
++		qcom_smem_state_update_bits(ss->state, AWAKE_BIT, 0);
++		break;
++	case PM_POST_HIBERNATION:
++		qcom_smem_state_update_bits(ss->state, AWAKE_BIT, AWAKE_BIT);
++		WRITE_ONCE(ss->hibernating, false);
++		break;
+ 	}
+ 
+ 	return NOTIFY_DONE;
+@@ -46,7 +59,8 @@ static irqreturn_t sleepstate_irq(int irq, void *data)
+ {
+ 	struct sleepstate *ss = data;
+ 
+-	pm_wakeup_ws_event(ss->ws, 200, true);
++	if (!READ_ONCE(ss->hibernating))
++		pm_wakeup_ws_event(ss->ws, 200, true);
+ 	return IRQ_HANDLED;
+ }
+ 
