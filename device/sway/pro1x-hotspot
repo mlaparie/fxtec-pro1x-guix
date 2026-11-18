@@ -10,7 +10,9 @@
 # internet it shares comes from mobile data.
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
-# A 5 GHz hotspot fails here: every 5 GHz channel is "no IR" (2026-11-09).
+# A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
+# Wi-Fi client, the access point's country beacon closes every 5 GHz channel
+# ("no IR"), so the band can only be checked once the client link is dropped.
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
 # run on the phone.
 
@@ -113,20 +115,15 @@ in_background() {
     ' "$0" "$@" > /dev/null 2>&1 < /dev/null &
 }
 
-# Whether the rules let this phone start a network on some 5 GHz channel.
-band_5ghz_usable() {
-    iw phy | grep -E '^[[:space:]]+\* 5[0-9]{3} MHz' |
-        grep -qvE 'disabled|no IR'
-}
-
 start() {
-    if [ "$(band)" = a ] && ! band_5ghz_usable; then
-        notify-send -u critical Hotspot \
-            "5 GHz is not available in this region: set the band to 2.4 GHz"
-        return 1
-    fi
     nmcli connection up "$con" || {
-        notify-send -u critical Hotspot "Could not start"; return 1; }
+        if [ "$(band)" = a ]; then
+            notify-send -u critical Hotspot \
+                "Could not start on 5 GHz: try 2.4 GHz"
+        else
+            notify-send -u critical Hotspot "Could not start"
+        fi
+        return 1; }
     $admin apply
     bytes_now > "$data_base"
     # The old watcher ends with the old connection; this makes sure of it.
@@ -193,18 +190,15 @@ set_password() {
 }
 
 toggle_band() {
+    # Channel 36 is open to access points in most countries and allows
+    # more power than the channel NetworkManager picks by itself.
     if [ "$(band)" = a ]; then
-        b=bg
-    elif band_5ghz_usable; then
-        b=a
+        b=bg ch=
     else
-        clear_screen
-        echo "5 GHz is not available in this region: the Wi-Fi driver keeps"
-        echo "all its channels closed to access points."
-        pause
-        return
+        b=a ch=36
     fi
-    nmcli connection modify "$con" 802-11-wireless.band "$b" && restart_if_active
+    nmcli connection modify "$con" 802-11-wireless.band "$b" \
+          802-11-wireless.channel "$ch" && restart_if_active
 }
 
 toggle_hidden() {
