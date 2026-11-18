@@ -1,0 +1,31 @@
+From e66d5733c981d89d498cab8c1c40b69263df5ec0 Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Wed, 18 Nov 2026 01:56:59 +0100
+Subject: [PATCH] ipa: simple: awb: Looser limits for white balance
+
+With red kept at 1.3 or more, a room lit by a TV (grey world: red 1.1,
+blue 2.0) came out yellowish (author).  Red's lower limit 1.0, which
+still stops the 0.5 that made the TV scene green; blue within 0.3 of the
+line (in ln), the line being a first estimate below red 1.6.
+---
+ src/ipa/simple/algorithms/awb.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index 4b41d05..d7c554f 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -25,11 +25,11 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
+ namespace ipa::soft::algorithms {
+ 
+ /* Where white balance gains may go: near real light sources (process). */
+-static constexpr float kRedMin = 1.3f;
++static constexpr float kRedMin = 1.0f;
+ static constexpr float kLocusR0 = 1.386f;	/* ln 4.0, a lamp's red gain */
+ static constexpr float kLocusB0 = 0.148f;	/* ln 1.16, its blue gain */
+ static constexpr float kLocusSlope = -0.74f;
+-static constexpr float kLocusSpread = 0.2f;
++static constexpr float kLocusSpread = 0.3f;
+ 
+ int Awb::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+ {

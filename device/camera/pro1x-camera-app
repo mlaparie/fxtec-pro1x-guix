@@ -193,6 +193,11 @@ VIDEO_RATES = [15, 24, 30, 60]
 # lacked some of both (author, 2026-11-17).
 CONTRASTS = [("NORMAL", 1.0), ("MORE", 1.25), ("MOST", 1.5)]
 CLARITIES = [("OFF", 0.0), ("LOW", 0.3), ("HIGH", 0.6)]
+# The toggles kept from one run of the app to the next (author); EV, white
+# balance, manual focus and zoom start afresh, being about the scene.
+KEPT = ("flash", "timer", "iso", "night", "additive_seconds", "stack_count",
+        "stack_shutter", "contrast", "clarity", "vibrance", "grid_on",
+        "horizon_on", "pro", "shutter", "video_rate")
 # Vibrance: the dull colours saturated more than the vivid ones.
 VIBRANCES = [("OFF", 0.0), ("LOW", 0.4), ("HIGH", 0.8)]
 # Pro mode's exposure times, µs (0: automatic); Night stack takes the
@@ -279,14 +284,16 @@ button.shutter { background: #ebdbb2; border-radius: 36px;
 button.shutter.video { background: #cc241d; }
 button.shutter.recording { background: #cc241d; border-radius: 12px; }
 button.shutter:disabled { background: #665c54; }
-button.on { background: #d79921; color: #1d2021; }
+button.on, button.on label { background: #d79921; color: #000000; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
 button.mark { background: rgba(128,128,128,0.35); color: #ffffff; border-radius: 0;
               font-family: monospace; font-size: 12px; min-height: 24px;
               padding: 1px 6px; }
-button.mark.on { background: #d79921; color: #000000; }
+button.mark.on, button.mark.on label { background: #d79921; color: #000000; }
+label.head.linked { border-bottom: 2px solid #d79921; padding-bottom: 2px; }
+label.head.plain { border-bottom: 2px solid transparent; padding-bottom: 2px; }
 scrolledwindow.settings { background: rgba(0,0,0,0.55); }
 label.head { color: #ffffff; font-family: monospace; font-size: 12px;
              font-weight: bold; }
@@ -759,6 +766,7 @@ class Camera(Gtk.Application):
 
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1,
                              self.on_signal)
+        self.restore_toggles()
 
     def button(self, label, handler):
         b = Gtk.Button(label=label)
@@ -1225,7 +1233,50 @@ class Camera(Gtk.Application):
                           lambda: self.reset_output("size", default_size)))
         return marks
 
+    def toggles(self):
+        return {k: getattr(self, k) for k in KEPT}
+
+    def restore_toggles(self):
+        """The toggles as they were when the app last ran (author), from
+        the settings file; the torch is not lit again."""
+        kept = self.settings.get("toggles", {})
+        for k in KEPT:
+            if k in kept and type(kept[k]) is type(getattr(self, k)):
+                setattr(self, k, kept[k])
+        if self.flash not in FLASH_MODES or self.flash == "torch":
+            self.flash = "off"
+        self.b_flash.set_label("FLASH %s" % self.flash.upper())
+        for m, b in zip(FLASH_MODES, self.b_flashes):
+            self.lit(b, m == self.flash)
+        self.lit(self.b_flash, self.flash != "off")
+        if self.timer not in TIMERS:
+            self.timer = 0
+        self.b_timer.set_label("Timer %s" % ("%d s" % self.timer
+                                             if self.timer else "off"))
+        self.lit(self.b_timer, bool(self.timer))
+        if self.iso not in ISOS:
+            self.iso = 0
+        self.b_iso.set_label("ISO %s" % (self.iso or "AUTO"))
+        self.lit(self.b_iso, bool(self.iso))
+        for i, b in zip(ISOS, self.b_isos):
+            self.lit(b, i == self.iso)
+        if self.night not in NIGHT_MODES:
+            self.night = "off"
+        self.b_night.set_label(self.night_label())
+        self.lit(self.b_night, self.night != "off")
+        if self.shutter in SHUTTERS:
+            self.shutter_scale.set_value(SHUTTERS.index(self.shutter))
+        else:
+            self.shutter = 0
+        self.lit(self.b_pro, self.pro)
+        self.saved_toggles = self.toggles()
+
     def update_marks(self):
+        # The toggles saved when they change (author: they persist).
+        if self.toggles() != getattr(self, "saved_toggles", None):
+            self.saved_toggles = self.toggles()
+            self.settings["toggles"] = self.saved_toggles
+            self.save_settings()
         marks = self.marks_wanted()
         labels = [m[0] for m in marks]
         if labels != self.marked:
@@ -1325,7 +1376,9 @@ class Camera(Gtk.Application):
             page.pack_start(flow, False, False, 0)
             return flow
 
-        def column(flow, title, items):
+        def column(flow, title, items, rows=0):
+            # ROWS: room kept for the most choices the column can have, so
+            # the others do not move when it changes (author).
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             head = Gtk.Label(label=title)
             head.get_style_context().add_class("head")
@@ -1333,6 +1386,11 @@ class Camera(Gtk.Application):
             for label, on, handler in items:
                 b = self.tag(label, lambda _b, h=handler: (h(), self.refresh_settings()))
                 self.lit(b, on)
+                box.pack_start(b, False, False, 0)
+            for _ in range(rows - len(items)):
+                b = self.tag(" ", lambda _b: None)
+                b.set_opacity(0)
+                b.set_sensitive(False)
                 box.pack_start(b, False, False, 0)
             flow.add(box)
 
@@ -1348,12 +1406,12 @@ class Camera(Gtk.Application):
             scale.set_size_request(300, -1)
             box.pack_start(scale, False, False, 0)
             into.pack_start(box, False, False, 0)
+            return box
 
         top = row()
         column(top, "FLASH", [(m.upper(), m == self.flash,
                                lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
-        for title, items in self.night_columns():
-            column(top, title, items)
+        top.add(self.night_group(lambda h: (h(), self.refresh_settings())))
         column(top, "TIMER", [("%d S" % t if t else "OFF", t == self.timer,
                                lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
                               for t in TIMERS])
@@ -1377,13 +1435,18 @@ class Camera(Gtk.Application):
                           if wide else Gtk.Orientation.VERTICAL)
         page.pack_start(sliders, False, False, 0)
         slider("EV", self.ev_scale, sliders)
-        if self.manual:
-            slider("FOCUS", self.lens_scale, sliders)
+        # The focus slider's place kept while autofocus is on.
+        focus = slider("FOCUS", self.lens_scale, sliders)
+        if not self.manual:
+            focus.set_opacity(0)
+            focus.set_sensitive(False)
         bottom = row()
         column(bottom, "RATIO", [(v, v == o["shape"],
-                                  lambda v=v: self.reset_output("shape", v)) for v in shapes])
+                                  lambda v=v: self.reset_output("shape", v)) for v in shapes],
+               max(len(PHOTO_SHAPES), len(VIDEO_SHAPES)))
         column(bottom, "RESOLUTION", [(v.upper(), v == o["size"],
-                                       lambda v=v: self.reset_output("size", v)) for v in sizes])
+                                       lambda v=v: self.reset_output("size", v)) for v in sizes],
+               max(3, len(VIDEO_SIZES)))
         column(bottom, "CAMERA", [("MAIN", self.cam == 0,
                                    lambda: self.cam != 0 and self.on_switch()),
                                   ("FRONT", self.cam != 0,
@@ -1787,20 +1850,48 @@ class Camera(Gtk.Application):
                                      for t in STACK_SHUTTERS]))
         return columns
 
+    def night_group(self, pick):
+        """Night's columns side by side, always three wide and as tall as
+        the longest, so nothing moves when the mode changes (author); a
+        line under the headings joins Night to its mode's own choices.
+        PICK runs a choice's handler."""
+        group = Gtk.Box(spacing=0, valign=Gtk.Align.START)
+        widths = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+        columns = self.night_columns()
+        rows = max(len(NIGHT_MODES), len(ADDITIVE_SECONDS),
+                   len(STACK_COUNTS), len(STACK_SHUTTERS))
+        linked = len(columns) > 1
+        for i in range(3):
+            title, items = columns[i] if i < len(columns) else ("", [])
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            head = Gtk.Label(label=title, xalign=0)
+            ctx = head.get_style_context()
+            ctx.add_class("head")
+            ctx.add_class("linked" if linked and i < len(columns) else "plain")
+            col.pack_start(head, False, False, 0)
+            # The choices, with room kept for the longest column.
+            for n in range(rows):
+                if n < len(items):
+                    label, on, handler = items[n]
+                    b = self.tag(label, lambda _b, h=handler: pick(h))
+                    self.lit(b, on)
+                else:
+                    b = self.tag(" ", lambda _b: None)
+                    b.set_opacity(0)
+                    b.set_sensitive(False)
+                b.set_margin_end(12)
+                col.pack_start(b, False, False, 0)
+            widths.add_widget(col)
+            group.pack_start(col, False, False, 0)
+        group.show_all()
+        return group
+
     def fill_night_menu(self):
-        """The Night tag's menu: night_columns() side by side."""
+        """The Night tag's menu: night_group()."""
         box = self.night_menu.get_child()
-        box.set_orientation(Gtk.Orientation.HORIZONTAL)
         for child in box.get_children():
             box.remove(child)
-        for _title, items in self.night_columns():
-            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
-                          valign=Gtk.Align.START)
-            for label, on, handler in items:
-                b = self.tag(label, lambda _b, h=handler: h())
-                self.lit(b, on)
-                col.pack_start(b, False, False, 0)
-            box.pack_start(col, False, False, 0)
+        box.pack_start(self.night_group(lambda h: h()), False, False, 0)
         box.show_all()
 
     def set_night(self, mode):

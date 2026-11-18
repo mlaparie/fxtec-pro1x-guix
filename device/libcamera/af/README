@@ -69,6 +69,8 @@ github.com/moWerk/sailfishos-pro1x-mainline, patches/libcamera/, commit
   keeps highlights), and a digital gain gives what the exposure cannot at
   its limits (DigitalGain in the metadata, for photos).  Supersedes 0033's
   digital-only EV (author: combine).
+- 0036 (ours, 2026-11-18): 0034's limits loosened (red from 1.0, blue
+  within 0.3): a TV-lit room came out yellowish with red held at 1.3.
 Their 0001 (old kernel headers) and 0002/0003 (sensor helpers, ours are
 ../s5k4h7-sensor.patch and ../imx582-sensor.patch) are not used.
 Licence: libcamera is LGPL-2.1-or-later; these patches modify it.  The
