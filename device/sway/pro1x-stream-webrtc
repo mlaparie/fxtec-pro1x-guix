@@ -3,10 +3,12 @@
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
-page also sends touches and keys back over a WebRTC data channel, which a
-virtual pointer and keyboard (uinput) play on the Pro1x: a tap clicks, a
-drag drags, a long press right-clicks, two fingers scroll, and the page's
-keyboard button opens the browser's keyboard.  The page can draw the video
+page also sends touches and keys back over a WebRTC data channel, which
+virtual devices (uinput) play on the Pro1x: by default a multi-touch screen,
+so apps get touches as from the Pro1x's own; in mouse mode a pointer (a tap
+clicks, a drag drags, a long press right-clicks, two fingers scroll).  Its
+buttons open the browser's keyboard, the Pro1x's own (stevia, for special
+keys), its quick actions, launcher and window switcher.  The page can draw the video
 on a canvas instead of a video element, shows what the browser reports
 (screen size, codec, frames, delay), and logs it and the events it gets to
 ~/.local/state/pro1x/interactive-stream.log, for testing a car's browser.
@@ -107,7 +109,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
 </style>
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
-<div id="bar"><button id="bk">KEYS</button><button id="bm">CANVAS</button>
+<div id="bar"><button id="bq">QA</button><button id="ba">APPS</button>
+<button id="bw">WIN</button><button id="bo">OSK</button><button id="bk">KEYS</button>
+<button id="bt">MOUSE</button><button id="bm">CANVAS</button>
 <button id="bi">INFO</button><button id="br">RELOAD</button></div>
 <div id="info"></div>
 <input id="k" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
@@ -153,6 +157,18 @@ document.getElementById("bi").onclick = () =>
   info.style.display = info.style.display === "block" ? "none" : "block";
 document.getElementById("br").onclick = () => location.reload();
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
+// The Pro1x's own menus and on-screen keyboard (special keys), on its screen.
+for (const [id, name] of [["bq", "quickactions"], ["ba", "launcher"],
+                          ["bw", "windowswitcher"], ["bo", "osk"]])
+  document.getElementById(id).onclick = () => send({t: "action", name});
+// Touch: the Pro1x gets touches, as from its own screen; mouse: a pointer.
+let touch = P.get("input") !== "mouse";
+function showInput() {
+  document.getElementById("bt").textContent = touch ? "MOUSE" : "TOUCH";
+  log({ev: "input-mode", touch});
+}
+document.getElementById("bt").onclick = () => { touch = !touch; showInput(); };
+showInput();
 showMode();
 
 const pc = new RTCPeerConnection();
@@ -237,6 +253,11 @@ function press(e) {
   e.preventDefault();
   active.set(e.pointerId, e);
   if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
+  if (touch) {
+    const n = norm(e);
+    send({t: "tdown", id: e.pointerId, x: n.x, y: n.y});
+    return;
+  }
   if (active.size === 1) {
     const n = norm(e);
     send({t: "move", x: n.x, y: n.y});
@@ -255,6 +276,11 @@ function move(e) {
   if (!active.has(e.pointerId)) return;
   e.preventDefault();
   active.set(e.pointerId, e);
+  if (touch) {
+    const n = norm(e);
+    send({t: "tmove", id: e.pointerId, x: n.x, y: n.y});
+    return;
+  }
   if (active.size === 1 && down) {
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) moved = true;
     const n = norm(e);
@@ -271,6 +297,7 @@ function move(e) {
 function release(e) {
   if (!active.has(e.pointerId)) return;
   active.delete(e.pointerId);
+  if (touch) { send({t: "tup", id: e.pointerId}); return; }
   clearTimeout(timer);
   if (down && active.size === 0) { send({t: "up"}); down = false; }
   if (active.size < 2) scrollAt = null;
@@ -372,11 +399,24 @@ class Remote:
         self.keyboard = UInput({ecodes.EV_KEY: keys},
                                name="pro1x-remote-keyboard",
                                vendor=0x1234, product=0x567B)
+        slots = AbsInfo(value=0, min=0, max=9, fuzz=0, flat=0, resolution=0)
+        ids = AbsInfo(value=0, min=0, max=65535, fuzz=0, flat=0, resolution=0)
+        self.touch = UInput(
+            {ecodes.EV_KEY: [ecodes.BTN_TOUCH],
+             ecodes.EV_ABS: [(ecodes.ABS_X, axis), (ecodes.ABS_Y, axis),
+                             (ecodes.ABS_MT_SLOT, slots),
+                             (ecodes.ABS_MT_TRACKING_ID, ids),
+                             (ecodes.ABS_MT_POSITION_X, axis),
+                             (ecodes.ABS_MT_POSITION_Y, axis)]},
+            name="pro1x-remote-touch", vendor=0x1234, product=0x567C,
+            input_props=[ecodes.INPUT_PROP_DIRECT])
+        self.slots, self.tracking = {}, 0
         self.lock = threading.Lock()
         self.turn, self.turn_at = "normal", 0.0
         # As pro1x.conf says, also before Sway has read it again.
         time.sleep(0.5)
-        for command in ('input "4660:22138:pro1x-remote-pointer" map_to_output DSI-1',
+        for command in ('input "4660:22140:pro1x-remote-touch" map_to_output DSI-1',
+                        'input "4660:22138:pro1x-remote-pointer" map_to_output DSI-1',
                         'input "4660:22139:pro1x-remote-keyboard" xkb_layout us',
                         'input "4660:22139:pro1x-remote-keyboard" xkb_variant ""'):
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
@@ -394,14 +434,52 @@ class Remote:
             self.turn_at = time.monotonic()
         return self.turn
 
-    def at(self, x, y):
+    def place(self, x, y):
         """A point of the picture (0 to 1, as shown) on the panel, which
-        Sway then turns (wlroots' output transform, undone here)."""
-        x, y = {"90": (y, 1 - x), "180": (1 - x, 1 - y),
-                "270": (1 - y, x)}.get(self.transform(), (x, y))
+        Sway then turns: wlroots' output transform (types/wlr_cursor.c),
+        undone here.  Sway names its turns clockwise and wlroots
+        anticlockwise (sway/ipc-json.c), so Sway's "90" is wlroots' 270:
+        mixing them up mirrored the taps (author, 2026-11-18)."""
+        x, y = {"90": (1 - y, x), "180": (1 - x, 1 - y),
+                "270": (y, 1 - x)}.get(self.transform(), (x, y))
+        return int(x * 65535), int(y * 65535)
+
+    def at(self, x, y):
         e = self.e
-        self.pointer.write(e.EV_ABS, e.ABS_X, int(x * 65535))
-        self.pointer.write(e.EV_ABS, e.ABS_Y, int(y * 65535))
+        px, py = self.place(x, y)
+        self.pointer.write(e.EV_ABS, e.ABS_X, px)
+        self.pointer.write(e.EV_ABS, e.ABS_Y, py)
+
+    def touch_event(self, kind, ident, x=0.0, y=0.0):
+        """A finger of the viewer's on the virtual touchscreen: a slot for
+        each, as a real multi-touch screen reports them."""
+        e, t = self.e, self.touch
+        if kind == "tdown":
+            if ident in self.slots or len(self.slots) >= 10:
+                return
+            slot = min(set(range(10)) - set(self.slots.values()))
+            self.slots[ident] = slot
+            self.tracking += 1
+            t.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
+            t.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, self.tracking)
+        elif ident not in self.slots:
+            return
+        else:
+            t.write(e.EV_ABS, e.ABS_MT_SLOT, self.slots[ident])
+        if kind in ("tdown", "tmove"):
+            px, py = self.place(x, y)
+            t.write(e.EV_ABS, e.ABS_MT_POSITION_X, px)
+            t.write(e.EV_ABS, e.ABS_MT_POSITION_Y, py)
+            t.write(e.EV_ABS, e.ABS_X, px)
+            t.write(e.EV_ABS, e.ABS_Y, py)
+            if kind == "tdown" and len(self.slots) == 1:
+                t.write(e.EV_KEY, e.BTN_TOUCH, 1)
+        else:
+            t.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
+            del self.slots[ident]
+            if not self.slots:
+                t.write(e.EV_KEY, e.BTN_TOUCH, 0)
+        t.syn()
 
     def tap(self, key, shift=False, ctrl=False, alt=False):
         e, kb = self.e, self.keyboard
@@ -415,6 +493,19 @@ class Remote:
         for m in mods:
             kb.write(e.EV_KEY, m, 0)
         kb.syn()
+
+    # The Pro1x's menus and on-screen keyboard, as its swipes and keys open
+    # them (desktop.conf).
+    ACTIONS = {"quickactions": ["pro1x-menu", "toggle", "quickactions"],
+               "launcher": ["pro1x-menu", "toggle", "launcher"],
+               "windowswitcher": ["pro1x-menu", "toggle", "windowswitcher"],
+               "osk": ["pro1x-osk", "toggle"]}
+
+    def action(self, name):
+        if name in self.ACTIONS:
+            subprocess.Popen(self.ACTIONS[name], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
 
     def text(self, text):
         for ch in text:
@@ -433,6 +524,12 @@ class Remote:
         e, p = self.e, self.pointer
         with self.lock:
             kind = m.get("t")
+            if kind in ("tdown", "tmove", "tup"):
+                self.touch_event(kind, m.get("id"), m.get("x", 0.0), m.get("y", 0.0))
+                return
+            if kind == "action":
+                self.action(m.get("name"))
+                return
             if kind == "move":
                 self.at(m["x"], m["y"])
             elif kind in ("down", "up"):
