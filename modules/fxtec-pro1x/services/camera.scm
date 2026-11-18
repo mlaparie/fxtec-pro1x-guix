@@ -72,6 +72,10 @@ VIDEOS=Videos\n"))))
    #~(begin
        (use-modules (ice-9 ftw) (ice-9 rdelim))
        (define modprobe #$(file-append kmod "/bin/modprobe"))
+       ;; Guix's modprobe finds the modules through this; a service gets
+       ;; none, and every reload failed ("not found in directory
+       ;; /lib/modules/7.3.0", 2026-11-18: no camera until reloaded by hand).
+       (setenv "LINUX_MODULE_DIRECTORY" "/run/booted-system/kernel/lib/modules")
        (define (loaded? module)
          (file-exists? (string-append "/sys/module/" module)))
        (define (present? module)        ;a v4l subdevice named after it
