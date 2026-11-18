@@ -14,3 +14,14 @@ CONFIG_V4L2_FLASH_LED_CLASS=m
 CONFIG_UHID=y
 # Elecom's quirks, the Relacon's extra buttons among them.
 CONFIG_HID_ELECOM=m
+# A 5 GHz hotspot: the Wi-Fi chip's board data names no country (ath world
+# regpair 0x6c), so every 5 GHz channel is "no IR" (no access point) whatever
+# country is set.  With these, the country set by `iw reg set' (pro1x-timezone,
+# from the time zone) replaces it, any country, not only the US and Japan
+# (CERT_TESTING), and its non-DFS channels allow an access point.  DFS channels
+# stay passive (ath always keeps them so).
+# CERTIFICATION_ONUS is only offered with EXPERT.
+CONFIG_EXPERT=y
+CONFIG_CFG80211_CERTIFICATION_ONUS=y
+CONFIG_ATH_REG_DYNAMIC_USER_REG_HINTS=y
+CONFIG_ATH_REG_DYNAMIC_USER_CERT_TESTING=y
