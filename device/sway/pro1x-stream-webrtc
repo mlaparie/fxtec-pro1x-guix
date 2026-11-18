@@ -585,11 +585,14 @@ class Session:
         self.offer_ready = threading.Event()
         self.offer = None
         self.proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        # RTP packets of at most 1200 bytes, as WebRTC usually sends: the
+        # payloaders' 1400 did not fit through Tailscale (MTU 1280), where
+        # only the input came through and the video stayed black.
         payload = {
             "h264": (hardware(size) if size else "h264parse config-interval=-1")
-                    + " ! rtph264pay config-interval=-1 pt=96 ! "
+                    + " ! rtph264pay config-interval=-1 pt=96 mtu=1200 ! "
                     "application/x-rtp,media=video,encoding-name=H264,payload=96",
-            "vp8": "ivfparse ! rtpvp8pay pt=96 ! "
+            "vp8": "ivfparse ! rtpvp8pay pt=96 mtu=1200 ! "
                    "application/x-rtp,media=video,encoding-name=VP8,payload=96",
         }[codec]
         self.pipeline = Gst.parse_launch(
