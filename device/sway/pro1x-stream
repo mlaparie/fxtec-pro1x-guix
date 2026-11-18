@@ -291,10 +291,11 @@ send_webrtc() {
 # browser on the hotspot.
 send_interactive() {
     area=() target=
-    key=() query=
+    # The key is typed in the page's box, not carried by the link.
+    key=() k=
     if key_on; then
         k=$(LC_ALL=C tr -dc 'a-km-z2-9' < /dev/urandom | head -c 5)
-        key=(--key "$k") query="?k=$k"
+        key=(--key "$k")
     fi
     ip=$(own_address)
     [ -n "$ip" ] || return
@@ -309,12 +310,13 @@ send_interactive() {
             -p b=4000000 -p g="$rate" -f pipe:1 \
         >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
-    url="http://$ip:$webrtc_port/$query"
-    echo "interactive, $url" > "$to_file"
+    url="http://$ip:$webrtc_port/"
+    echo "interactive, $url${k:+  key $k}" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
     clear_screen
     printf 'Open in the browser on the other device:  %s\n' "$url"
+    [ -n "$k" ] && printf '\nKey to type there:  \033[1m%s\033[0m\n\n' "$k"
     printf 'Touches and keys there act here.  One viewer at a time; it keeps\n'
     printf 'running until Stop.  The log: ~/.local/state/pro1x/interactive-stream.log\n\n'
     show_qr "$url"
@@ -359,7 +361,7 @@ while :; do
             miracast "Network Displays  mirrors to a Miracast or Chromecast display" \
             fps "Capture rate      $(fps) fps, lower saves CPU" \
             size "Output size       $(out_size), long side" \
-            key "Access key        $(key_on && echo on || echo off), a 5-letter key in the interactive link")
+            key "Access key        $(key_on && echo on || echo off), a 5-letter key the interactive page asks for")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
         stop) stop_stream ;;
