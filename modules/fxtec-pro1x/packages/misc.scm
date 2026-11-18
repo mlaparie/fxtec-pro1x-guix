@@ -1565,13 +1565,19 @@ devices, and NVIDIA ones when the vendor's library is installed.")
             (invoke "convert" "-size" "2160x2160" "xc:#252a3a" "gnu.png"
                     "-gravity" "center" "-geometry" "+0-90" "-composite"
                     (string-append dir "/dark.png"))
-            ;; Sway's: the same, with the gestures and keys in a small box
-            ;; (author, 2026-11-06), keys the Emacs way (s- Super, C- Ctrl).  Monospace at 24 px, under the bar's
-            ;; 10 pt at scale 2 (27 px); below the gnu, inside the middle
-            ;; 1080 px square, the part that "fill" shows in portrait and in
-            ;; landscape, and above the landscape bottom edge.
+            ;; Sway's: the gnu a little higher, with the gestures and keys in
+            ;; a small box below it (author, 2026-11-06), keys the Emacs way
+            ;; (s- Super, C- Ctrl), and the camera button's presses
+            ;; (pro1x-camera-button; author, 2026-11-18).  Monospace at 23 px
+            ;; (24 before the camera lines), under the bar's 10 pt at scale
+            ;; 2 (27 px); inside the middle 1080 px square, the part that
+            ;; "fill" shows in portrait and in landscape, and above the
+            ;; landscape bottom edge.
+            (invoke "convert" "-size" "2160x2160" "xc:#252a3a" "gnu.png"
+                    "-gravity" "center" "-geometry" "+0-230" "-composite"
+                    "dark-high.png")
             (invoke "convert" "-background" "#1d2021c0" "-fill" "#ddd0f7" ; the gnu's lilac
-                    "-font" mono "-pointsize" "24" "-interline-spacing" "8"
+                    "-font" mono "-pointsize" "23" "-interline-spacing" "7"
                     (string-append
                      "label:"
                      "Quick menu          s-q      or top swipe\n"
@@ -1581,10 +1587,14 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "Open terminal       s-<ret>\n"
                      "Close window        s-<backspace>\n"
                      "Help                C-s-h\n"
-                     "Power menu          power key (long press)")
+                     "Power menu          power key (long press)\n"
+                     "Click               camera button\n"
+                     "Right click         Fn + camera button\n"
+                     "Double click        camera button twice\n"
+                     "Open the camera     camera button 3 times")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
-            (invoke "convert" (string-append dir "/dark.png") "help.png"
-                    "-gravity" "center" "-geometry" "+0+330" "-composite"
+            (invoke "convert" "dark-high.png" "help.png"
+                    "-gravity" "center" "-geometry" "+0+270" "-composite"
                     (string-append dir "/dark-sway.png"))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Background images for the F(x)tec Pro1X sessions")
