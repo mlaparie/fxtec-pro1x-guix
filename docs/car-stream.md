@@ -71,18 +71,17 @@ only) and replaces the rest.
    touches and gestures.  Needs `/dev/uinput` for the session user (a udev
    rule).  The car's keyboard comes up through a hidden text field; its
    text arrives as key events, or as text when it composes.
-8. **Network.**  The existing NetworkManager hotspot; the car opens
-   `http://<hotspot address>:<port>/<token>`.  The phone's mobile data can
+8. **Network.**  The existing NetworkManager hotspot, or the VPN; the car
+   opens `http://<address>:<port>/<token>`.  The phone's mobile data can
    be shared with the car (author's decision each time: it is the SIM's
    data).
-9. **Running.**  A Sway session service, started from a "Car" line in
-   quick actions; suspend inhibited while a viewer is connected; the
-   Pro¹x's own screen may go off.
+9. **Running.**  A "Car stream" line in quick actions, also offered in the
+   Hotspot and VPN menus, which start it on that network's address; no
+   config.scm option (author).  Suspend inhibited while a viewer is
+   connected; the Pro¹x's own screen may go off.
 10. **Safety of the desktop.**  Input is full control of the session: the
-    server binds to the hotspot's interface only, the URL carries a random
+    server binds to the chosen interface only (hotspot or VPN), the URL carries a random
     token, the hotspot uses WPA2.
-11. **Configuration.**  A config.scm option (port, size, rate, bitrate,
-    sound sink), commented in the template and in the author's config.
 
 ## Milestones
 
@@ -98,7 +97,8 @@ only) and replaces the rest.
 - **M3:** input over the data channel, uinput touch and keyboard.
 - **M4:** the car page: canvas or WebCodecs, full screen, reconnect after
   the car sleeps, the token.
-- **M5:** service, quick actions line, config.scm option, docs.
+- **M5:** the quick actions line, and the entries in the Hotspot and VPN
+  menus; docs.
 - **Later:** hotspot and Wi-Fi client at once (ath10k's interface
   combinations decide it).
 
