@@ -27,6 +27,8 @@ to_file="$rt/pro1x-stream.to"           # what the menus show
 fps_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-fps"
 size_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-size"
 key_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-key"   # on or off
+key_value="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-key-value"
+
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 udp_port=5000
 http_port=8080
@@ -49,6 +51,17 @@ fps() { cat "$fps_file" 2>/dev/null || echo 30; }
 # The interactive link carries a random key unless turned off (on a shared
 # network, only who has the link gets in).
 key_on() { [ "$(cat "$key_file" 2>/dev/null)" != off ]; }
+
+# The key stays the same until renewed, so a bookmarked link with ?k= keeps
+# working.
+current_key() {
+    [ -s "$key_value" ] || new_key
+    cat "$key_value"
+}
+new_key() {
+    mkdir -p "${key_value%/*}"
+    LC_ALL=C tr -dc 'a-km-z2-9' < /dev/urandom | head -c 5 > "$key_value"
+}
 
 # A lower rate is what lightens the load: copying the screen costs more than
 # encoding it.
@@ -291,10 +304,10 @@ send_webrtc() {
 # browser on the hotspot.
 send_interactive() {
     area=() target=
-    # The key is typed in the page's box, not carried by the link.
+    # The page asks for the key in a box; the QR code's link carries it.
     key=() k=
     if key_on; then
-        k=$(LC_ALL=C tr -dc 'a-km-z2-9' < /dev/urandom | head -c 5)
+        k=$(current_key)
         key=(--key "$k")
     fi
     ip=$(own_address)
@@ -319,7 +332,7 @@ send_interactive() {
     [ -n "$k" ] && printf '\nKey to type there:  \033[1m%s\033[0m\n\n' "$k"
     printf 'Touches and keys there act here.  One viewer at a time; it keeps\n'
     printf 'running until Stop.  The log: ~/.local/state/pro1x/interactive-stream.log\n\n'
-    show_qr "$url"
+    show_qr "$url${k:+?k=$k}"
     read -rsn1
 }
 
@@ -361,7 +374,8 @@ while :; do
             miracast "Network Displays  mirrors to a Miracast or Chromecast display" \
             fps "Capture rate      $(fps) fps, lower saves CPU" \
             size "Output size       $(out_size), long side" \
-            key "Access key        $(key_on && echo on || echo off), a 5-letter key the interactive page asks for")
+            key "Access key        $(key_on && echo "on, $(current_key)" || echo off), asked for by the interactive page" \
+            renew "New access key    the old one and its bookmarks stop working")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
         stop) stop_stream ;;
@@ -374,6 +388,7 @@ while :; do
         fps) pick_fps ;;
         size) pick_size ;;
         key) if key_on; then echo off > "$key_file"; else echo on > "$key_file"; fi ;;
+        renew) new_key ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;

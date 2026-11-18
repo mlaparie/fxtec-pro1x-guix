@@ -119,7 +119,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
   border-radius:6px;padding:10px 14px}
 #bar.folded .x{display:none}
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
-  background:rgba(0,0,0,.75);padding:8px;white-space:pre;display:none;z-index:2}
+  background:rgba(0,0,0,.75);padding:8px;display:none;z-index:2}
+#info pre{margin:0;font:inherit}
 #set{position:fixed;right:6px;top:64px;font:16px monospace;color:#eee;z-index:2;
   background:rgba(0,0,0,.8);padding:10px;display:none;border-radius:6px}
 #set label{display:block;margin:8px 0}
@@ -147,8 +148,10 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>a/v &nbsp; <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
 <div style="font-size:13px;opacity:.7">a/v above 0: the sound later; below 0: the picture later</div>
 <label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
+<label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
+<div style="font-size:13px;opacity:.7">fps: the capture rate; a change restarts the picture</div>
 <button id="sy">RESYNC</button></div>
-<div id="info"></div><div id="clock"></div>
+<div id="info"><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div><div id="clock"></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
  spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
@@ -173,7 +176,7 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, sound: true, touch: true,
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, sound: true, touch: true,
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
 if (P.get("input")) cfg.touch = P.get("input") !== "mouse";
@@ -232,7 +235,7 @@ function tick() {
 document.getElementById("bi").onclick = () => {
   const on = info.style.display !== "block";
   info.style.display = clock.style.display = on ? "block" : "none";
-  if (on) tick();
+  if (on) { tick(); drawTemps(); }
 };
 document.getElementById("br").onclick = () => location.reload();
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
@@ -310,7 +313,17 @@ function showInput() { document.getElementById("bt").textContent = cfg.touch ? "
 document.getElementById("bt").onclick = () => {
   cfg.touch = !cfg.touch; save(); showInput(); log({ev: "input-mode", touch: cfg.touch});
 };
-function refresh() { showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
+// The capture rate is the phone's: shown from its status, and a change
+// makes it restart the capture, then this page connects again.
+const sf = document.getElementById("sf"), sfv = document.getElementById("sfv");
+function showFps() { sf.value = cfg.fps; sfv.textContent = cfg.fps; }
+sf.oninput = () => sfv.textContent = sf.value;
+sf.onchange = async () => {
+  log({ev: "fps", fps: Number(sf.value)});
+  try { await fetch(withKey("/fps?fps=" + sf.value), {method: "POST"}); } catch (e) {}
+  location.reload();
+};
+function refresh() { showFps(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
 
 const pc = new RTCPeerConnection();
@@ -366,6 +379,7 @@ async function connect() {
     store.set("settings", cfg);
     refresh();
   } catch (e) {}
+  status();
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
   const codec = P.get("codec")
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
@@ -390,29 +404,81 @@ async function connect() {
 }
 connect();
 
-// What the browser reports, every second; logged every 10 s.
-let last = {frames: 0, at: 0}, ticks = 0;
+// What the browser reports, every second (logged every 10 s), in short
+// lines; the phone's temperature every 5 s, its last 10 minutes drawn.
+const it = document.getElementById("it");
+const prev = {};
+function delta(id, field, value) {
+  const k = id + field, d = value - (prev[k] === undefined ? value : prev[k]);
+  prev[k] = value;
+  return d;
+}
+const temps = [], tc = document.getElementById("tc"), tctx = tc.getContext("2d");
+function drawTemps() {
+  tctx.clearRect(0, 0, tc.width, tc.height);
+  if (temps.length < 2) return;
+  const lo = Math.min(...temps) - 1, hi = Math.max(...temps) + 1;
+  tctx.strokeStyle = "#f80"; tctx.lineWidth = 2; tctx.beginPath();
+  temps.forEach((t, i) => {
+    const x = i * tc.width / 119, y = tc.height - (t - lo) * tc.height / (hi - lo);
+    i ? tctx.lineTo(x, y) : tctx.moveTo(x, y);
+  });
+  tctx.stroke();
+}
+let phone = {}, ticks = 0;
+async function status() {
+  try {
+    phone = await (await fetch(withKey("/status"))).json();
+    if (phone.fps && phone.fps !== cfg.fps && document.activeElement !== sf) {
+      cfg.fps = phone.fps; showFps();
+    }
+    if (phone.cpu !== undefined) { temps.push(phone.cpu); if (temps.length > 120) temps.shift(); }
+    if (info.style.display === "block") drawTemps();
+  } catch (e) {}
+}
+setInterval(status, 5000);
 setInterval(async () => {
   const s = {w: innerWidth, h: innerHeight, video: v.videoWidth + "x" + v.videoHeight,
              mode: cfg.canvas ? "canvas" : "video", hidden: document.hidden};
+  let bytes = 0, rate = 0;
   (await pc.getStats()).forEach(r => {
-    if (r.type === "inbound-rtp" && r.kind === "video") {
-      s.fps = Math.round((r.framesDecoded - last.frames) * 1000 / (r.timestamp - last.at));
-      last = {frames: r.framesDecoded, at: r.timestamp};
-      s.decoded = r.framesDecoded; s.dropped = r.framesDropped;
-      if (r.jitterBufferEmittedCount)
-        s.buffer_ms = Math.round(1000 * r.jitterBufferDelay / r.jitterBufferEmittedCount);
+    if (r.type === "inbound-rtp") {
+      bytes += r.bytesReceived || 0;
+      rate += delta(r.id, "b", r.bytesReceived || 0) * 8 / 1000;
+      // The buffer over the last second, not since the start.
+      const n = delta(r.id, "n", r.jitterBufferEmittedCount || 0);
+      const ms = delta(r.id, "d", r.jitterBufferDelay || 0);
+      if (n > 0) s[r.kind === "audio" ? "audio_buffer_ms" : "buffer_ms"] = Math.round(1000 * ms / n);
     }
-    if (r.type === "inbound-rtp" && r.kind === "audio" && r.jitterBufferEmittedCount)
-      s.audio_buffer_ms = Math.round(1000 * r.jitterBufferDelay / r.jitterBufferEmittedCount);
+    if (r.type === "inbound-rtp" && r.kind === "video") {
+      s.fps = delta(r.id, "f", r.framesDecoded || 0);
+      s.decoded = r.framesDecoded; s.dropped = r.framesDropped;
+    }
     if (r.type === "codec" && /video/.test(r.mimeType)) s.codec = r.mimeType;
     if (r.type === "candidate-pair" && r.nominated && r.currentRoundTripTime)
       s.rtt_ms = Math.round(1000 * r.currentRoundTripTime);
   });
-  s.settings = {smooth: cfg.smooth, av: cfg.av, mbps: cfg.rate, muted: v.muted};
+  s.kbps = Math.round(rate);
+  s.mb = (bytes / 1e6).toFixed(1);
+  s.settings = {smooth: cfg.smooth, av: cfg.av, mbps: cfg.rate, fps: cfg.fps, muted: v.muted};
   s.events = counts;
-  info.textContent = Object.entries(s).map(([a, b]) =>
-    a + ": " + (typeof b === "object" ? JSON.stringify(b) : b)).join("\\n");
+  s.temp = phone.cpu;
+  if (info.style.display === "block") {
+    const ev = Object.entries(counts).map(([a, b]) => a + " " + b);
+    const rows = [];
+    for (let i = 0; i < ev.length; i += 3) rows.push("  " + ev.slice(i, i + 3).join("  "));
+    it.textContent = [
+      `screen  ${s.w}x${s.h}  video ${s.video}`,
+      `mode    ${s.mode}, ${cfg.touch ? "touch" : "mouse"}, ${v.muted ? "muted" : "sound"}`,
+      `fps     ${s.fps}  decoded ${s.decoded}  dropped ${s.dropped}`,
+      `rate    ${s.kbps} kbit/s  (set ${cfg.rate} Mbit/s, ${cfg.fps} fps)`,
+      `data    ${s.mb} MB so far`,
+      `buffer  video ${s.buffer_ms} ms, sound ${s.audio_buffer_ms} ms`,
+      `set     smooth ${cfg.smooth} ms, a/v ${cfg.av} ms`,
+      `network rtt ${s.rtt_ms} ms, ${s.codec}`,
+      `phone   CPU ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, last 10 min:`,
+    ].concat(rows.length ? ["events"].concat(rows) : []).join("\\n");
+  }
   if (++ticks % 10 === 0) log(Object.assign({ev: "stats"}, s));
 }, 1000);
 
@@ -540,12 +606,13 @@ def hardware(size):
 
 
 # The sound: what the phone plays (the default output's monitor, through
-# PipeWire's PulseAudio server), as Opus in 10 ms frames, for the least
-# delay.
+# PipeWire's PulseAudio server), as Opus.  Blocks of 10 ms in a 40 ms buffer
+# underran, heard as buzzing and crackling (author, 2026-11-18): 20 ms blocks
+# in a 200 ms buffer, and 20 ms Opus frames, Opus's usual.
 AUDIO = (
-    "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=40000 latency-time=10000 ! "
+    "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=200000 latency-time=20000 ! "
     "audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! "
-    "opusenc bitrate=128000 frame-size=10 ! rtpopuspay pt=97 mtu=1200 ! "
+    "opusenc bitrate=160000 frame-size=20 ! rtpopuspay pt=97 mtu=1200 ! "
     "application/x-rtp,media=audio,encoding-name=OPUS,payload=97"
 )
 
@@ -884,6 +951,51 @@ session = None
 session_lock = threading.Lock()
 
 
+def cpu_temperature():
+    """The hottest CPU sensor, in degrees, or None."""
+    hottest = None
+    for zone in os.listdir("/sys/class/thermal"):
+        base = os.path.join("/sys/class/thermal", zone)
+        try:
+            with open(os.path.join(base, "type")) as f:
+                if not f.read().startswith("cpu"):
+                    continue
+            with open(os.path.join(base, "temp")) as f:
+                t = int(f.read()) / 1000
+        except (OSError, ValueError):
+            continue
+        hottest = t if hottest is None else max(hottest, t)
+    return None if hottest is None else round(hottest, 1)
+
+
+def capture_fps():
+    return int(Handler.size.split("@")[1]) if Handler.size else None
+
+
+def set_fps(fps):
+    """A new capture rate from the page: the capture commands, the raw
+    frames' rate and the keyframe period change, the menu's setting with
+    them, and the viewer's session ends; its page connects again."""
+    Handler.size = Handler.size.split("@")[0] + f"@{fps}"
+    for command in Handler.capture.values():
+        for i, arg in enumerate(command[:-1]):
+            if arg == "-r":
+                command[i + 1] = str(fps)
+            elif arg == "-p" and command[i + 1].startswith("g="):
+                command[i + 1] = f"g={fps}"
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    try:
+        with open(os.path.join(state, "pro1x-stream-fps"), "w") as f:
+            f.write(f"{fps}\n")
+    except OSError:
+        pass
+    log_line(f"capture rate {fps} fps")
+    with session_lock:
+        current = session
+    if current:
+        GLib.idle_add(end_session, current)
+
+
 def end_session(old):
     global session
     with session_lock:
@@ -940,6 +1052,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/check":
             self.reply(b"ok")
+        elif path == "/status":
+            self.reply(json.dumps({"cpu": cpu_temperature(),
+                                   "fps": capture_fps()}).encode(),
+                       "application/json")
         elif path == "/settings":
             try:
                 with open(SETTINGS, "rb") as f:
@@ -965,6 +1081,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return
         path = self.path.split("?")[0]
+        if path == "/fps":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                fps = int(query.get("fps", [""])[0])
+            except ValueError:
+                fps = 0
+            if not 5 <= fps <= 60 or not self.size:
+                self.reply(b"bad rate", code=400)
+                return
+            set_fps(fps)
+            self.reply(b"ok")
+            return
         if path == "/settings":
             text = self.rfile.read(min(int(self.headers["Content-Length"]), 2048))
             try:
