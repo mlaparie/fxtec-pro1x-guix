@@ -1,0 +1,153 @@
+Hibernation debugging: a kept console log, progress lines, the watchdog
+
+Making the hibernation snapshot hangs on the Pro1X (2026-11-18: every
+pm_test stage passes, a /dev/snapshot SNAPSHOT_CREATE_IMAGE that writes
+nothing hangs), and no log survives the long press.  For finding where:
+
+- a ramoops area in RAM (2 MiB at 0x88000000), with PSTORE_RAM and
+  PSTORE_CONSOLE in the config: the previous boot's console log in
+  /sys/fs/pstore, if the reset keeps RAM;
+- "hibdbg:" lines in swsusp_arch_suspend and swsusp_save, and in the
+  page copy every 16 MiB and after each gap of 1 MiB, printed straight
+  to the consoles (with printk.console_suspend=N set for the test);
+- qcom-wdt keep_in_sleep (off by default): the watchdog keeps running
+  through system sleep, so a hang resets the phone by itself.
+
+Nothing changes unless hibernating; the watchdog switch is off.  Not yet
+built.
+
+--- a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
++++ b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+@@ -1560,6 +1560,23 @@ camss_csiphy2_ep: endpoint {
+ 	};
+ };
+ 
++/*
++ * A RAM area kept across a reset for pstore (ramoops): the console log and
++ * crash dumps of the previous boot in /sys/fs/pstore.  2 MiB of System RAM,
++ * away from the firmware's regions; whether a reset keeps it is to be seen.
++ */
++&reserved_memory {
++	ramoops@88000000 {
++		compatible = "ramoops";
++		reg = <0x0 0x88000000 0x0 0x200000>;
++		no-map;
++		console-size = <0x100000>;
++		record-size = <0x20000>;
++		pmsg-size = <0x0>;
++		ecc-size = <16>;
++	};
++};
++
+ &venus {
+ 	/*
+ 	 * No firmware-name: the Fxtec image (VIDEO.VE.6.0-00049) is older than the 6.0.55
+--- a/arch/arm64/kernel/hibernate.c
++++ b/arch/arm64/kernel/hibernate.c
+@@ -341,9 +341,11 @@ int swsusp_arch_suspend(void)
+ 		return -EBUSY;
+ 	}
+ 
++	pr_info("hibdbg: swsusp_arch_suspend\n");
+ 	flags = local_daif_save();
+ 
+ 	if (__cpu_suspend_enter(&state)) {
++		pr_info("hibdbg: cpu context saved\n");
+ 		/* make the crash dump kernel image visible/saveable */
+ 		crash_prepare_suspend();
+ 
+@@ -355,6 +357,7 @@ int swsusp_arch_suspend(void)
+ 
+ 		sleep_cpu = smp_processor_id();
+ 		ret = swsusp_save();
++		pr_info("hibdbg: swsusp_save returned %d\n", ret);
+ 	} else {
+ 		/* Clean kernel core startup/idle code to PoC*/
+ 		dcache_clean_inval_poc((unsigned long)__mmuoff_data_start,
+--- a/drivers/watchdog/qcom-wdt.c
++++ b/drivers/watchdog/qcom-wdt.c
+@@ -358,11 +358,21 @@ static int qcom_wdt_probe(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
++/*
++ * Hibernation debugging: leave the watchdog running through system sleep,
++ * so that a hang resets the phone (with RAM, and the pstore log, kept)
++ * instead of waiting for a long press.  Off by default; whoever turns it on
++ * pets the watchdog.
++ */
++static bool keep_in_sleep;
++module_param(keep_in_sleep, bool, 0644);
++MODULE_PARM_DESC(keep_in_sleep, "Do not stop the watchdog for system sleep");
++
+ static int __maybe_unused qcom_wdt_suspend(struct device *dev)
+ {
+ 	struct qcom_wdt *wdt = dev_get_drvdata(dev);
+ 
+-	if (watchdog_active(&wdt->wdd))
++	if (watchdog_active(&wdt->wdd) && !keep_in_sleep)
+ 		qcom_wdt_stop(&wdt->wdd);
+ 
+ 	return 0;
+--- a/kernel/power/snapshot.c
++++ b/kernel/power/snapshot.c
+@@ -1516,6 +1516,9 @@ static inline int copy_data_page(unsigned long dst_pfn, unsigned long src_pfn)
+  *
+  * Returns the number of pages copied.
+  */
++/* Hibernation debugging: the last page copied, to log gaps. */
++static unsigned long hibdbg_last;
++
+ static unsigned long copy_data_pages(struct memory_bitmap *copy_bm,
+ 			    struct memory_bitmap *orig_bm,
+ 			    struct memory_bitmap *zero_bm)
+@@ -1533,6 +1536,8 @@ static unsigned long copy_data_pages(struct memory_bitmap *copy_bm,
+ 			if (page_is_saveable(zone, pfn))
+ 				memory_bm_set_bit(orig_bm, pfn);
+ 	}
++	pr_info("hibdbg: pages marked, copying\n");
++	hibdbg_last = 0;
+ 	memory_bm_position_reset(orig_bm);
+ 	memory_bm_position_reset(copy_bm);
+ 	copy_pfn = memory_bm_next_pfn(copy_bm);
+@@ -1540,6 +1545,11 @@ static unsigned long copy_data_pages(struct memory_bitmap *copy_bm,
+ 		pfn = memory_bm_next_pfn(orig_bm);
+ 		if (unlikely(pfn == BM_END_OF_MAP))
+ 			break;
++		/* Every 16 MiB, and the first page after a gap of 1 MiB. */
++		if (!(pfn & 0xfff) || pfn > hibdbg_last + 0x100)
++			pr_info("hibdbg: copy pfn %#lx (%#llx)\n", pfn,
++				(unsigned long long)PFN_PHYS(pfn));
++		hibdbg_last = pfn;
+ 		if (copy_data_page(copy_pfn, pfn)) {
+ 			memory_bm_set_bit(zero_bm, pfn);
+ 			/* Use this copy_pfn for a page that is not full of zeros */
+@@ -2111,10 +2121,12 @@ asmlinkage __visible int swsusp_save(void)
+ 	unsigned int nr_pages, nr_highmem;
+ 
+ 	pm_deferred_pr_dbg("Creating image\n");
++	pr_info("hibdbg: swsusp_save\n");
+ 
+ 	drain_local_pages(NULL);
+ 	nr_pages = count_data_pages();
+ 	nr_highmem = count_highmem_pages();
++	pr_info("hibdbg: %u pages to copy\n", nr_pages + nr_highmem);
+ 	pm_deferred_pr_dbg("Need to copy %u pages\n", nr_pages + nr_highmem);
+ 
+ 	if (!enough_free_mem(nr_pages, nr_highmem)) {
+@@ -2124,6 +2136,7 @@ asmlinkage __visible int swsusp_save(void)
+ 
+ 	if (swsusp_alloc(&copy_bm, nr_pages, nr_highmem))
+ 		return -ENOMEM;
++	pr_info("hibdbg: copy pages allocated\n");
+ 
+ 	/*
+ 	 * During allocating of suspend pagedir, new cold pages may appear.
+@@ -2131,6 +2144,7 @@ asmlinkage __visible int swsusp_save(void)
+ 	 */
+ 	drain_local_pages(NULL);
+ 	nr_copy_pages = copy_data_pages(&copy_bm, &orig_bm, &zero_bm);
++	pr_info("hibdbg: %u pages copied\n", nr_copy_pages);
+ 
+ 	/*
+ 	 * End of critical section. From now on, we can write to memory,

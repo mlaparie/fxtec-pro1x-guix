@@ -25,3 +25,8 @@ CONFIG_EXPERT=y
 CONFIG_CFG80211_CERTIFICATION_ONUS=y
 CONFIG_ATH_REG_DYNAMIC_USER_REG_HINTS=y
 CONFIG_ATH_REG_DYNAMIC_USER_CERT_TESTING=y
+# Hibernation debugging (pro1x-hibernate-debug): the console log and crash
+# dumps of the previous boot in /sys/fs/pstore, from the ramoops area in the
+# device tree; built in, to record from the start.
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
