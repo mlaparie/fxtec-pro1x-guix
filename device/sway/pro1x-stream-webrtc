@@ -358,7 +358,7 @@ refresh();
 const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
   chan = e.channel;
-  chan.onopen = () => { log({ev: "channel-open"}); sendRate(); };
+  chan.onopen = () => log({ev: "channel-open"});
   // The phone restarts its capture (a new fps): connect again.
   chan.onmessage = m => {
     try { if (JSON.parse(m.data).t === "reconnect") setTimeout(() => location.reload(), 500); }
@@ -419,7 +419,7 @@ async function connect() {
   const codec = P.get("codec")
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
-  const offer = await (await fetch(withKey("/offer?codec=" + codec))).text();
+  const offer = await (await fetch(withKey("/offer?codec=" + codec + "&mbps=" + cfg.rate))).text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
   await pc.setLocalDescription(await pc.createAnswer());
   await new Promise(done => {
@@ -762,7 +762,7 @@ def raw_source(fd, size):
     return f"fdsrc fd={fd} blocksize={width * height * 3 // 2}"
 
 
-def hardware(size, parse=True):
+def hardware(size, parse=True, mbps=6.0):
     """Elements from raw NV12 frames to H.264, by the phone's encoder, from
     the bytes of a pipe (PARSE) or from frames.  If the encoder falls behind,
     the oldest frame waiting is dropped, so the delay cannot grow."""
@@ -775,7 +775,7 @@ def hardware(size, parse=True):
         + "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate=6000000,video_gop_size={3 * int(fps)},'
+        f'video_bitrate={int(mbps * 1e6)},video_gop_size={3 * int(fps)},'
         f'h264_i_frame_period={3 * int(fps)};" ! '
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
         "h264parse config-interval=-1"
@@ -1188,7 +1188,8 @@ def log_line(text):
 class Session:
     """One viewer: the capture command, the pipeline, and its offer."""
 
-    def __init__(self, command, codec, size):
+    def __init__(self, command, codec, size, mbps=6.0):
+        self.mbps = mbps
         self.offer_ready = threading.Event()
         self.offer = None
         self.portal = portal if codec == "h264" and size else None
@@ -1198,7 +1199,7 @@ class Session:
         # payloaders' 1400 did not fit through Tailscale (MTU 1280), where
         # only the input came through and the video stayed black.
         payload = {
-            "h264": (hardware(size, parse=not self.portal) if size
+            "h264": (hardware(size, parse=not self.portal, mbps=mbps) if size
                      else "h264parse config-interval=-1")
                     + " ! rtph264pay config-interval=-1 pt=96 mtu=1200 ! "
                     "application/x-rtp,media=video,encoding-name=H264,payload=96",
@@ -1249,14 +1250,22 @@ class Session:
             remote.handle(text)
 
     def bitrate(self, mbps):
-        """The hardware encoder's bit rate, changed while it runs (V4L2
-        controls are applied when set on an open device); the VP8 path has
-        no such setting."""
-        encoder = self.pipeline.get_by_name("enc")
-        if encoder is not None:
-            encoder.set_property("extra-controls", Gst.Structure.new_from_string(
-                f"controls,video_bitrate={int(mbps * 1e6)}"))
-            log_line(f"bit rate {mbps} Mbit/s")
+        """A new bit rate from the page: the session starts again with it.
+        Not set on the running encoder: the Venus firmware died of it
+        (Err_Fatal in vbuffer.c, as the page sent its rate on connecting),
+        and its failed recovery powered the phone off (2026-11-18).  A
+        second later, so that a slider's moves make one restart."""
+        Handler.mbps = mbps
+        if rate_restart[0]:
+            GLib.source_remove(rate_restart[0])
+        rate_restart[0] = GLib.timeout_add(1000, self.rate_changed)
+        return GLib.SOURCE_REMOVE
+
+    def rate_changed(self):
+        rate_restart[0] = None
+        if Handler.mbps != self.mbps:
+            log_line(f"bit rate {Handler.mbps} Mbit/s")
+            restart_session()
         return GLib.SOURCE_REMOVE
 
     def negotiate(self, _element):
@@ -1464,11 +1473,14 @@ def end_session(old):
     return GLib.SOURCE_REMOVE
 
 
+rate_restart = [None]
+
+
 def new_session(command, codec, size, created):
     """Runs in the main loop, where GStreamer's signals are handled."""
     global session
     with session_lock:
-        old, session = session, Session(command, codec, size)
+        old, session = session, Session(command, codec, size, Handler.mbps)
         created["session"] = session
     if old:
         old.stop()
@@ -1482,6 +1494,7 @@ class Handler(BaseHTTPRequestHandler):
     size = ""
     target = 0        # the capture rate chosen (the heat limit may hold it lower)
     key = ""          # --key: every request carries it as ?k=
+    mbps = 6.0        # the encoder's bit rate, from the page
 
     def allowed(self):
         if not self.key:
@@ -1527,6 +1540,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/offer"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             codec = "h264" if query.get("codec") == ["h264"] else "vp8"
+            try:
+                Handler.mbps = min(20.0, max(0.5, float(query["mbps"][0])))
+            except (KeyError, ValueError, IndexError):
+                pass
             created = {"done": threading.Event()}
             GLib.idle_add(new_session, self.capture[codec], codec, self.size, created)
             if (
