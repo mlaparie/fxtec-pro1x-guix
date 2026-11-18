@@ -105,8 +105,12 @@ fix() {
         grep -v -- '--'
 }
 
+# Test providers need mock location allowed for the shell (as root, uid 0
+# and package "android"): refused otherwise (2026-11-18).
 providers() {
     in_android '
+settings put secure mock_location 1
+for who in com.android.shell 2000 0 android; do appops set $who android:mock_location allow 2>/dev/null; done
 cmd location set-location-enabled true
 for p in gps network; do
   cmd location providers add-test-provider $p --supportsAltitude --supportsSpeed --supportsBearing --powerRequirement 1 2>/dev/null
