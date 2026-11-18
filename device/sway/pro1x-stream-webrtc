@@ -475,6 +475,13 @@ setInterval(async () => {
       const ms = delta(r.id, "d", r.jitterBufferDelay || 0);
       if (n > 0) s[r.kind === "audio" ? "audio_buffer_ms" : "buffer_ms"] = Math.round(1000 * ms / n);
     }
+    if (r.type === "inbound-rtp" && r.kind === "audio") {
+      // Sound lost on the way, and the share the browser had to make up.
+      s.audio_lost = r.packetsLost;
+      const made = delta(r.id, "c", r.concealedSamples || 0);
+      const all = delta(r.id, "t", r.totalSamplesReceived || 0);
+      if (all > 0) s.audio_concealed = Math.round(100 * made / all);
+    }
     if (r.type === "inbound-rtp" && r.kind === "video") {
       s.fps = delta(r.id, "f", r.framesDecoded || 0);
       s.decoded = r.framesDecoded; s.dropped = r.framesDropped;
@@ -500,6 +507,7 @@ setInterval(async () => {
       `fps     capture ${phone.fps || "?"}${phone.fps < phone.target ? " (held by heat, chosen " + phone.target + ")" : ""}`,
       `data    ${s.mb} MB so far`,
       `buffer  video ${s.buffer_ms} ms, sound ${s.audio_buffer_ms} ms`,
+      `sound   lost ${s.audio_lost} packets, made up ${s.audio_concealed}% now`,
       `set     smooth ${cfg.smooth} ms, a/v ${cfg.av} ms`,
       `network rtt ${s.rtt_ms} ms, ${s.codec}`,
       `phone   CPU ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, last 10 min:`,
@@ -764,11 +772,17 @@ def hardware(size):
 # The sound: what the phone plays (the default output's monitor, through
 # PipeWire's PulseAudio server), as Opus.  Blocks of 10 ms in a 40 ms buffer
 # underran, heard as buzzing and crackling (author, 2026-11-18): 20 ms blocks
-# in a 200 ms buffer, and 20 ms Opus frames, Opus's usual.
+# in a 200 ms buffer, and 20 ms Opus frames, Opus's usual.  Some crackling
+# stayed: the source follows the pipeline's clock by retimestamping, not by
+# dropping or repeating samples (slave-method's default, skew, clicks).
+# 96 kbit/s with in-band FEC: cheaper on Wi-Fi, and a lost packet is rebuilt
+# from the next one rather than concealed.
 AUDIO = (
-    "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=200000 latency-time=20000 ! "
+    "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=200000 latency-time=20000 "
+    "slave-method=re-timestamp ! "
     "audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! "
-    "opusenc bitrate=160000 frame-size=20 ! rtpopuspay pt=97 mtu=1200 ! "
+    "opusenc bitrate=96000 frame-size=20 inband-fec=true packet-loss-percentage=5 ! "
+    "rtpopuspay pt=97 mtu=1200 ! "
     "application/x-rtp,media=audio,encoding-name=OPUS,payload=97"
 )
 
