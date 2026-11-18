@@ -42,7 +42,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   ·    ·    wlan ·    ·    ·    ·    ·    ·    ·    \    bri- bri+ ins
     ·    ·    ·    ·    ·    ·    ·    ·    ·    ;    play mute menu
   ·    ·    ·    ·    ·    ·    bt   ·    ·    vol- vol+ |    pgup ·
-  ·    ·    fx   ·    agr  · ────────────────  ·    ·    home pgdn end
+  ·    ·    fx   ·    agr  kbl ──────────────  ·    ·    home pgdn end
 
   sup   yellow slant arrows: Super, the sway modifier ($mod)
   fx    F(x) key: hold for the Fn layer
@@ -55,6 +55,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   wlan, bt   rfkill keys for Wi-Fi and Bluetooth
   fx+alt+p   screenshot (with Ctrl: a region)
   bri-, bri+, vol-, vol+, play, mute   screen brightness, volume, media
+  kbl   fx+space: keyboard backlight on / off
 
  Sway (Super = yellow arrow); all of them: Super+Ctrl+h
  ─────────────────────────────────────────────────────────────────────
@@ -78,8 +79,8 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
 
 The keyboard backlight is on while the keyboard is slid out and the screen
 is on (service `pro1x-kbd-backlight`).  Sliding the keyboard out with the
-screen off turns the screen on in sway (not yet in Phosh).  To switch the
-light by hand: `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
+screen off turns the screen on in sway (not yet in Phosh).  Fx+Space switches the
+light by hand, as does `brightnessctl -d white:kbd_backlight set 0` (or `1`); it
 stays that way until the next slide or screen change.
 
 ## Screen
