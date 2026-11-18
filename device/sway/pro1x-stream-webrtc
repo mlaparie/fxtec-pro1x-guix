@@ -139,13 +139,13 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #gate button{font:20px monospace;padding:8px 16px}
 </style>
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
-<div id="bar"><button class="x" id="bq">QA</button><button class="x" id="ba">APPS</button>
-<button class="x" id="bw">WIN</button><button class="x" id="bo">OSK</button>
-<button class="x" id="bk">LKB</button><button class="x" id="bt">TOUCH</button>
-<button class="x" id="bp">FREE</button>
-<button class="x" id="bu">MUTED</button><button class="x" id="bs">SET</button>
-<button class="x" id="bm">VIDEO</button><button class="x" id="bi">INFO</button>
-<button class="x" id="br">RELOAD</button><button id="bc"></button></div>
+<div id="bar"><button class="x" id="bw">WIN</button><button class="x" id="bq">QA</button>
+<button class="x" id="ba">APPS</button><button class="x" id="bo">OSK</button>
+<button class="x" id="bk">LKB</button><button class="x" id="bu">MUTED</button>
+<button class="x" id="bm">VIDEO</button><button class="x" id="bt">TOUCH</button>
+<button class="x" id="bp">FREE</button><button class="x" id="bs">SET</button>
+<button class="x" id="bi">INFO</button><button class="x" id="br">RELOAD</button>
+<button id="bc"></button></div>
 <div id="set">
 <label>smooth <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
 <label>a/v &nbsp; <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
@@ -153,6 +153,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
 <label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
 <div style="font-size:13px;opacity:.7">fps: the capture rate; a change restarts the picture</div>
+<label>size &nbsp;<select id="sz"><option>1920</option><option>1600</option>
+<option>1280</option><option>960</option></select> long side</label>
+<div style="font-size:13px;opacity:.7">size: smaller lightens the phone's copies and encoder (not its screen capture); a change restarts the picture</div>
 <label>heat &nbsp;<input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
 <div style="font-size:13px;opacity:.7">heat: above it the phone lowers the fps, 5 at a time, and raises it back once 5 C cooler</div>
 <button id="sy">RESYNC</button></div>
@@ -341,6 +344,14 @@ function showHeat() {
 }
 sh.oninput = () => { cfg.heat = Number(sh.value); showHeat(); };
 sh.onchange = () => { save(); log({ev: "setting", name: "heat", value: cfg.heat}); };
+// The picture size, the phone's like the fps: from its status, a change
+// restarts the capture.
+const sz = document.getElementById("sz");
+sz.onchange = async () => {
+  log({ev: "size", long: Number(sz.value)});
+  try { await fetch(withKey("/size?long=" + sz.value), {method: "POST"}); } catch (e) {}
+  location.reload();
+};
 function refresh() { showHeat(); showFps(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
 
@@ -453,6 +464,7 @@ let phone = {}, ticks = 0;
 async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
+    if (phone.long && document.activeElement !== sz) sz.value = String(phone.long);
     // The fps chosen, not the one the heat limit holds it to.
     if (phone.target && phone.target !== cfg.fps && document.activeElement !== sf) {
       cfg.fps = phone.target; showFps();
@@ -763,7 +775,8 @@ def hardware(size):
         "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate=6000000,video_gop_size={fps},h264_i_frame_period={fps};" ! '
+        f'video_bitrate=6000000,video_gop_size={3 * int(fps)},'
+        f'h264_i_frame_period={3 * int(fps)};" ! '
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
         "h264parse config-interval=-1"
     )
@@ -788,7 +801,9 @@ AUDIO = (
 
 
 def keep_keyframes(pipeline):
-    """A full keyframe every second, or a viewer that joins late sees nothing."""
+    """A full keyframe every 3 s, to recover from a loss: a new viewer gets a
+    new encoder, which starts with one.  Each keyframe is a burst of data;
+    every second they were a likely part of the choppiness."""
     encoder = pipeline.get_by_name("enc")
     if encoder is None:
         return None
@@ -801,7 +816,7 @@ def keep_keyframes(pipeline):
         )
         return GLib.SOURCE_CONTINUE
 
-    return GLib.timeout_add_seconds(1, ask)
+    return GLib.timeout_add_seconds(3, ask)
 
 
 # Browser key positions (KeyboardEvent.code) to Linux key names.
@@ -1195,6 +1210,53 @@ def cpu_temperature():
     return None if hottest is None else round(hottest, 1)
 
 
+def capture_long():
+    if not Handler.size:
+        return None
+    width, height = map(int, Handler.size.split("@")[0].split("x"))
+    return max(width, height)
+
+
+def set_size(long):
+    """A new picture size from the page: the long side LONG, the short one
+    in the same proportion, in the raw frames and the capture's scale
+    filter (which runs before wf-recorder turns the picture, so its two
+    sides are kept in their order); the menu's size setting with them; the
+    viewer connects again."""
+    dims, fps = Handler.size.split("@")
+    width, height = map(int, dims.split("x"))
+    scale = long / max(width, height)
+    width = int(width * scale + 0.5) // 2 * 2
+    height = int(height * scale + 0.5) // 2 * 2
+    Handler.size = f"{width}x{height}@{fps}"
+    command = Handler.capture["h264"]
+    for i, arg in enumerate(command[:-1]):
+        if arg == "-F" and command[i + 1].startswith("scale="):
+            a, b = map(int, command[i + 1][6:].split(":")[:2])
+            command[i + 1] = (f"scale={min(width, height)}:{max(width, height)}"
+                              if a < b else f"scale={width}:{height}")
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    try:
+        with open(os.path.join(state, "pro1x-stream-size"), "w") as f:
+            f.write(f"{long}\n")
+    except OSError:
+        pass
+    log_line(f"picture size {width}x{height}")
+    restart_session()
+
+
+def restart_session():
+    """The viewer's session ends, its page told to connect again."""
+    with session_lock:
+        current = session
+    if current:
+        channel = getattr(current, "channel", None)
+        if channel is not None:
+            GLib.idle_add(lambda: channel.emit("send-string", '{"t":"reconnect"}')
+                          and False)
+        GLib.timeout_add(300, end_session, current)
+
+
 def capture_fps():
     return int(Handler.size.split("@")[1]) if Handler.size else None
 
@@ -1219,14 +1281,7 @@ def set_fps(fps, chosen=True):
         except OSError:
             pass
     log_line(f"capture rate {fps} fps" + ("" if chosen else " (heat limit)"))
-    with session_lock:
-        current = session
-    if current:
-        channel = getattr(current, "channel", None)
-        if channel is not None:
-            GLib.idle_add(lambda: channel.emit("send-string", '{"t":"reconnect"}')
-                          and False)
-        GLib.timeout_add(300, end_session, current)
+    restart_session()
 
 
 # The heat limit (the page's "heat", in the kept settings): every 15 s,
@@ -1344,7 +1399,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/status":
             self.reply(json.dumps({"cpu": cpu_temperature(),
                                    "fps": capture_fps(),
-                                   "target": Handler.target}).encode(),
+                                   "target": Handler.target,
+                                   "long": capture_long()}).encode(),
                        "application/json")
         elif path == "/settings":
             try:
@@ -1382,6 +1438,18 @@ class Handler(BaseHTTPRequestHandler):
                 return
             Handler.target = fps
             set_fps(fps)
+            self.reply(b"ok")
+            return
+        if path == "/size":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                long = int(query.get("long", [""])[0])
+            except ValueError:
+                long = 0
+            if long not in (960, 1280, 1600, 1920) or not self.size:
+                self.reply(b"bad size", code=400)
+                return
+            set_size(long)
             self.reply(b"ok")
             return
         if path == "/settings":
