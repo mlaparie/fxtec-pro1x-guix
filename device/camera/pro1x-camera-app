@@ -1371,9 +1371,12 @@ class Camera(Gtk.Application):
         o = self.out()
 
         def row():
+            # From the left: a group growing pushes only what is to its right
+            # (author).
             flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
                                homogeneous=False, row_spacing=12,
-                               column_spacing=12, valign=Gtk.Align.START)
+                               column_spacing=12, valign=Gtk.Align.START,
+                               halign=Gtk.Align.START)
             flow.set_max_children_per_line(12)
             page.pack_start(flow, False, False, 0)
             return flow
@@ -1455,12 +1458,15 @@ class Camera(Gtk.Application):
                                    lambda: self.cam == 0 and self.on_switch())])
         vstore = self.settings.setdefault("rear" if self.cam == 0 else "front",
                                           {}).setdefault("video", dict(DEFAULTS["video"]))
-        column(bottom, "VIDEO", [(v.upper(), vstore.get("size") == v,
-                                  lambda v=v: self.set_video_size(v))
-                                 for v in VIDEO_SIZES])
-        column(bottom, "FPS", [("%d" % r, r == self.video_rate,
-                                lambda r=r: setattr(self, "video_rate", r))
-                               for r in VIDEO_RATES])
+        # Video's size and rate joined by a line, as Night's (author).
+        bottom.add(self.linked_group([
+            ("VIDEO", [(v.upper(), vstore.get("size") == v,
+                        lambda v=v: self.set_video_size(v)) for v in VIDEO_SIZES]),
+            ("FPS", [("%d" % r, r == self.video_rate,
+                      lambda r=r: setattr(self, "video_rate", r))
+                     for r in VIDEO_RATES])],
+            max(len(VIDEO_SIZES), len(VIDEO_RATES)),
+            lambda h: (h(), self.refresh_settings())))
         column(bottom, "CONTRAST", [(n, abs(v - self.contrast) < 0.01,
                                      lambda v=v: setattr(self, "contrast", v))
                                     for n, v in CONTRASTS])
@@ -1853,23 +1859,24 @@ class Camera(Gtk.Application):
         return columns
 
     def night_group(self, pick):
-        """Night's columns side by side, always three wide and as tall as
-        the longest, so nothing moves when the mode changes (author); a
-        line under the headings joins Night to its mode's own choices.
-        PICK runs a choice's handler."""
-        group = Gtk.Box(spacing=0, valign=Gtk.Align.START)
-        widths = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
-        columns = self.night_columns()
+        """Night's columns, as tall as the longest a mode can have, so
+        nothing below moves; its mode's own columns grow to the right
+        (author).  PICK runs a choice's handler."""
         rows = max(len(NIGHT_MODES), len(ADDITIVE_SECONDS),
                    len(STACK_COUNTS), len(STACK_SHUTTERS))
+        return self.linked_group(self.night_columns(), rows, pick)
+
+    def linked_group(self, columns, rows, pick):
+        """COLUMNS (title, items) side by side, each ROWS high, a line
+        under the headings joining them when there are several (author)."""
+        group = Gtk.Box(spacing=0, valign=Gtk.Align.START)
         linked = len(columns) > 1
-        for i in range(3):
-            title, items = columns[i] if i < len(columns) else ("", [])
+        for title, items in columns:
             col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             head = Gtk.Label(label=title, xalign=0)
             ctx = head.get_style_context()
             ctx.add_class("head")
-            ctx.add_class("linked" if linked and i < len(columns) else "plain")
+            ctx.add_class("linked" if linked else "plain")
             col.pack_start(head, False, False, 0)
             # The choices, with room kept for the longest column.
             for n in range(rows):
@@ -1883,7 +1890,6 @@ class Camera(Gtk.Application):
                     b.set_sensitive(False)
                 b.set_margin_end(12)
                 col.pack_start(b, False, False, 0)
-            widths.add_widget(col)
             group.pack_start(col, False, False, 0)
         group.show_all()
         return group
