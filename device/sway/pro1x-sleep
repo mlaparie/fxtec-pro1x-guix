@@ -38,7 +38,8 @@
 # in config.scm).  A Clocks alarm before that wakes it as usual.
 #
 # State: the loop written 2026-11-01 for the patched kernel, not yet run.
-# Hibernation written 2026-11-17, not yet run.
+# Hibernation written 2026-11-17; the freezer test (pm_test) passes since
+# 2026-11-18, a whole hibernation and resume not yet run.
 
 # sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
@@ -118,12 +119,23 @@ hibernate_ready() {
         swapon --show=NAME --noheadings | grep -qx /swap/swapfile &&
         grep -qF -- "$(cat "$resume_args")" "$boot_conf"
 }
+# The smp2p-sleepstate driver tells the ADSP only about suspend, not
+# hibernation, and makes every raise of its bit a hard wakeup: with a sensor
+# stream on, that aborted each hibernation as it froze the kernel threads
+# (2026-11-18: "Freezing remaining freezable tasks aborted", the source's
+# count up 5; unloaded, the freezer test passed).  A powered-off phone has
+# no use for the ADSP's wakeups, so the driver is unloaded meanwhile.
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"
     led_hibernating
     sync
+    rmmod smp2p_sleepstate 2>/dev/null && ss=1 || ss=
     echo disk > /sys/power/state ||
         logger -t pro1x-sleep "hibernation failed"
+    # sudo drops the variable that tells Guix's modprobe where modules are.
+    [ -n "$ss" ] &&
+        LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules \
+            modprobe smp2p_sleepstate
     led_awake
 }
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
