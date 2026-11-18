@@ -1,6 +1,14 @@
 # Interactive stream: the Pro¹x's screen in a browser, with input (plan)
 
-State: a plan, nothing built (2026-11-18).  Branch `streaming`.
+State (2026-11-18): a first version, for M0 and a first M3: Stream menu >
+Interactive streams the whole screen by hardware WebRTC
+(`pro1x-stream-webrtc --interactive`) to a page that sends touches and keys
+back over a data channel, played by virtual input devices; the page can
+draw on a canvas, shows and logs what the browser reports
+(`~/.local/state/pro1x/interactive-stream.log`).  Tested on the phone
+without a browser: the devices appear, the offer carries the data channel,
+the log works, Stop ends it.  Not yet seen in a browser; no sound; the
+mirrored screen, not yet a headless output.
 
 ## Goal
 

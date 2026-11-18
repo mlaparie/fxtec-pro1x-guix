@@ -374,6 +374,12 @@ class Remote:
                                vendor=0x1234, product=0x567B)
         self.lock = threading.Lock()
         self.turn, self.turn_at = "normal", 0.0
+        # As pro1x.conf says, also before Sway has read it again.
+        time.sleep(0.5)
+        for command in ('input "4660:22138:pro1x-remote-pointer" map_to_output DSI-1',
+                        'input "4660:22139:pro1x-remote-keyboard" xkb_layout us',
+                        'input "4660:22139:pro1x-remote-keyboard" xkb_variant ""'):
+            subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
 
     def transform(self):
         """The panel's turn, read again every few seconds."""
@@ -621,6 +627,9 @@ def main_loop():
     loop = GLib.MainLoop()
 
     def quit_loop(*_args):
+        # Stopping a pipeline with a viewer half connected can hang (seen
+        # 2026-11-18, the interactive offer unanswered): out within 3 s.
+        threading.Timer(3, lambda: os._exit(0)).start()
         loop.quit()
 
     signal.signal(signal.SIGTERM, quit_loop)
