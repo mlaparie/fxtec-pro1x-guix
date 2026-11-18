@@ -4,10 +4,11 @@
 (define-module (fxtec-pro1x services boot)
   #:use-module (fxtec-pro1x packages misc)   ; qbootctl
   #:use-module (fxtec-pro1x files)           ; repository-file
+  #:use-module ((fxtec-pro1x services fde) #:select (%pro1x-boot-area-mib))
   #:use-module (gnu packages bash)
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
-  #:use-module (gnu packages linux)          ; e2fsprogs, inotify-tools
+  #:use-module (gnu packages linux)          ; e2fsprogs, inotify-tools, lvm2
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -76,8 +77,25 @@ if this phone has one.")
            #~(lambda _
                (false-if-exception (mkdir "/boot"))
                (when (= (stat:dev (stat "/boot")) (stat:dev (stat "/")))
-                 (system* #$(file-append util-linux "/bin/mount")
-                          "-o" "noatime" "-L" "guixboot" "/boot"))
+                 ;; The container's mapping holds the partition (fde.scm), so
+                 ;; the plain area is mapped too: device-mapper devices can
+                 ;; share a disk, a mount and a mapping cannot.
+                 (when (and (file-exists? "/dev/mapper/pro1x-part")
+                            (not (file-exists? "/dev/mapper/pro1x-boot")))
+                   (system* #$(file-append bash-minimal "/bin/sh") "-c"
+                            (string-append
+                             "dev=$(" #$(file-append util-linux "/sbin/blkid")
+                             " -L guixboot) && "
+                             #$(file-append lvm2 "/sbin/dmsetup")
+                             " create pro1x-boot --table \"0 "
+                             #$(number->string (* %pro1x-boot-area-mib 2048))
+                             " linear $dev 0\"")))
+                 ;; By name: the label is also on the partition itself.
+                 (if (file-exists? "/dev/mapper/pro1x-boot")
+                     (system* #$(file-append util-linux "/bin/mount")
+                              "-o" "noatime" "/dev/mapper/pro1x-boot" "/boot")
+                     (system* #$(file-append util-linux "/bin/mount")
+                              "-o" "noatime" "-L" "guixboot" "/boot")))
                #t)))
          ;; Not a one-shot: the slots must follow every rewrite of
          ;; extlinux.conf (deploy, reconfigure, and delete-generations,
