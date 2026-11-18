@@ -107,10 +107,12 @@ pick() {
 }
 
 # An image, as block characters come out too tall in this font.
+# show_qr URL [LINES]: the code in what is left below LINES lines of text
+# (7 by default), a row being about 40 pixels.
 show_qr() {
     rows=$(stty size 2>/dev/null | cut -d' ' -f1)
     qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
-        convert png:- -filter point -resize "x$(( (${rows:-20} - 7) * 40 ))" sixel:-
+        convert png:- -filter point -resize "x$(( (${rows:-20} - ${2:-7} - 1) * 40 ))" sixel:-
     echo
 }
 
@@ -328,11 +330,11 @@ send_interactive() {
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
     clear_screen
-    printf 'Open in the browser on the other device:  %s\n' "$url"
-    [ -n "$k" ] && printf '\nKey to type there:  \033[1m%s\033[0m\n\n' "$k"
-    printf 'Touches and keys there act here.  One viewer at a time; it keeps\n'
-    printf 'running until Stop.  The log: ~/.local/state/pro1x/interactive-stream.log\n\n'
-    show_qr "$url${k:+?k=$k}"
+    printf 'Open on the other device:  %s\n' "$url"
+    if [ -n "$k" ]; then printf 'Key:  \033[1m%s\033[0m  (the code below includes it)\n' "$k"
+    else echo; fi
+    printf 'One viewer at a time; it runs until Stop.\n\n'
+    show_qr "$url${k:+?k=$k}" 4
     read -rsn1
 }
 
