@@ -1479,11 +1479,16 @@ rate_restart = [None]
 def new_session(command, codec, size, created):
     """Runs in the main loop, where GStreamer's signals are handled."""
     global session
+    # The old session ends before the new one starts: overlapping, two
+    # pipelines on the portal's stream and two encoder sessions powered the
+    # phone off (2026-11-18, each time a viewer reconnected).
     with session_lock:
-        old, session = session, Session(command, codec, size, Handler.mbps)
-        created["session"] = session
+        old, session = session, None
     if old:
         old.stop()
+    with session_lock:
+        session = Session(command, codec, size, Handler.mbps)
+        created["session"] = session
     created["done"].set()
     return GLib.SOURCE_REMOVE
 
