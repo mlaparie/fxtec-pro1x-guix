@@ -276,8 +276,8 @@ send_webrtc() {
     hw_source
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
-    portal=()
-    [ -z "$target" ] && portal=(--portal "$turn")
+    portal=()                   # see send_interactive
+    [ -z "$target" ] && [ -n "${PRO1X_STREAM_PORTAL:-}" ] && portal=(--portal "$turn")
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
     # black.
@@ -318,10 +318,11 @@ send_interactive() {
     hw_source
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
-    # The whole screen through the ScreenCast portal (half wf-recorder's
-    # CPU); a window, or a failed portal, through wf-recorder.
+    # The ScreenCast portal (half wf-recorder's CPU) powered the phone off
+    # three times as a viewer connected (2026-11-18); off until understood:
+    # PRO1X_STREAM_PORTAL=1 turns it on, for tests.
     portal=()
-    [ -z "$target" ] && portal=(--portal "$turn")
+    [ -z "$target" ] && [ -n "${PRO1X_STREAM_PORTAL:-}" ] && portal=(--portal "$turn")
     setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" "${portal[@]}" \
         --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
