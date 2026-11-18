@@ -23,6 +23,8 @@
 (define-module (fxtec-pro1x services waydroid)
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages waydroid)
+  #:use-module (fxtec-pro1x packages waydroid-bt)
+  #:autoload   (fxtec-pro1x packages misc) (modem-manager-1.24)
   #:use-module (gnu packages base)          ; coreutils, grep, glibc (getent)
   #:use-module (gnu packages bash)          ; bash-minimal
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
@@ -65,6 +67,12 @@
   (memory-limit waydroid-memory-limit (default #f))
   (cpu-cores waydroid-cpu-cores (default #f))
   (cpu-priority waydroid-cpu-priority (default 'normal))
+  ;; Bluetooth LE in Android through the phone's adapter, which BlueZ
+  ;; keeps (waydroid-host-stack: phone keys, sensors; no audio), and the
+  ;; phone's GPS position for Android apps.  Only with Waydroid's LineageOS
+  ;; 20 image; with another they do nothing.
+  (bluetooth? waydroid-bluetooth? (default #t))
+  (gps? waydroid-gps? (default #t))
   ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
   ;; SOURCE relative to the user's home or absolute.
   (shared-folders waydroid-shared-folders
@@ -157,10 +165,53 @@ memory-limit, cpu-cores, cpu-priority.")
              #:log-file "/var/log/waydroid-limits.log"))
    (stop #~(make-kill-destructor))))
 
+(define pro1x-waydroid-bt-script
+  (program-file "pro1x-waydroid-bt"
+    #~(begin
+        (setenv "PATH"
+                (string-append #$coreutils "/bin:" #$grep "/bin:" #$sed "/bin:"
+                               #$e2fsprogs "/sbin:" #$inetutils "/bin:"
+                               #$(file-append modem-manager-1.24 "/bin") ":"
+                               "/run/current-system/profile/bin"))
+        (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
+               #$(local-file (repository-file "device/waydroid/pro1x-waydroid-bt"))
+               (cdr (command-line))))))
+
+;; waydroid-host-stack's bridge, and the overlay's setup then the watch of
+;; Android's starts (device/waydroid/pro1x-waydroid-bt).
+(define (waydroid-bt-shepherd-services config)
+  (if (waydroid-bluetooth? config)
+      (list
+       (shepherd-service
+        (provision '(waydroid-bt-host))
+        (requirement '(dbus-system bluetooth))
+        (documentation "Answer Waydroid's Bluetooth HAL through BlueZ.")
+        (start #~(make-forkexec-constructor
+                  (list #$(file-append waydroid-host-stack "/bin/waydroid-bt-host")
+                        "--socket" "/run/waydroid-bt/host.sock")
+                  #:log-file "/var/log/waydroid-bt-host.log"))
+        (stop #~(make-kill-destructor)))
+       (shepherd-service
+        (provision '(waydroid-bt))
+        (requirement '(file-systems waydroid-bt-host))
+        (documentation "Bluetooth's files in Waydroid's overlay; at each
+Android start, its permissions and, with gps?, the phone's position.")
+        (start #~(lambda args
+                   (system* #$pro1x-waydroid-bt-script "setup"
+                            #$waydroid-bt-overlay)
+                   (apply (make-forkexec-constructor
+                           (list #$pro1x-waydroid-bt-script "watch"
+                                 #$@(if (waydroid-gps? config) '("gps") '()))
+                           #:log-file "/var/log/waydroid-bt.log")
+                          args)))
+        (stop #~(make-kill-destructor))))
+      '()))
+
 (define (waydroid-shepherd-services config)
   (cons* (waydroid-props-shepherd-service config)
          (waydroid-limits-shepherd-service config)
-         (waydroid-share-shepherd-services config)))
+         (append (waydroid-share-shepherd-services config)
+                 (waydroid-bt-shepherd-services config))))
 
 (define (waydroid-share-shepherd-services config)
   (if (or (waydroid-storage-view config)
@@ -190,7 +241,13 @@ storage-view and shared-folders.")
       '()))
 
 (define (waydroid-etc config)
-  `(("pro1x/waydroid.conf"
+  `(,@(if (waydroid-bluetooth? config)
+          ;; waydroid-bt-host's socket directory, the same path inside.
+          `(("waydroid-bt/lxc-mount.conf"
+             ,(plain-file "lxc-mount.conf"
+                          "lxc.mount.entry = /run/waydroid-bt run/waydroid-bt none rbind,create=dir,optional 0 0\n")))
+          '())
+    ("pro1x/waydroid.conf"
      ,(plain-file "waydroid.conf"
                   (string-append
                    "# Written by waydroid-service-type (config.scm).\n"

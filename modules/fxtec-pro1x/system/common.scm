@@ -254,6 +254,10 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (memory-limit #f)
   ;;                (cpu-cores #f)
   ;;                (cpu-priority 'normal)
+  ;;                Bluetooth LE in Android through the phone's adapter (phone keys, sensors;
+  ;;                no audio), and the phone's GPS position for Android apps.
+  ;;                (bluetooth? #t)
+  ;;                (gps? #t)
   ;;                (user \"user\")
   ;;                (storage-view \"/mnt/waydroid\")
   ;;                (shared-folders '((\"Documents\" . \"Documents\") (\"Downloads\" . \"Download\")

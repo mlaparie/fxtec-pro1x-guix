@@ -1,0 +1,155 @@
+#!/bin/sh
+# pro1x-waydroid-bt — Bluetooth LE and GPS for Waydroid's Android, as root
+# (services/waydroid.scm, bluetooth? and gps? in waydroid-configuration).
+#
+#   setup OVERLAY   copy waydroid-bt-overlay's files (OVERLAY) into Waydroid's
+#                   overlay, with a build.prop that gives Bluetooth time to
+#                   start, and mount waydroid-bt-host's socket directory into
+#                   the container (an lxc.include at the end of its config)
+#   watch [gps]     at each Android start, grant the Bluetooth app its runtime
+#                   permissions; with gps, give Android the phone's position
+#                   while it runs
+#
+# Waydroid's image strips the Bluetooth app (waydroid-bt-overlay brings it
+# back) and has no Bluetooth HAL (the overlay's soft HCI HAL, which talks to
+# waydroid-bt-host through /run/waydroid-bt).  Only for its LineageOS 20
+# image, build TQ3A.230901.001: with another, setup does nothing.  The steps
+# are waydroid-host-stack's install scripts (isyourbrainfoss, MIT), done the
+# Guix way: no systemd units, the files from the store.
+#
+# GPS: Android has no GNSS HAL here, only network location.  The fix comes
+# from ModemManager (the modem's GNSS, unlocked by pro1x-gnss-unlock), its
+# GPS turned on while Android runs and off after; it goes to Android's test
+# location providers, as waydroid-host-stack's waydroid-gps-inject does.
+#
+# State: the setup steps done by hand on the phone, Bluetooth on in Android
+# (author, 2026-11-18); this script and the GPS part not yet run.
+set -u
+images=/var/lib/waydroid/images
+overlay=/var/lib/waydroid/overlay
+lxc_config=/var/lib/waydroid/lxc/waydroid/config
+include="lxc.include = /etc/waydroid-bt/lxc-mount.conf"
+state=/var/lib/pro1x/waydroid-bt
+cg=/sys/fs/cgroup/lxc.payload.waydroid
+build=TQ3A.230901.001
+
+log() { logger -t pro1x-waydroid-bt "$*"; echo "$*"; }
+
+image_prop() { debugfs -R "cat /system/build.prop" "$images/system.img" 2>/dev/null; }
+
+# The include goes last, after config_nodes' tmpfs on /run.
+lxc_include() {
+    [ -f "$lxc_config" ] || return 0
+    grep -qxF "$include" "$lxc_config" && return 0
+    printf '%s\n' "$include" >> "$lxc_config"
+    log "socket mount added to Waydroid's LXC config"
+}
+
+setup() {
+    mkdir -p /run/waydroid-bt "$state"
+    [ -f "$images/system.img" ] || { log "no Waydroid image yet"; return 0; }
+    prop=$(image_prop)
+    case "$prop" in
+        *"ro.build.id=$build"*) ;;
+        *) log "Waydroid image is not LineageOS 20 $build: no Bluetooth"; return 0 ;;
+    esac
+    cp -rf --no-preserve=mode,ownership "$1/." "$overlay/"
+    chmod 755 "$overlay/system/bin/bluetooth-hci-waydroid" \
+          "$overlay/system/bin/hw/android.hardware.bluetooth@1.0-service.waydroid"
+    # Waydroid overlays whole files: the image's build.prop and one more
+    # property, Bluetooth's start timeout from 4 s to a day (the soft HAL
+    # comes up later).  Made again when the image changes; a build.prop not
+    # made here is left alone.
+    sum=$(printf '%s\n' "$prop" | sha256sum | cut -d' ' -f1)
+    if [ ! -f "$overlay/system/build.prop" ] ||
+           { [ -f "$state/build-prop.sum" ] &&
+                 [ "$(cat "$state/build-prop.sum")" != "$sum" ]; }; then
+        { printf '%s\n' "$prop"
+          echo "ro.bluetooth.ble_start_timeout_delay=86400000"; } \
+            > "$overlay/system/build.prop"
+        echo "$sum" > "$state/build-prop.sum"
+        log "build.prop with Bluetooth's start timeout written"
+    fi
+    lxc_include
+    log "Bluetooth files in Waydroid's overlay"
+}
+
+# In Android, unless it is frozen (a command would wait for it).
+in_android() {
+    [ "$(cat "$cg/cgroup.freeze" 2>/dev/null)" = 0 ] || return 1
+    timeout 30 waydroid shell -- sh -c "$1" 2>/dev/null
+}
+
+booted() { [ "$(in_android 'getprop sys.boot_completed' | tr -d '\r\n ')" = 1 ]; }
+
+grant() {
+    in_android '
+P=com.android.bluetooth
+for p in BLUETOOTH_CONNECT BLUETOOTH_SCAN BLUETOOTH_ADVERTISE ACCESS_FINE_LOCATION \
+         ACCESS_COARSE_LOCATION POST_NOTIFICATIONS READ_CONTACTS READ_CALL_LOG \
+         READ_SMS RECEIVE_SMS SEND_SMS; do
+  pm grant $P android.permission.$p 2>/dev/null
+done
+pm set-permission-flags $P android.permission.BLUETOOTH_CONNECT system-fixed 2>/dev/null
+for op in bluetooth_connect bluetooth_scan bluetooth_advertise; do appops set $P android:$op allow; done
+# Started before the grants, it stays at BLE_TURNING_ON: once more.
+pid=$(pidof $P) && kill -9 $pid' >/dev/null
+    log "Bluetooth permissions granted in Android"
+}
+
+# GPS: ModemManager's fix as "LAT LON ALT", or nothing.
+fix() {
+    timeout 15 mmcli -m any --location-get -J 2>/dev/null |
+        sed -n 's/.*"gps":{"altitude":"\([^"]*\)","latitude":"\([^"]*\)","longitude":"\([^"]*\)".*/\2 \3 \1/p' |
+        grep -v -- '--'
+}
+
+providers() {
+    in_android '
+cmd location set-location-enabled true
+for p in gps network; do
+  cmd location providers add-test-provider $p --supportsAltitude --supportsSpeed --supportsBearing --powerRequirement 1 2>/dev/null
+  cmd location providers set-test-provider-enabled $p true
+done' >/dev/null
+}
+
+gps_on() {
+    timeout 20 mmcli -m any --location-enable-gps-raw --location-enable-gps-nmea >/dev/null 2>&1 &&
+        log "modem GPS on for Android"
+}
+gps_off() {
+    timeout 20 mmcli -m any --location-disable-gps-raw --location-disable-gps-nmea >/dev/null 2>&1 &&
+        log "modem GPS off"
+}
+
+watch() {
+    gps=${1:-}
+    last= on=
+    while sleep 10; do
+        lxc_include
+        id=$(stat -c %i "$cg" 2>/dev/null) || {
+            # Android stopped.
+            [ -n "$on" ] && gps_off
+            last= on=
+            continue
+        }
+        if [ "$id" != "$last" ]; then
+            booted || continue
+            last=$id
+            grant
+            [ -n "$gps" ] && { providers; gps_on && on=1; }
+        fi
+        [ -n "$on" ] || continue
+        set -- $(fix)
+        [ $# -eq 3 ] || continue
+        in_android "cmd location providers set-test-provider-location gps --location $1,$2 --accuracy 10 --altitude $3
+cmd location providers set-test-provider-location network --location $1,$2 --accuracy 30" >/dev/null
+    done
+}
+
+case "${1:-}" in
+    setup) [ $# -eq 2 ] || { echo "usage: pro1x-waydroid-bt setup OVERLAY" >&2; exit 2; }
+           setup "$2" ;;
+    watch) watch "${2:-}" ;;
+    *) echo "usage: pro1x-waydroid-bt setup OVERLAY | watch [gps]" >&2; exit 2 ;;
+esac
