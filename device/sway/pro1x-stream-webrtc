@@ -12,7 +12,14 @@ keys), its quick actions, launcher and window switcher.  The page can draw the v
 on a canvas instead of a video element, shows what the browser reports
 (screen size, codec, frames, delay), and logs it and the events it gets to
 ~/.local/state/pro1x/interactive-stream.log, for testing a car's browser.
-No sound yet.
+Its SET panel, kept by the browser: the buffer before showing (smoother but
+later), the sound's offset against the picture, a resync, and the H.264 bit
+rate, changed on the phone's encoder while it runs.  The last button folds
+the others away.
+
+The sound is what the phone plays (the default output's monitor), as Opus.
+A browser starts the page muted: the first touch turns the sound on, or the
+SOUND button.
 
 COMMAND writes H.264 (constrained baseline) to its standard output.  With a size
 and rate it writes raw NV12 frames instead, for the hardware H.264 encoder.
@@ -104,15 +111,30 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #bar{position:fixed;top:6px;right:6px;display:flex;gap:6px;opacity:.6;z-index:2}
 #bar button{font:18px monospace;background:#222;color:#eee;border:1px solid #555;
   border-radius:6px;padding:10px 14px}
+#bar.folded .x{display:none}
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
   background:rgba(0,0,0,.75);padding:8px;white-space:pre;display:none;z-index:2}
+#set{position:fixed;right:6px;top:64px;font:16px monospace;color:#eee;z-index:2;
+  background:rgba(0,0,0,.8);padding:10px;display:none;border-radius:6px}
+#set label{display:block;margin:8px 0}
+#set input{width:260px;vertical-align:middle}
+#set button{font:16px monospace;background:#222;color:#eee;border:1px solid #555;
+  border-radius:6px;padding:8px 12px}
 #k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
 </style>
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
-<div id="bar"><button id="bq">QA</button><button id="ba">APPS</button>
-<button id="bw">WIN</button><button id="bo">OSK</button><button id="bk">TKB</button>
-<button id="bt">MOUSE</button><button id="bm">CANVAS</button>
-<button id="bi">INFO</button><button id="br">RELOAD</button></div>
+<div id="bar"><button class="x" id="bq">QA</button><button class="x" id="ba">APPS</button>
+<button class="x" id="bw">WIN</button><button class="x" id="bo">OSK</button>
+<button class="x" id="bk">LKB</button><button class="x" id="bt">MOUSE</button>
+<button class="x" id="bu">SOUND</button><button class="x" id="bs">SET</button>
+<button class="x" id="bm">CANVAS</button><button class="x" id="bi">INFO</button>
+<button class="x" id="br">RELOAD</button><button id="bc"></button></div>
+<div id="set">
+<label>smooth <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
+<label>a/v &nbsp; <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
+<div style="font-size:13px;opacity:.7">a/v above 0: the sound later; below 0: the picture later</div>
+<label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
+<button id="sy">RESYNC</button></div>
 <div id="info"></div>
 <input id="k" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
 <script>
@@ -157,6 +179,73 @@ document.getElementById("bi").onclick = () =>
   info.style.display = info.style.display === "block" ? "none" : "block";
 document.getElementById("br").onclick = () => location.reload();
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
+
+// Settings kept by this browser: buffering, sound against picture, bit rate,
+// sound on, the buttons folded.
+const store = {
+  get(key, d) {
+    try { const s = localStorage.getItem("pro1x-" + key); return s === null ? d : JSON.parse(s); }
+    catch (e) { return d; }
+  },
+  set(key, value) { try { localStorage.setItem("pro1x-" + key, JSON.stringify(value)); } catch (e) {} }
+};
+const cfg = {smooth: store.get("smooth", 50), av: store.get("av", 0),
+             rate: store.get("rate", 6), sound: store.get("sound", true)};
+const bar = document.getElementById("bar"), bc = document.getElementById("bc");
+function showFold() {
+  bar.classList.toggle("folded", store.get("folded", false));
+  bc.textContent = store.get("folded", false) ? "\\u2261" : "\\u00d7";
+}
+bc.onclick = () => { store.set("folded", !store.get("folded", false)); showFold(); };
+showFold();
+const set = document.getElementById("set");
+document.getElementById("bs").onclick = () =>
+  set.style.display = set.style.display === "block" ? "none" : "block";
+
+// The browser's buffer before showing: more is smoother and later.  The
+// a/v offset buffers one of the two longer.
+let vrx = null, arx = null;
+function target(r, ms) {
+  if (!r) return;
+  try { r.jitterBufferTarget = ms; } catch (x) {}
+  try { r.playoutDelayHint = ms / 1000; } catch (x) {}
+}
+function applyDelay() {
+  target(vrx, cfg.smooth + Math.max(0, -cfg.av));
+  target(arx, cfg.smooth + Math.max(0, cfg.av));
+}
+function sendRate() { send({t: "bitrate", mbps: cfg.rate}); }
+for (const [id, key, after] of [["ss", "smooth", applyDelay], ["sa", "av", applyDelay],
+                                ["sb", "rate", sendRate]]) {
+  const input = document.getElementById(id), shown = document.getElementById(id + "v");
+  input.value = cfg[key]; shown.textContent = cfg[key];
+  input.oninput = () => {
+    cfg[key] = Number(input.value); shown.textContent = cfg[key];
+    store.set(key, cfg[key]); after();
+  };
+  input.onchange = () => log({ev: "setting", key, value: cfg[key]});
+}
+// Resync: the buffers emptied, then set again.
+document.getElementById("sy").onclick = () => {
+  target(vrx, 0); target(arx, 0);
+  setTimeout(applyDelay, 300);
+  log({ev: "resync"});
+};
+// Sound: browsers start a page muted; the first touch turns it on.
+const bu = document.getElementById("bu");
+function showSound() { bu.textContent = v.muted ? "SOUND" : "MUTE"; }
+function sound(on) {
+  v.muted = !on; cfg.sound = on; store.set("sound", on);
+  v.play().catch(() => {});
+  showSound();
+}
+bu.onclick = () => sound(v.muted);
+let touched = false;
+addEventListener("pointerdown", e => {
+  if (!touched && e.target !== bu && cfg.sound && v.muted) sound(true);
+  touched = true;
+}, {capture: true});
+showSound();
 // The Pro1x's own menus and on-screen keyboard (special keys), on its screen.
 for (const [id, name] of [["bq", "quickactions"], ["ba", "launcher"],
                           ["bw", "windowswitcher"], ["bo", "osk"]])
@@ -174,15 +263,19 @@ showMode();
 const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
   chan = e.channel;
-  chan.onopen = () => log({ev: "channel-open"});
+  chan.onopen = () => { log({ev: "channel-open"}); sendRate(); };
 };
+// Picture and sound in one stream, played by the video element.
+const media = new MediaStream();
 pc.ontrack = e => {
-  // As little buffering as the browser allows.
-  try { e.receiver.playoutDelayHint = 0; } catch (x) {}
-  try { e.receiver.jitterBufferTarget = 0; } catch (x) {}
-  v.srcObject = e.streams[0] || new MediaStream([e.track]);
+  if (e.track.kind === "audio") arx = e.receiver; else vrx = e.receiver;
+  media.addTrack(e.track);
+  applyDelay();
+  if (v.srcObject !== media) {
+    v.srcObject = media;
+    draw();
+  }
   v.play().catch(err => log({ev: "play-failed", err: String(err)}));
-  draw();
 };
 (async () => {
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
@@ -221,10 +314,13 @@ setInterval(async () => {
       if (r.jitterBufferEmittedCount)
         s.buffer_ms = Math.round(1000 * r.jitterBufferDelay / r.jitterBufferEmittedCount);
     }
+    if (r.type === "inbound-rtp" && r.kind === "audio" && r.jitterBufferEmittedCount)
+      s.audio_buffer_ms = Math.round(1000 * r.jitterBufferDelay / r.jitterBufferEmittedCount);
     if (r.type === "codec" && /video/.test(r.mimeType)) s.codec = r.mimeType;
     if (r.type === "candidate-pair" && r.nominated && r.currentRoundTripTime)
       s.rtt_ms = Math.round(1000 * r.currentRoundTripTime);
   });
+  s.settings = {smooth: cfg.smooth, av: cfg.av, mbps: cfg.rate, muted: v.muted};
   s.events = counts;
   info.textContent = Object.entries(s).map(([a, b]) =>
     a + ": " + (typeof b === "object" ? JSON.stringify(b) : b)).join("\\n");
@@ -249,7 +345,7 @@ function centre() {
   return {x: x / active.size, y: y / active.size};
 }
 function press(e) {
-  if (e.target.closest && e.target.closest("#bar")) return;
+  if (e.target.closest && e.target.closest("#bar, #set")) return;
   e.preventDefault();
   active.set(e.pointerId, e);
   if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
@@ -352,6 +448,17 @@ def hardware(size):
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
         "h264parse config-interval=-1"
     )
+
+
+# The sound: what the phone plays (the default output's monitor, through
+# PipeWire's PulseAudio server), as Opus in 10 ms frames, for the least
+# delay.
+AUDIO = (
+    "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=40000 latency-time=10000 ! "
+    "audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! "
+    "opusenc bitrate=128000 frame-size=10 ! rtpopuspay pt=97 mtu=1200 ! "
+    "application/x-rtp,media=audio,encoding-name=OPUS,payload=97"
+)
 
 
 def keep_keyframes(pipeline):
@@ -599,7 +706,8 @@ class Session:
             (raw_source(self.proc.stdout.fileno(), size) if size
              else f"fdsrc fd={self.proc.stdout.fileno()}")
             + f" ! {payload} ! "
-            "webrtcbin name=w bundle-policy=max-bundle latency=0"
+            "webrtcbin name=w bundle-policy=max-bundle latency=0 "
+            + AUDIO + " ! w."
         )
         self.webrtc = self.pipeline.get_by_name("w")
         self.webrtc.connect("on-negotiation-needed", self.negotiate)
@@ -612,8 +720,30 @@ class Session:
             self.pipeline.set_state(Gst.State.READY)
             self.channel = self.webrtc.emit("create-data-channel", "input", None)
             self.channel.connect("on-message-string",
-                                 lambda _c, text: remote.handle(text))
+                                 lambda _c, text: self.message(text))
         self.pipeline.set_state(Gst.State.PLAYING)
+
+    def message(self, text):
+        """The viewer's input, or a setting of the stream."""
+        if '"bitrate"' in text:
+            try:
+                mbps = float(json.loads(text)["mbps"])
+            except (ValueError, KeyError, TypeError):
+                return
+            GLib.idle_add(self.bitrate, min(20.0, max(0.5, mbps)))
+        else:
+            remote.handle(text)
+
+    def bitrate(self, mbps):
+        """The hardware encoder's bit rate, changed while it runs (V4L2
+        controls are applied when set on an open device); the VP8 path has
+        no such setting."""
+        encoder = self.pipeline.get_by_name("enc")
+        if encoder is not None:
+            encoder.set_property("extra-controls", Gst.Structure.new_from_string(
+                f"controls,video_bitrate={int(mbps * 1e6)}"))
+            log_line(f"bit rate {mbps} Mbit/s")
+        return GLib.SOURCE_REMOVE
 
     def negotiate(self, _element):
         promise = Gst.Promise.new_with_change_func(self.offered, None)
