@@ -1568,13 +1568,13 @@ devices, and NVIDIA ones when the vendor's library is installed.")
             ;; Sway's: the gnu a little higher, with the gestures and keys in
             ;; a small box below it (author, 2026-11-06), keys the Emacs way
             ;; (s- Super, C- Ctrl), and the camera button's presses
-            ;; (pro1x-camera-button; author, 2026-11-18).  Monospace at 23 px
+            ;; and hold (pro1x-camera-button; author, 2026-11-18).  Monospace at 23 px
             ;; (24 before the camera lines), under the bar's 10 pt at scale
             ;; 2 (27 px); inside the middle 1080 px square, the part that
             ;; "fill" shows in portrait and in landscape, and above the
             ;; landscape bottom edge.
             (invoke "convert" "-size" "2160x2160" "xc:#252a3a" "gnu.png"
-                    "-gravity" "center" "-geometry" "+0-230" "-composite"
+                    "-gravity" "center" "-geometry" "+0-250" "-composite"
                     "dark-high.png")
             (invoke "convert" "-background" "#1d2021c0" "-fill" "#ddd0f7" ; the gnu's lilac
                     "-font" mono "-pointsize" "23" "-interline-spacing" "7"
@@ -1591,10 +1591,11 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "Click               camera button\n"
                      "Right click         Fn + camera button\n"
                      "Double click        camera button twice\n"
-                     "Open the camera     camera button 3 times")
+                     "Open the camera     camera button 3 times\n"
+                     "Touchpad            camera button (hold)")
                     "-bordercolor" "#1d2021c0" "-border" "28x22" "help.png")
             (invoke "convert" "dark-high.png" "help.png"
-                    "-gravity" "center" "-geometry" "+0+270" "-composite"
+                    "-gravity" "center" "-geometry" "+0+255" "-composite"
                     (string-append dir "/dark-sway.png"))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Background images for the F(x)tec Pro1X sessions")
