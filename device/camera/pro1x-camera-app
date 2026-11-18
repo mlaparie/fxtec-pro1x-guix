@@ -732,9 +732,11 @@ class Camera(Gtk.Application):
                       valign=Gtk.Align.START, margin_top=16)
         self.status = Gtk.Label(label="")
         self.status.get_style_context().add_class("status")
-        # The last photo or video: bottom left, below ☰ (author).
+        # The last photo or video: above ☰, so ☰ stays in the bottom left
+        # corner whether it is shown or not (author).
         self.b_last = self.button("Last photo", self.on_last)
         self.menu_corner.pack_start(self.b_last, False, False, 0)
+        self.menu_corner.reorder_child(self.b_last, 0)
         top.pack_start(self.status, False, False, 0)
         self.overlay.add_overlay(top)
 
@@ -1350,20 +1352,8 @@ class Camera(Gtk.Application):
         top = row()
         column(top, "FLASH", [(m.upper(), m == self.flash,
                                lambda m=m: self.set_flash(m)) for m in FLASH_MODES])
-        night = [(NIGHT_LABELS[m], m == self.night,
-                  lambda m=m: self.set_night(m)) for m in NIGHT_MODES]
-        if self.night == "additive":
-            night += [("  %d S" % t, t == self.additive_seconds,
-                       lambda t=t: self.set_night_option("additive_seconds", t))
-                      for t in ADDITIVE_SECONDS]
-        elif self.night == "stack":
-            night += [("  %d PHOTOS" % c, c == self.stack_count,
-                       lambda c=c: self.set_night_option("stack_count", c))
-                      for c in STACK_COUNTS]
-            night += [("  " + shutter_text(t), t == self.stack_shutter,
-                       lambda t=t: self.set_night_option("stack_shutter", t))
-                      for t in STACK_SHUTTERS]
-        column(top, "NIGHT", night)
+        for title, items in self.night_columns():
+            column(top, title, items)
         column(top, "TIMER", [("%d S" % t if t else "OFF", t == self.timer,
                                lambda t=t: self.reset_cycle("timer", [t, t], self.on_timer))
                               for t in TIMERS])
@@ -1777,29 +1767,40 @@ class Camera(Gtk.Application):
         if self.night_menu.get_visible():
             self.fill_night_menu()
 
+    def night_columns(self):
+        """Night's choices as columns: the modes, then the current mode's
+        own (additive's time; stack's frames, then their exposure), each
+        in a column of its own next to the last (author)."""
+        columns = [("NIGHT", [(NIGHT_LABELS[m], m == self.night,
+                               lambda m=m: self.set_night(m))
+                              for m in NIGHT_MODES])]
+        if self.night == "additive":
+            columns.append(("TIME", [("%d S" % t, t == self.additive_seconds,
+                                      lambda t=t: self.set_night_option("additive_seconds", t))
+                                     for t in ADDITIVE_SECONDS]))
+        elif self.night == "stack":
+            columns.append(("PHOTOS", [("%d" % c, c == self.stack_count,
+                                        lambda c=c: self.set_night_option("stack_count", c))
+                                       for c in STACK_COUNTS]))
+            columns.append(("EACH", [(shutter_text(t), t == self.stack_shutter,
+                                      lambda t=t: self.set_night_option("stack_shutter", t))
+                                     for t in STACK_SHUTTERS]))
+        return columns
+
     def fill_night_menu(self):
-        """The Night tag's menu: the modes, then the current one's choices
-        (additive's time; stack's frames and exposure)."""
+        """The Night tag's menu: night_columns() side by side."""
         box = self.night_menu.get_child()
+        box.set_orientation(Gtk.Orientation.HORIZONTAL)
         for child in box.get_children():
             box.remove(child)
-        items = [(NIGHT_LABELS[m], m == self.night, lambda m=m: self.set_night(m))
-                 for m in NIGHT_MODES]
-        if self.night == "additive":
-            items += [("  %d S" % t, t == self.additive_seconds,
-                       lambda t=t: self.set_night_option("additive_seconds", t))
-                      for t in ADDITIVE_SECONDS]
-        elif self.night == "stack":
-            items += [("  %d PHOTOS" % c, c == self.stack_count,
-                       lambda c=c: self.set_night_option("stack_count", c))
-                      for c in STACK_COUNTS]
-            items += [("  " + shutter_text(t), t == self.stack_shutter,
-                       lambda t=t: self.set_night_option("stack_shutter", t))
-                      for t in STACK_SHUTTERS]
-        for label, on, handler in items:
-            b = self.tag(label, lambda _b, h=handler: h())
-            self.lit(b, on)
-            box.pack_start(b, False, False, 0)
+        for _title, items in self.night_columns():
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
+                          valign=Gtk.Align.START)
+            for label, on, handler in items:
+                b = self.tag(label, lambda _b, h=handler: h())
+                self.lit(b, on)
+                col.pack_start(b, False, False, 0)
+            box.pack_start(col, False, False, 0)
         box.show_all()
 
     def set_night(self, mode):
