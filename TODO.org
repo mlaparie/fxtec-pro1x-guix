@@ -198,7 +198,13 @@ and "Hibernating on CPU 0", before any saving progress: the first swap allocatio
 (btrfs swap file on dm-crypt over UFS).  The cause (source, 2026-11-18): the container was on
 /dev/loop0, whose workqueue is WQ_FREEZABLE, and kernel threads stay frozen while the image is
 written, so the header's write never completes.  0cc4983 maps it with dm-linear
-(/dev/mapper/pro1x-part) instead; to boot and test.  pm_test freezer now passes
+(/dev/mapper/pro1x-part) instead.  Booted (generation 113); test_resume restored; a real
+hibernation 20:05 saved (LED breathing, power-off) and the next boot restored it ("Hibernation
+image restored successfully"), but the GPU faulted on every submit (zap shader flag kept in the
+image; 468d5e2, CI run 44378606559) and Bluetooth reset itself.  The DSPs after a restore: not
+known (no remoteproc lines); the boot kernel cannot have started them, so the image kernel
+probably believes dead DSPs run.  The modem would need a restart: ask the author (§2).
+pm_test freezer now passes
 (confirmed).  Later: a kernel fix (the driver to handle PM_HIBERNATION_PREPARE) instead of the
 rmmod (7246bfa, not yet built).
 Then it hangs (black, no LED, long press needed; confirmed 4 times): pm_test devices, platform,
