@@ -1,4 +1,4 @@
-# Car stream: the Pro¹x's screen in a car's browser (plan)
+# Interactive stream: the Pro¹x's screen in a browser, with input (plan)
 
 State: a plan, nothing built (2026-11-18).  Branch `streaming`.
 
@@ -31,7 +31,7 @@ Targets:
   path not yet seen in a browser.  No sound, no input, the picture in a
   `<video>` element.
 
-The car stream reuses the WebRTC part (no signalling server, local ICE
+The interactive stream reuses the WebRTC part (no signalling server, local ICE
 only) and replaces the rest.
 
 ## Design
@@ -75,7 +75,7 @@ only) and replaces the rest.
    opens `http://<address>:<port>/<token>`.  The phone's mobile data can
    be shared with the car (author's decision each time: it is the SIM's
    data).
-9. **Running.**  A "Car stream" line in quick actions, also offered in the
+9. **Running.**  An "Interactive stream" line in quick actions, also offered in the
    Hotspot and VPN menus, which start it on that network's address; no
    config.scm option (author).  Suspend inhibited while a viewer is
    connected; the Pro¹x's own screen may go off.
