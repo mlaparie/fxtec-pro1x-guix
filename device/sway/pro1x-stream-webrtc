@@ -12,7 +12,8 @@ keys), its quick actions, launcher and window switcher.  The page can draw the v
 on a canvas instead of a video element, shows what the browser reports
 (screen size, codec, frames, delay), and logs it and the events it gets to
 ~/.local/state/pro1x/interactive-stream.log, for testing a car's browser.
-Its SET panel, kept by the browser: the buffer before showing (smoother but
+Its SET panel and its modes, kept on the phone
+(~/.local/state/pro1x/interactive-stream.json) and by the browser: the buffer before showing (smoother but
 later), the sound's offset against the picture, a resync, and the H.264 bit
 rate, changed on the phone's encoder while it runs.  The last button folds
 the others away.
@@ -26,9 +27,10 @@ and rate it writes raw NV12 frames instead, for the hardware H.264 encoder.
 VP8-COMMAND writes VP8 in IVF.  One of them
 runs while a viewer is connected.  A browser gets a page from
 http://ADDRESS:PORT/ and plays the video with no application; one viewer at a
-time, and a new one replaces the last.  With --key, every request needs
-?k=KEY (the link carries it), else 403: on a shared network, only who has
-the link sees the screen and acts on it.
+time, and a new one replaces the last.  With --key, every request but the
+page's needs ?k=KEY, else 403: the page asks for the key in a box (or takes
+it from a link with ?k=), so on a shared network only who has the key sees
+the screen and acts on it.
 
 The page tries H.264, which costs the phone less, then VP8 if no picture comes:
 LibreWolf lists H.264 but needs media.gmp-gmpopenh264.enabled to decode it, and
@@ -125,6 +127,13 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #set button{font:16px monospace;background:#222;color:#eee;border:1px solid #555;
   border-radius:6px;padding:8px 12px}
 #k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
+#clock{position:fixed;left:6px;bottom:6px;font:bold 40px monospace;color:#ff0;
+  background:#000;padding:4px 8px;display:none;z-index:2}
+#gate{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
+  z-index:3;background:#222;color:#eee;font:20px monospace;padding:16px;
+  border-radius:8px;text-align:center}
+#gate input{font:24px monospace;width:8em;margin:10px}
+#gate button{font:20px monospace;padding:8px 16px}
 </style>
 <video id="v" autoplay muted playsinline></video><canvas id="c"></canvas>
 <div id="bar"><button class="x" id="bq">QA</button><button class="x" id="ba">APPS</button>
@@ -139,17 +148,46 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <div style="font-size:13px;opacity:.7">a/v above 0: the sound later; below 0: the picture later</div>
 <label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
 <button id="sy">RESYNC</button></div>
-<div id="info"></div>
+<div id="info"></div><div id="clock"></div>
+<div id="gate"><div>The key shown on the phone</div>
+<input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
+ spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
 <input id="k" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
 <script>
 const v = document.getElementById("v"), c = document.getElementById("c");
 const ctx = c.getContext("2d"), info = document.getElementById("info");
 const k = document.getElementById("k");
 const P = new URLSearchParams(location.search);
-// The access key of the link, sent back with each request.
-const key = P.get("k") ? "k=" + encodeURIComponent(P.get("k")) : "";
-const withKey = path => key ? path + (path.includes("?") ? "&" : "?") + key : path;
-let canvas = P.get("mode") === "canvas", chan = null, logged = 0;
+
+// Kept by the browser, and on the phone (the browser's own storage may be
+// wiped, as a car's can be, and a new address is a new origin).
+const store = {
+  get(name, d) {
+    try { const s = localStorage.getItem("pro1x-" + name); return s === null ? d : JSON.parse(s); }
+    catch (e) { return d; }
+  },
+  set(name, value) { try { localStorage.setItem("pro1x-" + name, JSON.stringify(value)); } catch (e) {} }
+};
+// The access key, when the phone asks for one: from the link, else typed in
+// the box, then sent with each request.
+let key = P.get("k") || store.get("key", "");
+const withKey = path =>
+  key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, sound: true, touch: true,
+                           canvas: false, folded: false}, store.get("settings", {}));
+if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
+if (P.get("input")) cfg.touch = P.get("input") !== "mouse";
+let saving = null;
+function save() {
+  store.set("settings", cfg);
+  clearTimeout(saving);
+  saving = setTimeout(() => {
+    try { fetch(withKey("/settings"), {method: "POST", body: JSON.stringify(cfg)}); }
+    catch (e) {}
+  }, 500);
+}
+
+let chan = null, logged = 0;
 const counts = {};
 function log(o) {
   o.t = Date.now();
@@ -160,51 +198,50 @@ function send(o) {
   counts[o.t] = (counts[o.t] || 0) + 1;
   if (chan && chan.readyState === "open") chan.send(JSON.stringify(o));
 }
-log({ev: "page", ua: navigator.userAgent, w: innerWidth, h: innerHeight,
-     dpr: devicePixelRatio, pointer: !!window.PointerEvent,
-     touch: "ontouchstart" in window, rvfc: "requestVideoFrameCallback" in
-     HTMLVideoElement.prototype, webcodecs: "VideoDecoder" in window});
 addEventListener("resize", () => log({ev: "resize", w: innerWidth, h: innerHeight}));
 
 // The picture: in the video element, or drawn on a canvas from it.
 function draw() {
-  if (canvas && v.videoWidth) {
+  if (cfg.canvas && v.videoWidth) {
     if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
     ctx.drawImage(v, 0, 0);
   }
   if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(draw);
   else requestAnimationFrame(draw);
 }
+// Each button shows the mode in use.
 function showMode() {
-  c.style.display = canvas ? "block" : "none";
-  v.style.opacity = canvas ? "0" : "1";
-  document.getElementById("bm").textContent = canvas ? "CANVAS" : "VIDEO";
-  log({ev: "mode", canvas});
+  c.style.display = cfg.canvas ? "block" : "none";
+  v.style.opacity = cfg.canvas ? "0" : "1";
+  document.getElementById("bm").textContent = cfg.canvas ? "CANVAS" : "VIDEO";
 }
-document.getElementById("bm").onclick = () => { canvas = !canvas; showMode(); };
-document.getElementById("bi").onclick = () =>
-  info.style.display = info.style.display === "block" ? "none" : "block";
+document.getElementById("bm").onclick = () => {
+  cfg.canvas = !cfg.canvas; save(); showMode(); log({ev: "mode", canvas: cfg.canvas});
+};
+// INFO: what the browser reports, and this computer's clock to the
+// millisecond: beside a clock on the phone's screen, a screenshot shows the
+// delay (both clocks set by NTP).
+const clock = document.getElementById("clock");
+function tick() {
+  if (clock.style.display !== "block") return;
+  const d = new Date();
+  clock.textContent = d.toTimeString().slice(0, 8) + "." +
+    String(d.getMilliseconds()).padStart(3, "0");
+  requestAnimationFrame(tick);
+}
+document.getElementById("bi").onclick = () => {
+  const on = info.style.display !== "block";
+  info.style.display = clock.style.display = on ? "block" : "none";
+  if (on) tick();
+};
 document.getElementById("br").onclick = () => location.reload();
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
-
-// Settings kept by this browser: buffering, sound against picture, bit rate,
-// sound on, the buttons folded.
-const store = {
-  get(key, d) {
-    try { const s = localStorage.getItem("pro1x-" + key); return s === null ? d : JSON.parse(s); }
-    catch (e) { return d; }
-  },
-  set(key, value) { try { localStorage.setItem("pro1x-" + key, JSON.stringify(value)); } catch (e) {} }
-};
-const cfg = {smooth: store.get("smooth", 50), av: store.get("av", 0),
-             rate: store.get("rate", 6), sound: store.get("sound", true)};
 const bar = document.getElementById("bar"), bc = document.getElementById("bc");
 function showFold() {
-  bar.classList.toggle("folded", store.get("folded", false));
-  bc.textContent = store.get("folded", false) ? "\\u2261" : "\\u00d7";
+  bar.classList.toggle("folded", cfg.folded);
+  bc.textContent = cfg.folded ? "\\u2261" : "\\u00d7";
 }
-bc.onclick = () => { store.set("folded", !store.get("folded", false)); showFold(); };
-showFold();
+bc.onclick = () => { cfg.folded = !cfg.folded; save(); showFold(); };
 const set = document.getElementById("set");
 document.getElementById("bs").onclick = () =>
   set.style.display = set.style.display === "block" ? "none" : "block";
@@ -222,50 +259,59 @@ function applyDelay() {
   target(arx, cfg.smooth + Math.max(0, cfg.av));
 }
 function sendRate() { send({t: "bitrate", mbps: cfg.rate}); }
-for (const [id, key, after] of [["ss", "smooth", applyDelay], ["sa", "av", applyDelay],
-                                ["sb", "rate", sendRate]]) {
-  const input = document.getElementById(id), shown = document.getElementById(id + "v");
-  input.value = cfg[key]; shown.textContent = cfg[key];
-  input.oninput = () => {
-    cfg[key] = Number(input.value); shown.textContent = cfg[key];
-    store.set(key, cfg[key]); after();
-  };
-  input.onchange = () => log({ev: "setting", key, value: cfg[key]});
+const sliders = [["ss", "smooth", applyDelay], ["sa", "av", applyDelay], ["sb", "rate", sendRate]];
+function showSliders() {
+  for (const [id, name] of sliders) {
+    document.getElementById(id).value = cfg[name];
+    document.getElementById(id + "v").textContent = cfg[name];
+  }
 }
-// Resync: the buffers emptied, then set again.
-document.getElementById("sy").onclick = () => {
+for (const [id, name, after] of sliders) {
+  const input = document.getElementById(id);
+  input.oninput = () => {
+    cfg[name] = Number(input.value);
+    document.getElementById(id + "v").textContent = cfg[name];
+    after();
+  };
+  input.onchange = () => { save(); log({ev: "setting", name, value: cfg[name]}); };
+}
+// Resync: the buffers emptied, then set again; the button says when done.
+const sy = document.getElementById("sy");
+sy.onclick = () => {
   target(vrx, 0); target(arx, 0);
-  setTimeout(applyDelay, 300);
+  setTimeout(() => {
+    applyDelay();
+    sy.textContent = (vrx || arx) ? "RESYNCED \\u2713" : "NOTHING TO SYNC";
+    setTimeout(() => sy.textContent = "RESYNC", 2000);
+  }, 300);
   log({ev: "resync"});
 };
-// Sound: browsers start a page muted; the first touch turns it on.
+// Sound: browsers start a page muted; the first touch turns it on when the
+// sound was left on.
 const bu = document.getElementById("bu");
 function showSound() { bu.textContent = v.muted ? "MUTED" : "SOUND"; }
 function sound(on) {
-  v.muted = !on; cfg.sound = on; store.set("sound", on);
+  v.muted = !on;
   v.play().catch(() => {});
   showSound();
 }
-bu.onclick = () => sound(v.muted);
+bu.onclick = () => { cfg.sound = v.muted; save(); sound(cfg.sound); };
 let touched = false;
 addEventListener("pointerdown", e => {
   if (!touched && e.target !== bu && cfg.sound && v.muted) sound(true);
   touched = true;
 }, {capture: true});
-showSound();
 // The Pro1x's own menus and on-screen keyboard (special keys), on its screen.
 for (const [id, name] of [["bq", "quickactions"], ["ba", "launcher"],
                           ["bw", "windowswitcher"], ["bo", "osk"]])
   document.getElementById(id).onclick = () => send({t: "action", name});
 // Touch: the Pro1x gets touches, as from its own screen; mouse: a pointer.
-let touch = P.get("input") !== "mouse";
-function showInput() {
-  document.getElementById("bt").textContent = touch ? "TOUCH" : "MOUSE";
-  log({ev: "input-mode", touch});
-}
-document.getElementById("bt").onclick = () => { touch = !touch; showInput(); };
-showInput();
-showMode();
+function showInput() { document.getElementById("bt").textContent = cfg.touch ? "TOUCH" : "MOUSE"; }
+document.getElementById("bt").onclick = () => {
+  cfg.touch = !cfg.touch; save(); showInput(); log({ev: "input-mode", touch: cfg.touch});
+};
+function refresh() { showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
+refresh();
 
 const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
@@ -284,7 +330,42 @@ pc.ontrack = e => {
   }
   v.play().catch(err => log({ev: "play-failed", err: String(err)}));
 };
-(async () => {
+
+// The key box, when the phone wants a key and none or a wrong one was given.
+const gate = document.getElementById("gate"), gk = document.getElementById("gk");
+function askKey(wrong) {
+  document.getElementById("gm").textContent = wrong ? "Wrong key" : "";
+  gate.style.display = "block";
+  gk.value = "";
+  gk.focus();
+}
+function enterKey() {
+  key = gk.value.trim();
+  store.set("key", key);
+  gate.style.display = "none";
+  connect();
+}
+document.getElementById("go").onclick = enterKey;
+gk.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); enterKey(); } });
+
+let started = false;
+async function connect() {
+  const check = await fetch(withKey("/check"));
+  if (check.status === 403) { askKey(key !== ""); return; }
+  if (started) return;
+  started = true;
+  log({ev: "page", ua: navigator.userAgent, w: innerWidth, h: innerHeight,
+       dpr: devicePixelRatio, pointer: !!window.PointerEvent,
+       touch: "ontouchstart" in window, rvfc: "requestVideoFrameCallback" in
+       HTMLVideoElement.prototype, webcodecs: "VideoDecoder" in window});
+  try {
+    const kept = await (await fetch(withKey("/settings"))).json();
+    if (P.get("mode")) delete kept.canvas;
+    if (P.get("input")) delete kept.touch;
+    Object.assign(cfg, kept);
+    store.set("settings", cfg);
+    refresh();
+  } catch (e) {}
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
   const codec = P.get("codec")
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
@@ -304,15 +385,16 @@ pc.ontrack = e => {
     (await pc.getStats()).forEach(r => {
       if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
     });
-    if (!decoded) location.replace(withKey("/?codec=vp8" + (canvas ? "&mode=canvas" : "")));
+    if (!decoded) location.replace(withKey("/?codec=vp8"));
   }, 5000);
-})();
+}
+connect();
 
 // What the browser reports, every second; logged every 10 s.
 let last = {frames: 0, at: 0}, ticks = 0;
 setInterval(async () => {
   const s = {w: innerWidth, h: innerHeight, video: v.videoWidth + "x" + v.videoHeight,
-             mode: canvas ? "canvas" : "video", hidden: document.hidden};
+             mode: cfg.canvas ? "canvas" : "video", hidden: document.hidden};
   (await pc.getStats()).forEach(r => {
     if (r.type === "inbound-rtp" && r.kind === "video") {
       s.fps = Math.round((r.framesDecoded - last.frames) * 1000 / (r.timestamp - last.at));
@@ -337,7 +419,7 @@ setInterval(async () => {
 // Touches: a tap clicks, a drag drags, a long press right-clicks, two
 // fingers scroll.  Positions in the picture, 0 to 1.
 function norm(e) {
-  const r = (canvas ? c : v).getBoundingClientRect();
+  const r = (cfg.canvas ? c : v).getBoundingClientRect();
   const vw = v.videoWidth || r.width, vh = v.videoHeight || r.height;
   const s = Math.min(r.width / vw, r.height / vh), dw = vw * s, dh = vh * s;
   const x = (e.clientX - r.left - (r.width - dw) / 2) / dw;
@@ -352,11 +434,11 @@ function centre() {
   return {x: x / active.size, y: y / active.size};
 }
 function press(e) {
-  if (e.target.closest && e.target.closest("#bar, #set")) return;
+  if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
   e.preventDefault();
   active.set(e.pointerId, e);
   if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
-  if (touch) {
+  if (cfg.touch) {
     const n = norm(e);
     send({t: "tdown", id: e.pointerId, x: n.x, y: n.y});
     return;
@@ -379,7 +461,7 @@ function move(e) {
   if (!active.has(e.pointerId)) return;
   e.preventDefault();
   active.set(e.pointerId, e);
-  if (touch) {
+  if (cfg.touch) {
     const n = norm(e);
     send({t: "tmove", id: e.pointerId, x: n.x, y: n.y});
     return;
@@ -400,7 +482,7 @@ function move(e) {
 function release(e) {
   if (!active.has(e.pointerId)) return;
   active.delete(e.pointerId);
-  if (touch) { send({t: "tup", id: e.pointerId}); return; }
+  if (cfg.touch) { send({t: "tup", id: e.pointerId}); return; }
   clearTimeout(timer);
   if (down && active.size === 0) { send({t: "up"}); down = false; }
   if (active.size < 2) scrollAt = null;
@@ -684,6 +766,8 @@ remote = None
 LOG = os.path.join(os.environ.get("XDG_STATE_HOME")
                    or os.path.expanduser("~/.local/state"),
                    "pro1x", "interactive-stream.log")
+# The page's settings and modes, kept on the phone for any browser.
+SETTINGS = os.path.join(os.path.dirname(LOG), "interactive-stream.json")
 
 
 def log_line(text):
@@ -846,11 +930,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not self.allowed():
-            return
-        if self.path.split("?")[0] == "/":
+        path = self.path.split("?")[0]
+        # The page itself asks for the key, so it comes without one.
+        if path == "/":
             self.reply(INTERACTIVE_PAGE if remote else PAGE,
                        "text/html; charset=utf-8")
+            return
+        if not self.allowed():
+            return
+        if path == "/check":
+            self.reply(b"ok")
+        elif path == "/settings":
+            try:
+                with open(SETTINGS, "rb") as f:
+                    self.reply(f.read(), "application/json")
+            except OSError:
+                self.reply(b"{}", "application/json")
         elif self.path.startswith("/offer"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             codec = "h264" if query.get("codec") == ["h264"] else "vp8"
@@ -870,6 +965,21 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return
         path = self.path.split("?")[0]
+        if path == "/settings":
+            text = self.rfile.read(min(int(self.headers["Content-Length"]), 2048))
+            try:
+                kept = json.loads(text)
+                assert isinstance(kept, dict) and all(
+                    isinstance(v, (bool, int, float)) for v in kept.values())
+            except (ValueError, AssertionError):
+                self.reply(b"bad settings", code=400)
+                return
+            os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+            with open(SETTINGS + ".new", "w") as f:
+                json.dump(kept, f)
+            os.replace(SETTINGS + ".new", SETTINGS)
+            self.reply(b"ok")
+            return
         if path == "/log":
             text = self.rfile.read(min(int(self.headers["Content-Length"]), 4096))
             log_line(self.client_address[0] + " " + text.decode(errors="replace"))
