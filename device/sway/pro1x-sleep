@@ -127,13 +127,36 @@ hibernate_ready() {
 # (2026-11-18: "Freezing remaining freezable tasks aborted", the source's
 # count up 5; unloaded, the freezer test passed).  A powered-off phone has
 # no use for the ADSP's wakeups, so the driver is unloaded meanwhile.
+# After a restore from a powered-off phone the DSPs (modem, ADSP, CDSP) are
+# off while the kernel still takes them for running: each is restarted,
+# which loads its firmware again.  The RTC starts from 0 at every boot, so
+# a lower reading after the restore than before means a power cycle.  The
+# modem's restart is the author's exception to never stopping it
+# (2026-11-18): it is not running then anyway.  Not yet run on the phone.
+rtc_clock=/sys/class/rtc/rtc0/since_epoch
+restart_dsps() {
+    for r in /sys/class/remoteproc/remoteproc*; do
+        name=$(cat "$r/name")
+        logger -t pro1x-sleep "restarting $name after hibernation"
+        echo stop > "$r/state" ||
+            logger -t pro1x-sleep "could not stop $name"
+        echo start > "$r/state" ||
+            logger -t pro1x-sleep "could not start $name"
+    done
+}
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"
     led_hibernating
     sync
     rmmod smp2p_sleepstate 2>/dev/null && ss=1 || ss=
-    echo disk > /sys/power/state ||
+    before=$(cat "$rtc_clock" 2>/dev/null || echo 0)
+    if echo disk > /sys/power/state; then
+        after=$(cat "$rtc_clock" 2>/dev/null || echo 0)
+        logger -t pro1x-sleep "back from hibernation (RTC $before, then $after)"
+        [ "$after" -lt "$before" ] && restart_dsps
+    else
         logger -t pro1x-sleep "hibernation failed"
+    fi
     # sudo drops the variable that tells Guix's modprobe where modules are.
     [ -n "$ss" ] &&
         LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules \
