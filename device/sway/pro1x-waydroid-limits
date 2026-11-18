@@ -1,0 +1,109 @@
+#!/bin/sh
+# pro1x-waydroid-limits — limits on Waydroid's Android: memory, CPU cores and
+# CPU priority, set on its container's cgroup.  As root (sudoers allows it
+# for the quick actions' Waydroid menu).
+#
+#   apply                 set the limits on the running container
+#   watch                 apply them at each Android start (a service)
+#   set memory none|2G|3G|...|NNNM
+#   set cores all|1-8     the first N cores: 1-4 are the slower ones, so
+#                         4 keeps the four fast cores for the phone
+#   set priority normal|low|lowest
+#   reset                 back to config.scm's limits
+#   show                  the limits in use and Android's memory, as
+#                         shell assignments
+#
+# config.scm (waydroid-configuration: memory-limit, cpu-cores,
+# cpu-priority) writes the defaults to /etc/pro1x/waydroid.conf; set and
+# reset write /run/pro1x/waydroid-limits, which wins until reboot.
+#
+# Memory: Android is slowed and its memory reclaimed above the limit
+# (memory.high), and its processes killed only 25% above it (memory.max).
+# CPU: this kernel has no CPU time quota for a cgroup (no CFS bandwidth),
+# so the limit is a set of cores and a weight against the phone's own
+# processes (cpu.weight 100, 20 or 1).  The GPU has no such control.
+#
+# State (2026-11-18): the cgroup files read on the phone; this script not
+# yet run.
+
+set -u
+cg=/sys/fs/cgroup/lxc.payload.waydroid
+conf=/etc/pro1x/waydroid.conf
+override=/run/pro1x/waydroid-limits
+
+MEMORY_LIMIT=none CPU_CORES=all CPU_PRIORITY=normal
+load() {
+    [ -r "$conf" ] && . "$conf"
+    [ -r "$override" ] && . "$override"
+}
+
+bytes() {
+    case "$1" in
+        *G) echo $(( ${1%G} * 1073741824 )) ;;
+        *M) echo $(( ${1%M} * 1048576 )) ;;
+    esac
+}
+
+apply() {
+    load
+    [ -d "$cg" ] || return 0
+    if [ "$MEMORY_LIMIT" = none ]; then
+        echo max > "$cg/memory.max"
+        echo max > "$cg/memory.high"
+    else
+        b=$(bytes "$MEMORY_LIMIT")
+        echo $((b + b / 4)) > "$cg/memory.max"
+        echo "$b" > "$cg/memory.high"
+    fi
+    case "$CPU_CORES" in
+        all) cpus=0-$(($(nproc --all) - 1)) ;;
+        *) cpus=0-$((CPU_CORES - 1)) ;;
+    esac
+    echo "$cpus" > "$cg/cpuset.cpus"
+    case "$CPU_PRIORITY" in
+        low) echo 20 > "$cg/cpu.weight" ;;
+        lowest) echo 1 > "$cg/cpu.weight" ;;
+        *) echo 100 > "$cg/cpu.weight" ;;
+    esac
+    logger -t pro1x-waydroid-limits \
+           "memory $MEMORY_LIMIT, cores $CPU_CORES, priority $CPU_PRIORITY"
+}
+
+# set KEY VALUE: checked, kept in the override file, applied.
+set_limit() {
+    case "$1:$2" in
+        memory:none|memory:[1-9]G|memory:[1-9][0-9]*M) key=MEMORY_LIMIT ;;
+        cores:all|cores:[1-8]) key=CPU_CORES ;;
+        priority:normal|priority:low|priority:lowest) key=CPU_PRIORITY ;;
+        *) echo "set memory none|NG|NNNM, cores all|1-8, priority normal|low|lowest" >&2
+           exit 2 ;;
+    esac
+    mkdir -p "${override%/*}"
+    { grep -v "^$key=" "$override" 2>/dev/null; echo "$key=$2"; } > "$override.new"
+    mv "$override.new" "$override"
+    apply
+}
+
+case "${1:-}" in
+    apply) apply ;;
+    watch)
+        # The container's cgroup is made anew at each Android start.
+        last=
+        while sleep 30; do
+            id=$(stat -c %i "$cg" 2>/dev/null) || { last=; continue; }
+            [ "$id" = "$last" ] && continue
+            sleep 5
+            apply && last=$id
+        done ;;
+    set) [ $# -eq 3 ] || { echo "set KEY VALUE" >&2; exit 2; }
+         set_limit "$2" "$3" ;;
+    reset) rm -f "$override"; apply ;;
+    show)
+        load
+        echo "MEMORY_LIMIT=$MEMORY_LIMIT CPU_CORES=$CPU_CORES CPU_PRIORITY=$CPU_PRIORITY"
+        echo "OVERRIDDEN=$([ -e "$override" ] && echo yes || echo no)"
+        used=$(cat "$cg/memory.current" 2>/dev/null) &&
+            echo "MEMORY_USED=$((used / 1048576))M" ;;
+    *) echo "usage: pro1x-waydroid-limits apply|watch|set KEY VALUE|reset|show" >&2
+       exit 2 ;;
+esac

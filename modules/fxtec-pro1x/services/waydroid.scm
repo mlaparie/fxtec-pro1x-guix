@@ -36,6 +36,7 @@
   #:use-module (guix gexp)
   #:use-module (guix records)
   #:use-module (srfi srfi-1)
+  #:use-module (ice-9 match)
   #:export (waydroid-configuration
             waydroid-configuration?
             waydroid-service-type))
@@ -56,6 +57,14 @@
   ;; Apps (package names) rendered untiled while the rest stays tiled:
   ;; the way to speed up one slow 3D app without the side effects.
   (untiled-apps waydroid-untiled-apps (default '()))
+  ;; Limits on Android, against a runaway app slowing the phone: its memory
+  ;; ("3G", or #f: none), the cores it may use (4: the four slower ones,
+  ;; #f: all), and its CPU priority against the phone's own processes
+  ;; ('normal, 'low, 'lowest).  Quick actions' Waydroid menu changes them
+  ;; until reboot.  The GPU cannot be limited this way.
+  (memory-limit waydroid-memory-limit (default #f))
+  (cpu-cores waydroid-cpu-cores (default #f))
+  (cpu-priority waydroid-cpu-priority (default 'normal))
   ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
   ;; SOURCE relative to the user's home or absolute.
   (shared-folders waydroid-shared-folders
@@ -127,9 +136,31 @@ untiled-apps).")
           (append-map (lambda (pair) (list (car pair) (cdr pair)))
                       (waydroid-shared-folders config))))
 
+(define pro1x-waydroid-limits-script
+  (program-file "pro1x-waydroid-limits"
+    #~(begin
+        (setenv "PATH"
+                (string-append #$coreutils "/bin:" #$grep "/bin:"
+                               #$inetutils "/bin"))
+        (apply execl #$(file-append bash-minimal "/bin/sh") "sh"
+               #$(local-file (repository-file "device/sway/pro1x-waydroid-limits"))
+               (cdr (command-line))))))
+
+(define (waydroid-limits-shepherd-service config)
+  (shepherd-service
+   (provision '(waydroid-limits))
+   (requirement '(file-systems))
+   (documentation "Limits on Waydroid's Android at each of its starts:
+memory-limit, cpu-cores, cpu-priority.")
+   (start #~(make-forkexec-constructor
+             (list #$pro1x-waydroid-limits-script "watch")
+             #:log-file "/var/log/waydroid-limits.log"))
+   (stop #~(make-kill-destructor))))
+
 (define (waydroid-shepherd-services config)
-  (cons (waydroid-props-shepherd-service config)
-        (waydroid-share-shepherd-services config)))
+  (cons* (waydroid-props-shepherd-service config)
+         (waydroid-limits-shepherd-service config)
+         (waydroid-share-shepherd-services config)))
 
 (define (waydroid-share-shepherd-services config)
   (if (or (waydroid-storage-view config)
@@ -164,7 +195,14 @@ storage-view and shared-folders.")
                   (string-append
                    "# Written by waydroid-service-type (config.scm).\n"
                    "AUTOSTART="
-                   (if (waydroid-autostart? config) "yes" "no") "\n")))))
+                   (if (waydroid-autostart? config) "yes" "no") "\n"
+                   ;; pro1x-waydroid-limits' defaults.
+                   "MEMORY_LIMIT=" (or (waydroid-memory-limit config) "none") "\n"
+                   "CPU_CORES=" (match (waydroid-cpu-cores config)
+                                  (#f "all")
+                                  (n (number->string n))) "\n"
+                   "CPU_PRIORITY=" (symbol->string (waydroid-cpu-priority config))
+                   "\n")))))
 
 (define waydroid-service-type
   (service-type

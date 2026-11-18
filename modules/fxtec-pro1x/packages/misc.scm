@@ -1860,6 +1860,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
 ;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
 ;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
+;;;   bin/pro1x-waydroid-limits          Android's memory, cores, priority (sudoers)
 ;;;   bin/pro1x-blank-led                dim white LED while blank, not locked
 ;;;   bin/pro1x-camera                   open, focus or shoot Snapshot
 ;;;   bin/pro1x-camera-button            the camera button: shoot, triple press,
@@ -1930,6 +1931,7 @@ window opened by a sway key binding.")
           ("pro1x-fingerprint" "bin/")
           ("pro1x-waydroid" "bin/")
           ("pro1x-waydroid-admin" "bin/")
+          ("pro1x-waydroid-limits" "bin/")
           ("pro1x-blank-led" "bin/")
           ("pro1x-camera" "bin/")
           ("pro1x-camera-button" "bin/")

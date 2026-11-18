@@ -249,6 +249,13 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                Apps (package names) rendered untiled while the rest stays tiled: the
   ;;                way to speed up one slow 3D app without untiling all of Android.
   ;;                (untiled-apps '())
+  ;;                Limits on Android against a runaway app: memory (\"3G\", #f: none), the
+  ;;                cores it may use (4: the four slower ones, #f: all), and its CPU priority
+  ;;                ('normal, 'low, 'lowest).  Quick actions' Waydroid menu changes them until
+  ;;                reboot.  The GPU cannot be limited this way.
+  ;;                (memory-limit #f)
+  ;;                (cpu-cores #f)
+  ;;                (cpu-priority 'normal)
   ;;                (user \"user\")
   ;;                (storage-view \"/mnt/waydroid\")
   ;;                (shared-folders '((\"Documents\" . \"Documents\") (\"Downloads\" . \"Download\")

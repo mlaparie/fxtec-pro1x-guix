@@ -109,6 +109,9 @@ Waydroid: `waydroid-configuration` in `(fxtec-pro1x services waydroid)`.
 | `autostart?` | `#f` | start Android at login (Sway and Phosh), once its image is downloaded; with "Sleep when unused" on in quick actions it freezes after its screen timeout while none of its apps is shown |
 | `gpu-tiling?` | `#t` | Mesa's tiled rendering in Android (its default), or `#f` untiled (`FD_MESA_DEBUG=sysmem`): worth a try when an Android app with 3D elements is very slow; some 3D elements and icons may then not be drawn |
 | `untiled-apps` | `'()` | Apps (package names, e.g. `'("com.example.app")`) rendered untiled while the rest of Android stays tiled: the way to speed up one slow 3D app without the side effects of `gpu-tiling? #f`; such an app starts a little slower |
+| `memory-limit` | `#f` | Android's memory limit, e.g. `"3G"`: above it Android is slowed and its memory reclaimed, its processes killed only 25% above (`#f`: none) |
+| `cpu-cores` | `#f` | The cores Android may use: the first N, 1-4 being the slower ones (`4` keeps the fast cores for the phone; `#f`: all) |
+| `cpu-priority` | `'normal` | Android's CPU priority against the phone's own processes: `'normal`, `'low` or `'lowest`.  The kernel has no CPU time quota per group, and the GPU cannot be limited.  Quick actions' Waydroid menu changes these three until reboot |
 | `user` | `"user"` | whose Waydroid it is, for the shared folders |
 | `storage-view` | `"/mnt/waydroid"` | Android's internal storage seen from the phone, every file owned by `user` (bindfs); `#f` not shown |
 | `shared-folders` | Documents, Downloads, Music, Pictures, Videos, `/tmp` | the phone's folders shown in Android's storage as Documents, Download, Music, Pictures, Movies and tmp: `(SOURCE . TARGET)` pairs, SOURCE in the user's home or absolute; both sides can write (owners mapped by bindfs).  Mounted at boot once Android has been set up and started once |
