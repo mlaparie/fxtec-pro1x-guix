@@ -2,7 +2,8 @@
 # pro1x-stream — send the screen, or a window, to another device on any local
 # network: the Pro¹x's hotspot, or a Wi-Fi network both are on.  Opened by Enter
 # or Right on the Stream line of sway-quick-actions, inside its window, or from
-# Hotspot > Connected devices with --to ADDRESS.
+# Hotspot > Connected devices with --to ADDRESS.  --interactive ADDRESS and
+# --stop start and stop the interactive stream without the menu.
 #
 # Networks that keep their clients apart, as in many hotels, block all of this;
 # the hotspot gets around that.  wf-recorder copies an area of the display, so
@@ -312,7 +313,7 @@ send_interactive() {
         k=$(current_key)
         key=(--key "$k")
     fi
-    ip=$(own_address)
+    ip=${addr:-$(own_address)}
     [ -n "$ip" ] || return
     stop_stream
     hw_source
@@ -328,7 +329,10 @@ send_interactive() {
     url="http://$ip:$webrtc_port/"
     echo "interactive, $url${k:+  key $k}" > "$to_file"
     sleep 1
-    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    streaming || { rm -f "$pid_file" "$to_file"
+                   [ -n "${quiet:-}" ] && return 1
+                   echo "Could not start."; pause; return; }
+    [ -n "${quiet:-}" ] && return
     clear_screen
     printf 'Open on the other device:  %s\n' "$url"
     if [ -n "$k" ]; then printf 'Key:  \033[1m%s\033[0m  (the code below includes it)\n' "$k"
@@ -361,6 +365,9 @@ network_displays() {
 }
 
 [ "${1:-}" = --to ] && { send_udp "${2:-}"; exit; }
+# For scripts: start the interactive stream on ADDRESS without the menu, or stop.
+[ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
+[ "${1:-}" = --stop ] && { stop_stream; exit; }
 
 while :; do
     lines=$(
