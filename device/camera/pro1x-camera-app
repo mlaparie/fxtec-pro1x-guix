@@ -1446,42 +1446,43 @@ class Camera(Gtk.Application):
             focus.set_opacity(0)
             focus.set_sensitive(False)
         bottom = row()
-        column(bottom, "RATIO", [(v, v == o["shape"],
-                                  lambda v=v: self.reset_output("shape", v)) for v in shapes],
-               max(len(PHOTO_SHAPES), len(VIDEO_SHAPES)))
-        column(bottom, "RESOLUTION", [(v.upper(), v == o["size"],
-                                       lambda v=v: self.reset_output("size", v)) for v in sizes],
-               max(3, len(VIDEO_SIZES)))
+        # Related settings joined by a line, as Night and its choices
+        # (author): the picture's shape and size, video's size and rate,
+        # the photos' look, the aiming aids.
+        pick = lambda h: (h(), self.refresh_settings())
+        bottom.add(self.linked_group([
+            ("RATIO", [(v, v == o["shape"], lambda v=v: self.reset_output("shape", v))
+                       for v in shapes]),
+            ("RESOLUTION", [(v.upper(), v == o["size"],
+                             lambda v=v: self.reset_output("size", v)) for v in sizes])],
+            max(len(PHOTO_SHAPES), len(VIDEO_SHAPES), 3, len(VIDEO_SIZES)), pick))
         column(bottom, "CAMERA", [("MAIN", self.cam == 0,
                                    lambda: self.cam != 0 and self.on_switch()),
                                   ("FRONT", self.cam != 0,
                                    lambda: self.cam == 0 and self.on_switch())])
         vstore = self.settings.setdefault("rear" if self.cam == 0 else "front",
                                           {}).setdefault("video", dict(DEFAULTS["video"]))
-        # Video's size and rate joined by a line, as Night's (author).
         bottom.add(self.linked_group([
             ("VIDEO", [(v.upper(), vstore.get("size") == v,
                         lambda v=v: self.set_video_size(v)) for v in VIDEO_SIZES]),
             ("FPS", [("%d" % r, r == self.video_rate,
                       lambda r=r: setattr(self, "video_rate", r))
                      for r in VIDEO_RATES])],
-            max(len(VIDEO_SIZES), len(VIDEO_RATES)),
-            lambda h: (h(), self.refresh_settings())))
-        column(bottom, "CONTRAST", [(n, abs(v - self.contrast) < 0.01,
-                                     lambda v=v: setattr(self, "contrast", v))
-                                    for n, v in CONTRASTS])
-        column(bottom, "CLARITY", [(n, abs(v - self.clarity) < 0.01,
-                                    lambda v=v: setattr(self, "clarity", v))
-                                   for n, v in CLARITIES])
-        column(bottom, "VIBRANCE", [(n, abs(v - self.vibrance) < 0.01,
-                                     lambda v=v: setattr(self, "vibrance", v))
-                                    for n, v in VIBRANCES])
-        column(bottom, "GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
-                                ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))])
-        column(bottom, "HORIZON", [("OFF", not self.horizon_on,
-                                    lambda: self.set_aid("horizon_on", False)),
-                                   ("ON", self.horizon_on,
-                                    lambda: self.set_aid("horizon_on", True))])
+            max(len(VIDEO_SIZES), len(VIDEO_RATES)), pick))
+        bottom.add(self.linked_group([
+            ("CONTRAST", [(n, abs(v - self.contrast) < 0.01,
+                           lambda v=v: setattr(self, "contrast", v)) for n, v in CONTRASTS]),
+            ("CLARITY", [(n, abs(v - self.clarity) < 0.01,
+                          lambda v=v: setattr(self, "clarity", v)) for n, v in CLARITIES]),
+            ("VIBRANCE", [(n, abs(v - self.vibrance) < 0.01,
+                           lambda v=v: setattr(self, "vibrance", v)) for n, v in VIBRANCES])],
+            max(len(CONTRASTS), len(CLARITIES), len(VIBRANCES)), pick))
+        bottom.add(self.linked_group([
+            ("GRID", [("OFF", not self.grid_on, lambda: self.set_aid("grid_on", False)),
+                      ("THIRDS", self.grid_on, lambda: self.set_aid("grid_on", True))]),
+            ("HORIZON", [("OFF", not self.horizon_on, lambda: self.set_aid("horizon_on", False)),
+                         ("ON", self.horizon_on, lambda: self.set_aid("horizon_on", True))])],
+            2, pick))
         self.settings_view.add(page)
         self.settings_view.show_all()
 
