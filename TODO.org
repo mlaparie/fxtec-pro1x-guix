@@ -154,6 +154,12 @@ the current system's line, a second line with noresume; U-Boot with a sixth slot
 to flash with scripts/flash.sh --boot-only.  Needs one reboot, then Hibernate from the power menu
 with the author ready at the boot menu.
 Unknown: whether arm64 hibernation restores this SoC's remoteprocs, GPU and display.
+2026-11-18: every try woke at once ("Freezing remaining freezable tasks aborted").  Two
+causes, both fixed: Android's system_server held EPOLLWAKEUP timers (block_suspend out of the
+container's caps, fda4378), and the smp2p-sleepstate driver turned the ADSP's sensor-stream
+raises into hard wakeups (unloaded while hibernating, 3cba0e8).  pm_test freezer now passes
+(confirmed); a full hibernation and resume not yet run.  Later: a kernel fix (the driver to
+handle PM_HIBERNATION_PREPARE) instead of the rmmod.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
