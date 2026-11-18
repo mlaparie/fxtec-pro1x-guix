@@ -1,0 +1,147 @@
+From e76c2b6e083132e2e3784b3cd4628147858d71bf Mon Sep 17 00:00:00 2001
+From: fxtec-pro1x-guix
+Date: Wed, 18 Nov 2026 02:24:50 +0100
+Subject: [PATCH] ipa: simple, software_isp: Saturation above 1 as vibrance
+
+The colour matrix's saturation boosts every colour alike; the Pro1X
+camera app's photos have vibrance (dull colours saturated more than
+vivid ones).  Saturation above 1 now sets a vibrance amount the GPU
+shaders apply after gamma, with the photos' formula; below 1 the matrix
+desaturates as before.  The CPU debayer ignores it.  Tested: built and
+streamed on the Pro1X (the effect not measured: a dark room).
+---
+ .../libcamera/internal/software_isp/debayer_params.h  |  2 ++
+ src/ipa/simple/algorithms/adjust.cpp                  | 11 ++++++++++-
+ src/libcamera/shaders/bayer_1x_packed.frag            | 11 +++++++++++
+ src/libcamera/shaders/bayer_unpacked.frag             | 11 +++++++++++
+ src/libcamera/software_isp/debayer_egl.cpp            |  2 ++
+ src/libcamera/software_isp/debayer_egl.h              |  1 +
+ 6 files changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
+index 6772b43..bb75578 100644
+--- a/include/libcamera/internal/software_isp/debayer_params.h
++++ b/include/libcamera/internal/software_isp/debayer_params.h
+@@ -24,6 +24,8 @@ struct DebayerParams {
+ 	RGB<float> blackLevel = RGB<float>({ 0.0, 0.0, 0.0 });
+ 	float gamma = 1.0;
+ 	float contrastExp = 1.0;
++	/* Vibrance: dull colours saturated more than vivid ones (0: none) */
++	float vibrance = 0.0;
+ 	RGB<float> gains = RGB<float>({ 1.0, 1.0, 1.0 });
+ };
+ 
+diff --git a/src/ipa/simple/algorithms/adjust.cpp b/src/ipa/simple/algorithms/adjust.cpp
+index 8bf39c4..d8e8822 100644
+--- a/src/ipa/simple/algorithms/adjust.cpp
++++ b/src/ipa/simple/algorithms/adjust.cpp
+@@ -100,9 +100,18 @@ void Adjust::prepare(IPAContext &context,
+ 	frameContext.gamma = context.activeState.knobs.gamma;
+ 	frameContext.contrast = context.activeState.knobs.contrast;
+ 
++	/*
++	 * Saturation above 1 is vibrance (the shader saturates the dull
++	 * colours more than the vivid ones, as the Pro1X camera app's photos
++	 * do); below 1, the colour matrix desaturates as before.
++	 */
+ 	auto &saturation = context.activeState.knobs.saturation;
++	params->vibrance = 0.0f;
+ 	if (context.ccmEnabled && saturation) {
+-		applySaturation(context.activeState.combinedMatrix, saturation.value());
++		if (saturation.value() > 1.0f)
++			params->vibrance = saturation.value() - 1.0f;
++		else
++			applySaturation(context.activeState.combinedMatrix, saturation.value());
+ 		frameContext.saturation = saturation;
+ 	}
+ 
+diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
+index 039faf0..2bd45b3 100644
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -70,6 +70,7 @@ uniform mat3 ccm;
+ uniform vec3 blacklevel;
+ uniform float gamma;
+ uniform float contrastExp;
++uniform float vibrance;
+ 
+ float apply_contrast(float value)
+ {
+@@ -258,6 +259,16 @@ void main(void)
+ 	/* Apply gamma after colour correction */
+ 	rgb = pow(rgb, vec3(gamma));
+ 
++	/* Vibrance: the dull colours pushed from their grey more than the vivid */
++	if (vibrance > 0.0) {
++		float hi = max(rgb.r, max(rgb.g, rgb.b));
++		float lo = min(rgb.r, min(rgb.g, rgb.b));
++		float sat = hi > 0.0 ? (hi - lo) / hi : 0.0;
++		float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
++		rgb = clamp(vec3(grey) + (rgb - vec3(grey)) * (1.0 + vibrance * (1.0 - sat)),
++		            0.0, 1.0);
++	}
++
+ #if defined (SWAP_BLUE)
+ 	gl_FragColor = vec4(rgb.bgr, 1.0);
+ #else
+diff --git a/src/libcamera/shaders/bayer_unpacked.frag b/src/libcamera/shaders/bayer_unpacked.frag
+index b7959b8..a0d2d02 100644
+--- a/src/libcamera/shaders/bayer_unpacked.frag
++++ b/src/libcamera/shaders/bayer_unpacked.frag
+@@ -29,6 +29,7 @@ uniform mat3            ccm;
+ uniform vec3            blacklevel;
+ uniform float           gamma;
+ uniform float           contrastExp;
++uniform float vibrance;
+ 
+ float apply_contrast(float value)
+ {
+@@ -160,6 +161,16 @@ void main(void) {
+     /* Apply gamma after colour correction */
+     rgb = pow(rgb, vec3(gamma));
+ 
++    /* Vibrance: the dull colours pushed from their grey more than the vivid */
++    if (vibrance > 0.0) {
++        float hi = max(rgb.r, max(rgb.g, rgb.b));
++        float lo = min(rgb.r, min(rgb.g, rgb.b));
++        float sat = hi > 0.0 ? (hi - lo) / hi : 0.0;
++        float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
++        rgb = clamp(vec3(grey) + (rgb - vec3(grey)) * (1.0 + vibrance * (1.0 - sat)),
++                    0.0, 1.0);
++    }
++
+ #if defined (SWAP_BLUE)
+     gl_FragColor = vec4(rgb.bgr, 1.0);
+ #else
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 830bc3b..ceefc56 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -121,6 +121,7 @@ int DebayerEGL::getShaderVariableLocations(void)
+ 	blackLevelUniformDataIn_ = glGetUniformLocation(programId_, "blacklevel");
+ 	gammaUniformDataIn_ = glGetUniformLocation(programId_, "gamma");
+ 	contrastExpUniformDataIn_ = glGetUniformLocation(programId_, "contrastExp");
++	vibranceUniformDataIn_ = glGetUniformLocation(programId_, "vibrance");
+ 
+ 	textureUniformStep_ = glGetUniformLocation(programId_, "tex_step");
+ 	textureUniformSize_ = glGetUniformLocation(programId_, "tex_size");
+@@ -524,6 +525,7 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+ 	 * Contrast
+ 	 */
+ 	glUniform1f(contrastExpUniformDataIn_, params.contrastExp);
++	glUniform1f(vibranceUniformDataIn_, params.vibrance);
+ 	LOG(Debayer, Debug) << " contrastExpUniformDataIn_ " << contrastExpUniformDataIn_ << " data " << params.contrastExp;
+ 
+ 	return;
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index b752bb5..f28665f 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -111,6 +111,7 @@ private:
+ 
+ 	/* Contrast */
+ 	GLint contrastExpUniformDataIn_;
++	GLint vibranceUniformDataIn_;
+ 
+ 	Size nativeOutputSize_;
+ 	Rectangle window_;

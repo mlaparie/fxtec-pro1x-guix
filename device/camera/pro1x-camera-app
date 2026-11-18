@@ -188,9 +188,9 @@ BULB_SECONDS = 60
 # The bulb's frame so far over the viewfinder, every this many frames.
 PREVIEW_EVERY = 15
 VIDEO_RATES = [15, 24, 30, 60]
-# Photos' contrast (a factor on the viewfinder's curve) and clarity (local
-# contrast), applied by pro1x-develop (raw-stream photos): the photos
-# lacked some of both (author, 2026-11-17).
+# Contrast (a factor on the curve, shown in the viewfinder too) and clarity
+# (local contrast, photos only: too costly per frame), applied to photos by
+# pro1x-develop: they lacked some of both (author, 2026-11-17).
 CONTRASTS = [("NORMAL", 1.0), ("MORE", 1.25), ("MOST", 1.5)]
 CLARITIES = [("OFF", 0.0), ("LOW", 0.3), ("HIGH", 0.6)]
 # The toggles kept from one run of the app to the next (author); EV, white
@@ -1121,11 +1121,20 @@ class Camera(Gtk.Application):
         except TypeError:
             pass
 
+    def look_controls(self):
+        """Contrast and vibrance shown in the viewfinder (author): libcamera's
+        contrast exponent is tan(contrast pi/4), so the factor's arctangent;
+        saturation above 1 is vibrance (libcamera patch 0037).  Photos read
+        the contrast back from the frame and add their own vibrance."""
+        self.src.set_property("contrast", math.atan(self.contrast) * 4 / math.pi)
+        self.src.set_property("saturation", 1.0 + self.vibrance)
+
     def apply_controls(self, carry=None):
         # The same focus for the photo: libcamera keeps a found one over the
         # mode switch (moWerk's patch 0017).
         self.focus_controls()
         self.wb_controls()
+        self.look_controls()
         if carry:
             # The photo: exposure and gain as in the viewfinder.  At the mode
             # switch the automatic exposure started from its minimum, and
@@ -1290,6 +1299,8 @@ class Camera(Gtk.Application):
             self.saved_toggles = self.toggles()
             self.settings["toggles"] = self.saved_toggles
             self.save_settings()
+            if self.pipeline and not self.busy:
+                self.look_controls()
         marks = self.marks_wanted()
         labels = [m[0] for m in marks]
         if labels != self.marked:
@@ -2485,7 +2496,8 @@ class Camera(Gtk.Application):
 
     def develop_env(self):
         """Contrast and clarity for pro1x-develop."""
-        return dict(os.environ, PRO1X_CONTRAST=str(self.contrast),
+        # Contrast comes with the frame (look_controls()), not on top of it.
+        return dict(os.environ, PRO1X_CONTRAST="1",
                     PRO1X_CLARITY=str(self.clarity),
                     PRO1X_VIBRANCE=str(self.vibrance))
 

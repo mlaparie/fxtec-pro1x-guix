@@ -413,7 +413,8 @@ to build an FDE userdata image on the host before flashing.")
                 "0033-ipa-simple-EV-compensation-as-a-digital-gain.patch"
                 "0034-ipa-simple-awb-White-balance-kept-near-real-light-so.patch"
                 "0035-ipa-simple-agc-EV-by-the-exposure-first-digitally-whe.patch"
-                "0036-ipa-simple-awb-Looser-limits-for-white-balance.patch"))))))
+                "0036-ipa-simple-awb-Looser-limits-for-white-balance.patch"
+                "0037-ipa-simple-software_isp-Saturation-above-1-as-vibran.patch"))))))
     (synopsis "libcamera with S5K4H7 (front) and IMX582 (rear) sensor support")
     (description
      "libcamera built with driver and tuning-file support for the Pro1X cameras:

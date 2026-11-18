@@ -1067,6 +1067,8 @@ lines() {
         "notif       Notifications        $(cat "$d/notif")" \
         "lock        Lock screen" \
         "camera      Camera" \
+        "dialer      Dialer" \
+        "chats       Chats" \
         "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
         "stream      Stream               $(stream_state)" \
@@ -1248,7 +1250,8 @@ feedback_step() {               # + towards full, - towards silent
 }
 
 # Keys, the same on every line: Enter does the line's main thing (toggle;
-# mute for Volume; cycle Mobile data and Feedback; open Lock, Camera, SIM,
+# mute for Volume; cycle Mobile data and Feedback; open Lock, Camera,
+# Dialer, Chats, SIM,
 # Notifications).  Right is "more": the Wi-Fi or Bluetooth tool, the next
 # Mobile data option, a step up, on.  Left goes back: off, a step down,
 # the previous Mobile data option.
@@ -1269,7 +1272,11 @@ act() {                         # Enter
         lock)                     # lock, and hide this menu
             qs_hide
             swaymsg exec pro1x-lock >/dev/null ;;
-        camera) qs_hide; swaymsg exec pro1x-camera-app >/dev/null ;;
+        # pro1x-camera-open wakes the camera waiting in standby.
+        camera) qs_hide; swaymsg exec pro1x-camera-open >/dev/null ;;
+        # Calls and Chatty, next to Camera (author).
+        dialer) qs_hide; swaymsg exec "pro1x-open gnome-calls" >/dev/null ;;
+        chats) qs_hide; swaymsg exec "pro1x-open chatty" >/dev/null ;;
         gpu) open_app nvtop ;;    # load, clock, GPU time per app
         wwan) mobile_cycle + ;;
         orient)
@@ -1313,7 +1320,7 @@ step() {                        # Right (+) and Left (-)
         wwan-) mobile_cycle - ;;
         orient+) set_orientation landscape ;;
         orient-) set_orientation portrait ;;
-        lock+|camera+|gpu+) act "$1" ;;
+        lock+|camera+|dialer+|chats+|gpu+) act "$1" ;;
         # With wob's bar, as from the keys (author, 2026-11-02).
         bright+) brightnessctl -q -n1 set 2%+; pro1x-osd bright show
                  cache_put bright "$(brightnessctl -m | cut -d, -f4)" ;;
