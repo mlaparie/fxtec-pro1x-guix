@@ -12,9 +12,8 @@
 # first and selected.  Power off, reboot, suspend and hibernate run as root
 # through sudo rules for wheel users (no password).  The hibernation lines
 # show only when it is possible (pro1x-sleep: the swap file, and this boot
-# started with its resume arguments); "then hibernate" waits config.scm's
-# hibernate-delay, as a line apart from Suspend so that auto-hibernate? can
-# stay off (author, 2026-11-17).  Hibernation is untested.
+# started with its resume arguments).  A low battery hibernates by itself
+# (pro1x-sleep, hibernate-battery in config.scm), so no line waits for it.
 #
 # State: written 2026-10-31, not yet run on the phone.
 
@@ -35,29 +34,16 @@ case "${1:-}" in
     *) exec pro1x-menu toggle powermenu ;;
 esac
 
-HIBERNATE_DELAY=
-[ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 # As pro1x-sleep's hibernate_ready.
 hibernate_ready() {
     [ -r /var/lib/pro1x/resume ] && [ -r /boot/boot/extlinux/extlinux.conf ] &&
         swapon --show=NAME --noheadings 2>/dev/null | grep -qx /swap/swapfile &&
         grep -qF -- "$(cat /var/lib/pro1x/resume)" /boot/boot/extlinux/extlinux.conf
 }
-# The delay as said in the lines: 2 h, 90 min.
-delay=
-if [ -n "$HIBERNATE_DELAY" ]; then
-    if [ $((HIBERNATE_DELAY % 60)) = 0 ]; then delay="$((HIBERNATE_DELAY / 60)) h"
-    else delay="$HIBERNATE_DELAY min"; fi
-fi
-
 # The menu's lines.  (The CPU mode is a quick actions line: author.)
 if [ "${1:-}" = --lines ]; then
     printf '%s\n' "Cancel" "Lock screen" "Lock and suspend" "Blank screen" "Suspend"
-    if hibernate_ready; then
-        [ -n "$delay" ] && printf '%s\n' "Suspend, then hibernate ($delay)" \
-                                         "Lock, suspend, then hibernate ($delay)"
-        echo "Hibernate"
-    fi
+    hibernate_ready && echo "Hibernate"
     printf '%s\n' "Log out" "Reboot" "Power off"
     exit
 fi
@@ -81,12 +67,6 @@ case "$choice" in
     # Detached: after the resume it may restart the ADSP (about 20 s),
     # which closing this window must not cut short.
     "Suspend") setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
-    "Suspend, then hibernate"*)
-        setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend then-hibernate ;;
-    "Lock, suspend, then hibernate"*)
-        swaymsg exec pro1x-lock >/dev/null
-        sleep 1.5
-        setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend then-hibernate ;;
     "Hibernate") sudo -n /run/current-system/profile/bin/pro1x-sleep hibernate ;;
     # Ends Sway and its apps; greetd shows tuigreet again.
     "Log out") swaymsg exit >/dev/null ;;

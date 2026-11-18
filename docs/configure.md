@@ -68,8 +68,7 @@ The starting `config.scm` lists these, commented with their defaults.
 | hardware `charging-awake?` | `#t` | stay awake while charging, so the limit is seen in time (Linux 7.3); `#f` lets it sleep |
 | hardware `auto-sleep` | `#f` | minutes locked before suspending (Sway); `#f` never.  Quick actions (Auto-sleep line) override it until the next reboot |
 | hardware `swap-size` | `"8G"` | a swap file of this size, `/swap/swapfile` (a btrfs subvolume of its own, outside the home snapshots), made at the next boot: room for idle memory, and for hibernation; `#f` none (a file already made stays until removed by hand) |
-| hardware `hibernate-delay` | `120` | minutes between suspend and hibernate: the power menu's "Suspend, then hibernate" and "Lock, suspend, then hibernate" lines wait this long, then hibernate; `#f` no such lines |
-| hardware `auto-hibernate?` | `#f` | every suspend (auto-sleep, Lock and suspend...) hibernates once it has lasted `hibernate-delay` |
+| hardware `hibernate-battery` | `10` | hibernate at this battery percentage or less, on battery, while the phone is asleep, locked or blanked with no call, stream, sound or heavy load; after a resume it waits for the battery to climb above it or charge; `#f`: never |
 | hardware `sleep-led` | `'("#00FFFF" 6)` | the LED while suspended, steady: `(COLOUR LEVEL)`, level 0-255; `#f` none |
 | hardware `hibernate-led` | `'("#00FFFF" 16)` | the LED while hibernated, breathing up to LEVEL (the PMIC's own pattern, 4.8 s); `#f` none.  Whether it stays on once the phone has powered off is not yet known |
 | hardware `torch-timeout` | `60` | seconds before a torch left on is switched off; `#f` never |

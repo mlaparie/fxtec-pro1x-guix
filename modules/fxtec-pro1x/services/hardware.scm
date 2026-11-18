@@ -154,12 +154,11 @@
   ;; it: room for memory that apps leave idle, and for hibernation.  #f: no
   ;; swap (a file already made stays until removed by hand).
   (swap-size          pro1x-hardware-swap-size          (default "8G"))
-  ;; Minutes between suspend and hibernate, for the power menu's "Suspend,
-  ;; then hibernate" lines and auto-hibernate?; #f: no such lines.
-  (hibernate-delay    pro1x-hardware-hibernate-delay    (default 120))
-  ;; Every suspend (auto-sleep, Lock and suspend...) hibernates once it
-  ;; has lasted hibernate-delay minutes.
-  (auto-hibernate?    pro1x-hardware-auto-hibernate?    (default #f))
+  ;; Hibernate when the battery is at or below this percentage, on battery,
+  ;; and the phone asleep, locked or blanked with nothing heavy running
+  ;; (pro1x-sleep); #f: never.  After a resume it waits for the battery to
+  ;; climb above it or charge, so the phone can be used at that level.
+  (hibernate-battery  pro1x-hardware-hibernate-battery  (default 10))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -897,6 +896,22 @@ esac
                            (>= (- now (cdr entry)) #$timeout))
                          since)))))))
 
+(define (pro1x-battery-hibernate-shepherd-service config)
+  (if (pro1x-hardware-hibernate-battery config)
+      (list
+       (shepherd-service
+        (provision '(pro1x-battery-hibernate))
+        (requirement '(file-systems))
+        (documentation "Hibernate on a low battery while the phone is
+locked or blanked (pro1x-sleep watch).")
+        (start #~(make-forkexec-constructor
+                  (list #$(file-append pro1x-sway-config "/bin/pro1x-sleep")
+                        "watch")
+                  #:log-file "/var/log/pro1x-battery-hibernate.log"))
+        (stop #~(make-kill-destructor))
+        (respawn? #t)))
+      '()))
+
 (define (pro1x-torch-guard-shepherd-service config)
   (let ((timeout (pro1x-hardware-torch-timeout config)))
     (if timeout
@@ -1202,11 +1217,9 @@ under the file names stevia looks for.")
                      (string-join (map symbol->string
                                        (pro1x-hardware-wake-on config)))
                      "'\n"
-                     "HIBERNATE_DELAY="
-                     (let ((d (pro1x-hardware-hibernate-delay config)))
-                       (if d (number->string d) ""))
-                     "\nAUTO_HIBERNATE="
-                     (if (pro1x-hardware-auto-hibernate? config) "yes" "no")
+                     "HIBERNATE_BATTERY="
+                     (let ((b (pro1x-hardware-hibernate-battery config)))
+                       (if b (number->string b) ""))
                      "\n"
                      (let ((led (pro1x-hardware-sleep-led config)))
                        (string-append
@@ -1324,6 +1337,8 @@ under the file names stevia looks for.")
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service
+                                   config)
+                                  (pro1x-battery-hibernate-shepherd-service
                                    config)
                                   (pro1x-charge-led-shepherd-service
                                    config))))))

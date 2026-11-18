@@ -1,6 +1,7 @@
 #!/bin/sh
-# pro1x-sleep suspend [then-hibernate] | hibernate — as root (sudo, from
-# pro1x-power-menu, pro1x-idle).
+# pro1x-sleep suspend | hibernate | watch — as root (sudo, from
+# pro1x-power-menu, pro1x-idle; watch from the pro1x-battery-hibernate
+# service).
 #
 # Suspend is s2idle (the only mem_sleep mode on the Pro¹x), in a loop:
 # after each wake it looks at what woke the phone (the wakeup sources'
@@ -32,10 +33,13 @@
 # boot's kernel arguments carry the swap file's resume arguments, which
 # pro1x-boot-menu adds (so one reboot after the swap file is first made):
 # the image would otherwise be written where the next boot does not look.
-# suspend then-hibernate, and every suspend with AUTO_HIBERNATE=yes:
-# HIBERNATE_DELAY minutes after it, the RTC wakes the phone and it
-# hibernates (/etc/pro1x/sleep.conf: hibernate-delay and auto-hibernate?
-# in config.scm).  A Clocks alarm before that wakes it as usual.
+# A low battery hibernates it (HIBERNATE_BATTERY, hibernate-battery in
+# config.scm, author 2026-11-18): at that percentage or less, on battery,
+# with no call, stream, sound or heavy load.  Asleep, the RTC wakes the
+# phone every 30 minutes to look; awake, watch looks every 2 minutes while
+# the phone is locked or blanked.  After a resume it waits until the battery
+# climbs above the threshold or charges, so the phone can still be used at
+# that level.
 #
 # State: the loop written 2026-11-01 for the patched kernel, not yet run.
 # Hibernation written 2026-11-17; the freezer test (pm_test) passes since
@@ -91,15 +95,17 @@ led_hibernating() {
 # so the alarm is set relative ("+seconds").  A wake by the RTC keeps the
 # phone up (suspend_loop), and Clocks rings.
 rtcwake=/sys/class/rtc/rtc0/wakealarm
-# hibernate_at: when to hibernate (epoch seconds), empty for never.
-hibernate_at=
+# check_at: the next look at the battery while asleep (epoch seconds),
+# empty for none.
+check_at=
+CHECK_EVERY=1800
 alarm_wake() {
     [ -w "$rtcwake" ] || return 0
     echo 0 > "$rtcwake"
     times=$(su -s /run/current-system/profile/bin/sh "${SUDO_USER:-user}" \
                 -c "dconf read /org/gnome/clocks/alarms" 2>/dev/null |
                 grep -o "'ring_time': <'[^']*'>" | sed "s/.*<'\(.*\)'>/\1/")
-    now=$(date +%s) next=$hibernate_at
+    now=$(date +%s) next=$check_at
     for t in $times; do
         at=$(date -d "$t" +%s 2>/dev/null) || continue
         [ "$at" -gt $((now + 30)) ] || continue
@@ -107,7 +113,7 @@ alarm_wake() {
     done
     [ -n "$next" ] || return 0
     echo "+$((next - now - 5))" > "$rtcwake" &&
-        logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) ($([ "$next" = "$hibernate_at" ] && echo hibernate || echo Clocks alarm))"
+        logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) ($([ "$next" = "$check_at" ] && echo battery || echo Clocks alarm))"
 }
 
 # Hibernation possible: the swap file on, and the boot menu's default
@@ -153,6 +159,7 @@ hibernate_now() {
     if echo disk > /sys/power/state; then
         after=$(cat "$rtc_clock" 2>/dev/null || echo 0)
         logger -t pro1x-sleep "back from hibernation (RTC $before, then $after)"
+        mkdir -p "${disarmed%/*}" && : > "$disarmed"
         [ "$after" -lt "$before" ] && restart_dsps
     else
         logger -t pro1x-sleep "hibernation failed"
@@ -205,7 +212,7 @@ counts() {
 # The sources whose count grew between two snapshots (files).
 woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
 
-WAKE_ON='calls sms' HIBERNATE_DELAY= AUTO_HIBERNATE=no
+WAKE_ON='calls sms' HIBERNATE_BATTERY=
 SLEEP_LED='0 255 255' SLEEP_LEVEL=6 HIBERNATE_LED='0 255 255' HIBERNATE_LEVEL=16
 [ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 allowed() { case " $WAKE_ON " in *" $1 "*) return 0 ;; esac; return 1; }
@@ -259,6 +266,40 @@ adsp_recover() {
     herd start iio-sensor-proxy >/dev/null 2>&1
     herd start pro1x-pocket >/dev/null 2>&1
     herd restart pro1x-shake-torch >/dev/null 2>&1
+}
+
+battery=/sys/class/power_supply/battery
+# Set after a hibernation: no other until the battery has climbed above
+# the threshold or charged.  In /run, which a resume brings back.
+disarmed=/run/pro1x/hibernate-disarmed
+on_battery() { [ "$(cat "$battery/status" 2>/dev/null)" = Discharging ]; }
+# Nothing the user would want cut: a call, a stream, sound playing, or a
+# load of 2 or more.
+quiet() {
+    mmcli -m any --voice-list-calls 2>/dev/null | grep -qE 'ringing|active' &&
+        return 1
+    p=$(cat /run/user/*/pro1x-stream.pid 2>/dev/null | head -n 1)
+    [ -n "$p" ] && kill -0 "$p" 2>/dev/null && return 1
+    grep -qs RUNNING /proc/asound/card*/pcm*p/sub*/status && return 1
+    awk '{ exit !($1 < 2) }' /proc/loadavg
+}
+low_battery_hibernate() {
+    [ -n "$HIBERNATE_BATTERY" ] || return 1
+    level=$(cat "$battery/capacity" 2>/dev/null) || return 1
+    if [ "$level" -gt "$HIBERNATE_BATTERY" ] || ! on_battery; then
+        rm -f "$disarmed"
+        return 1
+    fi
+    [ ! -e "$disarmed" ] && quiet && hibernate_ready
+}
+# Locked (gtklock) or the panel off, as Sway sees it.
+idle_screen() {
+    pgrep -x gtklock >/dev/null && return 0
+    for sock in /run/user/*/sway-ipc.*.sock; do
+        SWAYSOCK=$sock swaymsg -t get_outputs -r 2>/dev/null |
+            grep -q '"power": false' && return 0
+    done
+    return 1
 }
 
 suspend_loop() {
@@ -317,9 +358,17 @@ suspend_loop() {
                 adsp_recover
                 sleep 1 ;;               # its answer
             *rtc*)
-                if [ -n "$hibernate_at" ] &&
-                   [ "$(date +%s)" -ge $((hibernate_at - 60)) ]; then
-                    woke=hibernate
+                # The battery check, not a Clocks alarm: hibernate, or
+                # sleep again until the next.
+                if [ -n "$check_at" ] &&
+                   [ "$(date +%s)" -ge $((check_at - 60)) ]; then
+                    if low_battery_hibernate; then
+                        woke=hibernate
+                        break
+                    fi
+                    check_at=$(( $(date +%s) + CHECK_EVERY ))
+                    alarm_wake
+                    continue
                 fi
                 break ;;
             *) break ;;
@@ -330,14 +379,14 @@ suspend_loop() {
 
 case "${1:-}" in
     suspend)
-        if [ -n "$HIBERNATE_DELAY" ] &&
-           { [ "${2:-}" = then-hibernate ] || [ "$AUTO_HIBERNATE" = yes ]; }; then
-            if hibernate_ready; then
-                hibernate_at=$(( $(date +%s) + HIBERNATE_DELAY * 60 ))
-            else
-                logger -t pro1x-sleep "no hibernation: swap or resume arguments missing (reboot once after the swap file is made)"
-            fi
+        if low_battery_hibernate; then
+            logger -t pro1x-sleep "battery at $level%: hibernating instead"
+            panel off
+            hibernate_now
+            panel on
+            exit
         fi
+        [ -n "$HIBERNATE_BATTERY" ] && check_at=$(( $(date +%s) + CHECK_EVERY ))
         while :; do
             herd stop pro1x-shake-torch >/dev/null 2>&1
             panel off
@@ -348,6 +397,7 @@ case "${1:-}" in
             alarm_wake
             suspend_loop
             if [ "$woke" = hibernate ]; then
+                logger -t pro1x-sleep "battery at $level%: hibernating"
                 hibernate_now
                 woke=
             fi
@@ -380,5 +430,14 @@ case "${1:-}" in
         panel off
         hibernate_now
         panel on ;;
-    *) echo "usage: pro1x-sleep suspend [then-hibernate] | hibernate" >&2; exit 1 ;;
+    watch)
+        while sleep 120; do
+            if low_battery_hibernate && idle_screen; then
+                logger -t pro1x-sleep "battery at $level%, phone idle: hibernating"
+                panel off
+                hibernate_now
+                panel on
+            fi
+        done ;;
+    *) echo "usage: pro1x-sleep suspend | hibernate | watch" >&2; exit 1 ;;
 esac
