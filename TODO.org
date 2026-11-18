@@ -87,13 +87,18 @@ Starts with nmcli on channels 149 and 36 (2026-11-18), with the
 the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
 a user hint, and the client link drops when the hotspot starts.  The
 menu stopped checking beforehand (2ce4e2d); not deployed.
+*** TODO [#C] Hotspot while on a Wi-Fi network
+Whether the WCN3990 can run an access point and a client at once (iw list, "valid interface
+combinations"), so the hotspot need not drop the Wi-Fi in use.  Not yet looked at.
 *** TODO [#A] Tesla leaves the hotspot without internet
 Trace 2026-11-18 17:54: DHCP fine (10.42.0.196), then it asks DNS for
 connman.vn.tesla.services, tesla.com, microsoft.com, google.com and
 apple.com, gets REFUSED (no upstream: mobile data was off), releases
 the lease and leaves within a second.  No TCP was tried.  Next: test
 with mobile data on; for offline use, answer those names locally and
-serve a connectivity check.
+serve a connectivity check: done outside the port, in the author's
+~/.local/bin/scripts/tesla-stream on the phone (car Bluetooth starts the
+hotspot and the stream).
 ** Sway session
 *** WAIT [#B] Auto-sleep quick action (1-60 min locked) and config.scm =auto-sleep=
 Built; not deployed.
@@ -190,7 +195,10 @@ Debug kernel (ramoops, hibdbg lines, qcom-wdt keep_in_sleep), 2026-11-18 evening
 works (608709 pages copied, swsusp_save 0, devices thawed; /dev/snapshot read-out of 1.16 GB in
 8 s, confirmed).  test_resume stalls right after "PM: hibernation: Writing hibernation image."
 and "Hibernating on CPU 0", before any saving progress: the first swap allocation or write
-(btrfs swap file on dm-crypt over UFS).  Next: look there (swsusp_write, get_swap_writer).  pm_test freezer now passes
+(btrfs swap file on dm-crypt over UFS).  The cause (source, 2026-11-18): the container was on
+/dev/loop0, whose workqueue is WQ_FREEZABLE, and kernel threads stay frozen while the image is
+written, so the header's write never completes.  0cc4983 maps it with dm-linear
+(/dev/mapper/pro1x-part) instead; to boot and test.  pm_test freezer now passes
 (confirmed).  Later: a kernel fix (the driver to handle PM_HIBERNATION_PREPARE) instead of the
 rmmod (7246bfa, not yet built).
 Then it hangs (black, no LED, long press needed; confirmed 4 times): pm_test devices, platform,
