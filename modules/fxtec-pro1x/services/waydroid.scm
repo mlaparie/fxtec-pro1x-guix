@@ -49,12 +49,15 @@
   ;; the phone (#f: nowhere).
   (user waydroid-user (default "user"))
   (storage-view waydroid-storage-view (default "/mnt/waydroid"))
-  ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
-  ;; SOURCE relative to the user's home or absolute.
   ;; Mesa's tiled rendering in Android (#t, its default), or untiled
   ;; (#f): worth a try when an Android app with 3D elements is very slow;
-  ;; some 3D elements may then not be drawn.
+  ;; some 3D elements and icons may then not be drawn.
   (gpu-tiling? waydroid-gpu-tiling? (default #t))
+  ;; Apps (package names) rendered untiled while the rest stays tiled:
+  ;; the way to speed up one slow 3D app without the side effects.
+  (untiled-apps waydroid-untiled-apps (default '()))
+  ;; The phone's folders shown in Android's storage: (SOURCE . TARGET),
+  ;; SOURCE relative to the user's home or absolute.
   (shared-folders waydroid-shared-folders
                   (default '(("Documents" . "Documents")
                              ("Downloads" . "Download")
@@ -110,11 +113,13 @@
    (provision '(waydroid-props))
    (requirement '(file-systems))
    (one-shot? #t)
-   (documentation "Mesa's rendering mode in Waydroid's Android (gpu-tiling?).")
+   (documentation "Mesa's rendering mode in Waydroid's Android (gpu-tiling?,
+untiled-apps).")
    (start #~(lambda _
-              (zero? (system* #$pro1x-waydroid-props-script
-                              #$(if (waydroid-gpu-tiling? config)
-                                    "tiled" "untiled")))))))
+              (zero? (apply system* #$pro1x-waydroid-props-script
+                            #$(if (waydroid-gpu-tiling? config)
+                                  "tiled" "untiled")
+                            '#$(waydroid-untiled-apps config)))))))
 
 (define (waydroid-share-arguments config)
   (append (list (waydroid-user config)

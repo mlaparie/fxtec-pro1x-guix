@@ -246,6 +246,9 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                when an Android app with 3D elements is very slow (some 3D elements may
   ;;                then not be drawn).
   ;;                (gpu-tiling? #t)
+  ;;                Apps (package names) rendered untiled while the rest stays tiled: the
+  ;;                way to speed up one slow 3D app without untiling all of Android.
+  ;;                (untiled-apps '())
   ;;                (user \"user\")
   ;;                (storage-view \"/mnt/waydroid\")
   ;;                (shared-folders '((\"Documents\" . \"Documents\") (\"Downloads\" . \"Download\")
