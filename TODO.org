@@ -45,13 +45,11 @@ on BlueZ, which keeps the adapter (BLE GATT only, phone-key apps reported workin
 document).  Needs the same-build Bluetooth.apk and libbluetooth_jni.so from a LineageOS 20
 arm64 ROM in the overlay (the JNI patched for BOOTTIME), the HAL built with the Android NDK,
 the daemon with cargo, and its systemd units as Shepherd services.  Not started.
-*** TODO [#A] Location: the modem's GPS
-ModemManager has only 3gpp-lac-ci and cdma-bs on (cell towers), no GeoClue service exists, so
-any position is a cell or Wi-Fi guess.  Enabling gps-nmea/gps-raw (2026-11-18): "couldn't
-setup required NMEA traces: Operation timed out", no sentences; the modem lists its LOC
-service (16).  Next: the QMI LOC exchange (qmicli --loc-*), what the NixOS port and moWerk's
-port do for GNSS; then GeoClue's modem source, and the host-stack's GeoClue to Waydroid
-forwarding for Android.
+*** TODO [#A] Location in Waydroid
+The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
+indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
+GNSS HAL and gets only network location, hence the poor accuracy.  Next: waydroid-host-stack's
+forwarder (host position into Android test providers), with the Bluetooth work.
 *** WAIT [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
 Packaged after phodina's Guix series (bug #51737); image downloaded.  Not yet started:
 the container under Guix's LXC and cgroup v2, the session in Sway and Phosh, Google
