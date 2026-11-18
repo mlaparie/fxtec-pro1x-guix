@@ -791,7 +791,12 @@ class Portal:
     against 195% for wf-recorder's path (2026-11-18).  The session is opened
     once, at start, and kept: its frames go to each viewer's pipeline.
     Needs xdg-desktop-portal-wlr's config to pick the output without
-    asking (chooser_type=none, output_name)."""
+    asking (chooser_type=none, output_name).
+
+    A portal session for each viewer, closed once its pipeline has stopped:
+    with one session kept for the server's life, a second viewer attaching
+    to the stream the first had left powered the phone off (2026-11-18).
+    The test programs, which opened and closed one each run, never did."""
 
     PORTAL = ("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
               "org.freedesktop.portal.ScreenCast")
@@ -803,16 +808,26 @@ class Portal:
         self.flip = self.FLIP.get(turn, "none")
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
         self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
+        self.count = 0
+        self.session = None
+        # Once at start, to fall back to wf-recorder if the portal fails.
+        self.open()
+        self.close()
+
+    def open(self):
+        """A new portal session; its stream's node serial in self.serial."""
+        self.count += 1
+        t = f"p{self.count}"
         r = self.request("CreateSession", GLib.Variant("(a{sv})", ({
-            "handle_token": GLib.Variant("s", "p1"),
-            "session_handle_token": GLib.Variant("s", "p1")},)), "p1")
+            "handle_token": GLib.Variant("s", t + "a"),
+            "session_handle_token": GLib.Variant("s", t)},)), t + "a")
         self.session = r["session_handle"]
         self.request("SelectSources", GLib.Variant("(oa{sv})", (self.session, {
-            "handle_token": GLib.Variant("s", "p2"),
+            "handle_token": GLib.Variant("s", t + "b"),
             "types": GLib.Variant("u", 1),        # a monitor
-            "cursor_mode": GLib.Variant("u", 2)})), "p2")   # drawn in
+            "cursor_mode": GLib.Variant("u", 2)})), t + "b")   # drawn in
         r = self.request("Start", GLib.Variant("(osa{sv})", (self.session, "", {
-            "handle_token": GLib.Variant("s", "p3")})), "p3")
+            "handle_token": GLib.Variant("s", t + "c")})), t + "c")
         node = r["streams"][0][0]
         # pipewiresrc finds a node by its serial, which the portal does not
         # give; the stream's node appears in pw-dump a moment later.
@@ -827,6 +842,17 @@ class Portal:
             time.sleep(0.25)
         if not self.serial:
             raise RuntimeError(f"no serial for node {node}")
+
+    def close(self):
+        """The portal session ends, and with it the back end's capture."""
+        if self.session:
+            try:
+                self.bus.call_sync(self.PORTAL[0], self.session,
+                                   "org.freedesktop.portal.Session", "Close",
+                                   None, None, 0, -1, None)
+            except GLib.Error:
+                pass
+            self.session = None
 
     def request(self, method, args, token):
         """Call METHOD and wait for its Request's Response; its results."""
@@ -1193,6 +1219,12 @@ class Session:
         self.offer_ready = threading.Event()
         self.offer = None
         self.portal = portal if codec == "h264" and size else None
+        if self.portal:
+            try:
+                self.portal.open()
+            except (GLib.Error, RuntimeError, KeyError, IndexError) as e:
+                log_line(f"no ScreenCast portal ({e}): wf-recorder")
+                self.portal = None
         self.proc = (None if self.portal
                      else subprocess.Popen(command, stdout=subprocess.PIPE))
         # RTP packets of at most 1200 bytes, as WebRTC usually sends: the
@@ -1304,6 +1336,8 @@ class Session:
         if self.keyframes:
             GLib.source_remove(self.keyframes)
         self.pipeline.set_state(Gst.State.NULL)
+        if self.portal:
+            self.portal.close()
         if not self.proc:
             return
         self.proc.terminate()
