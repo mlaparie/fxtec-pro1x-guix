@@ -77,21 +77,9 @@ print_qr() {
     esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
     s=$(ssid) p=$(psk)
     h=; [ "$(hidden)" = yes ] && h="H:true;"
-    # As an image: in block characters this font makes the code 15% too
-    # tall.  Its size from the cell's in pixels: the terminal window's
-    # pixels over fzf's size in cells (a fixed guess overflowed the pane).
-    set -- $(swaymsg -t get_tree -r 2>/dev/null | jq -r '
-        .. | objects | select(.focused? == true) | "\(.rect.width) \(.rect.height)"' | head -1) \
-        $(swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | select(.focused) | .scale')
-    cw=20 ch=40
-    if [ -n "${2:-}" ] && [ -n "${FZF_COLUMNS:-}" ] && [ -n "${FZF_LINES:-}" ]; then
-        cw=$(awk -v w="$1" -v s="${3:-1}" -v c="$FZF_COLUMNS" 'BEGIN { print int(w * s / c) }')
-        ch=$(awk -v h="$2" -v s="${3:-1}" -v l="$FZF_LINES" 'BEGIN { print int(h * s / l) }')
-    fi
-    hh=$(( FZF_PREVIEW_LINES * ch - ch )) ww=$(( FZF_PREVIEW_COLUMNS * cw - 2 * cw ))
-    [ "$hh" -lt "$ww" ] && size=$hh || size=$ww
-    qrencode -t PNG -s 8 -m 2 -l L -o - "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;" |
-        convert png:- -filter point -resize "${size}x${size}" sixel:-
+    # In half-block characters, as the stream menu's: an image sized from
+    # the phone's focused window overflowed the pane elsewhere (SSH, tmux).
+    qrencode -t UTF8 -m 1 -l L "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;"
 }
 
 # fzf reloads the menu after a background start or stop, and asks for the QR

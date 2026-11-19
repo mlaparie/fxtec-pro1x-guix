@@ -557,22 +557,13 @@ links() {                       # links [SUFFIX]
 
 # A QR code for fzf's preview, as large as the preview allows (a cell
 # being about 20x40 pixels).
-# The cell's size in pixels from the focused window's (this terminal's)
-# and fzf's whole size in cells: a fixed guess drew codes larger than the
-# pane (author, 2026-11-19).
+# The QR code in half-block characters: it scales with the terminal's own
+# cells, so it fits the pane wherever the menu shows (quick actions,
+# SSH, tmux); sized as an image from the phone's focused window it
+# overflowed elsewhere (author, 2026-11-20).  About 15% taller than wide
+# in this font.
 qr_preview() {
-    set -- "$1" $(swaymsg -t get_tree -r 2>/dev/null | jq -r '
-        .. | objects | select(.focused? == true) | "\(.rect.width) \(.rect.height)"' | head -1) \
-        $(swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | select(.focused) | .scale')
-    cw=20 ch=40
-    if [ -n "${3:-}" ] && [ -n "${FZF_COLUMNS:-}" ] && [ -n "${FZF_LINES:-}" ]; then
-        cw=$(awk -v w="$2" -v s="${4:-1}" -v c="$FZF_COLUMNS" 'BEGIN { print int(w * s / c) }')
-        ch=$(awk -v h="$3" -v s="${4:-1}" -v l="$FZF_LINES" 'BEGIN { print int(h * s / l) }')
-    fi
-    h=$(( ${FZF_PREVIEW_LINES:-20} * ch - ch )) w=$(( ${FZF_PREVIEW_COLUMNS:-40} * cw - 2 * cw ))
-    [ "$h" -lt "$w" ] && size=$h || size=$w
-    qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
-        convert png:- -filter point -resize "${size}x${size}" sixel:-
+    qrencode -t UTF8 -m 1 -l L "$1"
 }
 
 # A running stream's links, the highlighted one's QR code beside it.
