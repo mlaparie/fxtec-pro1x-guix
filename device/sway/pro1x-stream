@@ -57,11 +57,21 @@ tls_url() {
 }
 https_state() {
     if grep -qE '^[[:space:]]*STREAM_DOMAIN=[^[:space:]]' "$https_file" 2>/dev/null; then
-        cat "$tls_dir/status" 2>/dev/null || echo "set, waiting for the phone"
+        cat "$tls_dir/status" 2>/dev/null || echo "set, not checked yet"
     else echo "not set, for browsers that refuse local addresses (some cars)"; fi
 }
-# The settings in the user's editor, from a template the first time; the
-# root service pro1x-stream-cert reads them within a minute.
+# The name's certificate and the hotspot's redirect, through sudo
+# (pro1x-stream-cert): when a stream starts on the hotspot with a name set
+# (a second's check unless a renewal is due), and after the settings are
+# saved.  Prints the result.
+https_check() {
+    timeout 300 /run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-stream-cert 2>&1 | tail -1
+}
+https_wanted() {
+    [ "$(main_address)" = 10.42.0.1 ] &&
+        grep -qE '^[[:space:]]*STREAM_DOMAIN=[^[:space:]]' "$https_file" 2>/dev/null
+}
+# The settings in the user's editor, from a template the first time.
 https_setup() {
     mkdir -p "${https_file%/*}"
     [ -e "$https_file" ] || (umask 077; cat > "$https_file" <<'EOF'
@@ -77,8 +87,9 @@ https_setup() {
 # https://STREAM_DOMAIN/ on the phone's hotspot.  Other networks: no.
 #
 # This file holds API keys: it stays readable by you only.  Empty
-# STREAM_DOMAIN: off.  Saved: the phone checks within a minute; the first
-# certificate takes about two minutes.  scripts/backup-phone.sh saves it.
+# STREAM_DOMAIN: off.  Checked when saved and when a stream starts on the
+# hotspot; a first certificate takes about two minutes.
+# scripts/backup-phone.sh saves this file.
 
 STREAM_DOMAIN=
 STREAM_ADDRESS=240.3.3.4
@@ -93,10 +104,8 @@ EOF
     chmod 600 "$https_file"
     ${EDITOR:-nano} "$https_file"
     clear_screen
-    printf 'Saved.  The phone checks it within a minute; a first certificate
-'
-    printf 'takes about two minutes.  Its state shows on the HTTPS line.
-'
+    printf 'Checking (a first certificate takes about two minutes)…\n'
+    https_check
     pause
 }
 run_hook() { [ -x "$hook" ] && setsid "$hook" "$@" >/dev/null 2>&1 </dev/null & }
@@ -415,6 +424,7 @@ send_webrtc() {
     pick_source || return
     ip=$(main_address)
     [ -n "$ip" ] || { echo "No network."; pause; return; }
+    https_wanted && { printf 'HTTPS name: '; https_check; }
     stop_stream
     hw_source
     rate=$(fps)
@@ -454,6 +464,10 @@ send_interactive() {
     fi
     ip=${addr:-$(main_address)}
     [ -n "$ip" ] || { [ -n "${quiet:-}" ] || { echo "No network."; pause; }; return 1; }
+    if https_wanted; then
+        if [ -n "${quiet:-}" ]; then https_check >/dev/null
+        else printf 'HTTPS name: '; https_check; fi
+    fi
     stop_stream
     hw_source
     rate=$(fps)

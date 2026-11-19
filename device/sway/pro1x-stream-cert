@@ -1,9 +1,10 @@
 #!/bin/sh
 # pro1x-stream-cert — an HTTPS name for the stream on the phone's hotspot,
-# as root (Shepherd service pro1x-stream-cert).
+# as root, run by the stream menu through sudo when a stream starts there
+# and when the settings are saved; prints the result.
 #
-#   pro1x-stream-cert SETTINGS        check every minute, renew twice a day
-#   pro1x-stream-cert SETTINGS once   once
+#   sudo pro1x-stream-cert           the calling user's settings
+#   pro1x-stream-cert SETTINGS       as root, another file
 #
 # Some browsers refuse plain HTTP, self-signed certificates and local
 # addresses, and resolve names through their own DNS: a Tesla's (found
@@ -11,12 +12,14 @@
 # tesla-carplay does: a domain of the user's whose public A record is an
 # address in no private range (240.3.3.4 by default), a Let's Encrypt
 # certificate for it (certbot, DNS challenge through the DNS provider's
-# API), and the phone's hotspot sending that address to the stream's HTTPS
-# port (nftables).  Only on the phone's own hotspot: on another network
+# API; renewed when 30 days are left, else a second's check), and the
+# phone's hotspot sending that address to the stream's HTTPS port
+# (nftables, until the next reboot).  Only on the phone's own hotspot: on another network
 # nothing sends that address to the phone.
 #
-# SETTINGS is the user's (~/.config/pro1x/stream-https.conf, mode 600,
-# written from the stream menu's HTTPS line):
+# The settings are the user's (~/.config/pro1x/stream-https.conf, mode 600,
+# written from the stream menu's HTTPS line; a link or another owner's
+# file is refused):
 #   STREAM_DOMAIN=stream.example.com   the name; empty or absent: nothing
 #   STREAM_ADDRESS=240.3.3.4           its A record
 #   DNS_PROVIDER=porkbun               pro1x-stream-dns-PROVIDER: its API
@@ -29,6 +32,7 @@
 #   /var/lib/pro1x/stream-tls/name                its name, for the stream menu
 #   /var/lib/pro1x/stream-tls/status              the last result, for the menu
 #   /var/lib/pro1x/letsencrypt                    certbot's account and certificates
+#   /var/log/pro1x-stream-cert.log                every result
 #
 # State: works from a Tesla on the phone's hotspot with Porkbun
 # (2026-11-19).
@@ -37,14 +41,25 @@ PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 # Shepherd gives a bare environment: curl and certbot need the CA store.
 export SSL_CERT_DIR=/etc/ssl/certs
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-settings=${1:?usage: pro1x-stream-cert SETTINGS [once]}
+if [ -n "${SUDO_USER:-}" ]; then
+    home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    settings=$home/.config/pro1x/stream-https.conf
+    if [ -L "$settings" ] ||
+           { [ -e "$settings" ] && [ "$(stat -c %U "$settings")" != "$SUDO_USER" ]; }; then
+        echo "$settings: not the user's own file" >&2
+        exit 1
+    fi
+else
+    settings=${1:?usage: sudo pro1x-stream-cert, or as root: pro1x-stream-cert SETTINGS}
+fi
 dir=/var/lib/pro1x/stream-tls
 le=/var/lib/pro1x/letsencrypt
 
 say() {
     mkdir -p "$dir"
     echo "$*" > "$dir/status"
-    echo "$(date '+%F %T') $*"
+    echo "$(date '+%F %T') $*" >> /var/log/pro1x-stream-cert.log
+    echo "$*"
 }
 
 # The last KEY=value line for KEY, quotes removed; nothing if the value has
@@ -104,11 +119,14 @@ once() {
     case "$provider" in *[!a-z0-9]*) say "DNS_PROVIDER: unknown: $provider"; return ;; esac
     hook=pro1x-stream-dns-$provider
     command -v "$hook" >/dev/null || { say "DNS_PROVIDER: unknown: $provider"; return; }
-    # The provider's keys, for its script: every KEY=value of the file.
-    for name in $(sed -n 's/^[[:space:]]*\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$settings" | sort -u); do
+    # The provider's keys, for its script: only its own variables
+    # (PORKBUN_… for porkbun), never others (PATH, LD_PRELOAD…) of this
+    # user-written file in a root environment.
+    prefix=$(echo "$provider" | tr a-z A-Z)_
+    for name in $(sed -n "s/^[[:space:]]*\\($prefix[A-Z0-9_]*\\)=.*/\\1/p" "$settings" | sort -u); do
         value=$(setting "$name") && export "$name=$value"
     done
-    "$hook" a "$domain" "$address" 2>&1 ||
+    "$hook" a "$domain" "$address" >> /var/log/pro1x-stream-cert.log 2>&1 ||
         { say "$domain: the DNS record could not be set (keys, API access?)"; return; }
     if certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
             --config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs" \
@@ -125,16 +143,4 @@ once() {
     fi
 }
 
-case "${2:-}" in
-    once) once ;;
-    *) last=- n=0
-       while :; do
-           m=$(stat -c %Y "$settings" 2>/dev/null)
-           if [ "$m" != "$last" ] || [ "$n" -ge 720 ]; then
-               if [ -n "$m" ]; then once; else unset_name; fi
-               last=$m n=0
-           fi
-           n=$((n + 1))
-           sleep 60
-       done ;;
-esac
+if [ -r "$settings" ]; then once; else unset_name; fi

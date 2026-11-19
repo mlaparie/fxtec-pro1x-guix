@@ -648,6 +648,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-hotspot-admin, "
                               ;; Wi-Fi power saving: quick actions, streams.
                               "/run/current-system/profile/bin/pro1x-wifi-powersave, "
+                              ;; The stream's HTTPS name on the hotspot.
+                              "/run/current-system/profile/bin/pro1x-stream-cert, "
                               ;; Quick actions' Waydroid: its image.
                               "/run/current-system/profile/bin/pro1x-waydroid-admin, "
                               ;; And its limits.
@@ -744,22 +746,6 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
           ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))
         `("sway/pro1x-effects/swayfx.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
-
-     ;; The stream's HTTPS name on the hotspot, for browsers that refuse
-     ;; local addresses: the user's settings from the stream menu
-     ;; (~/.config/pro1x/stream-https.conf); without them it does nothing
-     ;; (pro1x-stream-cert).
-     (simple-service 'pro1x-stream-cert shepherd-root-service-type
-       (list (shepherd-service
-              (provision '(pro1x-stream-cert))
-              (requirement '(networking))
-              (documentation "Keep the stream's HTTPS name and certificate.")
-              (start #~(make-forkexec-constructor
-                        (list #$(file-append pro1x-sway-config
-                                             "/bin/pro1x-stream-cert")
-                              "/home/user/.config/pro1x/stream-https.conf")
-                        #:log-file "/var/log/pro1x-stream-cert.log"))
-              (stop #~(make-kill-destructor)))))
 
      ;; The screen-cast portal's back end: no question asked (the
      ;; interactive stream opens it unattended): the panel, or the stream's
