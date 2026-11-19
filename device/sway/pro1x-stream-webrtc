@@ -703,10 +703,12 @@ addEventListener("pointercancel", release);
 // Alt+Tab and the like come here instead of the computer's desktop, where
 // its compositor allows it) and the mouse pointer locked (relative moves).
 // Every key goes to the Pro1x, down and up, until capture ends: Esc held
-// (the browser's way out), Ctrl+Alt+Shift+Q (Moonlight's kind of combo), or
-// a touch on CAPTURED; then any key still down is released.  The locked
-// mouse cannot reach the buttons, and a car has no Esc: touches always
-// can (the pointer lock is the mouse's only).
+// (the browser's way out), Ctrl+Alt+Shift+Q (Moonlight's kind of combo), a
+// touch on CAPTURED, or a press held 3 s without moving; then any key still
+// down is released.  The locked mouse cannot reach the buttons, and a car
+// may have neither Esc nor a keyboard: touches reach them (the pointer lock
+// is the mouse's only), and the held press works where a browser makes
+// mouse events of touches (author, 2026-11-19).
 let captured = false;
 function note(text) {
   const n = document.getElementById("note");
@@ -729,7 +731,9 @@ async function capture() {
   try { await (cfg.canvas ? c : v).requestPointerLock(); }
   catch (e) { log({ev: "pointer-lock-failed", err: String(e)}); }
   if (navigator.keyboard && navigator.keyboard.lock)
-    note("Out of capture: Ctrl+Alt+Shift+Q, Esc held, or touch CAPTURED");
+    note("Out of capture: touch CAPTURED, hold a press 3 s, Esc held, or Ctrl+Alt+Shift+Q");
+  else note("No Super nor desktop shortcuts here (Chromium has them).  " +
+            "Out of capture: touch CAPTURED, hold a press 3 s, or Esc");
 }
 function release_capture() {
   try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) {}
@@ -750,8 +754,12 @@ document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement && captured) release_capture();
 });
 const BUTTONS = ["left", "middle", "right"];
+// A press held still for 3 s: out of capture.
+let holdTimer = null, holdMoved = 0;
+function holdEnd() { clearTimeout(holdTimer); holdTimer = null; }
 document.addEventListener("mousemove", e => {
   if (captured && (e.movementX || e.movementY)) send({t: "rel", dx: e.movementX, dy: e.movementY});
+  if (holdTimer && (holdMoved += Math.abs(e.movementX) + Math.abs(e.movementY)) > 30) holdEnd();
 });
 // The buttons' own: a touch on them makes mouse events too.
 const onButtons = e => e.target.closest && e.target.closest("#bar, #set, #gate");
@@ -759,8 +767,11 @@ document.addEventListener("mousedown", e => {
   if (!captured || onButtons(e)) return;
   e.preventDefault();
   send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 1});
+  holdEnd(); holdMoved = 0;
+  holdTimer = setTimeout(() => { holdTimer = null; release_capture(); }, 3000);
 });
 document.addEventListener("mouseup", e => {
+  holdEnd();
   if (!captured || onButtons(e)) return;
   e.preventDefault();
   send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 0});
