@@ -104,7 +104,9 @@ function vp8IfNothing(pc, reload) {
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
   const codec = new URLSearchParams(location.search).get("codec") || keptCodec()
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
-  const offer = await (await fetch("/offer?codec=" + codec)).text();
+  const k = new URLSearchParams(location.search).get("k");
+  const withK = path => k ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(k) : path;
+  const offer = await (await fetch(withK("/offer?codec=" + codec))).text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
   await pc.setLocalDescription(await pc.createAnswer());
   // All the local addresses go in the answer: there is no later exchange.
@@ -114,7 +116,7 @@ function vp8IfNothing(pc, reload) {
       pc.iceGatheringState === "complete" && done();
     setTimeout(done, 2000);
   });
-  await fetch("/answer", {method: "POST", body: pc.localDescription.sdp});
+  await fetch(withK("/answer"), {method: "POST", body: pc.localDescription.sdp});
   if (codec === "h264") vp8IfNothing(pc, () => location.reload());
 })();
 </script>
@@ -2829,7 +2831,15 @@ class Handler(BaseHTTPRequestHandler):
     key = ""          # --key: every request carries it as ?k=
     mbps = 6.0        # the encoder's bit rate, from the page
 
+    # --visibility hotspot: only the phone's hotspot (and the phone itself).
+    only_hotspot = False
+
     def allowed(self):
+        if self.only_hotspot:
+            ip = self.client_address[0]
+            if not (ip.startswith("10.42.0.") or ip == "127.0.0.1"):
+                self.reply(b"forbidden: this stream is for the phone's hotspot only", code=403)
+                return False
         if not self.key:
             return True
         query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -3089,6 +3099,10 @@ def main():
         if args[1] in ("tap", "fingerprint"):
             approval = Approval(args[1])
             log_line(f"viewers approved on the phone ({args[1]})")
+        args = args[2:]
+    if args[:1] == ["--visibility"]:
+        own_args.extend(args[:2])
+        Handler.only_hotspot = args[1] == "hotspot"
         args = args[2:]
     if args[:1] == ["--portal"]:
         own_args.extend(args[:2])

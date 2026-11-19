@@ -58,7 +58,7 @@ tls_url() {
 https_state() {
     if grep -qE '^[[:space:]]*STREAM_DOMAIN=[^[:space:]]' "$https_file" 2>/dev/null; then
         cat "$tls_dir/status" 2>/dev/null || echo "set, not checked yet"
-    else echo "not set, for browsers that refuse local addresses (some cars)"; fi
+    else echo "not set (for browsers that refuse local addresses: some cars)"; fi
 }
 # The name's certificate and the hotspot's redirect, through sudo
 # (pro1x-stream-cert): when a stream starts on the hotspot with a name set
@@ -77,8 +77,18 @@ https_wanted() {
 # default; offered only while Tailscale runs.  While the stream runs,
 # anyone with the link reaches its page: the key and the approval guard
 # it.  The video still goes straight over the local network when it can.
-funnel_file=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-funnel
-funnel_on() { [ "$(cat "$funnel_file" 2>/dev/null)" = on ]; }
+# Who reaches the browser streams (Settings, Visibility): hotspot, only
+# devices on the phone's hotspot; lan, every network the phone is on
+# (Wi-Fi, mobile, Tailscale), the default; wan, also the public link.
+visibility_file=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-visibility
+visibility() {
+    case "$(cat "$visibility_file" 2>/dev/null)" in
+        hotspot) echo hotspot ;;
+        wan) echo wan ;;
+        *) echo lan ;;
+    esac
+}
+funnel_on() { [ "$(visibility)" = wan ]; }
 ts_json() { tailscale status --json 2>/dev/null; }
 funnel_offered() {
     command -v tailscale >/dev/null &&
@@ -100,24 +110,41 @@ funnel_missing() {
     [ "$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // empty')" = "$(id -un)" ] ||
         echo "- Funnel for this user, once, in a terminal:  sudo tailscale set --operator=$(id -un)"
 }
-funnel_state() {
-    if funnel_on; then echo "on, $(funnel_name)"; else echo off; fi
-}
-funnel_toggle() {
-    if funnel_on; then echo off > "$funnel_file"; return; fi
-    missing=$(funnel_missing)
-    clear_screen
-    if [ -n "$missing" ]; then
-        printf 'A public link through Tailscale Funnel needs:\n\n%s\n\n' "$missing"
-        printf 'It stays off.  Choose it again once these are done.\n'
-        pause
-        return
+pick_visibility() {
+    now=$(visibility)
+    v=$(printf '%s\t%s\n' \
+            hotspot "Hotspot      only devices on the phone's hotspot" \
+            lan "LAN          every network the phone is on: Wi-Fi, mobile, Tailscale" \
+            wan "WAN          also a public link on the internet (Tailscale Funnel)" |
+            mark "$now" | pick "visibility")
+    [ -n "$v" ] || return
+    if [ "$v" = wan ]; then
+        if ! command -v tailscale >/dev/null; then
+            missing="- Tailscale, installed and logged in: docs/configure.md has
+  it in config.scm (the tailscale channel, its service); then, once,
+  sudo tailscale up"
+        elif ! funnel_offered; then
+            missing="- Tailscale running and logged in:  sudo tailscale up"
+        else
+            missing=$(funnel_missing)
+        fi
+        if [ -n "$missing" ]; then
+            clear_screen
+            printf 'WAN, a public link through Tailscale Funnel, needs:\n\n%s\n\n' "$missing"
+            printf 'Visibility stays %s.  Choose WAN again once these are done.\n' "$now"
+            pause
+            return
+        fi
     fi
-    echo on > "$funnel_file"
-    printf 'Public link on: https://%s/ while an interactive stream runs.\n' "$(funnel_name)"
-    printf 'Anyone with the link reaches its page; keep the key on, and\n'
-    printf 'maybe the approval.\n'
-    pause
+    mkdir -p "${visibility_file%/*}"
+    echo "$v" > "$visibility_file"
+    if [ "$v" = wan ]; then
+        clear_screen
+        printf 'WAN: https://%s/ while a browser stream runs.\n' "$(funnel_name)"
+        printf 'Anyone with the link reaches its page: keep the access key on,\n'
+        printf 'and an approval.\n'
+        pause
+    fi
 }
 # Funnel on for a stream, off when it ends.
 funnel_start() {                # funnel_start PID
@@ -137,26 +164,36 @@ https_setup() {
     [ -e "$https_file" ] || (umask 077; cat > "$https_file" <<'EOF'
 # The stream's HTTPS name on the phone's hotspot (pro1x-stream-cert).
 #
-# For browsers that refuse plain HTTP, self-signed certificates and local
-# addresses, and resolve names through their own DNS, as some car
-# infotainment systems do (a Tesla's).  Needs a domain of yours at a DNS
-# provider with an API (here: Porkbun), and internet on the phone.  The
-# phone sets the name's public A record to STREAM_ADDRESS, an address in
-# no private range, gets a Let's Encrypt certificate for it, and its
-# hotspot sends that address to the stream.  The other device then opens
-# https://STREAM_DOMAIN/ on the phone's hotspot.  Other networks: no.
+# What for: browsers that refuse plain HTTP, self-signed certificates and
+# local addresses, and resolve names through their own DNS, as some car
+# infotainment systems do (a Tesla's).  Most browsers do not need this:
+# leave STREAM_DOMAIN empty.
 #
-# This file holds API keys: it stays readable by you only.  Empty
-# STREAM_DOMAIN: off.  Checked when saved and when a stream starts on the
-# hotspot; a first certificate takes about two minutes.
-# scripts/backup-phone.sh saves this file.
+# What it needs: a domain name of yours, at a DNS provider whose API the
+# phone can use, and internet on the phone (its mobile data).
+#
+# What it does: sets the name's public A record to STREAM_ADDRESS, an
+# address in no private range; gets a Let's Encrypt certificate for the
+# name (a DNS challenge through the same API); and has the hotspot send
+# that address to the stream.  The other device, on the phone's hotspot,
+# then opens https://STREAM_DOMAIN/.  Other networks: not this way.
+#
+# Checked when this file is saved from the menu and when a stream starts
+# on the hotspot; a first certificate takes about two minutes.  This file
+# holds API keys: it stays readable by you only; scripts/backup-phone.sh
+# saves it.
 
+# The name, e.g. stream.example.org; empty: off.
 STREAM_DOMAIN=
+# Its A record; any address in no private range will do.
 STREAM_ADDRESS=240.3.3.4
+# The DNS provider, and its keys below.  Supported: porkbun.  Another
+# provider: a script pro1x-stream-dns-NAME (see pro1x-stream-dns-porkbun),
+# its keys as NAME_... lines.
 DNS_PROVIDER=porkbun
 
-# Porkbun: Account > API Access makes both keys; then switch API Access on
-# in the domain's Details.
+# porkbun: Account > API Access makes both keys; then switch API Access
+# on in the domain's Details.
 PORKBUN_API_KEY=
 PORKBUN_SECRET_KEY=
 EOF
@@ -193,22 +230,46 @@ approve() { cat "$approve_file" 2>/dev/null || echo off; }
 # on the panel (client) or apart from it as a second monitor
 # (multi-monitor).
 screen() { cat "$screen_file" 2>/dev/null || echo phone; }
-next_screen() {
-    now=$(screen)
-    case "$now" in
-        phone) echo client ;;
-        client) echo multi-monitor ;;
-        *) echo phone ;;
-    esac > "$screen_file"
+screen_label() {
+    case "$(screen)" in
+        client) echo "client, adapts to the client's window" ;;
+        multi-monitor) echo "multi-monitor, a display of its own" ;;
+        *) echo "host, the phone's ratio and resolution" ;;
+    esac
 }
-next_approve() {
-    # Read before the redirection empties the file.
-    now=$(approve)
-    case "$now" in
-        off) echo tap ;;
-        tap) echo fingerprint ;;
-        *) echo off ;;
-    esac > "$approve_file"
+# mark CURRENT: a dot before the line whose key is CURRENT.
+mark() { awk -F'\t' -v cur="$1" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; }
+pick_screen() {
+    v=$(printf '%s\t%s\n' \
+            phone "Host           keeps the phone's ratio and resolution" \
+            client "Client         the phone adapts to the client's window" \
+            multi-monitor "Multi-monitor  separate displays for the client and the phone" |
+            mark "$(screen)" | pick "screen mode")
+    [ -n "$v" ] && echo "$v" > "$screen_file"
+}
+fingers() { pro1x-fpd list 2>/dev/null | grep -c '^finger'; }
+pick_approve() {
+    n=$(fingers)
+    v=$(printf '%s\t%s\n' \
+            off "Off            the key alone" \
+            tap "Tap            a notification on the phone" \
+            fingerprint "Fingerprint    a finger on the sensor$([ "$n" -gt 0 ] 2>/dev/null || echo " (none enrolled yet)")" |
+            mark "$(approve)" | pick "connection approval")
+    [ -n "$v" ] || return
+    if [ "$v" = fingerprint ] && ! [ "$n" -gt 0 ] 2>/dev/null; then
+        clear_screen
+        printf 'No finger enrolled: Quick actions, Fingerprints, first.\n'
+        pause
+        return
+    fi
+    echo "$v" > "$approve_file"
+}
+pick_key() {
+    v=$(printf '%s\t%s\n' \
+            on "On             the link carries the key $(current_key)" \
+            off "Off            anyone on the network gets in" |
+            mark "$(key_on && echo on || echo off)" | pick "access key")
+    [ -n "$v" ] && echo "$v" > "$key_file"
 }
 
 # The interactive link carries a random key unless turned off (on a shared
@@ -359,11 +420,13 @@ main_address() { networks | head -1 | cut -d' ' -f1; }
 # The phone's addresses, best first: "ADDRESS INTERFACE", hotspot, Wi-Fi,
 # Tailscale, then the rest (mobile).
 networks() {
+    only=$(visibility)
     ip -4 -o addr show scope global |
         awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ {
                  sub("/.*", "", $4)
                  r = $4 == "10.42.0.1" ? 0 : $2 ~ /^wlan/ ? 1 : $2 ~ /^tailscale/ ? 2 : 3
-                 print r, $4, $2 }' | sort -n -k1,1 -s | cut -d' ' -f2-
+                 print r, $4, $2 }' | sort -n -k1,1 -s | cut -d' ' -f2- |
+        if [ "$only" = hotspot ]; then grep '^10\.42\.0\.1 '; else cat; fi
 }
 
 # A browser stream's links, HTTPS then HTTP on each network, with SUFFIX
@@ -489,7 +552,12 @@ send_mjpeg() {
 send_webrtc() {
     pick_source || return
     ip=$(main_address)
-    [ -n "$ip" ] || { echo "No network."; pause; return; }
+    [ -n "$ip" ] || { no_network; return; }
+    key=() k=
+    if key_on; then
+        k=$(current_key)
+        key=(--key "$k")
+    fi
     https_wanted && { printf 'HTTPS name: '; https_check; }
     stop_stream
     hw_source
@@ -500,7 +568,8 @@ send_webrtc() {
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
     # black.
-    setsid pro1x-stream-webrtc --raw "$hw_size" --tls "$tls_port" "${portal[@]}" "$webrtc_port" \
+    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --tls "$tls_port" \
+        --visibility "$(visibility)" "${portal[@]}" "$webrtc_port" \
         wf-recorder "${area[@]}" "${hw_capture[@]}" -- \
         wf-recorder "${area[@]}" "${scale[@]}" -D -r "$rate" \
             -m ivf -c libvpx \
@@ -509,13 +578,35 @@ send_webrtc() {
         >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
     url=$(tls_url "$ip")
-    echo "browser, $url (or http://$ip:$webrtc_port/)" > "$to_file"
+    echo "read-only, $url${k:+  key $k} (or http://$ip:$webrtc_port/)" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" webrtc
-    show_links "Streaming.  Open a link on the other device (its code on the right);
-A certificate warning: accept it once.  One viewer; Esc, it keeps running."
+    show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
+A certificate warning: accept it once.  One viewer; Esc, it keeps running." "${k:+?k=$k}"
     go_to_source
+    leave_menu
+}
+
+# No address to stream on: none at all, or no hotspot with Visibility on
+# Hotspot.
+no_network() {
+    clear_screen
+    if [ "$(visibility)" = hotspot ]; then
+        echo "Visibility is Hotspot (Settings), and the phone's hotspot is off."
+    else
+        echo "No network."
+    fi
+    pause
+}
+
+# Inside quick actions: once a stream is up and its links seen, quick
+# actions hides, back at its first list.
+leave_menu() {
+    case "${PRO1X_TOOL_SOCK:-}" in
+        *quick-actions*) sway-quick-actions --hide >/dev/null 2>&1; exit 0 ;;
+    esac
 }
 
 # The interactive stream (docs/interactive-stream.md): the whole screen by
@@ -529,7 +620,7 @@ send_interactive() {
         key=(--key "$k")
     fi
     ip=${addr:-$(main_address)}
-    [ -n "$ip" ] || { [ -n "${quiet:-}" ] || { echo "No network."; pause; }; return 1; }
+    [ -n "$ip" ] || { [ -n "${quiet:-}" ] || no_network; return 1; }
     if https_wanted; then
         if [ -n "${quiet:-}" ]; then https_check >/dev/null
         else printf 'HTTPS name: '; https_check; fi
@@ -545,7 +636,7 @@ send_interactive() {
     portal=()
     [ -z "$target" ] && [ "${PRO1X_STREAM_PORTAL:-1}" != 0 ] && portal=(--portal "$turn")
     setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --tls "$tls_port" --screen "$(screen)" \
-        --approve "$(approve)" \
+        --approve "$(approve)" --visibility "$(visibility)" \
         "${portal[@]}" --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
         wf-recorder "${scale[@]}" -D -r "$rate" -m ivf -c libvpx \
@@ -564,6 +655,7 @@ send_interactive() {
     [ -n "${quiet:-}" ] && return
     show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
 A certificate warning: accept it once.  One viewer; Esc, it runs until Stop." "${k:+?k=$k}"
+    leave_menu
 }
 
 try_catt() {
@@ -596,24 +688,43 @@ network_displays() {
 to=
 [ "${1:-}" = --to ] && to=${2:-}
 
+# Settings: one line each, a list of choices for each (Esc comes back).
+settings_menu() {
+    while :; do
+        lines=$(printf '%s\t%s\n' \
+            screen "Screen mode          $(screen_label)" \
+            fps "Capture rate         $(fps) fps, lower saves CPU" \
+            size "Output size          $(out_size), long side" \
+            key "Access key           $(key_on && echo "on, $(current_key)" || echo off) (browser streams; not Simple, VLC)" \
+            approve "Connection approval  $(approve)" \
+            visibility "Visibility           $(visibility)" \
+            https "HTTPS name           $(https_state)" \
+            renew "Renew access key     the old one and its bookmarks stop working")
+        case "$(printf '%s\n' "$lines" | pick "settings")" in
+            screen) pick_screen ;;
+            fps) pick_fps ;;
+            size) pick_size ;;
+            key) pick_key ;;
+            approve) pick_approve ;;
+            visibility) pick_visibility ;;
+            https) https_setup ;;
+            renew) new_key ;;
+            *) return ;;
+        esac
+    done
+}
+
 while :; do
     lines=$(
         if streaming; then printf 'stop\tStop: %s\n' "$(cat "$to_file")"; fi
         printf '%s\t%s\n' \
-            interactive "Interactive       a browser: screen, sound, touch and keys (recommended)" \
-            webrtc "Browser, watch    screen and sound, or a window; no input" \
-            mjpeg "Browser, simple   any browser, no sound; heavy on bandwidth" \
-            udp "VLC               ${to:+to $to; }needs VLC on the other device" \
-            catt "Chromecast        sends a video or file; the TV plays it itself" \
-            miracast "Miracast          mirrors to a Miracast or Chromecast display" \
-            fps "Capture rate      $(fps) fps, lower saves CPU" \
-            size "Output size       $(out_size), long side" \
-            key "Access key        $(key_on && echo "on, $(current_key)" || echo off), for Interactive" \
-            https "HTTPS name        $(https_state)" \
-            $(funnel_offered && printf '%s\n' funnel "Public link       $(funnel_state) (Tailscale Funnel; Interactive)") \
-            approve "Approval          $(approve), a new viewer allowed on the phone (Interactive)" \
-            screen "Screen            $(screen): $(case "$(screen)" in client) echo "at the client's shape, shown on the phone too";; multi-monitor) echo "at the client's shape, a second monitor";; *) echo "the phone's own";; esac) (Interactive)" \
-            renew "New access key    the old one and its bookmarks stop working")
+            interactive "Browser, interactive  screen, sound, touch and keys; full screen (approval recommended)" \
+            webrtc "Browser, read-only    screen and sound, no input; full screen or a window" \
+            mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
+            udp "VLC                   ${to:+to $to; }needs VLC on the client" \
+            catt "Chromecast            sends a video URL or file; the client plays it itself" \
+            miracast "Miracast              mirrors to a Miracast or Chromecast display" \
+            settings "Settings              screen mode, rate, size, key, approval, visibility, HTTPS")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
         stop) stop_stream ;;
@@ -626,14 +737,7 @@ while :; do
         mjpeg) send_mjpeg ;;
         webrtc) send_webrtc ;;
         interactive) send_interactive ;;
-        fps) pick_fps ;;
-        size) pick_size ;;
-        key) if key_on; then echo off > "$key_file"; else echo on > "$key_file"; fi ;;
-        approve) next_approve ;;
-        screen) next_screen ;;
-        renew) new_key ;;
-        https) https_setup ;;
-        funnel) funnel_toggle ;;
+        settings) settings_menu ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;
