@@ -117,12 +117,9 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (lock-after 120)
   ;;                Suspend after this many minutes locked (#f: never; Sway).
   ;;                (auto-sleep #f)
-  ;;                A swap file of this size in /swap, for idle memory and hibernation
+  ;;                A swap file of this size in /swap, for idle memory
   ;;                (#f: none; one already made stays until removed by hand).
   ;;                (swap-size \"8G\")
-  ;;                Hibernate at this battery percentage or less, asleep, locked or blanked,
-  ;;                with nothing heavy running (#f: never).
-  ;;                (hibernate-battery 10)
   ;;                Double tap on the touchscreen wakes the panel.
   ;;                (double-tap-wake? #t)
   ;;                Light or dark themes are set in Phosh, which writes into dconf; Sway reuses it.
@@ -187,10 +184,8 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (low-battery-level 15)
   ;;                LED while blank but not locked: (COLOUR LEVEL), level 0-255, or #f.
   ;;                (unlocked-led '(\"white\" 6))
-  ;;                LED while suspended, steady, and while hibernated, breathing up to
-  ;;                LEVEL: (COLOUR LEVEL), or #f.
+  ;;                LED while suspended, steady: (COLOUR LEVEL), or #f.
   ;;                (sleep-led '(\"#00FFFF\" 6))
-  ;;                (hibernate-led '(\"#00FFFF\" 16))
   ;;                Console and debugging: fbcon rotation (0-3), USB serial console on ttyGS0,
   ;;                verbose kernel log.
   ;;                (console-rotation #f)

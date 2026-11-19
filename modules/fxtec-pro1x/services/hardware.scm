@@ -151,14 +151,9 @@
   (auto-sleep         pro1x-hardware-auto-sleep         (default #f))
   ;; A swap file of this size, /swap/swapfile (a btrfs subvolume of its
   ;; own, outside the home snapshots), made at the first boot that asks for
-  ;; it: room for memory that apps leave idle, and for hibernation.  #f: no
+  ;; it: room for memory that apps leave idle.  #f: no
   ;; swap (a file already made stays until removed by hand).
   (swap-size          pro1x-hardware-swap-size          (default "8G"))
-  ;; Hibernate when the battery is at or below this percentage, on battery,
-  ;; and the phone asleep, locked or blanked with nothing heavy running
-  ;; (pro1x-sleep); #f: never.  After a resume it waits for the battery to
-  ;; climb above it or charge, so the phone can be used at that level.
-  (hibernate-battery  pro1x-hardware-hibernate-battery  (default 10))
   ;; Switch a flash LED (torch) off after this many seconds on; #f: never.
   (torch-timeout      pro1x-hardware-torch-timeout      (default 60))
   ;; The CPU's energy mode (quick actions override it until reboot):
@@ -232,10 +227,7 @@
   ;; pattern brightness (0-255; 6 is barely visible), or #f for none.
   (unlocked-led       pro1x-hardware-unlocked-led       (default '("white" 6)))
   ;; The LED while suspended (pro1x-sleep): (COLOUR LEVEL), steady; or #f.
-  (sleep-led          pro1x-hardware-sleep-led          (default '("#00FFFF" 6)))
-  ;; While hibernating: (COLOUR LEVEL), breathing up to LEVEL from the
-  ;; PMIC's own pattern generator; or #f.
-  (hibernate-led      pro1x-hardware-hibernate-led      (default '("#00FFFF" 16))))
+  (sleep-led          pro1x-hardware-sleep-led          (default '("#00FFFF" 6))))
 
 ;;; Colour names and "#RRGGBB" as "R G B" for multi_intensity, or #f.
 (define (led-intensity colour)
@@ -896,22 +888,6 @@ esac
                            (>= (- now (cdr entry)) #$timeout))
                          since)))))))
 
-(define (pro1x-battery-hibernate-shepherd-service config)
-  (if (pro1x-hardware-hibernate-battery config)
-      (list
-       (shepherd-service
-        (provision '(pro1x-battery-hibernate))
-        (requirement '(file-systems))
-        (documentation "Hibernate on a low battery while the phone is
-locked or blanked (pro1x-sleep watch).")
-        (start #~(make-forkexec-constructor
-                  (list #$(file-append pro1x-sway-config "/bin/pro1x-sleep")
-                        "watch")
-                  #:log-file "/var/log/pro1x-battery-hibernate.log"))
-        (stop #~(make-kill-destructor))
-        (respawn? #t)))
-      '()))
-
 (define (pro1x-torch-guard-shepherd-service config)
   (let ((timeout (pro1x-hardware-torch-timeout config)))
     (if timeout
@@ -1217,19 +1193,10 @@ under the file names stevia looks for.")
                      (string-join (map symbol->string
                                        (pro1x-hardware-wake-on config)))
                      "'\n"
-                     "HIBERNATE_BATTERY="
-                     (let ((b (pro1x-hardware-hibernate-battery config)))
-                       (if b (number->string b) ""))
-                     "\n"
                      (let ((led (pro1x-hardware-sleep-led config)))
                        (string-append
                         "SLEEP_LED='" (if led (led-intensity (car led)) "")
                         "'\nSLEEP_LEVEL="
-                        (if led (number->string (cadr led)) "0") "\n"))
-                     (let ((led (pro1x-hardware-hibernate-led config)))
-                       (string-append
-                        "HIBERNATE_LED='" (if led (led-intensity (car led)) "")
-                        "'\nHIBERNATE_LEVEL="
                         (if led (number->string (cadr led)) "0") "\n")))))
       ;; /etc/pro1x/cpu.conf: the CPU mode for good, for pro1x-cpu-mode
       ;; (quick actions override it until reboot).
@@ -1337,8 +1304,6 @@ under the file names stevia looks for.")
                                   (pro1x-charge-limit-shepherd-service
                                    config)
                                   (pro1x-torch-guard-shepherd-service
-                                   config)
-                                  (pro1x-battery-hibernate-shepherd-service
                                    config)
                                   (pro1x-charge-led-shepherd-service
                                    config))))))

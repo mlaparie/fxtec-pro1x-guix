@@ -1,7 +1,5 @@
 #!/bin/sh
-# pro1x-sleep suspend | hibernate | watch — as root (sudo, from
-# pro1x-power-menu, pro1x-idle; watch from the pro1x-battery-hibernate
-# service).
+# pro1x-sleep suspend — as root (sudo, from pro1x-power-menu, pro1x-idle).
 #
 # Suspend is s2idle (the only mem_sleep mode on the Pro¹x), in a loop:
 # after each wake it looks at what woke the phone (the wakeup sources'
@@ -28,23 +26,9 @@
 # the ADSP raise smp2p-sleepstate about twice a second (none without it), and
 # that wakeup source aborted most tries to suspend, five in a row at times.  The
 # stream stops before sleeping; the service starts again after the wake.
-# Hibernate: the memory to the swap file (pro1x-swap, swap-size in
-# config.scm), then off; the next boot resumes from it.  Only when this
-# boot's kernel arguments carry the swap file's resume arguments, which
-# pro1x-boot-menu adds (so one reboot after the swap file is first made):
-# the image would otherwise be written where the next boot does not look.
-# A low battery hibernates it (HIBERNATE_BATTERY, hibernate-battery in
-# config.scm, author 2026-11-18): at that percentage or less, on battery,
-# with no call, stream, sound or heavy load.  Asleep, the RTC wakes the
-# phone to look, rarely while the battery is far above the threshold (see
-# next_check); awake, watch looks every 2 minutes while
-# the phone is locked or blanked.  After a resume it waits until the battery
-# climbs above the threshold or charges, so the phone can still be used at
-# that level.
 #
 # State: the loop written 2026-11-01 for the patched kernel, not yet run.
-# Hibernation written 2026-11-17; the freezer test (pm_test) passes since
-# 2026-11-18, a whole hibernation and resume not yet run.
+# Hibernation: branch dev-hibernate (docs/hibernation.md there).
 
 # sudo resets PATH: herd, mmcli, swaymsg and coreutils from the system profile.
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
@@ -67,28 +51,6 @@ led_asleep() {
     echo "$SLEEP_LED" > "$led/multi_intensity"
     echo "$SLEEP_LEVEL 1000 $SLEEP_LEVEL 1000" > "$led/pattern"
 }
-# Hibernating: the same cyan, breathing (author, 2026-11-17), from the
-# PMIC's own pattern generator (hw_pattern), which runs without the CPU.
-# The PMI632's LPG steps through a table at a fixed pace, no ramps nor
-# ping-pong: 24 steps of 200 ms, up, down and a dark pause, 4.8 s.  The
-# pattern trigger starts with its repeat count at 0 while showing -1, and
-# the LPG refuses 0 (EINVAL), so repeat is written first.  The LED goes
-# dark when the phone powers off, once the image is saved.  Colour and peak
-# level:
-# hibernate-led in config.scm (HIBERNATE_LED, HIBERNATE_LEVEL); the steps
-# are those of 16 (seen and kept by the author), scaled.
-led_hibernating() {
-    [ -w "$led/hw_pattern" ] && [ -n "$HIBERNATE_LED" ] || return 0
-    p=
-    for b in 0 1 2 3 4 6 8 10 12 14 16 16 14 12 10 8 6 4 3 2 1 0 0 0; do
-        b=$((b * HIBERNATE_LEVEL / 16))
-        p="$p $b 200 $b 0"
-    done
-    echo pattern > "$led/trigger"
-    echo -1 > "$led/repeat"
-    echo "$HIBERNATE_LED" > "$led/multi_intensity"
-    echo $p > "$led/hw_pattern"
-}
 # The next Clocks alarm wakes the phone (author, 2026-11-02: an alarm
 # rang only once something else woke it): the RTC's wake alarm, 5 s
 # (author: 20 was too long, waking is quick) before the earliest ring_time Clocks keeps (dconf reads the user's
@@ -97,27 +59,13 @@ led_hibernating() {
 # alarm is set relative ("+seconds").  A wake by the RTC keeps the
 # phone up (suspend_loop), and Clocks rings.
 rtcwake=/sys/class/rtc/rtc0/wakealarm
-# check_at: the next look at the battery while asleep (epoch seconds),
-# empty for none.
-check_at=
-# The next look: half the time the battery would take to reach the
-# threshold at 3% an hour (a guess, faster than this phone's measured
-# suspend drain should be), 30 minutes at the least: at 60% with a 10%
-# threshold, after about 8 hours; near the threshold, every 30 minutes
-# (author, 2026-11-18: not every 30 minutes all night).
-next_check() {
-    level=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 0)
-    gap=$(( (level - HIBERNATE_BATTERY) * 3600 / 3 / 2 ))
-    [ "$gap" -lt 1800 ] && gap=1800
-    echo $(( $(date +%s) + gap ))
-}
 alarm_wake() {
     [ -w "$rtcwake" ] || return 0
     echo 0 > "$rtcwake"
     times=$(su -s /run/current-system/profile/bin/sh "${SUDO_USER:-user}" \
                 -c "dconf read /org/gnome/clocks/alarms" 2>/dev/null |
                 grep -o "'ring_time': <'[^']*'>" | sed "s/.*<'\(.*\)'>/\1/")
-    now=$(date +%s) next=$check_at
+    now=$(date +%s) next=
     for t in $times; do
         at=$(date -d "$t" +%s 2>/dev/null) || continue
         [ "$at" -gt $((now + 30)) ] || continue
@@ -125,99 +73,9 @@ alarm_wake() {
     done
     [ -n "$next" ] || return 0
     echo "+$((next - now - 5))" > "$rtcwake" &&
-        logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) ($([ "$next" = "$check_at" ] && echo battery || echo Clocks alarm))"
+        logger -t pro1x-sleep "RTC wake at $(date -d "@$next" +%H:%M) (Clocks alarm)"
 }
 
-# Hibernation possible: the swap file on, and the boot menu's default
-# line carrying its resume arguments, since the next boot is the one that
-# resumes.  Not this boot's arguments: after a boot by the no-resume line
-# the phone can still hibernate (author, 2026-11-17).
-resume_args=/var/lib/pro1x/resume
-boot_conf=/boot/boot/extlinux/extlinux.conf
-hibernate_ready() {
-    [ -r "$resume_args" ] && [ -r "$boot_conf" ] &&
-        swapon --show=NAME --noheadings | grep -qx /swap/swapfile &&
-        grep -qF -- "$(cat "$resume_args")" "$boot_conf"
-}
-# The smp2p-sleepstate driver tells the ADSP only about suspend, not
-# hibernation, and makes every raise of its bit a hard wakeup: with a sensor
-# stream on, that aborted each hibernation as it froze the kernel threads
-# (2026-11-18: "Freezing remaining freezable tasks aborted", the source's
-# count up 5; unloaded, the freezer test passed).  A powered-off phone has
-# no use for the ADSP's wakeups, so the driver is unloaded meanwhile.
-# After a restore from a powered-off phone the DSPs (modem, ADSP, CDSP) are
-# off while the kernel still takes them for running: each is restarted,
-# which loads its firmware again.  Without it, Wi-Fi (its firmware is the
-# modem's), Bluetooth and the modem were dead after the first resume, and
-# the phone froze and rebooted a minute later (2026-11-18).  A successful
-# return from "disk" in shutdown mode always follows a power cycle (the RTC
-# keeps counting through it, so it cannot tell).  The modem's restart is the
-# author's exception to never stopping it: it is not running then anyway.
-restart_dsps() {
-    for r in /sys/class/remoteproc/remoteproc*; do
-        name=$(cat "$r/name")
-        logger -t pro1x-sleep "restarting $name after hibernation"
-        echo stop > "$r/state" ||
-            logger -t pro1x-sleep "could not stop $name"
-        echo start > "$r/state" ||
-            logger -t pro1x-sleep "could not start $name"
-    done
-    # What talks to the ADSP, as after its crash (adsp_recover).
-    herd restart pro1x-hexagonrpcd >/dev/null 2>&1
-    herd start iio-sensor-proxy >/dev/null 2>&1
-    herd start pro1x-pocket >/dev/null 2>&1
-    herd restart pro1x-shake-torch >/dev/null 2>&1
-}
-# Drivers whose hardware loses its state with the power and that cannot
-# restore it: Wi-Fi and Bluetooth wait for the DSPs' firmware, the PMIC's
-# temperature alarm and ADC come back reset.  Restored as they were, they
-# held the device restore for 46 s, the temperature alarm's interrupt fired
-# without end and user space stalled before restart_dsps (2026-11-19).
-# They are unloaded for the image and loaded again after the DSPs.
-unloaded=
-unload_drivers() {
-    for m in ath10k_snoc hci_uart pro1x_adc_battery qcom_spmi_temp_alarm qcom_spmi_adc5; do
-        if rmmod "$m" 2>/dev/null; then
-            unloaded="$m $unloaded"
-        else
-            logger -t pro1x-sleep "could not unload $m"
-        fi
-    done
-}
-# sudo drops the variable that tells Guix's modprobe where modules are.
-load() { LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules modprobe "$1"; }
-load_drivers() {
-    for m in $unloaded; do
-        load "$m" || logger -t pro1x-sleep "could not load $m"
-    done
-    unloaded=
-}
-hibernate_now() {
-    logger -t pro1x-sleep "hibernating"
-    led_hibernating
-    sync
-    unload_drivers
-    rmmod smp2p_sleepstate 2>/dev/null && ss=1 || ss=
-    # Modem messages wake the phone from suspend (pro1x-qrtr-modem-wake,
-    # set by suspend_loop and left on): each aborted hibernation as it
-    # froze the kernel threads or quiesced the devices (2026-11-18,
-    # qrtr-modem's count up 2; with it off, test_resume restored).
-    wod=/sys/module/qrtr/parameters/wake_on_data
-    wod_was=$(cat "$wod" 2>/dev/null)
-    [ -w "$wod" ] && echo N > "$wod"
-    echo shutdown > /sys/power/disk
-    if echo disk > /sys/power/state; then
-        logger -t pro1x-sleep "back from hibernation"
-        mkdir -p "${disarmed%/*}" && : > "$disarmed"
-        restart_dsps
-    else
-        logger -t pro1x-sleep "hibernation failed"
-    fi
-    load_drivers
-    [ -n "$wod_was" ] && echo "$wod_was" > "$wod"
-    [ -n "$ss" ] && load smp2p_sleepstate
-    led_awake
-}
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
 uart=$(ls -d /sys/devices/platform/*/4a8c000.serial/power/wakeup \
              /sys/devices/platform/*/*/4a8c000.serial/power/wakeup \
@@ -260,8 +118,8 @@ counts() {
 # The sources whose count grew between two snapshots (files).
 woke_by() { diff "$1" "$2" | sed -n 's/^> \([^ ]*\) .*/\1/p'; }
 
-WAKE_ON='calls sms' HIBERNATE_BATTERY=
-SLEEP_LED='0 255 255' SLEEP_LEVEL=6 HIBERNATE_LED='0 255 255' HIBERNATE_LEVEL=16
+WAKE_ON='calls sms'
+SLEEP_LED='0 255 255' SLEEP_LEVEL=6
 [ -r /etc/pro1x/sleep.conf ] && . /etc/pro1x/sleep.conf
 allowed() { case " $WAKE_ON " in *" $1 "*) return 0 ;; esac; return 1; }
 
@@ -314,40 +172,6 @@ adsp_recover() {
     herd start iio-sensor-proxy >/dev/null 2>&1
     herd start pro1x-pocket >/dev/null 2>&1
     herd restart pro1x-shake-torch >/dev/null 2>&1
-}
-
-battery=/sys/class/power_supply/battery
-# Set after a hibernation: no other until the battery has climbed above
-# the threshold or charged.  In /run, which a resume brings back.
-disarmed=/run/pro1x/hibernate-disarmed
-on_battery() { [ "$(cat "$battery/status" 2>/dev/null)" = Discharging ]; }
-# Nothing the user would want cut: a call, a stream, sound playing, or a
-# load of 2 or more.
-quiet() {
-    mmcli -m any --voice-list-calls 2>/dev/null | grep -qE 'ringing|active' &&
-        return 1
-    p=$(cat /run/user/*/pro1x-stream.pid 2>/dev/null | head -n 1)
-    [ -n "$p" ] && kill -0 "$p" 2>/dev/null && return 1
-    grep -qs RUNNING /proc/asound/card*/pcm*p/sub*/status && return 1
-    awk '{ exit !($1 < 2) }' /proc/loadavg
-}
-low_battery_hibernate() {
-    [ -n "$HIBERNATE_BATTERY" ] || return 1
-    level=$(cat "$battery/capacity" 2>/dev/null) || return 1
-    if [ "$level" -gt "$HIBERNATE_BATTERY" ] || ! on_battery; then
-        rm -f "$disarmed"
-        return 1
-    fi
-    [ ! -e "$disarmed" ] && quiet && hibernate_ready
-}
-# Locked (gtklock) or the panel off, as Sway sees it.
-idle_screen() {
-    pgrep -x gtklock >/dev/null && return 0
-    for sock in /run/user/*/sway-ipc.*.sock; do
-        SWAYSOCK=$sock swaymsg -t get_outputs -r 2>/dev/null |
-            grep -q '"power": false' && return 0
-    done
-    return 1
 }
 
 suspend_loop() {
@@ -405,20 +229,6 @@ suspend_loop() {
             " adsp ")
                 adsp_recover
                 sleep 1 ;;               # its answer
-            *rtc*)
-                # The battery check, not a Clocks alarm: hibernate, or
-                # sleep again until the next.
-                if [ -n "$check_at" ] &&
-                   [ "$(date +%s)" -ge $((check_at - 60)) ]; then
-                    if low_battery_hibernate; then
-                        woke=hibernate
-                        break
-                    fi
-                    check_at=$(next_check)
-                    alarm_wake
-                    continue
-                fi
-                break ;;
             *) break ;;
         esac
     done
@@ -427,14 +237,6 @@ suspend_loop() {
 
 case "${1:-}" in
     suspend)
-        if low_battery_hibernate; then
-            logger -t pro1x-sleep "battery at $level%: hibernating instead"
-            panel off
-            hibernate_now
-            panel on
-            exit
-        fi
-        [ -n "$HIBERNATE_BATTERY" ] && check_at=$(next_check)
         while :; do
             herd stop pro1x-shake-torch >/dev/null 2>&1
             panel off
@@ -444,11 +246,6 @@ case "${1:-}" in
             led_asleep
             alarm_wake
             suspend_loop
-            if [ "$woke" = hibernate ]; then
-                logger -t pro1x-sleep "battery at $level%: hibernating"
-                hibernate_now
-                woke=
-            fi
             [ -w "$rtcwake" ] && echo 0 > "$rtcwake"
             [ -n "$uart" ] && echo enabled > "$uart"
             [ -n "$ipa" ] && echo enabled > "$ipa"
@@ -470,22 +267,5 @@ case "${1:-}" in
                 *) break ;;
             esac
         done ;;
-    hibernate)
-        if ! hibernate_ready; then
-            logger -t pro1x-sleep "no hibernation: swap or resume arguments missing (reboot once after the swap file is made)"
-            exit 1
-        fi
-        panel off
-        hibernate_now
-        panel on ;;
-    watch)
-        while sleep 120; do
-            if low_battery_hibernate && idle_screen; then
-                logger -t pro1x-sleep "battery at $level%, phone idle: hibernating"
-                panel off
-                hibernate_now
-                panel on
-            fi
-        done ;;
-    *) echo "usage: pro1x-sleep suspend | hibernate | watch" >&2; exit 1 ;;
+    *) echo "usage: pro1x-sleep suspend" >&2; exit 1 ;;
 esac

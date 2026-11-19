@@ -195,65 +195,10 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
-*** WAIT [#B] Hibernation: first test with the author (generation 61, 2026-11-17)
-Swap file 8 GiB on (/swap subvolume); offset from btrfs inspect-internal map-swapfile, checked
-against its physical start / 4096 (the author's guix-config#1).  Generation 61: resume only on
-the current system's line, a second line with noresume; U-Boot with a sixth slot built (4c044f6),
-to flash with scripts/flash.sh --boot-only.  Needs one reboot, then Hibernate from the power menu
-with the author ready at the boot menu.
-Unknown: whether arm64 hibernation restores this SoC's remoteprocs, GPU and display.
-2026-11-18: every try woke at once ("Freezing remaining freezable tasks aborted").  The cause:
-the smp2p-sleepstate driver turned the ADSP's sensor-stream raises into hard wakeups (unloaded
-while hibernating, 3cba0e8).  Android's EPOLLWAKEUP timers were wrongly blamed first: a soft
-wakeup source aborts only when /sys/power/wakeup_count armed the check, which nothing does here.
-Taking block_suspend from the container (fda4378) left Android unbooted all day (system_suspend
-failing every 5 s, the boot animation running); reverted (3a05959).  With Android up and holding
-6 [timerfd] sources, the freezer test passed 3 of 3 (confirmed).
-Debug kernel (ramoops, hibdbg lines, qcom-wdt keep_in_sleep), 2026-11-18 evening: the snapshot
-works (608709 pages copied, swsusp_save 0, devices thawed; /dev/snapshot read-out of 1.16 GB in
-8 s, confirmed).  test_resume stalls right after "PM: hibernation: Writing hibernation image."
-and "Hibernating on CPU 0", before any saving progress: the first swap allocation or write
-(btrfs swap file on dm-crypt over UFS).  The cause (source, 2026-11-18): the container was on
-/dev/loop0, whose workqueue is WQ_FREEZABLE, and kernel threads stay frozen while the image is
-written, so the header's write never completes.  0cc4983 maps it with dm-linear
-(/dev/mapper/pro1x-part) instead.  Booted (generation 113); test_resume restored; a real
-hibernation 20:05 saved (LED breathing, power-off) and the next boot restored it ("Hibernation
-image restored successfully"), but the GPU faulted on every submit (zap shader flag kept in the
-image; 468d5e2, CI run 44378606559) and Bluetooth reset itself.  The DSPs after a restore: not
-known (no remoteproc lines); the boot kernel cannot have started them, so the image kernel
-probably believes dead DSPs run.  The modem would need a restart: allowed by the author
-(2026-11-18), pro1x-sleep restarts all three after a power-cycle restore (d39fec5, not run).
-Generation 119 (GPU fix in the kernel, confirmed by its string): a real hibernation reset
-the phone at "hibernation entry" (red LED, no image written); a test_resume right after
-aborted instead: "Freezing remaining freezable tasks aborted (2 tasks refusing to freeze)",
-and ramoops' header came back corrupt.  Next: which two tasks (the freeze's list in dmesg
-with pm_debug_messages), and whether the hand-installed Waydroid HAL waiting on a missing
-socket plays a part.
-pm_test freezer now passes
-(confirmed).  Later: a kernel fix (the driver to handle PM_HIBERNATION_PREPARE) instead of the
-rmmod (7246bfa, not yet built).
-Then it hangs (black, no LED, long press needed; confirmed 4 times): pm_test devices, platform,
-processors and core all pass and return; test_resume, disk=reboot and a /dev/snapshot test that
-writes nothing (SNAPSHOT_CREATE_IMAGE) all hang.  So making the snapshot hangs, in
-swsusp_arch_suspend or swsusp_save, after CPUs are off.  No log survives (no pstore set up).
-Next: a debug kernel with ramoops (a reserved-memory region) and PSTORE_CONSOLE to see where.
-2026-11-19 (generation 124, 134fb7b by hand): saving and restoring work (confirmed 3 times:
-pm_test devices, processors and core pass; test_resume restores; a real one shows "Image
-saving progress" to 100 %, powers off, and the boot restores the image).  What fails is the
-system after the restore.  Without unloading drivers, the device restore took 46 s (ath10k and
-Bluetooth waiting on the DSPs' firmware, gone with the power), the PMIC temperature alarm
-fired without end ("irq 132: nobody cared"), the PM6125 ADC read failed (0x0 0x3150,
-"transaction failed") and user space stalled before restart_dsps.  The SPMI arbiter's
-APID map is the same on every cold boot (read through /dev/mem): not the cause.  With
-Wi-Fi, Bluetooth, the temperature alarm and the ADC users unloaded first (134fb7b), the
-restore takes 1 s, then user space hangs at once, before restart_dsps (no log line, the
-console stops at "Restarting tasks: Done").  The likely cause (inferred): the restored
-kernel still holds live links to the DSPs (glink in SMEM), which the cold boot reset.
-Stopping the DSPs before the image would match the hardware, but on a running system
-(author's OK, 2026-11-19): CDSP stop and start passed, ADSP stop and start froze the phone
-within 10 s (the modem was not tried).  So that path is closed on this kernel.  Next, not
-tried: find what hangs after an ADSP restart (it hangs without hibernation too; audio and
-sensor clients are the suspects), which would fix ADSP crash recovery as well.
+*** WAIT [#B] Hibernation: saved and restored, the session does not survive (2026-11-19)
+Off in this branch: no power menu line, no low-battery hibernation.  The work and its status:
+branch dev-hibernate, docs/hibernation.md.  Next is kernel work: what hangs after an ADSP stop
+and start on a running phone.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd

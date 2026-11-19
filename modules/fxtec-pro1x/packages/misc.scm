@@ -1911,7 +1911,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-power-menu               long press on power: off, lock, reboot…
 ;;;   bin/pro1x-launcher                 app menu: the app, then its workspace
 ;;;   bin/pro1x-browser-fit              Firefox-based browsers fit portrait
-;;;   bin/pro1x-sleep                    suspend or hibernate (root, sudo)
+;;;   bin/pro1x-sleep                    suspend (root, sudo)
 ;;;   bin/pro1x-power-button             power key: short off/on, held the menu
 ;;; ---------------------------------------------------------------------------
 (define-public pro1x-sway-config
