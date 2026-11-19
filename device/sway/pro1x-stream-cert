@@ -42,7 +42,8 @@ PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 export SSL_CERT_DIR=/etc/ssl/certs
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 if [ -n "${SUDO_USER:-}" ]; then
-    home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    # /etc/passwd itself: getent is not in the system's profile.
+    home=$(awk -F: -v u="$SUDO_USER" '$1 == u { print $6 }' /etc/passwd)
     settings=$home/.config/pro1x/stream-https.conf
     if [ -L "$settings" ] ||
            { [ -e "$settings" ] && [ "$(stat -c %U "$settings")" != "$SUDO_USER" ]; }; then
