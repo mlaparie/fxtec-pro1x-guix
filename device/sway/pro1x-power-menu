@@ -69,7 +69,7 @@ if [ "${1:-}" = --lines ]; then
            "Log out" "Reboot" "Power off" "Auto-sleep: $(autosleep_shown)"
     exit
 fi
-hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null; }
+hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null 2>&1; }
 while :; do
 choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
@@ -99,6 +99,11 @@ case "$choice" in
     "Reboot") sudo -n /run/current-system/profile/sbin/reboot ;;
     "Power off") sudo -n /run/current-system/profile/sbin/halt ;;
 esac
+# Run in another menu's window (--menu): back there; false for Cancel or
+# Esc, so that menu stays.
+if [ "${1:-}" = --menu ]; then
+    case "$choice" in ""|Cancel) exit 1 ;; *) exit 0 ;; esac
+fi
 [ "${1:-}" = --resident ] || break
 sleep 0.3                       # never a busy loop
 done

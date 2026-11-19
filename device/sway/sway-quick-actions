@@ -1686,16 +1686,13 @@ case "${1:-}" in
     # about 60 ms each only to start (author, 2026-11-06: sluggish).
     --step-cached) step "$2" "$3" >/dev/null 2>&1; cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
-    # The power menu, from the last line (author, 2026-11-19): its own
-    # window from quick actions' own; in the same terminal from one of the
-    # user's (over SSH, it opened on the phone's screen, unseen).
+    # The power menu, from the last line: in this window, as Wi-Fi's
+    # networks (author, 2026-11-20; only the long power press has its own
+    # window).  After an action quick actions hides; Cancel comes back.
     --power)
-        if [ -n "${QS_RESIDENT:-}" ]; then
-            qs_hide; pro1x-menu toggle powermenu >/dev/null 2>&1
-        else
-            pro1x-power-menu --menu
-        fi
-        exit ;;
+        printf '\033[?2026l'
+        pro1x-power-menu --menu && [ -n "${QS_RESIDENT:-}" ] && qs_hide
+        exit 0 ;;
     --choose)
         case "$2" in
             dicts) dict_choose ;;
