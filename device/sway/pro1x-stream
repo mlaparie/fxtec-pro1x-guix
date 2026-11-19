@@ -724,7 +724,7 @@ while :; do
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             catt "Chromecast            sends a video URL or file; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
-            settings "Settings              screen mode, rate, size, key, approval, visibility, HTTPS")
+            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
         stop) stop_stream ;;
