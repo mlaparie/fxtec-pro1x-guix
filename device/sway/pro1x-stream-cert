@@ -1,0 +1,140 @@
+#!/bin/sh
+# pro1x-stream-cert — an HTTPS name for the stream on the phone's hotspot,
+# as root (Shepherd service pro1x-stream-cert).
+#
+#   pro1x-stream-cert SETTINGS        check every minute, renew twice a day
+#   pro1x-stream-cert SETTINGS once   once
+#
+# Some browsers refuse plain HTTP, self-signed certificates and local
+# addresses, and resolve names through their own DNS: a Tesla's (found
+# 2026-11-19), likely other car infotainment systems.  For them, as
+# tesla-carplay does: a domain of the user's whose public A record is an
+# address in no private range (240.3.3.4 by default), a Let's Encrypt
+# certificate for it (certbot, DNS challenge through the DNS provider's
+# API), and the phone's hotspot sending that address to the stream's HTTPS
+# port (nftables).  Only on the phone's own hotspot: on another network
+# nothing sends that address to the phone.
+#
+# SETTINGS is the user's (~/.config/pro1x/stream-https.conf, mode 600,
+# written from the stream menu's HTTPS line):
+#   STREAM_DOMAIN=stream.example.com   the name; empty or absent: nothing
+#   STREAM_ADDRESS=240.3.3.4           its A record
+#   DNS_PROVIDER=porkbun               pro1x-stream-dns-PROVIDER: its API
+#   PORKBUN_API_KEY=…  PORKBUN_SECRET_KEY=…   the provider's keys
+# It is read as KEY=value lines, never run: names in capitals, values of
+# plain characters only.
+#
+#   /var/lib/pro1x/stream-tls/cert.pem, key.pem   the certificate (key: group users),
+#                                                 which pro1x-stream-webrtc serves
+#   /var/lib/pro1x/stream-tls/name                its name, for the stream menu
+#   /var/lib/pro1x/stream-tls/status              the last result, for the menu
+#   /var/lib/pro1x/letsencrypt                    certbot's account and certificates
+#
+# State: works from a Tesla on the phone's hotspot with Porkbun
+# (2026-11-19).
+
+PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+# Shepherd gives a bare environment: curl and certbot need the CA store.
+export SSL_CERT_DIR=/etc/ssl/certs
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+settings=${1:?usage: pro1x-stream-cert SETTINGS [once]}
+dir=/var/lib/pro1x/stream-tls
+le=/var/lib/pro1x/letsencrypt
+
+say() {
+    mkdir -p "$dir"
+    echo "$*" > "$dir/status"
+    echo "$(date '+%F %T') $*"
+}
+
+# The last KEY=value line for KEY, quotes removed; nothing if the value has
+# other characters than plain ones.
+setting() {
+    v=$(sed -n "s/^[[:space:]]*$1=//p" "$settings" 2>/dev/null | tail -1 |
+            tr -d '\r' | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' \
+                             -e "s/^'\(.*\)'$/\1/")
+    case "$v" in *[!A-Za-z0-9_.:@/+=-]*) return 1 ;; esac
+    echo "$v"
+}
+
+# The hotspot's packets for ADDRESS port 443 (and 8443) to the stream's 8443.
+redirect() {
+    nft delete table ip pro1x_stream 2>/dev/null || true
+    [ -n "$1" ] || return 0
+    printf '%s\n' \
+        'table ip pro1x_stream {' \
+        '    chain prerouting {' \
+        '        type nat hook prerouting priority dstnat - 1;' \
+        "        iifname \"wlan0\" ip daddr $1 tcp dport { 443, 8443 } dnat to 10.42.0.1:8443" \
+        '    }' \
+        '}' | nft -f -
+}
+
+# No name: no redirect, and the stream back to the phone's own certificate.
+unset_name() {
+    redirect ""
+    rm -f "$dir/cert.pem" "$dir/key.pem" "$dir/name"
+    say "not set"
+}
+
+install_cert() {                # install_cert CERT KEY NAME
+    cp "$1" "$dir/cert.new" && cp "$2" "$dir/key.new" || return 1
+    chgrp users "$dir/key.new" && chmod 640 "$dir/key.new"
+    chmod 644 "$dir/cert.new"
+    mv "$dir/cert.new" "$dir/cert.pem"
+    mv "$dir/key.new" "$dir/key.pem"
+    echo "$3" > "$dir/name"
+}
+
+once() {
+    domain=$(setting STREAM_DOMAIN) || { say "STREAM_DOMAIN: unexpected characters"; return; }
+    [ -n "$domain" ] || { unset_name; return; }
+    case "$domain" in
+        *[!a-z0-9.-]*|*.*.*.*.*.*|.*|*.) say "STREAM_DOMAIN: not a name: $domain"; return ;;
+        *.*) ;;
+        *) say "STREAM_DOMAIN: not a name: $domain"; return ;;
+    esac
+    address=$(setting STREAM_ADDRESS) || address=
+    : "${address:=240.3.3.4}"
+    case "$address" in
+        *[!0-9.]*|*..*|.*|*.) say "STREAM_ADDRESS: not an address: $address"; return ;;
+    esac
+    provider=$(setting DNS_PROVIDER) || provider=
+    : "${provider:=porkbun}"
+    case "$provider" in *[!a-z0-9]*) say "DNS_PROVIDER: unknown: $provider"; return ;; esac
+    hook=pro1x-stream-dns-$provider
+    command -v "$hook" >/dev/null || { say "DNS_PROVIDER: unknown: $provider"; return; }
+    # The provider's keys, for its script: every KEY=value of the file.
+    for name in $(sed -n 's/^[[:space:]]*\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$settings" | sort -u); do
+        value=$(setting "$name") && export "$name=$value"
+    done
+    "$hook" a "$domain" "$address" 2>&1 ||
+        { say "$domain: the DNS record could not be set (keys, API access?)"; return; }
+    if certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
+            --config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs" \
+            --manual --preferred-challenges dns --keep-until-expiring \
+            --manual-auth-hook "$hook auth" --manual-cleanup-hook "$hook cleanup" \
+            --cert-name "$domain" -d "$domain" >/dev/null 2>&1 &&
+           install_cert "$le/live/$domain/fullchain.pem" "$le/live/$domain/privkey.pem" "$domain"
+    then
+        until=$(openssl x509 -in "$dir/cert.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+        say "$domain, certificate until ${until:-?}"
+        redirect "$address"
+    else
+        say "$domain: no certificate (see $le/logs/letsencrypt.log)"
+    fi
+}
+
+case "${2:-}" in
+    once) once ;;
+    *) last=- n=0
+       while :; do
+           m=$(stat -c %Y "$settings" 2>/dev/null)
+           if [ "$m" != "$last" ] || [ "$n" -ge 720 ]; then
+               if [ -n "$m" ]; then once; else unset_name; fi
+               last=$m n=0
+           fi
+           n=$((n + 1))
+           sleep 60
+       done ;;
+esac

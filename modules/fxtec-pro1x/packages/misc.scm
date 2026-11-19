@@ -1894,6 +1894,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
 ;;;   bin/pro1x-wifi-powersave           Wi-Fi power saving, off while streaming (sudoers)
 ;;;   bin/pro1x-stream-output            the output the screen-cast portal captures
+;;;   bin/pro1x-stream-cert              the stream's HTTPS name on the hotspot (root)
+;;;   bin/pro1x-stream-dns-porkbun       its DNS records through Porkbun's API
 ;;;   bin/pro1x-stream                   send the screen to another device
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
@@ -1924,10 +1926,10 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
+    (inputs (list bash certbot coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
                   mobile-broadband-provider-info qrencode sed slurp swayidle
-                  tzdata wl-clipboard
+                  openssl tzdata wl-clipboard
                   (list glib "bin")))
     (arguments
      (list
@@ -1966,6 +1968,8 @@ window opened by a sway key binding.")
           ("pro1x-hotspot" "bin/")
           ("pro1x-stream" "bin/")
           ("pro1x-stream-output" "bin/")
+          ("pro1x-stream-cert" "bin/")
+          ("pro1x-stream-dns-porkbun" "bin/")
           ("pro1x-hotspot-admin" "bin/")
           ("pro1x-wifi-powersave" "bin/")
           ("pro1x-timezone" "bin/")
@@ -2033,6 +2037,22 @@ window opened by a sway key binding.")
                         (map (lambda (p)
                                (string-append (assoc-ref inputs p) "/sbin"))
                              '("iw" "nftables"))))))
+                ;; Root services: certbot for the certificate, nft for the
+                ;; hotspot's redirect, curl for the DNS provider's API.
+                (for-each
+                 (lambda (name)
+                   (let ((bin (string-append #$output "/bin/" name)))
+                     (chmod bin #o755)
+                     (wrap-program bin
+                       `("PATH" ":" prefix
+                         ,(append
+                           (map (lambda (p)
+                                  (string-append (assoc-ref inputs p) "/bin"))
+                                '("certbot" "coreutils" "curl" "gawk" "grep"
+                                  "openssl" "sed"))
+                           (list (string-append (assoc-ref inputs "nftables")
+                                                "/sbin")))))))
+                 '("pro1x-stream-cert" "pro1x-stream-dns-porkbun"))
                 (let ((stream (string-append #$output "/bin/pro1x-stream")))
                   (chmod stream #o755)
                   (wrap-program stream

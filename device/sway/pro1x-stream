@@ -38,18 +38,66 @@ udp_port=5000
 http_port=8080
 webrtc_port=8081
 # The same over HTTPS, for browsers that refuse plain HTTP, with the
-# phone's own certificate, or a trusted one the owner put in
-# /var/lib/pro1x/stream-tls (pro1x-stream-webrtc).
+# phone's own certificate (pro1x-stream-webrtc); on the phone's hotspot,
+# the user's own name when one is set up (HTTPS line, pro1x-stream-cert).
 tls_port=8443
-# The owner's hook, if executable: `stream-hook url ADDRESS PORT' may print
-# another link to show (a name of the owner's own), and `stream-hook
-# started PID KIND' runs once a stream is up (KIND: webrtc or interactive);
-# a hook that fails is ignored.
+tls_dir=/var/lib/pro1x/stream-tls
+https_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-https.conf
+# The user's hook, if executable (an add-on, not the port's):
+# `stream-hook url ADDRESS PORT' may print another link to show, and
+# `stream-hook started PID KIND' runs once a stream is up (KIND: webrtc or
+# interactive); a hook that fails is ignored.
 hook=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-hook
 tls_url() {
+    name=$(cat "$tls_dir/name" 2>/dev/null)
     if [ -x "$hook" ] && u=$("$hook" url "$1" "$tls_port" 2>/dev/null) && [ -n "$u" ]
     then echo "$u"
+    elif [ "$1" = 10.42.0.1 ] && [ -n "$name" ]; then echo "https://$name/"
     else echo "https://$1:$tls_port/"; fi
+}
+https_state() {
+    if grep -qE '^[[:space:]]*STREAM_DOMAIN=[^[:space:]]' "$https_file" 2>/dev/null; then
+        cat "$tls_dir/status" 2>/dev/null || echo "set, waiting for the phone"
+    else echo "not set, for browsers that refuse local addresses (some cars)"; fi
+}
+# The settings in the user's editor, from a template the first time; the
+# root service pro1x-stream-cert reads them within a minute.
+https_setup() {
+    mkdir -p "${https_file%/*}"
+    [ -e "$https_file" ] || (umask 077; cat > "$https_file" <<'EOF'
+# The stream's HTTPS name on the phone's hotspot (pro1x-stream-cert).
+#
+# For browsers that refuse plain HTTP, self-signed certificates and local
+# addresses, and resolve names through their own DNS, as some car
+# infotainment systems do (a Tesla's).  Needs a domain of yours at a DNS
+# provider with an API (here: Porkbun), and internet on the phone.  The
+# phone sets the name's public A record to STREAM_ADDRESS, an address in
+# no private range, gets a Let's Encrypt certificate for it, and its
+# hotspot sends that address to the stream.  The other device then opens
+# https://STREAM_DOMAIN/ on the phone's hotspot.  Other networks: no.
+#
+# This file holds API keys: it stays readable by you only.  Empty
+# STREAM_DOMAIN: off.  Saved: the phone checks within a minute; the first
+# certificate takes about two minutes.  scripts/backup-phone.sh saves it.
+
+STREAM_DOMAIN=
+STREAM_ADDRESS=240.3.3.4
+DNS_PROVIDER=porkbun
+
+# Porkbun: Account > API Access makes both keys; then switch API Access on
+# in the domain's Details.
+PORKBUN_API_KEY=
+PORKBUN_SECRET_KEY=
+EOF
+    )
+    chmod 600 "$https_file"
+    ${EDITOR:-nano} "$https_file"
+    clear_screen
+    printf 'Saved.  The phone checks it within a minute; a first certificate
+'
+    printf 'takes about two minutes.  Its state shows on the HTTPS line.
+'
+    pause
 }
 run_hook() { [ -x "$hook" ] && setsid "$hook" "$@" >/dev/null 2>&1 </dev/null & }
 
@@ -440,6 +488,7 @@ while :; do
             fps "Capture rate      $(fps) fps, lower saves CPU" \
             size "Output size       $(out_size), long side" \
             key "Access key        $(key_on && echo "on, $(current_key)" || echo off), for Interactive" \
+            https "HTTPS name        $(https_state)" \
             approve "Approval          $(approve), a new viewer allowed on the phone (Interactive)" \
             screen "Screen            $(screen): $(case "$(screen)" in client) echo "at the client's shape, shown on the phone too";; multi-monitor) echo "at the client's shape, a second monitor";; *) echo "the phone's own";; esac) (Interactive)" \
             renew "New access key    the old one and its bookmarks stop working")
@@ -461,6 +510,7 @@ while :; do
         approve) next_approve ;;
         screen) next_screen ;;
         renew) new_key ;;
+        https) https_setup ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;
