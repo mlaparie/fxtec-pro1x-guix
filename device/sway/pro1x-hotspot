@@ -219,8 +219,8 @@ info() {                        # info WHAT KEY
         band:a)
             printf '%s\n' "5 GHz: faster and less crowded, shorter reach; some older" \
                 "devices (and some cars) lack it.  Channel 36." ""
-            if five_ghz; then echo "Allowed in this region."
-            else echo "Not allowed in this region now (Time zone, Wi-Fi rules)."; fi ;;
+            if five_ghz; then echo "Possible here."
+            else echo "Not possible now: Time zone, Wi-Fi rules, says why."; fi ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) printf '%s\n' "The name is not broadcast: a device joins by typing it" \
                         "(or by the QR code).  It hides little: the name still" \
