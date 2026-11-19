@@ -624,7 +624,7 @@ choose() {
         wifi|bluetooth)
             # Power, Right or Enter (author, 2026-11-02): on or off, or the
             # list of networks (pro1x-wifi) or devices (bluetuith).
-            if [ "$1" = wifi ]; then title=WiFi tool=networks
+            if [ "$1" = wifi ]; then title=Wi-Fi tool=networks
             else title=Bluetooth tool=devices; fi
             # From the main list's cache: nmcli took 170 ms (2026-11-19).
             cur=$(cached_state "$1"); [ -n "$cur" ] || cur=$(state_of "$1")
@@ -1267,7 +1267,7 @@ lines() {
         "waydroid    Waydroid                   $(dim "$(cat "$d/waydroid")")" \
         "stream      Stream                     $(stream_state)" \
         "bluetooth   Bluetooth                  $(dim "$bt")" \
-        "wifi        WiFi                       $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "wifi        Wi-Fi                      $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot                    $(dim "$(hotspot_state)")" \
         "wwan        Mobile data                $mobile" \
         "airplane    Airplane mode              $(dim "$plane")" \

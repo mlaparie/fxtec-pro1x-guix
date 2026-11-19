@@ -47,7 +47,7 @@ detect_now() {
 show_rules() {
     iw reg get | awk '
         /^phy#/ { exit }
-        /^country/ { sub(":", "", $2); print "WiFi rules: " $2 ", " $3 "\n"; next }
+        /^country/ { sub(":", "", $2); print "Wi-Fi rules: " $2 ", " $3 "\n"; next }
         /^\t\(/ {
             gsub(/[(),]/, " ")
             flags = ""
@@ -76,7 +76,7 @@ while :; do
         pick "Zone:      $(current), $(date '+%H:%M %Z')" \
         auto "Automatic: $(auto_state)" \
         detect "Detect now" \
-        rules "WiFi rules: $(country)" |
+        rules "Wi-Fi rules: $(country)" |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='timezone > ' \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
             --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' \
