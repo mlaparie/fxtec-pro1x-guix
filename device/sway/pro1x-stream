@@ -827,10 +827,7 @@ settings_menu() {
 
 while :; do
     lines=$(
-        if streaming; then
-            printf 'links\tShow links            URLs and QR codes of the running stream\n'
-            printf 'stop\tStop the stream       %s\n' "$(cut -d, -f1 "$to_file")"
-        fi
+        if streaming; then printf 'stop\tStop stream\n'; fi
         printf '%s\t%s\n' \
             interactive "Browser, interactive  screen, sound, touch and keys; full screen (approval recommended)" \
             webrtc "Browser, read-only    screen and sound, no input; full screen or a window" \
@@ -838,7 +835,9 @@ while :; do
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             catt "Chromecast            sends a video URL or file; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
-            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS")
+            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
+            # The running stream's line: "active: show links" (author).
+            awk -F'\t' -v k="$(running_kind)" '$1 == k { print $1 "\t" substr($2, 1, 22) "active: show links"; next } { print }')
     choice=$(printf '%s\n' "$lines" | pick "stream")
     # The running stream's own line: its links, not a restart.
     [ -n "$choice" ] && [ "$choice" = "$(running_kind)" ] && choice=links
