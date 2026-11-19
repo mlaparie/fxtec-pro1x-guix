@@ -110,41 +110,64 @@ funnel_missing() {
     [ "$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // empty')" = "$(id -un)" ] ||
         echo "- Funnel for this user, once, in a terminal:  sudo tailscale set --operator=$(id -un)"
 }
+# What WAN still needs, one item a line; nothing when ready.
+wan_missing() {
+    if ! command -v tailscale >/dev/null; then
+        printf '%s\n' "- Tailscale, installed and logged in: docs/configure.md" \
+            "  has it in config.scm (the tailscale channel and its service);" \
+            "  then, once:  sudo tailscale up"
+    elif ! funnel_offered; then
+        echo "- Tailscale running and logged in:  sudo tailscale up"
+    else
+        funnel_missing
+    fi
+}
+# The preview of a choice: what it means, and what it still needs.
+info() {                        # info WHAT KEY
+    case "$1:$2" in
+        visibility:hotspot)
+            echo "Only devices on the phone's own hotspot reach the streams."
+            echo
+            if networks_all | grep -q '^10\.42\.0\.1 '; then echo "The hotspot is on."
+            else echo "The hotspot is off now: streams will not start until it is on."; fi ;;
+        visibility:lan)
+            echo "Every network the phone is on reaches the streams:"
+            echo
+            networks_all | awk '{ print "  " $2 "  " $1 }' ;;
+        visibility:wan)
+            echo "LAN, and a public link on the internet through Tailscale"
+            echo "Funnel while a browser stream runs: for a device that reaches"
+            echo "the phone by no other way.  Anyone with the link reaches the"
+            echo "page: keep the access key on, and an approval."
+            echo
+            missing=$(wan_missing)
+            if [ -n "$missing" ]; then printf 'Still needed:\n\n%s\n' "$missing"
+            else echo "Ready: https://$(funnel_name)/"; fi ;;
+        approve:off) echo "The access key alone lets a viewer in." ;;
+        approve:tap) echo "A notification on the phone: a tap lets the viewer in." ;;
+        approve:fingerprint)
+            echo "A finger on the phone's sensor lets the viewer in, with a buzz."
+            echo
+            # Not asked of the fingerprint daemon: it serves one client at a
+            # time, and while the lock screen waited for a finger the menu
+            # hung (2026-11-19).
+            echo "Needs a finger enrolled: Quick actions, Fingerprints." ;;
+    esac
+}
+# A choice that cannot apply yet stays in the list, its preview saying why.
 pick_visibility() {
-    now=$(visibility)
-    v=$(printf '%s\t%s\n' \
-            hotspot "Hotspot      only devices on the phone's hotspot" \
-            lan "LAN          every network the phone is on: Wi-Fi, mobile, Tailscale" \
-            wan "WAN          also a public link on the internet (Tailscale Funnel)" |
-            mark "$now" | pick "visibility")
-    [ -n "$v" ] || return
-    if [ "$v" = wan ]; then
-        if ! command -v tailscale >/dev/null; then
-            missing="- Tailscale, installed and logged in: docs/configure.md has
-  it in config.scm (the tailscale channel, its service); then, once,
-  sudo tailscale up"
-        elif ! funnel_offered; then
-            missing="- Tailscale running and logged in:  sudo tailscale up"
-        else
-            missing=$(funnel_missing)
-        fi
-        if [ -n "$missing" ]; then
-            clear_screen
-            printf 'WAN, a public link through Tailscale Funnel, needs:\n\n%s\n\n' "$missing"
-            printf 'Visibility stays %s.  Choose WAN again once these are done.\n' "$now"
-            pause
-            return
-        fi
-    fi
-    mkdir -p "${visibility_file%/*}"
-    echo "$v" > "$visibility_file"
-    if [ "$v" = wan ]; then
-        clear_screen
-        printf 'WAN: https://%s/ while a browser stream runs.\n' "$(funnel_name)"
-        printf 'Anyone with the link reaches its page: keep the access key on,\n'
-        printf 'and an approval.\n'
-        pause
-    fi
+    while :; do
+        v=$(printf '%s\t%s\n' \
+                hotspot "Hotspot      only devices on the phone's hotspot" \
+                lan "LAN          every network the phone is on" \
+                wan "WAN          also a public link (Tailscale Funnel)" |
+                mark "$(visibility)" | pick_info "visibility" visibility)
+        [ -n "$v" ] || return
+        [ "$v" = wan ] && [ -n "$(wan_missing)" ] && continue
+        mkdir -p "${visibility_file%/*}"
+        echo "$v" > "$visibility_file"
+        return
+    done
 }
 # Funnel on for a stream, off when it ends.
 funnel_start() {                # funnel_start PID
@@ -187,15 +210,23 @@ https_setup() {
 STREAM_DOMAIN=
 # Its A record; any address in no private range will do.
 STREAM_ADDRESS=240.3.3.4
-# The DNS provider, and its keys below.  Supported: porkbun.  Another
-# provider: a script pro1x-stream-dns-NAME (see pro1x-stream-dns-porkbun),
-# its keys as NAME_... lines.
-DNS_PROVIDER=porkbun
+# The DNS provider: porkbun, cloudflare or desec (deSEC, free), and
+# its keys below (only the chosen provider's are read).  Another provider:
+# a script pro1x-stream-dns-NAME (see pro1x-stream-dns-porkbun), its keys
+# as NAME_... lines.
+DNS_PROVIDER=
 
 # porkbun: Account > API Access makes both keys; then switch API Access
 # on in the domain's Details.
-PORKBUN_API_KEY=
-PORKBUN_SECRET_KEY=
+#PORKBUN_API_KEY=pk1_...
+#PORKBUN_SECRET_KEY=sk1_...
+
+# cloudflare: My Profile > API Tokens > Create Token, "Edit zone DNS",
+# for the domain.
+#CLOUDFLARE_API_TOKEN=...
+
+# desec: Token management, in deSEC's web interface.
+#DESEC_TOKEN=...
 EOF
     )
     chmod 600 "$https_file"
@@ -260,22 +291,17 @@ pick_screen() {
             mark "$(screen)" | pick "screen mode")
     [ -n "$v" ] && echo "$v" > "$screen_file"
 }
-fingers() { pro1x-fpd list 2>/dev/null | grep -c '^finger'; }
 pick_approve() {
-    n=$(fingers)
-    v=$(printf '%s\t%s\n' \
-            off "Off            the key alone" \
-            tap "Tap            a notification on the phone" \
-            fingerprint "Fingerprint    a finger on the sensor$([ "$n" -gt 0 ] 2>/dev/null || echo " (none enrolled yet)")" |
-            mark "$(approve)" | pick "connection approval")
-    [ -n "$v" ] || return
-    if [ "$v" = fingerprint ] && ! [ "$n" -gt 0 ] 2>/dev/null; then
-        clear_screen
-        printf 'No finger enrolled: Quick actions, Fingerprints, first.\n'
-        pause
+    while :; do
+        v=$(printf '%s\t%s\n' \
+                off "Off            the key alone" \
+                tap "Tap            a notification on the phone" \
+                fingerprint "Fingerprint    a finger on the sensor" |
+                mark "$(approve)" | pick_info "connection approval" approve)
+        [ -n "$v" ] || return
+        echo "$v" > "$approve_file"
         return
-    fi
-    echo "$v" > "$approve_file"
+    done
 }
 pick_key() {
     v=$(printf '%s\t%s\n' \
@@ -335,12 +361,17 @@ limited() { if [ "$1" = native ] || [ "$1" -gt "$2" ]; then echo "$2"; else echo
 
 # pick PROMPT: lines of "key<TAB>shown" from stdin, the key picked on stdout;
 # nothing for the back line, as for Esc and Left (one level back).
-pick() {
+pick() {                        # pick PROMPT [FZF-OPTION...]
+    prompt=$1; shift
     { printf 'back\t← back\n'; cat; } |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$prompt > " \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' |
+            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' "$@" |
         cut -f1 | sed '/^back$/d'
+}
+# A list whose preview explains the highlighted line (info WHAT KEY).
+pick_info() {                   # pick_info PROMPT WHAT
+    pick "$1" --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left
 }
 
 # An image, as block characters come out too tall in this font.
@@ -432,8 +463,9 @@ main_address() { networks | head -1 | cut -d' ' -f1; }
 
 # The phone's addresses, best first: "ADDRESS INTERFACE", hotspot, Wi-Fi,
 # Tailscale, then the rest (mobile).
-networks() {
-    only=$(visibility)
+networks_all() { only=all networks_raw; }
+networks() { only=$(visibility) networks_raw; }
+networks_raw() {
     ip -4 -o addr show scope global |
         awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ {
                  sub("/.*", "", $4)
@@ -698,6 +730,7 @@ network_displays() {
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
+[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}"; exit; }
 # For scripts: start the interactive stream on ADDRESS without the menu, or stop.
 [ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
 [ "${1:-}" = --stop ] && { stop_stream; exit; }
