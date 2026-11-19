@@ -1,0 +1,40 @@
+Bluetooth: no duplicates filter while an LE connection is pending
+
+The kernel makes a pending LE connection from an advertising report of the
+peer (check_pending_le_conn).  The Pro1X's WCN3990 keeps its duplicates
+filter across a scan restart: it reported the peer (a Tesla's VCSEC) once,
+then never during the 25 s of each connection attempt while other devices
+kept being reported, and no LE Create Connection was ever sent (btmon,
+2026-11-19, 7 attempts).  Scan without the duplicates filter while a
+connection is pending, in passive scanning and in discovery.
+
+Not upstream; the pro1x channel's.
+--- a/net/bluetooth/hci_sync.c
++++ b/net/bluetooth/hci_sync.c
+@@ -3258,6 +3258,14 @@
+ 	} else if (hci_is_le_conn_scanning(hdev)) {
+ 		window = hdev->le_scan_window_connect;
+ 		interval = hdev->le_scan_int_connect;
++
++		/* A pending connection is made from an advertising report of
++		 * the peer.  Controllers whose duplicates filter outlives a
++		 * scan restart (WCN3990) report the peer once and never again,
++		 * so the connection never starts: no duplicates filter while
++		 * one is pending.
++		 */
++		filter_dups = LE_SCAN_FILTER_DUP_DISABLE;
+ 	} else if (hci_is_adv_monitoring(hdev)) {
+ 		window = hdev->le_scan_window_adv_monitor;
+ 		interval = hdev->le_scan_int_adv_monitor;
+@@ -6304,7 +6312,10 @@
+ 	if (err < 0)
+ 		own_addr_type = ADDR_LE_DEV_PUBLIC;
+ 
+-	if (hci_is_adv_monitoring(hdev) ||
++	/* As for passive scanning: a pending LE connection needs every
++	 * report of its peer.
++	 */
++	if (hci_is_adv_monitoring(hdev) || hci_is_le_conn_scanning(hdev) ||
+ 	    (hci_test_quirk(hdev, HCI_QUIRK_STRICT_DUPLICATE_FILTER) &&
+ 	    hdev->discovery.result_filtering)) {
+ 		/* Duplicate filter should be disabled when some advertisement
