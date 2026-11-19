@@ -833,10 +833,11 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
     seconds.  If the encoder falls behind, the oldest frame waiting is
     dropped, so the delay cannot grow.
 
-    As game streaming does (Moonlight, Parsec): a constant bit rate, its
-    peak the same (Venus's default peak is 2 Mbit/s, below what was asked),
-    and the picture refreshed a part at a time over a second (cyclic intra
-    refresh), so that no frame is a large keyframe burst on the link.
+    The peak rate is the rate asked (Venus's default peak, 2 Mbit/s, held
+    it below), and the picture is refreshed a part at a time over a second
+    (cyclic intra refresh, as game streaming does), so that no frame is a
+    large keyframe burst on the link.  Venus's constant bit rate sent twice
+    the rate asked (6-8 Mbit/s for 3, 2026-11-19): the variable one.
     Venus here ignores slice limits (one slice a frame, by bytes or by
     macroblocks, 2026-11-19).  Set only at the start: changing controls on
     a running encoder killed its firmware."""
@@ -849,7 +850,7 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
         + "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate_mode=1,video_bitrate={int(mbps * 1e6)},'
+        f'video_bitrate_mode=0,video_bitrate={int(mbps * 1e6)},'
         f'video_peak_bitrate={int(mbps * 1e6)},'
         f'intra_refresh_period={int(fps)},intra_refresh_period_type=1,'
         f'video_gop_size={gop * int(fps)},h264_i_frame_period={gop * int(fps)};" ! '
@@ -1100,6 +1101,7 @@ class Producer:
         # Frames a second from PipeWire, out of the GPU and out of the
         # encoder, in the log every 10 s.
         self.counts = {"portal": 0, "gpu": 0, "encoded": 0}
+        self.bytes = 0
         for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
                           ("gpu", self.capture.get_by_name("raw").get_static_pad("sink")),
                           ("encoded", self.pipeline.get_by_name("out").get_static_pad("sink"))):
@@ -1151,13 +1153,17 @@ class Producer:
                 if waiting:
                     self.push(buf)
 
-    def count(self, _pad, _info, name):
+    def count(self, _pad, info, name):
         self.counts[name] += 1
+        if name == "encoded":
+            self.bytes += info.get_buffer().get_size()
         return Gst.PadProbeReturn.OK
 
     def report(self):
-        log_line("frames/s: " + ", ".join(f"{k} {v / 10:.1f}" for k, v in self.counts.items()))
+        log_line("frames/s: " + ", ".join(f"{k} {v / 10:.1f}" for k, v in self.counts.items())
+                 + f"; encoded {self.bytes * 8 / 10e6:.1f} Mbit/s")
         self.counts = dict.fromkeys(self.counts, 0)
+        self.bytes = 0
         return GLib.SOURCE_CONTINUE
 
     def sample(self, sink):
