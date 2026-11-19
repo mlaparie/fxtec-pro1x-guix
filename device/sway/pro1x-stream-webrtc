@@ -152,10 +152,10 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <div style="font-size:13px;opacity:.7">a/v above 0: the sound later; below 0: the picture later</div>
 <label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
 <label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
-<div style="font-size:13px;opacity:.7">fps: the capture rate; a change restarts the picture</div>
+<div style="font-size:13px;opacity:.7">rate, fps and size: applied together by APPLY, which restarts the picture</div>
 <label>size &nbsp;<select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> long side</label>
-<div style="font-size:13px;opacity:.7">size: smaller lightens the phone's copies and encoder (not its screen capture); a change restarts the picture</div>
+<div style="font-size:13px;opacity:.7">size: smaller lightens the phone's copies and encoder (not its screen capture)</div>
 <label>heat &nbsp;<input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
 <div style="font-size:13px;opacity:.7">heat: above it the phone lowers the fps, 5 at a time, and raises it back once 5 C cooler</div>
 <button id="sy">RESYNC</button></div>
@@ -272,8 +272,13 @@ function applyDelay() {
   target(vrx, cfg.smooth + Math.max(0, -cfg.av));
   target(arx, cfg.smooth + Math.max(0, cfg.av));
 }
-function sendRate() { send({t: "bitrate", mbps: cfg.rate}); }
-const sliders = [["ss", "smooth", applyDelay], ["sa", "av", applyDelay], ["sb", "rate", sendRate]];
+const sliders = [["ss", "smooth", applyDelay], ["sa", "av", applyDelay]];
+// Rate, fps and size restart the phone's capture: kept here until APPLY,
+// which sends them together (one restart), after the other settings are saved.
+const pending = {};
+function showPending() {
+  sy.textContent = Object.keys(pending).length ? "APPLY & RESYNC" : "RESYNC";
+}
 function showSliders() {
   for (const [id, name] of sliders) {
     document.getElementById(id).value = cfg[name];
@@ -290,8 +295,24 @@ for (const [id, name, after] of sliders) {
   input.onchange = () => { save(); log({ev: "setting", name, value: cfg[name]}); };
 }
 // Resync: the buffers emptied, then set again; the button says when done.
+// With changes waiting, they go first and the page connects again.
 const sy = document.getElementById("sy");
-sy.onclick = () => {
+sy.onclick = async () => {
+  if (Object.keys(pending).length) {
+    if (pending.mbps) cfg.rate = pending.mbps;
+    if (pending.fps) cfg.fps = pending.fps;
+    store.set("settings", cfg);
+    clearTimeout(saving);
+    sy.textContent = "APPLYING\\u2026";
+    const q = Object.entries(pending).map(([n, x]) => n + "=" + x).join("&");
+    log({ev: "apply", q});
+    try {
+      await fetch(withKey("/settings"), {method: "POST", body: JSON.stringify(cfg)});
+      await fetch(withKey("/apply?" + q), {method: "POST"});
+    } catch (e) {}
+    setTimeout(reloadWhenUp, 1000);
+    return;
+  }
   target(vrx, 0); target(arx, 0);
   setTimeout(() => {
     applyDelay();
@@ -331,11 +352,10 @@ document.getElementById("bt").onclick = () => {
 const sf = document.getElementById("sf"), sfv = document.getElementById("sfv");
 function showFps() { sf.value = cfg.fps; sfv.textContent = cfg.fps; }
 sf.oninput = () => sfv.textContent = sf.value;
-sf.onchange = async () => {
-  log({ev: "fps", fps: Number(sf.value)});
-  try { await fetch(withKey("/fps?fps=" + sf.value), {method: "POST"}); } catch (e) {}
-  location.reload();
-};
+sf.onchange = () => { pending.fps = Number(sf.value); showPending(); };
+const sb = document.getElementById("sb"), sbv = document.getElementById("sbv");
+sb.oninput = () => sbv.textContent = sb.value;
+sb.onchange = () => { pending.mbps = Number(sb.value); showPending(); };
 // The heat limit: kept with the settings on the phone, which acts on it.
 const sh = document.getElementById("sh"), shv = document.getElementById("shv");
 function showHeat() {
@@ -347,12 +367,9 @@ sh.onchange = () => { save(); log({ev: "setting", name: "heat", value: cfg.heat}
 // The picture size, the phone's like the fps: from its status, a change
 // restarts the capture.
 const sz = document.getElementById("sz");
-sz.onchange = async () => {
-  log({ev: "size", long: Number(sz.value)});
-  try { await fetch(withKey("/size?long=" + sz.value), {method: "POST"}); } catch (e) {}
-  location.reload();
-};
-function refresh() { showHeat(); showFps(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
+sz.onchange = () => { pending.long = Number(sz.value); showPending(); };
+function showRate() { sb.value = cfg.rate; sbv.textContent = cfg.rate; }
+function refresh() { showHeat(); showFps(); showRate(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
 
 const pc = new RTCPeerConnection();
@@ -1525,7 +1542,7 @@ def capture_long():
     return max(width, height)
 
 
-def set_size(long):
+def set_size(long, restart=True):
     """A new picture size from the page: the long side LONG, the short one
     in the same proportion, in the raw frames and the capture's scale
     filter (which runs before wf-recorder turns the picture, so its two
@@ -1550,7 +1567,8 @@ def set_size(long):
     except OSError:
         pass
     log_line(f"picture size {width}x{height}")
-    restart_session()
+    if restart:
+        restart_session()
 
 
 def restart_session():
@@ -1600,7 +1618,7 @@ def capture_fps():
     return int(Handler.size.split("@")[1]) if Handler.size else None
 
 
-def set_fps(fps, chosen=True):
+def set_fps(fps, chosen=True, restart=True):
     """A new capture rate, from the page or the heat limit: the capture
     commands, the raw frames' rate and the keyframe period change (and the
     menu's setting, when chosen), and the viewer's session ends; its page,
@@ -1620,7 +1638,8 @@ def set_fps(fps, chosen=True):
         except OSError:
             pass
     log_line(f"capture rate {fps} fps" + ("" if chosen else " (heat limit)"))
-    restart_session()
+    if restart:
+        restart_session()
 
 
 # The heat limit (the page's "heat", in the kept settings): every 15 s,
@@ -1818,6 +1837,32 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(b"bad size", code=400)
                 return
             set_size(long)
+            self.reply(b"ok")
+            return
+        if path == "/apply":
+            # The page's rate, fps and size together: one restart.
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+
+            def number(name, kind):
+                try:
+                    return kind(query[name][0])
+                except (KeyError, ValueError, IndexError):
+                    return None
+            mbps, fps, long = number("mbps", float), number("fps", int), number("long", int)
+            if ((fps is not None and not 5 <= fps <= 60)
+                    or (long is not None and long not in (960, 1280, 1600, 1920))
+                    or ((fps or long) and not self.size)):
+                self.reply(b"bad setting", code=400)
+                return
+            if mbps is not None:
+                Handler.mbps = min(20.0, max(0.5, mbps))
+                log_line(f"bit rate {Handler.mbps} Mbit/s")
+            if long is not None:
+                set_size(long, restart=False)
+            if fps is not None:
+                Handler.target = fps
+                set_fps(fps, restart=False)
+            GLib.idle_add(lambda: restart_session() or GLib.SOURCE_REMOVE)
             self.reply(b"ok")
             return
         if path == "/settings":
