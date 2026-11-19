@@ -1482,8 +1482,6 @@ act() {                         # Enter
         dialer) qs_hide; swaymsg exec "pro1x-open gnome-calls" >/dev/null ;;
         chats) qs_hide; swaymsg exec "pro1x-open chatty" >/dev/null ;;
         gpu) open_app nvtop ;;    # load, clock, GPU time per app
-        # The power menu, from the last line (author, 2026-11-19).
-        power) qs_hide; pro1x-menu toggle powermenu >/dev/null 2>&1 ;;
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
@@ -1688,6 +1686,16 @@ case "${1:-}" in
     # about 60 ms each only to start (author, 2026-11-06: sluggish).
     --step-cached) step "$2" "$3" >/dev/null 2>&1; cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
+    # The power menu, from the last line (author, 2026-11-19): its own
+    # window from quick actions' own; in the same terminal from one of the
+    # user's (over SSH, it opened on the phone's screen, unseen).
+    --power)
+        if [ -n "${QS_RESIDENT:-}" ]; then
+            qs_hide; pro1x-menu toggle powermenu >/dev/null 2>&1
+        else
+            pro1x-power-menu --menu
+        fi
+        exit ;;
     --choose)
         case "$2" in
             dicts) dict_choose ;;
@@ -1776,6 +1784,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
+                  power) echo \"execute($self --power)+reload($self --cached)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
@@ -1785,6 +1794,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
+                  power) echo \"execute($self --power)+reload($self --cached)\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
