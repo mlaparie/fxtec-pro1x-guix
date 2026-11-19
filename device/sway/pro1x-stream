@@ -26,6 +26,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 pid_file="$rt/pro1x-stream.pid"
 to_file="$rt/pro1x-stream.to"           # what the menus show
+kind_file="$rt/pro1x-stream.kind"       # the running stream: KIND [KEY | ADDRESS]
 fps_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-fps"
 size_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-size"
 key_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-key"   # on or off
@@ -143,6 +144,33 @@ info() {                        # info WHAT KEY
             missing=$(wan_missing)
             if [ -n "$missing" ]; then printf 'Still needed:\n\n%s\n' "$missing"
             else echo "Ready: https://$(funnel_name)/"; fi ;;
+        screen:phone)
+            echo "The client sees the phone's screen as it is: its ratio and"
+            echo "resolution (Output size scales it down).  A window of"
+            echo "another shape shows it with bars." ;;
+        screen:client)
+            echo "The phone's screen takes the client's window's shape and the"
+            echo "Output size, and follows the window when it is resized; the"
+            echo "panel shows it too, its touches passed on.  Interactive only." ;;
+        screen:multi-monitor)
+            echo "A second display at the client's shape, apart from the"
+            echo "panel: windows move between the two, as with a second"
+            echo "monitor.  Interactive only." ;;
+        fps:*)
+            echo "Frames captured a second: $2."
+            echo
+            echo "Lower rates save CPU and heat (copying the screen costs more"
+            echo "than encoding it) and bandwidth; 30 is smoothest.  The phone"
+            echo "lowers it by itself when it gets hot." ;;
+        size:native)
+            echo "The picture's long side as the screen's (2160): the sharpest,"
+            echo "and the most work.  The phone's encoder takes 1920 at most:"
+            echo "above, software encoding (VLC) or 1920." ;;
+        size:*)
+            echo "The picture's long side scaled to $2 pixels, the ratio kept."
+            echo
+            echo "Smaller: less work for the phone and less bandwidth, a"
+            echo "softer picture; 1280 is a good start for a car or a tablet." ;;
         approve:off) echo "The access key alone lets a viewer in." ;;
         approve:tap) echo "A notification on the phone: a tap lets the viewer in." ;;
         approve:fingerprint)
@@ -232,9 +260,7 @@ EOF
     chmod 600 "$https_file"
     ${EDITOR:-nano} "$https_file"
     clear_screen
-    printf 'Checking (a first certificate takes about two minutes)…\n'
-    https_check
-    pause
+    notice "HTTPS name: $(https_check)"
 }
 run_hook() { [ -x "$hook" ] && setsid "$hook" "$@" >/dev/null 2>&1 </dev/null & }
 
@@ -242,6 +268,18 @@ trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
 clear_screen() { printf '\033[H\033[2J\033[3J'; }
 pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+# A message in fzf over a back line: nothing printed outside fzf (author).
+notice() {                      # notice TEXT
+    printf 'back\t← back\n' |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --header="$1" \
+            --layout=reverse-list --no-info --margin=1,2 --color=16,gutter:-1 \
+            --bind='left:abort' --bind='right:accept' >/dev/null
+}
+# A line typed in fzf's own prompt.
+ask() {                         # ask PROMPT HEADER
+    fzf --listen="$sock" --print-query --prompt="$1 > " --header="$2" --no-info \
+        --margin=1,2 --color=16,gutter:-1 --bind='left:abort' </dev/null | head -1
+}
 
 streaming() { [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; }
 
@@ -261,8 +299,20 @@ keep_awake() {                  # keep_awake PID
 stop_stream() {
     funnel_stop
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
-    rm -f "$pid_file" "$to_file"
+    rm -f "$pid_file" "$to_file" "$kind_file"
 }
+
+# The running stream's links again (Show links, or its line chosen again).
+running_links() {
+    read -r kind arg < "$kind_file" 2>/dev/null || return
+    case "$kind" in
+        interactive|webrtc) show_links "$(streaming_note "$arg")" "${arg:+?k=$arg}" ;;
+        mjpeg) simple_links ;;
+        udp) printf '%s\t%-10s %s\n' "udp://@:$udp_port" vlc "udp://@:$udp_port" |
+                 show_urls "Sending to $arg: in VLC there, open the URL above." >/dev/null ;;
+    esac
+}
+running_kind() { streaming && cut -d' ' -f1 "$kind_file" 2>/dev/null; }
 
 fps() { cat "$fps_file" 2>/dev/null || echo 30; }
 
@@ -288,7 +338,7 @@ pick_screen() {
             phone "Host           keeps the phone's ratio and resolution" \
             client "Client         the phone adapts to the client's window" \
             multi-monitor "Multi-monitor  separate displays for the client and the phone" |
-            mark "$(screen)" | pick "screen mode")
+            mark "$(screen)" | pick_info "screen mode" screen)
     [ -n "$v" ] && echo "$v" > "$screen_file"
 }
 pick_approve() {
@@ -331,7 +381,7 @@ new_key() {
 pick_fps() {
     rate=$(printf '%s\n' 30 20 15 10 |
         awk -v cur="$(fps)" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $1 " fps" }' |
-        pick "capture rate")
+        pick_info "capture rate" fps)
     [ -n "$rate" ] || return
     mkdir -p "$(dirname "$fps_file")"
     echo "$rate" > "$fps_file"
@@ -343,7 +393,7 @@ out_size() { cat "$size_file" 2>/dev/null || echo native; }
 pick_size() {
     size=$(printf '%s\n' native 1920 1280 960 640 |
         awk -v cur="$(out_size)" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $1 }' |
-        pick "output size")
+        pick_info "output size" size)
     [ -n "$size" ] || return
     mkdir -p "$(dirname "$size_file")"
     echo "$size" > "$size_file"
@@ -366,22 +416,12 @@ pick() {                        # pick PROMPT [FZF-OPTION...]
     { printf 'back\t← back\n'; cat; } |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$prompt > " \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' "$@" |
+            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' "$@" |
         cut -f1 | sed '/^back$/d'
 }
 # A list whose preview explains the highlighted line (info WHAT KEY).
 pick_info() {                   # pick_info PROMPT WHAT
     pick "$1" --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left
-}
-
-# An image, as block characters come out too tall in this font.
-# show_qr URL [LINES]: the code in what is left below LINES lines of text
-# (7 by default), a row being about 40 pixels.
-show_qr() {
-    rows=$(stty size 2>/dev/null | cut -d' ' -f1)
-    qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
-        convert png:- -filter point -resize "x$(( (${rows:-20} - ${2:-7} - 1) * 40 ))" sixel:-
-    echo
 }
 
 # What can be sent: every window, with its Sway id and the area it covers.
@@ -449,7 +489,7 @@ own_address() {
         awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ {
                  sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
     if [ -z "$list" ]; then
-        { echo "No network."; pause; } >&2
+        notice "No network."
     elif [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
         printf '%s\n' "$list" | cut -f1
     else
@@ -474,6 +514,16 @@ networks_raw() {
         if [ "$only" = hotspot ]; then grep '^10\.42\.0\.1 '; else cat; fi
 }
 
+# A network's name in the link lists.
+net_name() {                    # net_name ADDRESS INTERFACE
+    case "$2" in
+        wlan*) [ "$1" = 10.42.0.1 ] && echo hotspot || echo wi-fi ;;
+        tailscale*) echo tailscale ;;
+        qmap*|rmnet*|wwan*) echo mobile ;;
+        *) echo "$2" ;;
+    esac
+}
+
 # A browser stream's links, HTTPS then HTTP on each network, with SUFFIX
 # (the key): "URL<tab>network  URL".
 links() {                       # links [SUFFIX]
@@ -482,12 +532,7 @@ links() {                       # links [SUFFIX]
     fi
     networks |
         while read -r a dev; do
-            case "$dev" in
-                wlan*) [ "$a" = 10.42.0.1 ] && net=hotspot || net=wi-fi ;;
-                tailscale*) net=tailscale ;;
-                qmap*|rmnet*|wwan*) net=mobile ;;
-                *) net=$dev ;;
-            esac
+            net=$(net_name "$a" "$dev")
             u=$(tls_url "$a")
             printf '%s%s\t%-10s %s\n' "$u" "${1:-}" "$net" "$u"
             u="http://$a:$webrtc_port/"
@@ -497,20 +542,42 @@ links() {                       # links [SUFFIX]
 
 # A QR code for fzf's preview, as large as the preview allows (a cell
 # being about 20x40 pixels).
+# The cell's size in pixels from the focused window's (this terminal's)
+# and fzf's whole size in cells: a fixed guess drew codes larger than the
+# pane (author, 2026-11-19).
 qr_preview() {
-    h=$(( ${FZF_PREVIEW_LINES:-20} * 40 - 40 )) w=$(( ${FZF_PREVIEW_COLUMNS:-40} * 20 - 40 ))
+    set -- "$1" $(swaymsg -t get_tree -r 2>/dev/null | jq -r '
+        .. | objects | select(.focused? == true) | "\(.rect.width) \(.rect.height)"' | head -1) \
+        $(swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | select(.focused) | .scale')
+    cw=20 ch=40
+    if [ -n "${3:-}" ] && [ -n "${FZF_COLUMNS:-}" ] && [ -n "${FZF_LINES:-}" ]; then
+        cw=$(awk -v w="$2" -v s="${4:-1}" -v c="$FZF_COLUMNS" 'BEGIN { print int(w * s / c) }')
+        ch=$(awk -v h="$3" -v s="${4:-1}" -v l="$FZF_LINES" 'BEGIN { print int(h * s / l) }')
+    fi
+    h=$(( ${FZF_PREVIEW_LINES:-20} * ch - ch )) w=$(( ${FZF_PREVIEW_COLUMNS:-40} * cw - 2 * cw ))
     [ "$h" -lt "$w" ] && size=$h || size=$w
     qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
         convert png:- -filter point -resize "${size}x${size}" sixel:-
 }
 
 # A running stream's links, the highlighted one's QR code beside it.
+# The link list's header (author's words).
+streaming_note() {              # streaming_note [KEY]
+    echo "Streaming is now on${1:+ with key '$1'}.  Stream URLs are listed above, with QR codes."
+    echo "Quick actions can be closed (Super+q or Esc); the stream keeps running."
+}
 show_links() {                  # show_links HEADER [SUFFIX]
-    links "${2:-}" |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="links > " \
-            --header="$1" --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --preview="$0 --qr {1}" --bind='left:abort' \
-            --preview-window=right,50%,border-left >/dev/null
+    links "${2:-}" | show_urls "$1" >/dev/null
+}
+# Lines of "URL<tab>shown" from stdin, the highlighted one's QR code beside
+# them; the URL picked with Enter on stdout, nothing for Esc or Left.
+show_urls() {                   # show_urls HEADER
+    { printf 'back\t← back\n'; cat; } |
+    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="links > " \
+        --bind='load:pos(2)' \
+        --header="$1" --layout=reverse-list --no-info --cycle --margin=1,2 \
+        --color=16,gutter:-1 --preview="$0 --qr {1}" --bind='left:abort' --bind='right:accept' \
+        --preview-window=right,50%,border-left | cut -f1 | sed '/^back$/d'
 }
 
 # The devices seen on the local networks: hotspot clients by name.
@@ -531,17 +598,15 @@ send_udp() {                    # send_udp [ADDRESS]
         ip=$(devices | pick "to")
         [ -n "$ip" ] || return
         if [ "$ip" = type ]; then
-            clear_screen
-            read -rp "Address: " ip
+            ip=$(ask address "The other device's address; Enter, or Esc to go back.")
             [ -n "$ip" ] || return
         fi
     fi
     url="udp://@:$udp_port"
-    clear_screen
-    printf 'In VLC on the other device, open:  %s\n' "$url"
-    printf 'Then press a key to start sending to %s.\n\n' "$ip"
-    show_qr "$url"
-    read -rsn1
+    started=$(printf '%s\t%-10s %s\n' "$url" vlc "$url" |
+        show_urls "In VLC on the other device, open the URL above (its QR code on the right).
+Then Enter starts sending to $ip; Esc goes back.")
+    [ -n "$started" ] || return
     stop_stream
     go_to_source
     if [ -n "${use_hw:-}" ]; then
@@ -556,9 +621,17 @@ send_udp() {                    # send_udp [ADDRESS]
     fi
     echo $! > "$pid_file"
     echo "VLC to $ip" > "$to_file"
+    echo "udp $ip" > "$kind_file"
     sleep 1
-    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    streaming || { rm -f "$pid_file" "$to_file"; notice "Could not start."; return; }
     keep_awake "$(cat "$pid_file")"
+    leave_menu
+}
+
+simple_links() {
+    networks | while read -r a dev; do
+        printf 'http://%s:%s/\t%-10s http://%s:%s/\n' "$a" "$http_port" "$(net_name "$a" "$dev")" "$a" "$http_port"
+    done | show_urls "$(streaming_note)" >/dev/null
 }
 
 # ffmpeg serves one viewer at a time, and stops when that one leaves: the loop
@@ -583,13 +656,11 @@ send_mjpeg() {
     echo $! > "$pid_file"
     keep_awake "$(cat "$pid_file")"
     url="http://$ip:$http_port/"
-    echo "browser, $url" > "$to_file"
-    clear_screen
-    printf 'Open in a browser on the other device:  %s\n' "$url"
-    printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
-    show_qr "$url"
-    read -rsn1
+    echo "simple, $url" > "$to_file"
+    echo mjpeg > "$kind_file"
+    simple_links
     go_to_source
+    leave_menu
 }
 
 # The capture starts when a viewer connects, and stops when it leaves.  The
@@ -605,7 +676,7 @@ send_webrtc() {
         k=$(current_key)
         key=(--key "$k")
     fi
-    https_wanted && { printf 'HTTPS name: '; https_check; }
+    https_wanted && https_check >/dev/null
     stop_stream
     hw_source
     rate=$(fps)
@@ -626,13 +697,13 @@ send_webrtc() {
     echo $! > "$pid_file"
     url=$(tls_url "$ip")
     echo "read-only, $url${k:+  key $k} (or http://$ip:$webrtc_port/)" > "$to_file"
+    echo "webrtc $k" > "$kind_file"
     sleep 1
-    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    streaming || { rm -f "$pid_file" "$to_file"; notice "Could not start."; return; }
     keep_awake "$(cat "$pid_file")"
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" webrtc
-    show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
-A certificate warning: accept it once.  One viewer; Esc, it keeps running." "${k:+?k=$k}"
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
     go_to_source
     leave_menu
 }
@@ -640,13 +711,11 @@ A certificate warning: accept it once.  One viewer; Esc, it keeps running." "${k
 # No address to stream on: none at all, or no hotspot with Visibility on
 # Hotspot.
 no_network() {
-    clear_screen
     if [ "$(visibility)" = hotspot ]; then
-        echo "Visibility is Hotspot (Settings), and the phone's hotspot is off."
+        notice "Visibility is Hotspot (SETTINGS), and the phone's hotspot is off."
     else
-        echo "No network."
+        notice "No network."
     fi
-    pause
 }
 
 # Inside quick actions: once a stream is up and its links seen, quick
@@ -670,8 +739,7 @@ send_interactive() {
     ip=${addr:-$(main_address)}
     [ -n "$ip" ] || { [ -n "${quiet:-}" ] || no_network; return 1; }
     if https_wanted; then
-        if [ -n "${quiet:-}" ]; then https_check >/dev/null
-        else printf 'HTTPS name: '; https_check; fi
+        https_check >/dev/null
     fi
     stop_stream
     hw_source
@@ -694,34 +762,27 @@ send_interactive() {
     echo $! > "$pid_file"
     url=$(tls_url "$ip")
     echo "interactive, $url${k:+  key $k} (or http://$ip:$webrtc_port/)" > "$to_file"
+    echo "interactive $k" > "$kind_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"
                    [ -n "${quiet:-}" ] && return 1
-                   echo "Could not start."; pause; return; }
+                   notice "Could not start."; return; }
     keep_awake "$(cat "$pid_file")"
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
-    show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
-A certificate warning: accept it once.  One viewer; Esc, it runs until Stop." "${k:+?k=$k}"
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
     leave_menu
 }
 
 try_catt() {
-    clear_screen
-    echo "Looking for Chromecasts…"
-    names=$(catt scan 2>/dev/null | awk -F' - ' 'NF >= 2 { print $2 "\t" $2 }')
-    if [ -z "$names" ]; then
-        echo "None found on this network."
-        pause
-        return
-    fi
-    name=$(printf '%s\n' "$names" | pick "chromecast")
+    # The list fills as the scan finds them.
+    name=$(catt scan 2>/dev/null | awk -F' - ' 'NF >= 2 { print $2 "\t" $2; fflush() }' |
+               pick "chromecast" --header="Chromecasts on this network (looking…)")
     [ -n "$name" ] || return
-    clear_screen
-    read -rp "Video URL or file: " what
+    what=$(ask "video URL or file" "For $name; Enter sends it, Esc goes back.")
     [ -n "$what" ] || return
-    catt -d "$name" cast "$what" || pause
+    err=$(catt -d "$name" cast "$what" 2>&1) || notice "Chromecast: ${err:-failed}"
 }
 
 network_displays() {
@@ -766,7 +827,10 @@ settings_menu() {
 
 while :; do
     lines=$(
-        if streaming; then printf 'stop\tStop: %s\n' "$(cat "$to_file")"; fi
+        if streaming; then
+            printf 'links\tShow links            URLs and QR codes of the running stream\n'
+            printf 'stop\tStop the stream       %s\n' "$(cut -d, -f1 "$to_file")"
+        fi
         printf '%s\t%s\n' \
             interactive "Browser, interactive  screen, sound, touch and keys; full screen (approval recommended)" \
             webrtc "Browser, read-only    screen and sound, no input; full screen or a window" \
@@ -776,7 +840,10 @@ while :; do
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
             settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS")
     choice=$(printf '%s\n' "$lines" | pick "stream")
+    # The running stream's own line: its links, not a restart.
+    [ -n "$choice" ] && [ "$choice" = "$(running_kind)" ] && choice=links
     case "$choice" in
+        links) running_links; leave_menu ;;
         stop) stop_stream ;;
         # The phone's encoder up to 1920 pixels, software above.
         udp) if [ "$(limited "$(out_size)" 1921)" -le 1920 ]; then
