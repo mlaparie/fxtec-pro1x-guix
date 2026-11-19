@@ -220,21 +220,14 @@ sim_state() {                   # [modem key-values, else asks mmcli]
 # Asks for the PIN in this terminal and sends it once; never retries by
 # itself and leaves PUK unlocking to the owner (a wrong PUK ten times
 # destroys the SIM).
-sim_unlock() {
-    kv=$(modem_kv)
-    req=$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)
-    sim=$(printf '%s\n' "$kv" | kv_get modem.generic.sim)
-    n=$(printf '%s\n' "$kv" | pin_tries)
-    case "$req" in
-        sim-pin) ;;
-        sim-puk)
-            printf 'The SIM needs its PUK.  Unlock it by hand:\n'
-            printf '  mmcli -i any --puk=<PUK> --pin=<new PIN>\n'
-            printf 'Enter to go back. '; read -r _; return ;;
-        *) return ;;
-    esac
-    printf 'SIM PIN (%s tries left, Enter alone to cancel): ' "${n:-?}"
-    # A star per digit (author, 2026-11-02); Backspace takes one back.
+# A saved PIN, sent once at boot by pro1x-sim-prompt (author, 2026-11-19);
+# readable by the user only.
+sim_pin_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/sim-pin
+
+# read_pin PROMPT: digits typed as stars (author, 2026-11-02) into $pin;
+# Backspace takes one back, Enter ends.
+read_pin() {
+    printf '%s' "$1"
     pin= old=$(stty -g)
     stty -echo -icanon min 1
     while c=$(dd bs=1 count=1 2>/dev/null); [ -n "$c" ]; do
@@ -245,26 +238,53 @@ sim_unlock() {
         esac
     done
     stty "$old"; echo
+    case "$pin" in *[!0-9]*) pin=x ;; esac
+}
+pin_ok() { [ "$pin" != x ] && [ ${#pin} -ge 4 ] && [ ${#pin} -le 8 ]; }
+
+# The PIN prompt: again after a wrong PIN, the tries left each time.
+sim_unlock() {
+    printf '\033[?2026l'
+    [ -n "${PRO1X_SIM_NOTE:-}" ] && printf '%s\n\n' "$PRO1X_SIM_NOTE"
+    while :; do
+        kv=$(modem_kv)
+        sim=$(printf '%s\n' "$kv" | kv_get modem.generic.sim)
+        n=$(printf '%s\n' "$kv" | pin_tries)
+        case "$(printf '%s\n' "$kv" | kv_get modem.generic.unlock-required)" in
+            sim-pin) ;;
+            sim-puk)
+                printf 'The SIM needs its PUK.  Unlock it by hand:\n'
+                printf '  mmcli -i any --puk=<PUK> --pin=<new PIN>\n'
+                printf 'Enter to go back. '; read -r _; return ;;
+            *) return ;;
+        esac
+        read_pin "SIM PIN, ${n:-?} tries left (Enter alone to cancel): "
+        [ -n "$pin" ] || return
+        if ! pin_ok; then printf 'A PIN is 4 to 8 digits; nothing sent.\n\n'; continue; fi
+        if [ "${n:-0}" = 1 ]; then
+            printf 'Last try: a wrong PIN locks the SIM (PUK).  Type yes to send: '
+            read -r ok; [ "$ok" = yes ] || return
+        fi
+        if mmcli -i "$sim" --pin="$pin" >/dev/null 2>&1; then
+            pin=
+            printf 'SIM unlocked.\n'; sleep 1; return
+        fi
+        pin=
+        printf 'Wrong PIN.\n\n'
+    done
+}
+sim_save() {
+    printf '\033[?2026l'
+    printf 'Sent once at each boot, before the prompt; never on the last try.\n\n'
+    read_pin "PIN to save (4 to 8 digits, Enter alone to cancel): "
     [ -n "$pin" ] || return
-    case "$pin" in
-        *[!0-9]*) pin= ;;
-    esac
-    if [ ${#pin} -lt 4 ] || [ ${#pin} -gt 8 ]; then
-        printf 'A PIN is 4 to 8 digits; nothing sent.\n'
-        printf 'Enter to go back. '; read -r _; return
-    fi
-    if [ "${n:-0}" = 1 ]; then
-        printf 'Last try: a wrong PIN locks the SIM (PUK).  Type yes to send: '
-        read -r ok; [ "$ok" = yes ] || return
-    fi
-    if mmcli -i "$sim" --pin="$pin" >/dev/null 2>&1; then
-        printf 'SIM unlocked.\n'
-        sleep 1
-    else
-        printf 'Refused: %s\nEnter to go back. ' "$(sim_state)"
-        read -r _
-    fi
+    if pin_ok; then
+        mkdir -p "${sim_pin_file%/*}"
+        (umask 077; printf '%s\n' "$pin" > "$sim_pin_file")
+        printf 'Saved.\n'
+    else printf 'A PIN is 4 to 8 digits; not saved.\n'; fi
     pin=
+    sleep 1
 }
 
 dim() {                         # grey for off states
@@ -522,6 +542,18 @@ choose() {
                        [ -n "$ps" ] && printf 'powersave\tpower saving: %s (turn %s)\n' \
                            "$ps" "$([ "$ps" = on ] && echo off || echo on)"
                    fi) ;;
+        sim)
+            title=SIM
+            cur=
+            saved=$([ -s "$sim_pin_file" ] && echo set || echo none)
+            opts=$(case "$(sim_state)" in
+                       PIN*|PUK*) printf 'unlock	Unlock now: %s
+' "$(sim_state)" ;;
+                   esac
+                   printf 'save	Saved PIN: %s (sent once at boot)
+' "$saved"
+                   [ "$saved" = set ] && printf 'forget	Forget the saved PIN
+') ;;
         location)
             # On, off, or Satellite's map and fix, location on first
             # (author, 2026-11-19).
@@ -604,6 +636,12 @@ choose() {
             case "$pick" in [0-9]*) shown="$pick min locked" ;; *) shown=$pick ;; esac
             confirm autosleep "$shown" autosleep_set "$pick" ;;
         layout) confirm layout "$pick" layout_to "$pick" ;;
+        sim)
+            case "$pick" in
+                unlock) sim_unlock ;;
+                save) sim_save ;;
+                forget) rm -f "$sim_pin_file" ;;
+            esac ;;
         location)
             if [ "$pick" = satellite ]; then
                 [ "$(location_now)" = on ] || toggle_to location on
@@ -1671,7 +1709,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="enter:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|location|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
-                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
@@ -1679,7 +1717,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   wifi|bluetooth|location) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
-                  sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
+                  sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   gpu) echo \"execute-silent($self --act {1})\" ;;
                 esac" \

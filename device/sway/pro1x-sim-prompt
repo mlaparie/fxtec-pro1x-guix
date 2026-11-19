@@ -8,7 +8,14 @@
 # the keyboard closed the on-screen keyboard shows while the prompt is open.
 # Started by the Sway config.
 #
-# State: written 2026-11-05, build-tested only.
+# A PIN saved in quick actions (SIM, Saved PIN; ~/.config/pro1x/sim-pin) is
+# sent first, once per boot (a mark in XDG_RUNTIME_DIR, which a reboot
+# clears) and never on the last try: a wrong one cannot lock the SIM by
+# repeating.  Accepted, no prompt; refused, the prompt says so (author,
+# 2026-11-19).
+#
+# State: the prompt works (2026-11-05); the saved PIN written 2026-11-19,
+# not yet run.
 
 osk() {
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
@@ -23,10 +30,25 @@ while [ "$i" -lt 60 ]; do
     esac
     break
 done
-case "$(printf '%s\n' "$state" | sed -n 's/^modem.generic.unlock-required *: //p')" in
+req=$(printf '%s\n' "$state" | sed -n 's/^modem.generic.unlock-required *: //p')
+case "$req" in
     sim-pin|sim-puk) ;;
     *) exit 0 ;;
 esac
+
+pin_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/sim-pin
+tried=${XDG_RUNTIME_DIR:-/tmp}/pro1x-sim-auto-tried
+tries=$(printf '%s\n' "$state" | grep -o 'sim-pin ([0-9]*)' | head -1 | tr -dc 0-9)
+if [ "$req" = sim-pin ] && [ -s "$pin_file" ] && [ ! -e "$tried" ] &&
+       [ "${tries:-0}" -ge 2 ]; then
+    : > "$tried"
+    sim=$(printf '%s\n' "$state" | sed -n 's/^modem.generic.sim *: //p')
+    if mmcli -i "$sim" --pin="$(head -1 "$pin_file")" >/dev/null 2>&1; then
+        notify-send -a SIM "SIM unlocked" "with the saved PIN" 2>/dev/null
+        exit 0
+    fi
+    export PRO1X_SIM_NOTE="The saved PIN was refused."
+fi
 
 # evtest --query exits with 10 while the keyboard is slid out.
 evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE
