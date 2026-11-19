@@ -1249,6 +1249,13 @@ class Screen:
         except OSError:
             pass
         subprocess.run(["swaymsg", f"output {self.name} unplug"], capture_output=True, timeout=5)
+        if self.mode == "client":
+            # Away from the mirror's workspace, which Sway then drops.
+            mine = [w["name"] for w in sway("-t", "get_workspaces") or []
+                    if w["name"] != "mirror"]
+            if mine:
+                subprocess.run(["swaymsg", "--", f'workspace "{mine[0]}"'],
+                               capture_output=True, timeout=5)
 
 
 screen = None
@@ -2767,8 +2774,8 @@ def main_loop():
 
     def quit_loop(*_args):
         # Stopping a pipeline with a viewer half connected can hang (seen
-        # 2026-11-18, the interactive offer unanswered): out within 3 s.
-        threading.Timer(3, lambda: os._exit(0)).start()
+        # 2026-11-18, the interactive offer unanswered): out within 8 s.
+        threading.Timer(8, lambda: os._exit(0)).start()
         loop.quit()
 
     signal.signal(signal.SIGTERM, quit_loop)
@@ -2886,6 +2893,15 @@ def main():
     try:
         loop.run()
     finally:
+        # What the phone shows and its Wi-Fi first, quick and what matters:
+        # behind the pipelines, the end's time limit cut them off, and the
+        # stream's screen, its mirror workspace and power saving stayed
+        # (author, 2026-11-19).
+        if panel_touch:
+            panel_touch.stop()
+        if screen:
+            screen.stop()
+        wifi_hold(False)
         if caffeinated[0]:
             try:
                 caffeine_off()
@@ -2897,11 +2913,6 @@ def main():
             current.stop()
         if producer:
             producer.stop()
-        if panel_touch:
-            panel_touch.stop()
-        if screen:
-            screen.stop()
-        wifi_hold(False)
 
 
 if __name__ == "__main__":
