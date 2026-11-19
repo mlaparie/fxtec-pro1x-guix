@@ -156,6 +156,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>size &nbsp;<select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> long side</label>
 <div style="font-size:13px;opacity:.7">size: smaller lightens the phone's copies and encoder (not its screen capture)</div>
+<label>steady <input id="st" type="checkbox"> an even frame rate</label>
+<div style="font-size:13px;opacity:.7">steady: frames at exactly the fps, for games and films (the fps must be one the phone keeps up, 20 at 1920); off: only when the screen changes, cooler</div>
 <label>heat &nbsp;<input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
 <div style="font-size:13px;opacity:.7">heat: above it the phone lowers the fps, 5 at a time, and raises it back once 5 C cooler</div>
 <button id="sy">RESYNC</button></div>
@@ -184,7 +186,7 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch",
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true,
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
 // Settings kept before the touchpad mode had touch true or false.
@@ -369,7 +371,10 @@ sh.onchange = () => { save(); log({ev: "setting", name: "heat", value: cfg.heat}
 const sz = document.getElementById("sz");
 sz.onchange = () => { pending.long = Number(sz.value); showPending(); };
 function showRate() { sb.value = cfg.rate; sbv.textContent = cfg.rate; }
-function refresh() { showHeat(); showFps(); showRate(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
+const st = document.getElementById("st");
+function showSteady() { st.checked = cfg.steady; }
+st.onchange = () => { cfg.steady = st.checked; save(); log({ev: "setting", name: "steady", value: cfg.steady}); };
+function refresh() { showHeat(); showFps(); showRate(); showSteady(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
 
 const pc = new RTCPeerConnection();
@@ -961,6 +966,15 @@ class Portal:
 portal = None
 
 
+def kept_setting(name, default):
+    """A setting the page kept on the phone (SETTINGS), or DEFAULT."""
+    try:
+        with open(SETTINGS) as f:
+            return json.load(f).get(name, default)
+    except (OSError, ValueError, AttributeError):
+        return default
+
+
 class Producer:
     """The portal's capture and the encoder, made once for the server's
     life; each viewer's pipeline takes its H.264 from here (attach), from
@@ -973,9 +987,14 @@ class Producer:
 
     The portal sends a frame only when the screen changes, and the encoder
     makes a keyframe only from a frame: a viewer joining a still screen got
-    no picture, and the page fell back to VP8 (author, 2026-11-19).  So the
-    capture and the encoder are two pipelines, and the last frame goes to
-    the encoder again while a viewer waits and the screen stays still."""
+    no picture, and the page fell back to VP8 (author, 2026-11-19).  Its
+    frames also come unevenly, as the screen changes, and the picture
+    jerked (author: it should be as steady as a game or a film).  So the
+    capture and the encoder are two pipelines, and a clock (pace) hands the
+    encoder the latest frame at exactly the chosen rate, again when nothing
+    changed: up to one frame's time later, but even.  Without it (the
+    page's "steady" off), frames go as they come: the encoder works only
+    when the screen changes, and the phone stays cooler."""
 
     # The profile and level as hardware() sets them, for the offer's
     # profile-level-id.
@@ -986,7 +1005,10 @@ class Producer:
         self.portal, self.mbps = portal, mbps
         self.lock = threading.Lock()
         self.viewers = {}          # appsrc: still waiting for a keyframe
-        self.last, self.last_at = None, 0.0
+        self.last = None
+        self.fps = int(size.split("@")[1])
+        self.steady = kept_setting("steady", True)
+        self.pushed_at = 0.0
         portal.open()
         self.capture = Gst.parse_launch(
             "identity name=frames ! appsink name=raw emit-signals=true sync=false "
@@ -1016,32 +1038,51 @@ class Producer:
                           ("encoded", self.pipeline.get_by_name("out").get_static_pad("sink"))):
             pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
         GLib.timeout_add_seconds(10, self.report)
-        self.repeat = GLib.timeout_add(250, self.still)
         self.pipeline.set_state(Gst.State.PLAYING)
         self.capture.set_state(Gst.State.PLAYING)
-
-    def push(self, buf):
-        copy = buf.copy()
-        copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
-        self.input.emit("push-buffer", copy)
-        self.last_at = time.monotonic()
+        self.running = True
+        threading.Thread(target=self.pace, daemon=True).start()
 
     def frame(self, sink):
         sample = sink.emit("pull-sample")
         if self.last is None:
             self.input.set_caps(sample.get_caps())
         self.last = sample.get_buffer()
-        self.push(self.last)
+        if not self.steady:
+            self.push(self.last)
         return Gst.FlowReturn.OK
 
-    def still(self):
-        """The last frame again, for a viewer still waiting for a keyframe
-        on a still screen."""
-        with self.lock:
-            waiting = any(self.viewers.values())
-        if waiting and self.last is not None and time.monotonic() - self.last_at > 0.5:
-            self.push(self.last)
-        return GLib.SOURCE_CONTINUE
+    def push(self, buf):
+        copy = buf.copy()
+        copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
+        self.input.emit("push-buffer", copy)
+        self.pushed_at = time.monotonic()
+
+    def pace(self):
+        """The latest frame to the encoder every 1/fps s, on a schedule that
+        does not drift; a late tick is skipped rather than made up.  Not
+        steady: only the last frame again for a viewer waiting for its
+        keyframe on a still screen (the encoder makes one only from a
+        frame)."""
+        step = 1 / self.fps
+        due = time.monotonic()
+        while self.running:
+            due += step
+            wait = due - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            elif wait < -step:
+                due = time.monotonic()
+            buf = self.last
+            if buf is None:
+                continue
+            if self.steady:
+                self.push(buf)
+            elif time.monotonic() - self.pushed_at > 0.5:
+                with self.lock:
+                    waiting = any(self.viewers.values())
+                if waiting:
+                    self.push(buf)
 
     def count(self, _pad, _info, name):
         self.counts[name] += 1
@@ -1080,18 +1121,12 @@ class Producer:
         self.keyframe()
 
     def keyframe(self):
-        """A keyframe from the encoder; on a still screen, the last frame
-        again makes it (still)."""
+        """A keyframe from the encoder, from the next frame it gets."""
         self.encoder.get_static_pad("src").send_event(
             GstVideo.video_event_new_upstream_force_key_unit(
                 Gst.CLOCK_TIME_NONE, True, 0))
-        self.last_at = 0.0
-        GLib.idle_add(self.still_now)
-
-    def still_now(self):
-        if self.last is not None and time.monotonic() - self.last_at > 0.5:
+        if not self.steady and self.last is not None:
             self.push(self.last)
-        return GLib.SOURCE_REMOVE
 
     def detach(self, src):
         with self.lock:
@@ -1100,7 +1135,7 @@ class Producer:
     def stop(self):
         if self.keyframes:
             GLib.source_remove(self.keyframes)
-        GLib.source_remove(self.repeat)
+        self.running = False
         self.capture.set_state(Gst.State.NULL)
         self.last = None
         self.pipeline.set_state(Gst.State.NULL)
@@ -1541,11 +1576,20 @@ class Session:
         )
         self.webrtc.emit("set-remote-description", answer, Gst.Promise.new())
 
-    def stop(self):
+    def stop(self, background=False):
+        """The pipeline down.  BACKGROUND, for a producer's viewer: in a
+        thread, since stopping a webrtcbin whose viewer has gone held the
+        main loop for 12 s, and the next viewer's start with it
+        (2026-11-19)."""
         if self.keyframes:
             GLib.source_remove(self.keyframes)
+            self.keyframes = None
         if self.producer:
             self.producer.detach(self.pipeline.get_by_name("frames"))
+            if background:
+                threading.Thread(target=self.pipeline.set_state,
+                                 args=(Gst.State.NULL,), daemon=True).start()
+                return
         self.pipeline.set_state(Gst.State.NULL)
         last_stop[0] = time.monotonic()
         if not self.proc:
@@ -1746,7 +1790,7 @@ def end_session(old):
     with session_lock:
         if session is old:
             session = None
-    old.stop()
+    old.stop(background=True)
     return GLib.SOURCE_REMOVE
 
 
@@ -1768,7 +1812,7 @@ def new_session(command, codec, size, created):
     with session_lock:
         old, session = session, None
     if old:
-        old.stop()
+        old.stop(background=True)
     wait = last_stop[0] + 3 - time.monotonic()
     if wait > 0 and not producer:
         time.sleep(wait)
@@ -1912,8 +1956,13 @@ class Handler(BaseHTTPRequestHandler):
             text = self.rfile.read(min(int(self.headers["Content-Length"]), 2048))
             try:
                 kept = json.loads(text)
+                # Numbers, switches and short words (the input mode): with
+                # numbers only, every save since the input mode was refused,
+                # and a new browser got the defaults (author, 2026-11-19).
                 assert isinstance(kept, dict) and all(
-                    isinstance(v, (bool, int, float)) for v in kept.values())
+                    isinstance(v, (bool, int, float))
+                    or (isinstance(v, str) and len(v) <= 16)
+                    for v in kept.values())
             except (ValueError, AssertionError):
                 self.reply(b"bad settings", code=400)
                 return
@@ -1921,6 +1970,8 @@ class Handler(BaseHTTPRequestHandler):
             with open(SETTINGS + ".new", "w") as f:
                 json.dump(kept, f)
             os.replace(SETTINGS + ".new", SETTINGS)
+            if producer:
+                producer.steady = bool(kept.get("steady", True))
             self.reply(b"ok")
             return
         if path == "/log":
@@ -2004,9 +2055,8 @@ def main():
         Handler.mbps = float(os.environ.pop("PRO1X_STREAM_MBPS"))
     except (KeyError, ValueError):
         try:
-            with open(SETTINGS) as f:
-                Handler.mbps = min(20.0, max(0.5, float(json.load(f)["rate"])))
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            Handler.mbps = min(20.0, max(0.5, float(kept_setting("rate", Handler.mbps))))
+        except (ValueError, TypeError):
             pass
     if Handler.size:
         Handler.target = int(os.environ.pop("PRO1X_STREAM_TARGET", "0")) or \
