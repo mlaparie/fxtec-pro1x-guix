@@ -54,7 +54,8 @@ on_stream() {
 ws_arg() { case "$1" in [0-9]*) echo "number $1" ;; *) echo "$1" ;; esac; }
 go_window() {
     if on_stream; then
-        swaymsg "[con_id=$1] move container to workspace current" >/dev/null
+        here=$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.focused) | .name')
+        swaymsg "[con_id=$1] move container to workspace $(ws_arg "$here")" >/dev/null
     fi
     swaymsg "[con_id=$1] focus" >/dev/null
 }

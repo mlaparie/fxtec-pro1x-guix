@@ -1115,8 +1115,11 @@ class Screen:
                         f"output {self.name} mode --custom {width}x{height}@60Hz "
                         f"position {right} 0"):
             subprocess.run(["swaymsg", "--", command], capture_output=True, timeout=5)
+        # The rule places "stream" only when it is made; one left on the
+        # panel (2026-11-19) is moved over.
         for command in (f"workspace stream output {self.name}",
-                        f"focus output {self.name}", "workspace stream"):
+                        f"focus output {self.name}", "workspace stream",
+                        f"move workspace to output {self.name}"):
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
         with open(self.FILE, "w") as f:
             f.write(self.name + "\n")
