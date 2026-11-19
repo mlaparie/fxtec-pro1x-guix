@@ -831,7 +831,15 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
     """Elements from raw NV12 frames to H.264, by the phone's encoder, from
     the bytes of a pipe (PARSE) or from frames, a keyframe every GOP
     seconds.  If the encoder falls behind, the oldest frame waiting is
-    dropped, so the delay cannot grow."""
+    dropped, so the delay cannot grow.
+
+    As game streaming does (Moonlight, Parsec): a constant bit rate, its
+    peak the same (Venus's default peak is 2 Mbit/s, below what was asked),
+    and the picture refreshed a part at a time over a second (cyclic intra
+    refresh), so that no frame is a large keyframe burst on the link.
+    Venus here ignores slice limits (one slice a frame, by bytes or by
+    macroblocks, 2026-11-19).  Set only at the start: changing controls on
+    a running encoder killed its firmware."""
     dimensions, fps = size.split("@")
     width, height = map(int, dimensions.split("x"))
     return (
@@ -841,8 +849,10 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
         + "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate={int(mbps * 1e6)},video_gop_size={gop * int(fps)},'
-        f'h264_i_frame_period={gop * int(fps)};" ! '
+        f'video_bitrate_mode=1,video_bitrate={int(mbps * 1e6)},'
+        f'video_peak_bitrate={int(mbps * 1e6)},'
+        f'intra_refresh_period={int(fps)},intra_refresh_period_type=1,'
+        f'video_gop_size={gop * int(fps)},h264_i_frame_period={gop * int(fps)};" ! '
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
         "h264parse config-interval=-1"
     )
@@ -1548,9 +1558,14 @@ class Session:
         # asks (NACK, RTX): without it each loss cost frames until the next
         # keyframe, and the picture jerked at a steady 20 fps from the
         # encoder (2026-11-19).
+        # And recovery packets (FEC, ULP in RED, as browsers take it): a
+        # loss mended without waiting a round trip, which was 300 ms or
+        # more on the phone's Wi-Fi.  20%, Moonlight's default.
         video = self.webrtc.emit("get-transceiver", 0)
         if video is not None:
             video.set_property("do-nack", True)
+            video.set_property("fec-type", GstWebRTC.WebRTCFECType.ULP_RED)
+            video.set_property("fec-percentage", 20)
         self.webrtc.connect("on-negotiation-needed", self.negotiate)
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
