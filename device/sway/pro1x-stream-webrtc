@@ -539,6 +539,10 @@ setInterval(async () => {
     if (r.type === "inbound-rtp" && r.kind === "video") {
       s.fps = delta(r.id, "f", r.framesDecoded || 0);
       s.decoded = r.framesDecoded; s.dropped = r.framesDropped;
+      // Where frames go missing: packets lost, resend and keyframe requests,
+      // frames received but not shown.
+      s.received = r.framesReceived; s.lost = r.packetsLost;
+      s.nack = r.nackCount; s.pli = r.pliCount; s.freezes = r.freezeCount;
     }
     if (r.type === "codec" && /video/.test(r.mimeType)) s.codec = r.mimeType;
     if (r.type === "candidate-pair" && r.nominated && r.currentRoundTripTime)
@@ -1486,6 +1490,13 @@ class Session:
         for i, pad in enumerate(self.webrtc.sinkpads):
             if pad.find_property("msid"):
                 pad.set_property("msid", f"pro1x-{i}")
+        # A video packet lost on the Wi-Fi is sent again when the browser
+        # asks (NACK, RTX): without it each loss cost frames until the next
+        # keyframe, and the picture jerked at a steady 20 fps from the
+        # encoder (2026-11-19).
+        video = self.webrtc.emit("get-transceiver", 0)
+        if video is not None:
+            video.set_property("do-nack", True)
         self.webrtc.connect("on-negotiation-needed", self.negotiate)
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
