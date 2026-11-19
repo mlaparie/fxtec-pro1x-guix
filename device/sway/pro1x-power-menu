@@ -1,6 +1,6 @@
 #!/bin/sh
 # pro1x-power-menu — long press on the power key: cancel, lock, blank
-# screen, suspend, log out, reboot, power off (fzf, floating
+# screen, suspend, log out, reboot, power off, auto-sleep (fzf, floating
 # foot window)
 #
 #   pro1x-power-menu              open the menu
@@ -32,16 +32,53 @@ case "${1:-}" in
 esac
 
 # The menu's lines.  (The CPU mode is a quick actions line: author.)
+# Auto-sleep when locked (moved here from quick actions, author,
+# 2026-11-19): config.scm's AUTO_SLEEP, or this boot's choice in
+# XDG_RUNTIME_DIR (until reboot).
+autosleep=${XDG_RUNTIME_DIR:-/tmp}/pro1x-autosleep
+default_sleep() { AUTO_SLEEP=; . /etc/pro1x/dim.conf 2>/dev/null; echo "${AUTO_SLEEP:-off}"; }
+autosleep_shown() {
+    a=$(cat "$autosleep" 2>/dev/null)
+    case "${a:-$(default_sleep)}" in
+        off) printf off ;;
+        *) printf '%s min locked' "${a:-$(default_sleep)}" ;;
+    esac
+    [ -n "$a" ] && printf ' (until reboot)'
+    echo
+}
+autosleep_pick() {
+    cur=$(cat "$autosleep" 2>/dev/null || echo default)
+    d=$(default_sleep)
+    pick=$({ printf 'back\t← back\n'
+             { printf 'default\tconfig.scm: %s\n' "$([ "$d" = off ] && echo off || echo "$d min locked")"
+               printf 'off\toff\n'
+               for m in 1 5 10 15 30 60; do printf '%s\t%s min locked\n' "$m" "$m"; done; } |
+                 awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; } |
+           fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="auto-sleep > " \
+               --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+               --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' | cut -f1)
+    case "$pick" in ""|back) return ;; default) rm -f "$autosleep" ;; *) echo "$pick" > "$autosleep" ;; esac
+    # A new swayidle with it, unless Keep screen on holds none.
+    [ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine" 2>/dev/null || echo off)" = on ] && return
+    for p in $(pgrep -u "$(id -u)" -x swayidle); do kill "$p"; done
+    swaymsg exec "pro1x-idle --sway" >/dev/null
+}
+
 if [ "${1:-}" = --lines ]; then
     printf '%s\n' "Cancel" "Lock screen" "Lock and suspend" "Blank screen" "Suspend" \
-           "Log out" "Reboot" "Power off"
+           "Log out" "Reboot" "Power off" "Auto-sleep: $(autosleep_shown)"
     exit
 fi
 hide() { swaymsg '[app_id="^powermenu$"] move scratchpad' >/dev/null; }
 while :; do
 choice=$("$0" --lines |
              fzf --listen="$sock" --prompt="power > " --layout=reverse-list \
-                 --no-info --cycle --margin=1,2 --color=16,gutter:-1)
+                 --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+                 --bind='left:abort' --bind='right:accept')
+# Its list in this window, then this menu again.
+case "$choice" in
+    Auto-sleep*) autosleep_pick; continue ;;
+esac
 # Away first, then the choice; a fresh list (on Cancel) waits hidden.
 hide
 case "$choice" in

@@ -74,7 +74,6 @@ done
 
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"   # survives reboots
 caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"       # does not (author)
-autosleep="${XDG_RUNTIME_DIR:-/tmp}/pro1x-autosleep"     # nor this: minutes or off
 airplane_state="$statedir/airplane"     # on or off
 airplane_saved="$statedir/airplane-saved"   # lines: RADIO BEFORE AT-ENTRY
 airplane_keep="$statedir/airplane-keep"     # Wi-Fi and Bluetooth set in flight
@@ -580,13 +579,6 @@ choose() {
             cur=$(layout_now)
             KEYBOARD_LAYOUTS=us; . /etc/pro1x/keyboard.conf 2>/dev/null
             opts=$(for l in $KEYBOARD_LAYOUTS; do printf '%s\t%s\n' "$l" "$l"; done) ;;
-        autosleep)
-            title="auto-sleep when locked (until reboot)"
-            cur=$(cat "$autosleep" 2>/dev/null || echo default)
-            AUTO_SLEEP=; . /etc/pro1x/dim.conf 2>/dev/null
-            opts=$(printf 'default\tconfig.scm: %s\noff\toff\n' \
-                          "$( [ -n "$AUTO_SLEEP" ] && echo "$AUTO_SLEEP min locked" || echo off)"
-                   for m in 1 5 10 15 30 60; do printf '%s\t%s min locked\n' "$m" "$m"; done) ;;
         orient)
             title="orientation (fixes it)"
             cur=$(orientation)
@@ -648,9 +640,6 @@ choose() {
             esac
             confirm charge "$shown" charge_set "$pick" ;;
         orient) confirm orient "$pick" orientation_to "$pick" ;;
-        autosleep)
-            case "$pick" in [0-9]*) shown="$pick min locked" ;; *) shown=$pick ;; esac
-            confirm autosleep "$shown" autosleep_set "$pick" ;;
         layout) confirm layout "$pick" layout_to "$pick" ;;
         sim)
             case "$pick" in
@@ -1007,23 +996,6 @@ cpu_mode() {
 
 # Sleep after so long locked (pro1x-idle): this boot's choice, or
 # config.scm's auto-sleep.
-autosleep_now() {
-    case "$(cat "$autosleep" 2>/dev/null)" in
-        "") AUTO_SLEEP=; . /etc/pro1x/dim.conf 2>/dev/null
-            if [ -n "$AUTO_SLEEP" ]; then
-                printf '%s min locked' "$AUTO_SLEEP"
-            else dim off; fi ;;
-        off) dim off; until_reboot ;;
-        *) printf '%s min locked' "$(cat "$autosleep")"; until_reboot ;;
-    esac
-}
-autosleep_set() {               # autosleep_set default|off|MINUTES
-    if [ "$1" = default ]; then rm -f "$autosleep"; else echo "$1" > "$autosleep"; fi
-    # A new swayidle with it, unless Keep screen on holds none.
-    [ "$(cat "$caffeine" 2>/dev/null || echo off)" = on ] && return
-    for p in $(pgrep -u "$(id -u)" -x swayidle); do kill "$p"; done
-    swaymsg exec "pro1x-idle --sway" >/dev/null
-}
 # The choices: off, then limits with charging again 5 % lower.
 CHARGE_OPTS="off 80 85 90 95"
 charge_set() {                  # charge_set off|LIMIT
@@ -1206,8 +1178,9 @@ lines() {
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
-        "apps        App shortcuts              camera, dialer, chats" \
         "notif       Notifications              $(cat "$d/notif")" \
+        "osk         On-screen keyboard         $(dim "$(cat "$d/osk")")" \
+        "apps        App shortcuts              camera, dialer, chats" \
         "torch       Torch                      $(dim "$t")" \
         "waydroid    Waydroid                   $(dim "$(cat "$d/waydroid")")" \
         "stream      Stream                     $(stream_state)" \
@@ -1225,16 +1198,15 @@ lines() {
         "volume      Volume                     $vol" \
         "bright      Brightness                 $(cat "$d/br")" \
         "caffeine    Keep screen on             $(dim "$caf")" \
-        "autosleep   Auto-sleep                 $(autosleep_now)" \
         "dicts       Word completion            $(cat "$d/dicts")" \
-        "osk         On-screen keyboard         $(dim "$(cat "$d/osk")")" \
         "layout      On-screen keyboard layout  $(cat "$d/layout")" \
         "cpu         CPU mode                   $(cpu_mode)" \
         "gpu         GPU monitor                $(gpu_clock)" \
         "touchpad    Touch input mode           $(touch_mode)" \
         "fingerprint Fingerprint                $(dim "$(fingerprint_state)")" \
         "timezone    Timezone                   $(timezone_now)" \
-        "charge      Charge limit               $(charge_limit)"
+        "charge      Charge limit               $(charge_limit)" \
+        "power       Power menu                 lock, suspend, reboot, auto-sleep"
     rm -rf "$d"
 }
 
@@ -1429,6 +1401,8 @@ act() {                         # Enter
         dialer) qs_hide; swaymsg exec "pro1x-open gnome-calls" >/dev/null ;;
         chats) qs_hide; swaymsg exec "pro1x-open chatty" >/dev/null ;;
         gpu) open_app nvtop ;;    # load, clock, GPU time per app
+        # The power menu, from the last line (author, 2026-11-19).
+        power) qs_hide; pro1x-menu toggle powermenu >/dev/null 2>&1 ;;
         wwan) mobile_cycle + ;;
         orient)
             if [ "$(orientation)" = portrait ]; then set_orientation landscape
@@ -1718,7 +1692,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
@@ -1726,7 +1700,8 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="right:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  wifi|bluetooth|location) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wifi|bluetooth|location|apps|wwan) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  power) echo \"execute-silent($self --act {1})\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   gpu) echo \"execute-silent($self --act {1})\" ;;
@@ -1736,12 +1711,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|autosleep|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|autosleep|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
