@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--screen phone|separate|mirror] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--screen phone|client|multi-monitor] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
@@ -1058,13 +1058,13 @@ def sway(*args):
 
 
 class Screen:
-    """A Sway output of the stream's own (--screen separate|mirror, the
-    stream menu's Screen line): a headless output at the size the viewer's
-    window asks for (its shape, squarish in a car), with the workspace
-    "stream", captured by the portal in place of the panel
-    (pro1x-stream-output) and played on by the viewer's input.  Separate:
-    the panel keeps its own workspaces, as with a second monitor; mirror:
-    the panel shows the stream's output too (wl-mirror).  Kept over a
+    """A Sway output of the stream's own (--screen client|multi-monitor,
+    the stream menu's Screen line): a headless output at the size the
+    viewer's window asks for (its shape, squarish in a car), with the
+    workspace "stream", captured by the portal in place of the panel
+    (pro1x-stream-output) and played on by the viewer's input.  Client:
+    the panel shows it too (wl-mirror); multi-monitor: the panel keeps its
+    own workspaces, as a second monitor.  Kept over a
     restart of the server (a new size), removed at its end; its windows
     go back to the panel then."""
 
@@ -1094,7 +1094,7 @@ class Screen:
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
         with open(self.FILE, "w") as f:
             f.write(self.name + "\n")
-        if mode == "mirror":
+        if mode == "client":
             try:
                 self.mirror = subprocess.Popen(
                     ["wl-mirror", "--fullscreen-output", "DSI-1", self.name],
@@ -2552,7 +2552,7 @@ def main():
     global approval, screen
     if args[:1] == ["--screen"]:
         own_args.extend(args[:2])
-        if args[1] in ("separate", "mirror") and Handler.size:
+        if args[1] in ("client", "multi-monitor") and Handler.size:
             Handler.size = Screen.kept(Handler.size)
             try:
                 screen = Screen(args[1], Handler.size)
