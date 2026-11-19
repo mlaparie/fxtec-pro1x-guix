@@ -569,8 +569,10 @@ qr_preview() {
 # A running stream's links, the highlighted one's QR code beside it.
 # The link list's header (author's words).
 streaming_note() {              # streaming_note [KEY]
-    echo "Streaming is now on${1:+ with key '$1'}.  Stream URLs are listed above, with QR codes."
-    echo "Quick actions can be closed (Super+q or Esc); the stream keeps running."
+    echo "Streaming is now on${1:+ with key '$1'}."
+    echo "Stream URLs are listed above, with QR codes."
+    echo "Quick actions can be closed (Super+q or Esc);"
+    echo "the stream keeps running."
 }
 show_links() {                  # show_links HEADER [SUFFIX]
     links "${2:-}" | show_urls "$1" >/dev/null
