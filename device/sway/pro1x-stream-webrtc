@@ -1127,6 +1127,12 @@ class Screen:
                     stderr=subprocess.DEVNULL)
             except OSError as e:
                 log_line(f"no mirror on the panel: {e}")
+            else:
+                # Its window takes the focus as it opens: back to the
+                # stream's output, where the viewer's apps go.
+                threading.Timer(1.5, lambda: subprocess.run(
+                    ["swaymsg", f"focus output {self.name}"],
+                    capture_output=True, timeout=5)).start()
         log_line(f"screen of its own: {self.name} {width}x{height}" + (", mirrored" if self.mirror else ""))
 
     @classmethod
@@ -1773,6 +1779,13 @@ class Remote:
 
     def action(self, name):
         if name in self.ACTIONS:
+            # The menus open on the focused output: the viewer's.  With a
+            # screen of its own mirrored, the mirror on the panel had the
+            # focus, and the menus opened there, out of the stream
+            # (author, 2026-11-19).
+            if self.output != "DSI-1":
+                subprocess.run(["swaymsg", f"focus output {self.output}"],
+                               capture_output=True, timeout=5)
             subprocess.Popen(self.ACTIONS[name], stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
