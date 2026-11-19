@@ -140,6 +140,10 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
   background:rgba(0,0,0,.75);padding:8px;display:none;z-index:1}
 #info pre{margin:0;font:inherit}
+#lockmsg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
+  max-width:80%;padding:12px 16px;background:#000c;color:#fff;font:16px sans-serif;
+  text-align:center;z-index:5}
+#lockmsg input{font:16px sans-serif;margin:8px 0;padding:4px;width:12em}
 #note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
   z-index:3;background:#222;color:#ff0;font:16px monospace;padding:10px 14px;
   max-width:80%}
@@ -181,7 +185,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>size    <select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> px, long side</label>
 <button id="sy">RESYNC</button></div>
-<div id="note"></div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
+<div id="note"></div><div id="lockmsg">The phone is locked: its screen is not shared while locked.<br>
+<input id="lpw" type="password" placeholder="its password" autocomplete="off"> <button class="x" id="lgo">UNLOCK</button>
+<div id="lres"></div>or a finger on the phone's sensor.</div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
  spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
@@ -543,8 +549,15 @@ pc.ondatachannel = e => {
   chan.onclose = () => setTimeout(reloadWhenUp, 1000);
   // The phone restarts its capture (a new fps): connect again.
   chan.onmessage = m => {
-    try { if (JSON.parse(m.data).t === "reconnect") setTimeout(reloadWhenUp, 1000); }
-    catch (e) {}
+    try {
+      const o = JSON.parse(m.data);
+      if (o.t === "reconnect") setTimeout(reloadWhenUp, 1000);
+      if (o.t === "unlock") {
+        document.getElementById("lres").textContent =
+          o.ok ? "" : o.wait ? `Too many tries: wait ${o.wait} s.` : "Wrong password.";
+        if (o.ok) document.getElementById("lockmsg").style.display = "none";
+      }
+    } catch (e) {}
   };
 };
 // The server may be starting again (a new bit rate, size or rate): reload
@@ -588,6 +601,18 @@ function enterKey() {
 }
 document.getElementById("go").onclick = enterKey;
 gk.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); enterKey(); } });
+// The lock screen is kept out of the capture: its password typed here goes
+// in the data channel (always encrypted, even over HTTP); the phone checks
+// it and ends the lock screen.
+const lpw = document.getElementById("lpw");
+function unlock() {
+  if (!lpw.value) return;
+  send({t: "unlock", password: lpw.value});
+  lpw.value = "";
+  document.getElementById("lres").textContent = "Checking\\u2026";
+}
+document.getElementById("lgo").onclick = unlock;
+lpw.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); unlock(); } });
 
 let started = false;
 async function connect() {
@@ -685,6 +710,7 @@ addEventListener("resize", () => setTimeout(autofit, 1500));
 async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
+    document.getElementById("lockmsg").style.display = phone.locked ? "block" : "none";
     autofit();
     // The phone's settings, unless one waits for APPLY here.
     if (phone.long && !pending.long && !pending.w && document.activeElement !== sz) sz.value = String(phone.long);
@@ -2441,6 +2467,12 @@ class Session:
         elif '"t":"stop"' in text:
             log_line("stopped by the viewer")
             GLib.timeout_add(300, lambda: os.kill(os.getpid(), signal.SIGTERM) and False)
+        elif '"t":"unlock"' in text:
+            try:
+                password = json.loads(text)["password"]
+            except (ValueError, KeyError, TypeError):
+                return
+            threading.Thread(target=self.unlock, args=(str(password),), daemon=True).start()
         elif '"t":"keyframe"' in text:
             if self.producer:
                 self.producer.keyframe_soon()
@@ -2452,6 +2484,43 @@ class Session:
             GLib.idle_add(self.bitrate, min(20.0, max(0.5, mbps)))
         else:
             remote.handle(text)
+
+    def unlock(self, password):
+        """The viewer's unlock: the user's password checked as the lock
+        screen would (unix_chkpwd, the calling user's own), then gtklock
+        ended (it unlocks on SIGTERM).  Three wrong tries, then 30 s."""
+        now = time.monotonic()
+        tries = [t for t in unlock_tries if now - t < 30]
+        unlock_tries[:] = tries
+        reply = {"t": "unlock", "ok": False}
+        if len(tries) >= 3:
+            reply["wait"] = int(30 - (now - tries[0])) + 1
+        else:
+            try:
+                ok = subprocess.run(
+                    ["/run/privileged/bin/unix_chkpwd", os.environ.get("USER") or
+                     __import__("pwd").getpwuid(os.getuid()).pw_name, "nullok"],
+                    input=password.encode() + b"\0", capture_output=True,
+                    timeout=10).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            if ok:
+                for pid in os.listdir("/proc"):
+                    try:
+                        with open(f"/proc/{pid}/comm") as f:
+                            if f.read().strip() == "gtklock":
+                                os.kill(int(pid), signal.SIGTERM)
+                    except (OSError, ValueError):
+                        pass
+                log_line("unlocked by the viewer")
+            else:
+                unlock_tries.append(now)
+                log_line("wrong unlock password from the viewer")
+            reply["ok"] = ok
+        try:
+            self.channel.emit("send-string", json.dumps(reply))
+        except (AttributeError, TypeError):
+            pass
 
     def pause(self, on):
         """Picture and sound held back (PAUSE), the encoder idle so that the
@@ -2762,6 +2831,23 @@ def heat_check():
 CAFFEINE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-caffeine")
 
 
+unlock_tries = []             # monotonic times of wrong unlock passwords
+
+
+def phone_locked():
+    """Whether the lock screen (gtklock) is up: Sway keeps it out of screen
+    captures, and the stream shows black (author, 2026-11-19)."""
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            try:
+                with open(f"/proc/{pid}/comm") as f:
+                    if f.read().strip() == "gtklock":
+                        return True
+            except OSError:
+                pass
+    return False
+
+
 def caffeine_on():
     try:
         with open(CAFFEINE) as f:
@@ -2877,7 +2963,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "live": producer.limit if producer else None,
                                    "screen": screen.mode if screen else "phone",
                                    "size": Handler.size.split("@")[0] if Handler.size else None,
-                                   "long": capture_long()}).encode(),
+                                   "long": capture_long(),
+                                   "locked": phone_locked()}).encode(),
                        "application/json")
         elif path == "/settings":
             try:
