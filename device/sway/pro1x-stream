@@ -38,10 +38,15 @@ udp_port=5000
 http_port=8080
 webrtc_port=8081
 # The same over HTTPS, for browsers that refuse plain HTTP (a car's): a
-# certificate of the phone's own (pro1x-stream-webrtc); on the hotspot
-# under the name pro1x.lan, which its DNS answers.
+# certificate of the phone's own (pro1x-stream-webrtc).  On the phone's
+# hotspot under the name pro1x.lan, which its DNS answers; on another
+# network (another phone's hotspot, author 2026-11-19) under sslip.io's
+# name for the address (10-1-2-3.sslip.io), which public DNS answers.
 tls_port=8443
-tls_url() { if [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"; else echo "https://$1:$tls_port/"; fi; }
+tls_url() {
+    if [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"
+    else echo "https://$(echo "$1" | tr . -).sslip.io:$tls_port/"; fi
+}
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
