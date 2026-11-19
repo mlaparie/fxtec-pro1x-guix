@@ -491,13 +491,29 @@ cached_state() {                # cached_state KEY
         sed 's/\x1b\[[0-9;]*m//g' | awk '{ print $1 }'
 }
 
-# App shortcuts, the user's own list (author, 2026-11-19): lines of
-# "ID<tab>name", ID camera, dialer, chats (this script's own) or an app's
-# desktop entry (foo.desktop).
+# App shortcuts: the port's defaults, with the user's changes in
+# ~/.config/pro1x/app-shortcuts (author, 2026-11-20): "+ID<tab>name" adds
+# one, "-ID" removes a default; a line without a sign, from the first
+# version, adds.  ID is camera, dialer or chats (this script's own) or an
+# app's desktop entry (foo.desktop); defaults not installed are left out.
 apps_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/app-shortcuts
+APP_DEFAULTS="org.gnome.clocks.desktop satellite.desktop librewolf.desktop foot.desktop org.gnome.Loupe.desktop"
+apps_defaults() {
+    printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n'
+    for id in $APP_DEFAULTS; do
+        f=$(app_desktop_file "$id") || continue
+        name=$(sed -n '/^\[Desktop Entry\]/,/^\[/s/^Name=//p' "$f" | head -1)
+        printf '%s\t%s\n' "$id" "${name:-$id}"
+    done
+}
 apps_list() {                   # by name (author)
-    if [ -r "$apps_file" ]; then cat "$apps_file"
-    else printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n'; fi |
+    { apps_defaults | sed 's/^/=/'
+      cat "$apps_file" 2>/dev/null; } |
+        awk -F'\t' '
+            /^-/ { gone[substr($1, 2)] = 1; next }
+            /^[=+]/ { id = substr($1, 2) } !/^[-=+]/ { id = $1 }
+            id != "" && !(id in name) { order[++n] = id; name[id] = $2 }
+            END { for (i = 1; i <= n; i++) if (!(order[i] in gone)) print order[i] "\t" name[order[i]] }' |
         sort -t'	' -k2,2f
 }
 # The installed apps: "ID<tab>name" from the desktop entries on the data
@@ -545,21 +561,24 @@ qa_pick() {                     # qa_pick PROMPT
             --bind="load:pos(2)+$sync_end" --bind="enter,right:$sync_begin+accept" \
             --bind="esc,left:$sync_begin+abort" | cut -f1 | sed '/^back$/d'
 }
+# Changes only: an addition drops a removal of the same app, a removal
+# drops an addition and, for a default, is kept as "-ID".
 app_add() {
     id=$(app_entries | qa_pick "add an app (type to search)")
     [ -n "$id" ] || return
     name=$(app_entries | awk -F'\t' -v id="$id" '$1 == id { print $2; exit }')
-    list=$(apps_list)
     mkdir -p "${apps_file%/*}"
-    printf '%s\n' "$list" | awk -F'\t' -v id="$id" '$1 != id' > "$apps_file"
-    printf '%s\t%s\n' "$id" "${name:-$id}" >> "$apps_file"
+    { grep -v -e "^-$id\$" -e "^+$id	" -e "^$id	" "$apps_file" 2>/dev/null
+      apps_defaults | cut -f1 | grep -qx "$id" || printf '+%s\t%s\n' "$id" "${name:-$id}"
+    } > "$apps_file.new" && mv "$apps_file.new" "$apps_file"
 }
 app_remove() {
     id=$(apps_list | qa_pick "remove a shortcut")
     [ -n "$id" ] || return
-    list=$(apps_list)
     mkdir -p "${apps_file%/*}"
-    printf '%s\n' "$list" | awk -F'\t' -v id="$id" '$1 != id' > "$apps_file"
+    { grep -v -e "^+$id	" -e "^$id	" -e "^-$id\$" "$apps_file" 2>/dev/null
+      apps_defaults | cut -f1 | grep -qx "$id" && printf -- '-%s\n' "$id"
+    } > "$apps_file.new" && mv "$apps_file.new" "$apps_file"
 }
 
 choose() {
@@ -658,7 +677,9 @@ choose() {
             # (author, 2026-11-19).
             title=location
             cur=$(location_now)
-            opts=$(printf 'on\ton\noff\toff\nsatellite\topen Satellite (turns location on)\n') ;;
+            opts=$(printf 'on\ton\noff\toff\nsatellite\topen Satellite (turns location on)\n'
+                   printf 'agps\tA-GPS: %s (satellite orbits fetched online: a fix in seconds)\n' \
+                          "$(cat "$statedir/agps" 2>/dev/null || echo on)") ;;
         rotation)
             # Keyboard-dependent too (author, 2026-11-02).
             title="rotation"
@@ -747,7 +768,17 @@ choose() {
                 forget) rm -f "$sim_pin_file" ;;
             esac ;;
         location)
-            if [ "$pick" = satellite ]; then
+            if [ "$pick" = agps ]; then
+                # On by default (pro1x-agps); on again: fetched and given
+                # to the modem now.
+                if [ "$(cat "$statedir/agps" 2>/dev/null || echo on)" = on ]; then
+                    echo off > "$statedir/agps"
+                else
+                    echo on > "$statedir/agps"
+                    setsid pro1x-agps >/dev/null 2>&1 </dev/null &
+                fi
+                choose location
+            elif [ "$pick" = satellite ]; then
                 [ "$(location_now)" = on ] || toggle_to location on
                 qs_hide
                 swaymsg exec "pro1x-open satellite" >/dev/null

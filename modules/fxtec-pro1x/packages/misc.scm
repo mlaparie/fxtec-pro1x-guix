@@ -1878,6 +1878,7 @@ window opened by a sway key binding.")
 ;;;   bin/sway-notifications             mako's notifications for its dock
 ;;;   bin/pro1x-osk-slider               no on-screen keyboard while slid out
 ;;;   bin/pro1x-sim-prompt               the SIM PIN prompt at login, if locked
+;;;   bin/pro1x-agps                     A-GPS: XTRA orbits for the modem's GNSS
 ;;;   bin/pro1x-lock                     swaylock with a banner and notifications
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
@@ -1955,6 +1956,7 @@ window opened by a sway key binding.")
           ("sway-notifications" "bin/")
           ("pro1x-osk-slider" "bin/")
           ("pro1x-sim-prompt" "bin/")
+          ("pro1x-agps" "bin/")
           ("pro1x-lock" "bin/")
           ("pro1x-mako" "bin/")
           ("pro1x-notify" "bin/")
@@ -2041,8 +2043,9 @@ window opened by a sway key binding.")
                         (map (lambda (p)
                                (string-append (assoc-ref inputs p) "/sbin"))
                              '("iw" "nftables"))))))
-                ;; Root services: certbot for the certificate, nft for the
-                ;; hotspot's redirect, curl for the DNS provider's API.
+                ;; certbot for the stream's certificate, nft for the
+                ;; hotspot's redirect, curl for the DNS provider's API and the
+                ;; XTRA download (pro1x-agps).
                 (for-each
                  (lambda (name)
                    (let ((bin (string-append #$output "/bin/" name)))
@@ -2057,7 +2060,8 @@ window opened by a sway key binding.")
                            (list (string-append (assoc-ref inputs "nftables")
                                                 "/sbin")))))))
                  '("pro1x-stream-cert" "pro1x-stream-dns-porkbun"
-                   "pro1x-stream-dns-cloudflare" "pro1x-stream-dns-desec"))
+                   "pro1x-stream-dns-cloudflare" "pro1x-stream-dns-desec"
+                   "pro1x-agps"))
                 (let ((stream (string-append #$output "/bin/pro1x-stream")))
                   (chmod stream #o755)
                   (wrap-program stream

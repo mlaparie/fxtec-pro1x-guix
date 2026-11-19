@@ -1,0 +1,48 @@
+#!/bin/sh
+# pro1x-agps — assisted GPS for the modem's GNSS: Qualcomm XTRA data
+#
+#   pro1x-agps        at login (Sway config) and when switched on in quick
+#                     actions (Location, A-GPS): once the modem is up
+#
+# The modem's receiver needs the satellites' orbits; read from the sky
+# they take minutes, so a first fix is slow.  XTRA is a file of predicted
+# orbits, valid for days, from Qualcomm's servers (the modem lists them:
+# mmcli --location-status, "assistance servers"); injected into the modem
+# (mmcli --location-inject-assistance-data), a fix comes in seconds.  On
+# by default (author, 2026-11-20), off in quick actions; nothing when
+# Location is off.  Downloaded at most once a day, over any connection.
+#
+#   ~/.local/state/pro1x/agps     on or off (absent: on)
+#   ~/.cache/pro1x/xtra.bin       the last file downloaded
+#
+# State: written 2026-11-20, not yet run.
+
+statedir=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/pro1x/xtra.bin
+
+[ "$(cat "$statedir/agps" 2>/dev/null || echo on)" = on ] || exit 0
+[ "$(cat "$statedir/location" 2>/dev/null || echo on)" = on ] || exit 0
+
+# The modem, for up to two minutes after login.
+i=0
+until status=$(mmcli -m any --location-status 2>/dev/null) && [ -n "$status" ]; do
+    i=$((i + 1)); [ "$i" -lt 60 ] || exit 0; sleep 2
+done
+servers=$(printf '%s\n' "$status" |
+              sed -n 's/.*\(https\?:\/\/[^ ]*\).*/\1/p')
+[ -n "$servers" ] || exit 0
+
+mkdir -p "${cache%/*}"
+if [ ! -s "$cache" ] || [ -n "$(find "$cache" -mmin +1440 2>/dev/null)" ]; then
+    for url in $servers; do
+        curl -fsS -m 60 -o "$cache.new" "$url" 2>/dev/null &&
+            mv "$cache.new" "$cache" && break
+    done
+    rm -f "$cache.new"
+fi
+[ -s "$cache" ] || { logger -t pro1x-agps "no XTRA data (no connection?)"; exit 0; }
+if mmcli -m any --location-inject-assistance-data="$cache" >/dev/null 2>&1; then
+    logger -t pro1x-agps "XTRA data injected"
+else
+    logger -t pro1x-agps "the modem refused the XTRA data"
+fi
