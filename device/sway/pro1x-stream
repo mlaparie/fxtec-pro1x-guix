@@ -37,19 +37,15 @@ admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot
 udp_port=5000
 http_port=8080
 webrtc_port=8081
-# The same over HTTPS, for browsers that refuse plain HTTP (a car's): a
-# certificate of the phone's own (pro1x-stream-webrtc).  On the phone's
-# hotspot under the name pro1x.lan, which its DNS answers; on another
-# network (another phone's hotspot, author 2026-11-19) under sslip.io's
-# name for the address (10-1-2-3.sslip.io), which public DNS answers.
+# The same over HTTPS, for browsers that refuse plain HTTP (a car's).  On
+# the phone's hotspot, the user's own domain when pro1x-stream-cert has its
+# certificate (the only way into a Tesla's browser); otherwise the address,
+# with the phone's self-signed certificate (pro1x-stream-webrtc).
 tls_port=8443
 tls_url() {
-    # A name with a certificate browsers trust (pro1x-stream-cert), which
-    # the hotspot's DNS answers; else pro1x.lan, with the phone's own.
-    trusted=$(cat /var/lib/pro1x/stream-tls/name 2>/dev/null)
-    if [ "$1" = 10.42.0.1 ] && [ -n "$trusted" ]; then echo "https://$trusted:$tls_port/"
-    elif [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"
-    else echo "https://$(echo "$1" | tr . -).sslip.io:$tls_port/"; fi
+    trusted=$(cat /var/lib/pro1x/stream-tls/url 2>/dev/null)
+    if [ "$1" = 10.42.0.1 ] && [ -n "$trusted" ]; then echo "$trusted"
+    else echo "https://$1:$tls_port/"; fi
 }
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT

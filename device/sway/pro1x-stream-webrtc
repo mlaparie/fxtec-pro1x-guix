@@ -1433,16 +1433,16 @@ approval = None
 
 
 # HTTPS beside HTTP (--tls PORT), for browsers that refuse plain HTTP (the
-# author's car, 2026-11-19): a certificate of the phone's own, made on first
-# use and kept, for pro1x.lan (the hotspot's DNS answers it) and the
-# phone's addresses.  Self-signed: the browser warns once.
+# author's car, 2026-11-19): a certificate browsers trust when
+# pro1x-stream-cert has one (the user's domain), else one of the phone's
+# own, made on first use and kept, for its addresses (self-signed: the
+# browser warns once; a Tesla's refuses it).
 CERT = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
                     "pro1x", "stream-cert.pem")
 CERT_KEY = CERT.replace("-cert.pem", "-key.pem")
 
 
-# A certificate browsers trust, when the phone has one (pro1x-stream-cert:
-# Tailscale's, for its tailnet name, which the hotspot's DNS answers).
+# A certificate browsers trust, when the phone has one (pro1x-stream-cert).
 TRUSTED = "/var/lib/pro1x/stream-tls"
 
 
@@ -1462,10 +1462,9 @@ def certificate():
         out = ""
     addresses = {"10.42.0.1", "127.0.0.1"} | {
         line.split()[3].split("/")[0] for line in out.splitlines() if len(line.split()) > 3}
-    names = ",".join(["DNS:pro1x.lan", "DNS:pro1x.local", "DNS:localhost"]
-                     + [f"IP:{a}" for a in sorted(addresses)])
+    names = ",".join(["DNS:localhost"] + [f"IP:{a}" for a in sorted(addresses)])
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                    "-days", "3650", "-subj", "/CN=pro1x.lan",
+                    "-days", "3650", "-subj", "/CN=pro1x",
                     "-addext", f"subjectAltName={names}",
                     "-keyout", CERT_KEY, "-out", CERT],
                    capture_output=True, timeout=60, check=True)
