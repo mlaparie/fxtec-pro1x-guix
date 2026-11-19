@@ -8,8 +8,8 @@
 # (caffeine: no dimming, blanking or locking), on-screen keyboard (stevia:
 # shown or hidden; also --osk toggle|show|hide, Super+i), torch, feedback profile
 # (full/quiet/silent), brightness, volume, mute, notifications, operator,
-# GPU monitor (the GPU's clock; Enter or Right opens nvtop in its own
-# window; bpytop is among CPU mode's choices), Waydroid (running, frozen or
+# Performance (the CPU mode, and bpytop and the GPU monitor, nvtop, in
+# their own windows), Waydroid (running, frozen or
 # off; Enter or Right opens pro1x-waydroid).
 # Enter toggles an on/off line, or opens a line's choices (mobile data,
 # operator, feedback, CPU mode, charge limit, orientation, keyboard layout, audio output, word
@@ -1071,17 +1071,6 @@ charge_limit() {                # config.scm's, or this boot's override
     if [ "${1:-off}" = off ]; then printf off; else printf '%s%% (charge again at %s%%)' "$1" "$2"; fi
     pro1x-charge-limit temporary && until_reboot
 }
-# The GPU's clock now (devfreq's current rate),
-# or "off" while it is powered down.
-gpu_clock() {
-    g=$(echo /sys/class/devfreq/*.gpu)
-    if [ "$(cat "$g/device/power/runtime_status" 2>/dev/null)" = suspended ]; then
-        dim off
-    else
-        echo "$(( $(cat "$g/cur_freq" 2>/dev/null || echo 0) / 1000000 )) MHz"
-    fi
-}
-
 cpu_mode() {
     printf '%s' "$(pro1x-cpu-mode get 2>/dev/null || echo auto)"
     pro1x-cpu-mode temporary && until_reboot
