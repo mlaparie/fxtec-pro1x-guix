@@ -142,8 +142,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #info pre{margin:0;font:inherit}
 #lockmsg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
   max-width:80%;padding:12px 16px;background:#000c;color:#fff;font:16px sans-serif;
-  text-align:center;z-index:5}
-#lockmsg input{font:16px sans-serif;margin:8px 0;padding:4px;width:12em}
+  text-align:center;pointer-events:none;z-index:5}
 #note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
   z-index:3;background:#222;color:#ff0;font:16px monospace;padding:10px 14px;
   max-width:80%}
@@ -185,9 +184,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>size    <select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> px, long side</label>
 <button id="sy">RESYNC</button></div>
-<div id="note"></div><div id="lockmsg">The phone is locked: its screen is not shared while locked.<br>
-<input id="lpw" type="password" placeholder="its password" autocomplete="off"> <button class="x" id="lgo">UNLOCK</button>
-<div id="lres"></div>or a finger on the phone's sensor.</div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
+<div id="note"></div><div id="lockmsg">The phone is locked: the picture stays still until it is unlocked.<br>
+Type its password and Enter (it goes to the lock screen), or use a finger on the phone.</div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
  spellcheck="false" maxlength="16"><button id="go">OK</button><div id="gm"></div></div>
@@ -259,9 +257,13 @@ function log(o) {
   try { fetch(withKey("/log"), {method: "POST", body: JSON.stringify(o), keepalive: true}); }
   catch (e) {}
 }
+// Moves (absolute pointer and touch) on the unordered, never-resent "fast"
+// channel: a lost one is outdated by the next.  The rest, reliable.
+let fast = null;
 function send(o) {
   counts[o.t] = (counts[o.t] || 0) + 1;
-  if (chan && chan.readyState === "open") chan.send(JSON.stringify(o));
+  const c = (o.t === "move" || o.t === "tmove") && fast && fast.readyState === "open" ? fast : chan;
+  if (c && c.readyState === "open") c.send(JSON.stringify(o));
 }
 addEventListener("resize", () => log({ev: "resize", w: innerWidth, h: innerHeight}));
 
@@ -311,6 +313,10 @@ document.getElementById("bm").onclick = async () => {
 // buffer.  Behind (the decoder holding more than two), frames are skipped
 // to the next keyframe, asked for at once: the newest frame wins.
 let decoder = null, dframes = 0, dskipped = 0, derrors = 0, needKey = true;
+// How old each frame is when drawn: from leaving the phone's encoder
+// (its clock and this one both set by NTP), and the encoder's own delay.
+const sentAt = new Map();
+let ageSum = 0, ageN = 0, encSum = 0, encN = 0;
 const parts = {seq: -1, got: 0, n: 0, key: false, chunks: []};
 function newDecoder() {
   if (decoder) try { decoder.close(); } catch (e) {}
@@ -320,6 +326,11 @@ function newDecoder() {
         c.width = f.displayWidth; c.height = f.displayHeight;
       }
       ctx.drawImage(f, 0, 0);
+      const sent = sentAt.get(f.timestamp);
+      if (sent !== undefined) {
+        sentAt.delete(f.timestamp);
+        ageSum += Date.now() - sent; ageN++;
+      }
       f.close();
       dframes++;
     },
@@ -342,10 +353,12 @@ function newDecoder() {
 function onVideo(m) {
   const d = new DataView(m.data);
   const seq = d.getUint32(0), i = d.getUint16(4), n = d.getUint16(6), key = d.getUint8(8) === 1;
+  const sent = Number(d.getBigUint64(9)), enc = d.getUint16(17);
   if (seq !== parts.seq) {
     parts.seq = seq; parts.got = 0; parts.n = n; parts.key = key; parts.chunks = new Array(n);
+    parts.sent = sent; encSum += enc; encN++;
   }
-  parts.chunks[i] = new Uint8Array(m.data, 9);
+  parts.chunks[i] = new Uint8Array(m.data, 19);
   if (++parts.got < parts.n) return;
   if (!parts.key && (needKey || decoder.decodeQueueSize > 2)) {
     if (!needKey) { needKey = true; send({t: "keyframe"}); }
@@ -356,8 +369,10 @@ function onVideo(m) {
   const data = new Uint8Array(parts.chunks.reduce((a, b) => a + b.length, 0));
   let at = 0;
   for (const part of parts.chunks) { data.set(part, at); at += part.length; }
-  decoder.decode(new EncodedVideoChunk({type: parts.key ? "key" : "delta",
-                                        timestamp: Math.round(performance.now() * 1000), data}));
+  const ts = Math.round(performance.now() * 1000);
+  sentAt.set(ts, parts.sent);
+  if (sentAt.size > 120) sentAt.delete(sentAt.keys().next().value);
+  decoder.decode(new EncodedVideoChunk({type: parts.key ? "key" : "delta", timestamp: ts, data}));
 }
 // INFO: what the browser reports, and this computer's clock to the
 // millisecond: beside a clock on the phone's screen, a screenshot shows the
@@ -536,6 +551,7 @@ refresh();
 
 const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
+  if (e.channel.label === "fast") { fast = e.channel; return; }
   if (e.channel.label === "video") {
     e.channel.binaryType = "arraybuffer";
     e.channel.onopen = () => log({ev: "video-channel-open"});
@@ -552,11 +568,6 @@ pc.ondatachannel = e => {
     try {
       const o = JSON.parse(m.data);
       if (o.t === "reconnect") setTimeout(reloadWhenUp, 1000);
-      if (o.t === "unlock") {
-        document.getElementById("lres").textContent =
-          o.ok ? "" : o.wait ? `Too many tries: wait ${o.wait} s.` : "Wrong password.";
-        if (o.ok) document.getElementById("lockmsg").style.display = "none";
-      }
     } catch (e) {}
   };
 };
@@ -601,18 +612,6 @@ function enterKey() {
 }
 document.getElementById("go").onclick = enterKey;
 gk.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); enterKey(); } });
-// The lock screen is kept out of the capture: its password typed here goes
-// in the data channel (always encrypted, even over HTTP); the phone checks
-// it and ends the lock screen.
-const lpw = document.getElementById("lpw");
-function unlock() {
-  if (!lpw.value) return;
-  send({t: "unlock", password: lpw.value});
-  lpw.value = "";
-  document.getElementById("lres").textContent = "Checking\\u2026";
-}
-document.getElementById("lgo").onclick = unlock;
-lpw.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); unlock(); } });
 
 let started = false;
 async function connect() {
@@ -733,6 +732,8 @@ setInterval(async () => {
     s.fps = delta("direct", "f", dframes);
     s.skipped = dskipped;
     s.decode_queue = decoder ? decoder.decodeQueueSize : null;
+    if (ageN) { s.age_ms = Math.round(ageSum / ageN); ageSum = ageN = 0; }
+    if (encN) { s.enc_ms = Math.round(encSum / encN); encSum = encN = 0; }
   }
   let bytes = 0, rate = 0;
   (await pc.getStats()).forEach(r => {
@@ -780,7 +781,9 @@ setInterval(async () => {
       `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
       `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
       `sound   ${q(s.audio_lost)} lost, ${q(s.audio_concealed)}% made up`,
-      `latency ${q(s.rtt_ms)} ms network, buffer ${q(s.buffer_ms)} ms video, ${q(s.audio_buffer_ms)} ms sound`,
+      cfg.direct
+        ? `latency ${q(s.rtt_ms)} ms network, encoder ${q(s.enc_ms)} ms, frame ${q(s.age_ms)} ms old when drawn`
+        : `latency ${q(s.rtt_ms)} ms network, buffer ${q(s.buffer_ms)} ms video, ${q(s.audio_buffer_ms)} ms sound`,
       `phone   ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, Wi-Fi power saving ${phone.wifi_powersave || "?"}; 10 min:`,
     ].concat(rows.length ? ["events"].concat(rows) : []).join("\\n");
   }
@@ -1401,6 +1404,10 @@ class Screen:
         except OSError:
             pass
         subprocess.run(["swaymsg", f"output {self.name} unplug"], capture_output=True, timeout=5)
+        # The on-screen keyboard back to the panel, if moved here.
+        if osk_output() == self.name:
+            subprocess.run(["swaymsg", "focus output DSI-1"], capture_output=True, timeout=5)
+            threading.Thread(target=restart_osk, args=("DSI-1",), daemon=True).start()
         if self.mode == "client":
             # Away from the mirror's workspace, which Sway then drops.
             mine = [w["name"] for w in sway("-t", "get_workspaces") or []
@@ -1411,6 +1418,52 @@ class Screen:
 
 
 screen = None
+
+OSK_OUTPUT = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-osk-output")
+
+
+def osk_output():
+    try:
+        with open(OSK_OUTPUT) as f:
+            return f.read().strip()
+    except OSError:
+        return "DSI-1"
+
+
+def restart_osk(output):
+    """stevia ended, for pro1x-osk's watchdog to start it again on the
+    output focused now; back once it owns its D-Bus name again."""
+    for pid in os.listdir("/proc"):
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip().startswith("phosh-osk-stev"):
+                    os.kill(int(pid), signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+    try:
+        with open(OSK_OUTPUT, "w") as f:
+            f.write(output + "\n")
+    except OSError:
+        pass
+    from gi.repository import Gio
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+    except GLib.Error:
+        return
+    for _ in range(30):
+        time.sleep(0.2)
+        try:
+            owned = bus.call_sync(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "NameHasOwner",
+                GLib.Variant("(s)", ("sm.puri.OSK0",)), None,
+                Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+        except GLib.Error:
+            owned = False
+        if owned:
+            # Its own start hides it within a second (pro1x-osk run).
+            time.sleep(1.2)
+            return
 
 
 class Approval:
@@ -1715,6 +1768,8 @@ class Producer:
         self.last = None
         self.fps = int(size.split("@")[1])
         self.limit = self.fps      # lowered while the viewer loses packets
+        self.heat_cap = None       # lowered by the heat limit, in place
+        self.pushed_mono = []      # push times, for the encoder's delay
         self.adaptive = kept_setting("adaptive", True)
         self.paused = False        # the viewer's PAUSE: no frames encoded
         self.calm = 0              # loss checks since the last loss
@@ -1784,14 +1839,24 @@ class Producer:
             self.start_capture()
         return GLib.SOURCE_CONTINUE
 
+    def rate(self):
+        """Frames a second now: the chosen rate, lowered by losses
+        (adaptive) and by the heat limit."""
+        return min(self.limit, self.heat_cap or self.limit)
+
     def frame(self, sink):
+        """A new frame of the screen: to the encoder at once, unless one
+        went less than 0.9 frame ago (then the clock takes the latest at
+        its next tick).  Steady too: waiting for the tick cost up to a
+        frame of delay (33 ms at 30 fps); the clock only repeats the last
+        frame when the screen sends none."""
         sample = sink.emit("pull-sample")
         if self.last is None:
             self.input.set_caps(sample.get_caps())
         self.last = sample.get_buffer()
         self.frame_at = time.monotonic()
-        if (not self.steady and not self.paused
-                and time.monotonic() - self.pushed_at >= 0.9 / self.limit):
+        if (not self.paused
+                and time.monotonic() - self.pushed_at >= 0.9 / self.rate()):
             self.push(self.last)
         return Gst.FlowReturn.OK
 
@@ -1800,6 +1865,9 @@ class Producer:
         copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
         self.input.emit("push-buffer", copy)
         self.pushed_at = time.monotonic()
+        with self.lock:
+            self.pushed_mono.append(self.pushed_at)
+            del self.pushed_mono[:-8]
 
     def pace(self):
         """The latest frame to the encoder every 1/fps s, on a schedule that
@@ -1809,7 +1877,7 @@ class Producer:
         frame)."""
         due = time.monotonic()
         while self.running:
-            step = 1 / self.limit
+            step = 1 / self.rate()
             due += step
             wait = due - time.monotonic()
             if wait > 0:
@@ -1819,8 +1887,10 @@ class Producer:
             buf = self.last
             if buf is None or self.paused:
                 continue
+            # Steady: the last frame again only if none went this tick.
             if self.steady:
-                self.push(buf)
+                if time.monotonic() - self.pushed_at >= 0.9 * step:
+                    self.push(buf)
             elif time.monotonic() - self.pushed_at > 0.5:
                 with self.lock:
                     waiting = any(self.viewers.values())
@@ -1883,6 +1953,10 @@ class Producer:
             copy = buf.copy()
             copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
             src.emit("push-buffer", copy)
+        # The encoder's delay: from the oldest push not yet out.
+        with self.lock:
+            enc_ms = int(1000 * (time.monotonic() - self.pushed_mono.pop(0))) \
+                if self.pushed_mono else 0
         if direct:
             ok, info = buf.map(Gst.MapFlags.READ)
             data = bytes(info.data) if ok else b""
@@ -1890,7 +1964,7 @@ class Producer:
                 buf.unmap(info)
             for send in direct:
                 # Behind (or not open yet): nothing more until a keyframe.
-                if not send(data, key):
+                if not send(data, key, enc_ms):
                     with self.lock:
                         if send in self.direct:
                             self.direct[send] = True
@@ -2155,6 +2229,9 @@ class Remote:
                "osk": ["pro1x-osk", "toggle"]}
 
     def action(self, name):
+        if name == "osk" and self.output != "DSI-1":
+            threading.Thread(target=self.osk_here, daemon=True).start()
+            return
         if name in self.ACTIONS:
             # The menus open on the focused output: the viewer's.  With a
             # screen of its own mirrored, the mirror on the panel had the
@@ -2167,6 +2244,19 @@ class Remote:
             # server's, the launcher's terminal did not come up (2026-11-19).
             subprocess.run(["swaymsg", "exec " + " ".join(self.ACTIONS[name])],
                            capture_output=True, timeout=5)
+
+    def osk_here(self):
+        """The on-screen keyboard on the stream's own screen: stevia puts
+        its surface on the output focused when it starts (the panel, at
+        login), where the mirror covered it and the stream did not show it
+        (author, 2026-11-20).  Ended with that output focused, pro1x-osk's
+        watchdog starts it again there within a second, hidden; then
+        shown.  Screen.stop sends it back to the panel."""
+        subprocess.run(["swaymsg", f"focus output {self.output}"],
+                       capture_output=True, timeout=5)
+        if osk_output() != self.output:
+            restart_osk(self.output)
+        subprocess.run(["swaymsg", "exec pro1x-osk toggle"], capture_output=True, timeout=5)
 
     def text(self, text):
         for ch in text:
@@ -2423,6 +2513,17 @@ class Session:
             self.channel = self.webrtc.emit("create-data-channel", "input", None)
             self.channel.connect("on-message-string",
                                  lambda _c, text: self.message(text))
+            # Moves (pointer, touch) unordered and never resent: a lost one
+            # is outdated by the next, and resending held the later ones
+            # back.  Clicks and keys stay on the reliable channel.
+            self.fast = self.webrtc.emit(
+                "create-data-channel", "fast",
+                Gst.Structure.new_from_string(
+                    "application/data-channel, ordered=(boolean)false, "
+                    "max-retransmits=(int)0"))
+            if self.fast is not None:
+                self.fast.connect("on-message-string",
+                                  lambda _c, text: self.message(text))
         # DIRECT: the encoder's access units in a data channel of their own,
         # which the page decodes (WebCodecs) and draws at once, without the
         # browser's playout buffer; the RTP video stays unused.
@@ -2443,7 +2544,7 @@ class Session:
     CHUNK = 16000
     BEHIND = 512 * 1024             # bytes waiting in the channel
 
-    def send_frame(self, data, key):
+    def send_frame(self, data, key, enc_ms=0):
         """One access unit to a DIRECT viewer, in chunks; False if the
         channel is not open, or so full that the viewer is behind: the
         producer then skips to the next keyframe, as a game stream drops
@@ -2454,8 +2555,13 @@ class Session:
             return False
         self.vseq = (self.vseq + 1) & 0xFFFFFFFF
         n = max(1, -(-len(data) // self.CHUNK))
+        # The time it left the encoder (wall clock, ms; the page compares
+        # with its own, both set by NTP) and the encoder's delay: the page
+        # shows how old each frame is when drawn.
+        sent = int(time.time() * 1000)
         for i in range(n):
-            head = struct.pack(">IHHB", self.vseq, i, n, 1 if key else 0)
+            head = struct.pack(">IHHBQH", self.vseq, i, n, 1 if key else 0,
+                               sent, min(enc_ms, 65535))
             ch.emit("send-data", GLib.Bytes.new(head + data[i * self.CHUNK:(i + 1) * self.CHUNK]))
         return True
 
@@ -2467,12 +2573,6 @@ class Session:
         elif '"t":"stop"' in text:
             log_line("stopped by the viewer")
             GLib.timeout_add(300, lambda: os.kill(os.getpid(), signal.SIGTERM) and False)
-        elif '"t":"unlock"' in text:
-            try:
-                password = json.loads(text)["password"]
-            except (ValueError, KeyError, TypeError):
-                return
-            threading.Thread(target=self.unlock, args=(str(password),), daemon=True).start()
         elif '"t":"keyframe"' in text:
             if self.producer:
                 self.producer.keyframe_soon()
@@ -2484,43 +2584,6 @@ class Session:
             GLib.idle_add(self.bitrate, min(20.0, max(0.5, mbps)))
         else:
             remote.handle(text)
-
-    def unlock(self, password):
-        """The viewer's unlock: the user's password checked as the lock
-        screen would (unix_chkpwd, the calling user's own), then gtklock
-        ended (it unlocks on SIGTERM).  Three wrong tries, then 30 s."""
-        now = time.monotonic()
-        tries = [t for t in unlock_tries if now - t < 30]
-        unlock_tries[:] = tries
-        reply = {"t": "unlock", "ok": False}
-        if len(tries) >= 3:
-            reply["wait"] = int(30 - (now - tries[0])) + 1
-        else:
-            try:
-                ok = subprocess.run(
-                    ["/run/privileged/bin/unix_chkpwd", os.environ.get("USER") or
-                     __import__("pwd").getpwuid(os.getuid()).pw_name, "nullok"],
-                    input=password.encode() + b"\0", capture_output=True,
-                    timeout=10).returncode == 0
-            except (OSError, subprocess.TimeoutExpired):
-                ok = False
-            if ok:
-                for pid in os.listdir("/proc"):
-                    try:
-                        with open(f"/proc/{pid}/comm") as f:
-                            if f.read().strip() == "gtklock":
-                                os.kill(int(pid), signal.SIGTERM)
-                    except (OSError, ValueError):
-                        pass
-                log_line("unlocked by the viewer")
-            else:
-                unlock_tries.append(now)
-                log_line("wrong unlock password from the viewer")
-            reply["ok"] = ok
-        try:
-            self.channel.emit("send-string", json.dumps(reply))
-        except (AttributeError, TypeError):
-            pass
 
     def pause(self, on):
         """Picture and sound held back (PAUSE), the encoder idle so that the
@@ -2816,6 +2879,21 @@ def heat_check():
     temp, fps = cpu_temperature(), capture_fps()
     if limit < 50 or temp is None or time.monotonic() - last_step[0] < 60:
         return GLib.SOURCE_CONTINUE
+    # With the producer, in place: the encoder's rate, without starting the
+    # server again (each heat step cut the stream, 2026-11-19).
+    if producer:
+        cap = producer.heat_cap or Handler.target
+        if temp > limit and cap > 10:
+            producer.heat_cap = max(10, cap - 5)
+        elif temp < limit - 5 and cap < Handler.target:
+            producer.heat_cap = min(Handler.target, cap + 5)
+            if producer.heat_cap == Handler.target:
+                producer.heat_cap = None
+        else:
+            return GLib.SOURCE_CONTINUE
+        log_line(f"encoder rate {producer.rate()} fps (heat limit)")
+        last_step[0] = time.monotonic()
+        return GLib.SOURCE_CONTINUE
     if temp > limit and fps > 10:
         set_fps(max(10, fps - 5), chosen=False)
         last_step[0] = time.monotonic()
@@ -2829,9 +2907,6 @@ def heat_check():
 # during a stream (author, 2026-11-18).  Caffeine (quick actions) is turned
 # on if it was off, and back off at the end.
 CAFFEINE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-caffeine")
-
-
-unlock_tries = []             # monotonic times of wrong unlock passwords
 
 
 def phone_locked():
@@ -2961,7 +3036,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "target": Handler.target,
                                    "mbps": producer.mbps if producer else Handler.mbps,
                                    "wifi_powersave": wifi_powersave(),
-                                   "live": producer.limit if producer else None,
+                                   "live": producer.rate() if producer else None,
                                    "screen": screen.mode if screen else "phone",
                                    "size": Handler.size.split("@")[0] if Handler.size else None,
                                    "long": capture_long(),
