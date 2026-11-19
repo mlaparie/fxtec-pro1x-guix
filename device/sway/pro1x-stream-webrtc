@@ -1123,21 +1123,45 @@ class Screen:
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
         with open(self.FILE, "w") as f:
             f.write(self.name + "\n")
+        self.guard = None
         if mode == "client":
-            try:
-                self.mirror = subprocess.Popen(
-                    ["wl-mirror", "--fullscreen-output", "DSI-1", self.name],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
-            except OSError as e:
-                log_line(f"no mirror on the panel: {e}")
-            else:
-                # Its window takes the focus as it opens: back to the
-                # stream's output, where the viewer's apps go.
-                threading.Timer(1.5, lambda: subprocess.run(
-                    ["swaymsg", f"focus output {self.name}"],
-                    capture_output=True, timeout=5)).start()
+            self.client()
         log_line(f"screen of its own: {self.name} {width}x{height}" + (", mirrored" if self.mirror else ""))
+
+    def client(self):
+        """The whole phone at the client's shape (author, 2026-11-19): every
+        workspace moves onto the stream's output, and the panel only shows
+        it (wl-mirror, on a workspace of its own, never focused).  The
+        focus is taken back whenever it lands on the panel: there the menus
+        and apps opened out of the stream, under the mirror."""
+        swaymsg = lambda command: subprocess.run(["swaymsg", "--", command],
+                                                 capture_output=True, timeout=5)
+        swaymsg('no_focus [app_id="^at.yrlf.wl_mirror$"]')
+        for ws in sway("-t", "get_workspaces") or []:
+            if ws["output"] != self.name:
+                swaymsg(f'workspace "{ws["name"]}"')
+                swaymsg(f"move workspace to output {self.name}")
+        swaymsg("focus output DSI-1")
+        swaymsg("workspace mirror")
+        try:
+            self.mirror = subprocess.Popen(
+                ["wl-mirror", "--fullscreen-output", "DSI-1", self.name],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log_line(f"no mirror on the panel: {e}")
+        time.sleep(1)
+        swaymsg(f"focus output {self.name}")
+        swaymsg("workspace stream")
+
+        def guard():
+            focused = next((w["output"] for w in sway("-t", "get_workspaces") or []
+                            if w.get("focused")), None)
+            if focused and focused != self.name:
+                subprocess.run(["swaymsg", f"focus output {self.name}"],
+                               capture_output=True, timeout=5)
+            return GLib.SOURCE_CONTINUE
+        self.guard = GLib.timeout_add_seconds(2, guard)
 
     @classmethod
     def kept(cls, size):
@@ -1151,6 +1175,9 @@ class Screen:
             return size
 
     def stop(self, keep=False):
+        if self.guard:
+            GLib.source_remove(self.guard)
+            self.guard = None
         if self.mirror:
             self.mirror.terminate()
             self.mirror = None
