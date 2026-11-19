@@ -973,7 +973,10 @@ class Producer:
     capture and the encoder are two pipelines, and the last frame goes to
     the encoder again while a viewer waits and the screen stays still."""
 
-    CAPS = "video/x-h264,stream-format=byte-stream,alignment=au"
+    # The profile and level as hardware() sets them, for the offer's
+    # profile-level-id.
+    CAPS = ("video/x-h264,stream-format=byte-stream,alignment=au,"
+            "profile=constrained-baseline,level=(string)4")
 
     def __init__(self, portal, size, mbps):
         self.portal, self.mbps = portal, mbps
@@ -1063,9 +1066,28 @@ class Producer:
     def attach(self, src):
         with self.lock:
             self.viewers[src] = True
+        # The viewer's own requests (the browser's, after a loss) stop at
+        # its appsrc: passed on to the encoder.
+        src.get_static_pad("src").add_probe(
+            Gst.PadProbeType.EVENT_UPSTREAM,
+            lambda _p, info: (self.keyframe()
+                              if GstVideo.video_event_is_force_key_unit(info.get_event())
+                              else None) or Gst.PadProbeReturn.OK)
+        self.keyframe()
+
+    def keyframe(self):
+        """A keyframe from the encoder; on a still screen, the last frame
+        again makes it (still)."""
         self.encoder.get_static_pad("src").send_event(
             GstVideo.video_event_new_upstream_force_key_unit(
                 Gst.CLOCK_TIME_NONE, True, 0))
+        self.last_at = 0.0
+        GLib.idle_add(self.still_now)
+
+    def still_now(self):
+        if self.last is not None and time.monotonic() - self.last_at > 0.5:
+            self.push(self.last)
+        return GLib.SOURCE_REMOVE
 
     def detach(self, src):
         with self.lock:
@@ -1465,9 +1487,19 @@ class Session:
             restart_session()
         return GLib.SOURCE_REMOVE
 
-    def negotiate(self, _element):
+    def negotiate(self, _element, tries=60):
+        """The offer, with the producer once the payloader has seen the
+        stream's parameters (SPS and PPS, the offer's fmtp line), from the
+        first keyframe.  Offered before, the offer had no fmtp line for H.264, and
+        browsers decoded nothing, then fell back to VP8 (2026-11-19)."""
+        if self.producer and tries:
+            caps = self.webrtc.get_static_pad("sink_0").get_current_caps()
+            if caps is None or "sprop-parameter-sets" not in caps.to_string():
+                GLib.timeout_add(50, self.negotiate, _element, tries - 1)
+                return GLib.SOURCE_REMOVE
         promise = Gst.Promise.new_with_change_func(self.offered, None)
         self.webrtc.emit("create-offer", None, promise)
+        return GLib.SOURCE_REMOVE
 
     def offered(self, promise, _data):
         # The reply owns the offer: it has to outlive this call's use of it.
@@ -1484,6 +1516,9 @@ class Session:
 
     def connection(self, _element, _spec):
         state = self.webrtc.get_property("ice-connection-state")
+        # The keyframes sent before the connection was up are lost.
+        if self.producer and state == GstWebRTC.WebRTCICEConnectionState.CONNECTED:
+            GLib.idle_add(lambda: self.producer.keyframe() or GLib.SOURCE_REMOVE)
         if state in (
             GstWebRTC.WebRTCICEConnectionState.FAILED,
             GstWebRTC.WebRTCICEConnectionState.CLOSED,
