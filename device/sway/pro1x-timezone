@@ -29,7 +29,7 @@ pick_zone() {
     zones=$(printf '← back\n'; awk '!/^#/ { print $3 }' "$TZDIR/zone.tab" | sort)
     at=$(printf '%s\n' "$zones" | grep -nxF "$(current)" | cut -d: -f1)
     zone=$(printf '%s\n' "$zones" |
-        fzf --listen="$sock" --reverse --margin='1,2,1,2' --color='16,gutter:-1' \
+        fzf --listen="$sock" --bind='left:abort' --bind='right:accept' --reverse --margin='1,2,1,2' --color='16,gutter:-1' \
             --prompt='Zone: ' --bind="load:pos(${at:-1})")
     case "$zone" in ""|"← back") return ;; esac
     # A zone picked by hand should not be replaced at the next connection.
@@ -43,8 +43,8 @@ detect_now() {
     $admin detect || pause
 }
 
+# The Wi-Fi rules in force: the preview of their line.
 show_rules() {
-    printf '\033[H\033[2J\033[3J'
     iw reg get | awk '
         /^phy#/ { exit }
         /^country/ { sub(":", "", $2); print "Wi-Fi rules: " $2 ", " $3 "\n"; next }
@@ -58,8 +58,8 @@ show_rules() {
     then echo; echo "5 GHz hotspot: possible"
     else echo; echo "5 GHz hotspot: not available in this region"
     fi
-    pause
 }
+[ "${1:-}" = --rules ] && { show_rules; exit; }
 
 toggle_auto() {
     if [ "$(auto_state)" = on ]; then
@@ -79,13 +79,15 @@ while :; do
         rules "Wi-Fi rules: $(country)" |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='timezone > ' \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --bind='load:pos(2)' |
+            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' \
+            --preview="$0 --rules" --preview-window=hidden,right,50%,wrap,border-left \
+            --bind='focus:transform:[ {1} = rules ] && echo show-preview || echo hide-preview' |
         cut -f1)
     case "$choice" in
         pick) pick_zone ;;
         auto) toggle_auto ;;
         detect) detect_now ;;
-        rules) show_rules ;;
+        rules) ;;                 # in the preview
         *) break ;;
     esac
 done

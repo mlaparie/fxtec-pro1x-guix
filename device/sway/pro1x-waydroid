@@ -98,7 +98,7 @@ clear_screen() { printf '\033[H\033[2J\033[3J'; }
 pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
 
 menu() {                        # menu PROMPT: tab-separated lines on stdin
-    fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+    fzf --listen="$sock" --bind='left:abort' --bind='right:accept' --delimiter='\t' --with-nth=2 --prompt="$1 > " \
         --layout=reverse-list --no-info --cycle --margin=1,2 \
         --color=16,gutter:-1 --bind='load:pos(2)' | cut -f1
 }

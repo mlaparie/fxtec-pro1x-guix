@@ -29,7 +29,7 @@ picked=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
               s/^(\x1b\[[0-9;]*m[^\x1b]*\x1b\[0m  \x1b\[[0-9;]*m.\x1b\[0m) {6}/\1/;
               s/ Mbit\/s/ Mb\/s  /
               1a back  ← back' \
-    | fzf --ansi --listen="$sock" \
+    | fzf --ansi --listen="$sock" --bind='left:abort' --bind='right:accept' \
           --with-nth=2.. \
           --reverse \
           --cycle \

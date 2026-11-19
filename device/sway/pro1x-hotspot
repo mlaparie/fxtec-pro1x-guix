@@ -77,10 +77,21 @@ print_qr() {
     esc() { printf '%s' "$1" | sed 's/[\\;,:"]/\\&/g'; }
     s=$(ssid) p=$(psk)
     h=; [ "$(hidden)" = yes ] && h="H:true;"
-    # As an image: in block characters this font makes the code 15% too tall.
-    # A preview line is about 44 pixels high.
+    # As an image: in block characters this font makes the code 15% too
+    # tall.  Its size from the cell's in pixels: the terminal window's
+    # pixels over fzf's size in cells (a fixed guess overflowed the pane).
+    set -- $(swaymsg -t get_tree -r 2>/dev/null | jq -r '
+        .. | objects | select(.focused? == true) | "\(.rect.width) \(.rect.height)"' | head -1) \
+        $(swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | select(.focused) | .scale')
+    cw=20 ch=40
+    if [ -n "${2:-}" ] && [ -n "${FZF_COLUMNS:-}" ] && [ -n "${FZF_LINES:-}" ]; then
+        cw=$(awk -v w="$1" -v s="${3:-1}" -v c="$FZF_COLUMNS" 'BEGIN { print int(w * s / c) }')
+        ch=$(awk -v h="$2" -v s="${3:-1}" -v l="$FZF_LINES" 'BEGIN { print int(h * s / l) }')
+    fi
+    hh=$(( FZF_PREVIEW_LINES * ch - ch )) ww=$(( FZF_PREVIEW_COLUMNS * cw - 2 * cw ))
+    [ "$hh" -lt "$ww" ] && size=$hh || size=$ww
     qrencode -t PNG -s 8 -m 2 -l L -o - "WIFI:T:WPA;S:$(esc "$s");P:$(esc "$p");$h;" |
-        convert png:- -filter point -resize "x$((FZF_PREVIEW_LINES * 40))" sixel:-
+        convert png:- -filter point -resize "${size}x${size}" sixel:-
 }
 
 # fzf reloads the menu after a background start or stop, and asks for the QR
@@ -189,33 +200,63 @@ set_password() {
     nmcli connection modify "$con" wifi-sec.psk "$v" && restart_if_active
 }
 
-toggle_band() {
+# A list of choices, the current one marked, the highlighted one explained
+# in a preview (info); the key picked on stdout, nothing for Esc or Left.
+choose_one() {                  # choose_one PROMPT WHAT CURRENT
+    { printf 'back\t← back\n'
+      awk -F'\t' -v cur="$3" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; } |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+            --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' \
+            --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left |
+        cut -f1 | sed '/^back$/d'
+}
+five_ghz() { iw phy | grep -E '^[[:space:]]+\* 5[0-9]{3} MHz' | grep -qvE 'disabled|no IR'; }
+info() {                        # info WHAT KEY
+    case "$1:$2" in
+        band:bg) printf '%s\n' "2.4 GHz: reaches further and through walls, and every" \
+                     "device has it; slower, and crowded where many networks are." ;;
+        band:a)
+            printf '%s\n' "5 GHz: faster and less crowded, shorter reach; some older" \
+                "devices (and some cars) lack it.  Channel 36." ""
+            if five_ghz; then echo "Allowed in this region."
+            else echo "Not allowed in this region now (Time zone, Wi-Fi rules)."; fi ;;
+        hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
+        hidden:yes) printf '%s\n' "The name is not broadcast: a device joins by typing it" \
+                        "(or by the QR code).  It hides little: the name still" \
+                        "travels when devices connect." ;;
+        idle:0) echo "The hotspot stays on until turned off." ;;
+        idle:*) echo "The hotspot turns itself off after $2 minutes without a device." ;;
+    esac
+}
+pick_band() {
     # Channel 36 is open to access points in most countries and allows
     # more power than the channel NetworkManager picks by itself.
-    if [ "$(band)" = a ]; then
-        b=bg ch=
-    else
-        b=a ch=36
-    fi
+    b=$(printf '%s\t%s\n' bg "2.4 GHz" a "5 GHz" |
+            choose_one band band "$(if [ "$(band)" = a ]; then echo a; else echo bg; fi)")
+    case "$b" in
+        a) ch=36 ;;
+        bg) ch= ;;
+        *) return ;;
+    esac
     nmcli connection modify "$con" 802-11-wireless.band "$b" \
           802-11-wireless.channel "$ch" && restart_if_active
 }
-
-toggle_hidden() {
-    if [ "$(hidden)" = yes ]; then h=no; else h=yes; fi
+pick_hidden() {
+    h=$(printf '%s\t%s\n' no "No, the name broadcast" yes "Yes, the name not broadcast" |
+            choose_one hidden hidden "$(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)")
+    [ -n "$h" ] || return
     nmcli connection modify "$con" 802-11-wireless.hidden "$h" && restart_if_active
 }
-
-cycle_idle() {                  # never, 5, 15, 30 minutes
-    case "$(idle_minutes)" in
-        0) next=5 ;;
-        5) next=15 ;;
-        15) next=30 ;;
-        *) next=0 ;;
-    esac
+pick_idle() {
+    m=$(printf '%s\t%s\n' 0 never 5 "5 min idle" 15 "15 min idle" 30 "30 min idle" |
+            choose_one auto-off idle "$(idle_minutes)")
+    [ -n "$m" ] || return
     mkdir -p "$statedir"
-    echo "$next" > "$idle_file"
+    echo "$m" > "$idle_file"
 }
+# For the previews of choose_one.
+[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}"; exit; }
 
 # One line per device, connected or banned: MAC, tab, what is shown.
 client_lines() {
@@ -242,7 +283,7 @@ client_action() {               # client_action MAC
         actions=$'← back\nexpel\nban'
     fi
     a=$(printf '%s\n' "$actions" |
-        fzf --listen="$sock" --reverse --cycle --margin='1,2,1,2' \
+        fzf --listen="$sock" --bind='left:abort' --bind='right:accept' --reverse --cycle --margin='1,2,1,2' \
             --color='16,gutter:-1' --header="$1")
     case "$a" in ""|"← back") return ;; esac
     if [ "$a" = stream ]; then
@@ -255,7 +296,7 @@ client_action() {               # client_action MAC
 show_clients() {
     while :; do
         pick=$({ printf 'back\t← back\n'; client_lines; } |
-            fzf --listen="$sock" --delimiter='\t' --with-nth=2 --reverse \
+            fzf --listen="$sock" --bind='left:abort' --bind='right:accept' --delimiter='\t' --with-nth=2 --reverse \
                 --cycle --margin='1,2,1,2' --color='16,gutter:-1' \
                 --header="Name                 IP              MAC" \
                 --bind='load:pos(2)' |
@@ -277,7 +318,7 @@ qr_pane='[ {1} = qr ] || { echo hide-preview; exit; }
 
 while :; do
     choice=$(menu_lines |
-        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='hotspot > ' \
+        fzf --listen="$sock" --bind='left:abort' --bind='right:accept' --delimiter='\t' --with-nth=2 --prompt='hotspot > ' \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
             --color=16,gutter:-1 --ansi \
             --preview="$0 --qr" --preview-window=hidden \
@@ -289,9 +330,9 @@ while :; do
         toggle) toggle ;;
         name) set_name ;;
         password) set_password ;;
-        band) toggle_band ;;
-        hidden) toggle_hidden ;;
-        idle) cycle_idle ;;
+        band) pick_band ;;
+        hidden) pick_hidden ;;
+        idle) pick_idle ;;
         data) ;;                  # redrawn by the loop
         qr) ;;                    # in the preview
         clients) show_clients ;;
