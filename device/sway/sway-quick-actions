@@ -492,9 +492,18 @@ choose() {
     line=$1
     case "$1" in
         wwan)
+            # Its modes, then roaming, operator and SIM (author, 2026-11-19).
             title="mobile data"
             cur=$(cut -d' ' -f1 "${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile" 2>/dev/null)
-            opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done) ;;
+            kv=$(modem_kv)
+            opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done
+                   printf 'roaming\tRoaming: %s\n' "$(roaming)"
+                   printf 'operator\tOperator: %s…\n' "$(operator_shown "$kv" | sed 's/\x1b\[[0-9;]*m//g')"
+                   printf 'sim\tSIM: %s…\n' "$(sim_state "$kv")") ;;
+        apps)
+            title="app shortcuts"
+            cur=
+            opts=$(printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n') ;;
         operator)
             title="operator"
             cur=auto
@@ -610,7 +619,14 @@ choose() {
     rm -f "$asksock"
     case "$pick" in ""|back) return ;; esac
     case "$line" in
-        wwan) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
+        wwan)
+            case "$pick" in
+                roaming) act roaming; choose wwan ;;
+                operator) choose operator; choose wwan ;;
+                sim) choose sim; choose wwan ;;
+                *) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
+            esac ;;
+        apps) act "$pick" ;;
         operator)
             if [ "$pick" = scan ]; then
                 operator_do_scan
@@ -1043,7 +1059,7 @@ mobile_info() {                 # " · 59% Operator 4G", from modem key-values
 }
 
 # The lines as last read, each change shown over them until it is confirmed.
-# Up to column 33 a line is its key and label, then its value.
+# Up to column 39 a line is its key and label, then its value.
 cache="$rt/pro1x-qs-lines"
 pending="$rt/pro1x-qs-pending"
 
@@ -1051,7 +1067,7 @@ overlay() {
     while IFS= read -r l; do
         k=${l%% *}
         if [ -f "$pending/$k" ]; then
-            printf '%.33s%s\n' "$l" "$(cat "$pending/$k")"
+            printf '%.39s%s\n' "$l" "$(cat "$pending/$k")"
         else
             printf '%s\n' "$l"
         fi
@@ -1067,7 +1083,7 @@ cached_lines() {                # at once, unless nothing was read yet
 cache_put() {                   # cache_put KEY VALUE: a value just read
     [ -r "$cache" ] || return
     while IFS= read -r l; do
-        if [ "${l%% *}" = "$1" ]; then printf '%.33s%s\n' "$l" "$2"
+        if [ "${l%% *}" = "$1" ]; then printf '%.39s%s\n' "$l" "$2"
         else printf '%s\n' "$l"; fi
     done < "$cache" > "$cache.$$" && mv "$cache.$$" "$cache"
 }
@@ -1190,41 +1206,35 @@ lines() {
     # First line: the header (fzf --header-lines=1), battery state.
     printf '%s\n' \
         "battery     Battery $(battery_state)" \
-        "notif       Notifications        $(cat "$d/notif")" \
-        "lock        Lock screen" \
-        "camera      Camera" \
-        "dialer      Dialer" \
-        "chats       Chats" \
-        "wifi        Wi-Fi                $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
-        "hotspot     Hotspot              $(dim "$(hotspot_state)")" \
-        "stream      Stream               $(stream_state)" \
-        "waydroid    Waydroid             $(dim "$(cat "$d/waydroid")")" \
-        "wwan        Mobile data          $mobile" \
-        "roaming     Roaming              $(dim "$(roaming)")" \
-        "operator    Operator             $(operator_shown "$kv")" \
-        "sim         SIM                  $(sim_state "$kv")" \
-        "bluetooth   Bluetooth            $(dim "$bt")" \
-        "location    Location             $(dim "$(location_now)")" \
-        "nfc         NFC                  $(dim "$(nfc_now)")" \
-        "airplane    Airplane mode        $(dim "$plane")" \
-        "rotation    Rotation             $(rotation_mode)" \
-        "orient      Orientation          $orient_shown" \
-        "caffeine    Keep screen on       $(dim "$caf")" \
-        "autosleep   Auto-sleep           $(autosleep_now)" \
-        "osk         On-screen keyboard   $(dim "$(cat "$d/osk")")" \
-        "dicts       Word completion      $(cat "$d/dicts")" \
-        "layout      Keyboard layout      $(cat "$d/layout")" \
-        "torch       Torch                $(dim "$t")" \
-        "touchpad    Touch input          $(touch_mode)" \
-        "feedback    Feedback             $(cat "$d/fb")" \
-        "cpu         CPU mode             $(cpu_mode)" \
-        "gpu         GPU monitor          $(gpu_clock)" \
-        "bright      Brightness           $(cat "$d/br")" \
-        "volume      Volume               $vol" \
-        "audio       Audio output         $(cat "$d/audio")" \
-        "timezone    Timezone             $(timezone_now)" \
-        "fingerprint Fingerprints         $(dim "$(fingerprint_state)")" \
-        "charge      Charge limit         $(charge_limit)"
+        "apps        App shortcuts              camera, dialer, chats" \
+        "notif       Notifications              $(cat "$d/notif")" \
+        "torch       Torch                      $(dim "$t")" \
+        "waydroid    Waydroid                   $(dim "$(cat "$d/waydroid")")" \
+        "stream      Stream                     $(stream_state)" \
+        "bluetooth   Bluetooth                  $(dim "$bt")" \
+        "wifi        WiFi                       $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
+        "hotspot     Hotspot                    $(dim "$(hotspot_state)")" \
+        "wwan        Mobile data                $mobile" \
+        "airplane    Airplane mode              $(dim "$plane")" \
+        "location    Location                   $(dim "$(location_now)")" \
+        "nfc         NFC                        $(dim "$(nfc_now)")" \
+        "rotation    Auto-rotation mode         $(rotation_mode)" \
+        "orient      Orientation                $orient_shown" \
+        "feedback    Feedback                   $(cat "$d/fb")" \
+        "audio       Audio outputs              $(cat "$d/audio")" \
+        "volume      Volume                     $vol" \
+        "bright      Brightness                 $(cat "$d/br")" \
+        "caffeine    Keep screen on             $(dim "$caf")" \
+        "autosleep   Auto-sleep                 $(autosleep_now)" \
+        "dicts       Word completion            $(cat "$d/dicts")" \
+        "osk         On-screen keyboard         $(dim "$(cat "$d/osk")")" \
+        "layout      On-screen keyboard layout  $(cat "$d/layout")" \
+        "cpu         CPU mode                   $(cpu_mode)" \
+        "gpu         GPU monitor                $(gpu_clock)" \
+        "touchpad    Touch input mode           $(touch_mode)" \
+        "fingerprint Fingerprint                $(dim "$(fingerprint_state)")" \
+        "timezone    Timezone                   $(timezone_now)" \
+        "charge      Charge limit               $(charge_limit)"
     rm -rf "$d"
 }
 
@@ -1708,7 +1718,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|location|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
