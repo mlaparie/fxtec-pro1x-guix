@@ -1309,7 +1309,7 @@ hotspot_state() {               # pro1x-hotspot's connection: on or off
 stream_state() {                # what pro1x-stream is sending, or off
     [ -f "$rt/pro1x-stream.pid" ] &&
         kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
-        cat "$rt/pro1x-stream.to" || echo off
+        cat "$rt/pro1x-stream.to" || dim off
 }
 
 timezone_now() { readlink -f /etc/localtime | sed 's|.*/zoneinfo/||'; }
