@@ -153,6 +153,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label title="above 0 the sound later, below 0 the picture later">a/v     <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
 <label title="frames at exactly the fps (games, films); off: only when the screen changes, cooler">constant fps <input id="st" type="checkbox"></label>
 <label title="above it the phone lowers the fps by 5, and raises it 5 C cooler">heat    <input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
+<label title="fewer frames while the viewer loses packets, back up once it stops">adaptive <input id="ad" type="checkbox"></label>
 <label title="power saving delays and loses what the phone sends; off costs battery">wifi    <input id="wp" type="checkbox"> no power saving while streaming</label>
 <div class="h">on apply (restarts the picture)</div>
 <label>rate    <input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
@@ -185,7 +186,7 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true, wifi_awake: true,
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true, adaptive: true, wifi_awake: true,
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
 // Settings kept before the touchpad mode had touch true or false.
@@ -371,7 +372,9 @@ const sz = document.getElementById("sz");
 sz.onchange = () => { pending.long = Number(sz.value); showPending(); };
 function showRate() { sb.value = cfg.rate; sbv.textContent = cfg.rate; }
 const st = document.getElementById("st");
-function showSteady() { st.checked = cfg.steady; wp.checked = cfg.wifi_awake; }
+function showSteady() { st.checked = cfg.steady; wp.checked = cfg.wifi_awake; ad.checked = cfg.adaptive; }
+const ad = document.getElementById("ad");
+ad.onchange = () => { cfg.adaptive = ad.checked; save(); log({ev: "setting", name: "adaptive", value: cfg.adaptive}); };
 const wp = document.getElementById("wp");
 wp.onchange = () => { cfg.wifi_awake = wp.checked; save(); log({ev: "setting", name: "wifi_awake", value: cfg.wifi_awake}); };
 st.onchange = () => { cfg.steady = st.checked; save(); log({ev: "setting", name: "steady", value: cfg.steady}); };
@@ -1076,6 +1079,7 @@ class Producer:
         self.last = None
         self.fps = int(size.split("@")[1])
         self.limit = self.fps      # lowered while the viewer loses packets
+        self.adaptive = kept_setting("adaptive", True)
         self.calm = 0              # loss checks since the last loss
         self.steady = kept_setting("steady", True)
         self.pushed_at = 0.0
@@ -1161,7 +1165,10 @@ class Producer:
         after 10 s under 0.5%, 2 more, up to the fps chosen.  The bit rate
         falls with the frames (the encoder budgets each frame), which the
         encoder's own rate could not do: changing it while running killed
-        its firmware.  As Parsec and Shadow lower their rate on loss."""
+        its firmware.  As Parsec and Shadow lower their rate on loss.  Off
+        (SET's adaptive): the fps chosen whatever the losses."""
+        if not self.adaptive:
+            return
         if fraction > 0.03:
             self.calm = 0
             limit = max(5, int(self.limit * 0.75))
@@ -2117,6 +2124,9 @@ class Handler(BaseHTTPRequestHandler):
             os.replace(SETTINGS + ".new", SETTINGS)
             if producer:
                 producer.steady = bool(kept.get("steady", True))
+                producer.adaptive = bool(kept.get("adaptive", True))
+                if not producer.adaptive:
+                    producer.limit = producer.fps
             wifi_hold(bool(kept.get("wifi_awake", True)))
             self.reply(b"ok")
             return
