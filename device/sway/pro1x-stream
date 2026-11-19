@@ -39,12 +39,16 @@ http_port=8080
 webrtc_port=8081
 # The same over HTTPS, for browsers that refuse plain HTTP (a car's).  On
 # the phone's hotspot, the user's own domain when pro1x-stream-cert has its
-# certificate (the only way into a Tesla's browser); otherwise the address,
-# with the phone's self-signed certificate (pro1x-stream-webrtc).
+# certificate (the only way into a Tesla's browser), and its LAN name on a
+# network the phone joined; otherwise the address, with the phone's
+# self-signed certificate (pro1x-stream-webrtc).
 tls_port=8443
 tls_url() {
     trusted=$(cat /var/lib/pro1x/stream-tls/url 2>/dev/null)
+    lan=$(cat /var/lib/pro1x/stream-tls/lan-url 2>/dev/null)
     if [ "$1" = 10.42.0.1 ] && [ -n "$trusted" ]; then echo "$trusted"
+    elif [ "$1" = "$(cat /var/lib/pro1x/stream-tls/lan-address 2>/dev/null)" ] &&
+             [ -n "$lan" ]; then echo "$lan"
     else echo "https://$1:$tls_port/"; fi
 }
 

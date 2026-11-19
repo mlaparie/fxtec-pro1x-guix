@@ -15,6 +15,15 @@
 #   STREAM_ADDRESS=240.3.3.4        its A record (default 240.3.3.4)
 #   DNS_PROVIDER=porkbun            pro1x-stream-dns-PROVIDER talks to its API
 #   PORKBUN_API_KEY=… PORKBUN_SECRET_KEY=…   the provider's keys
+#   STREAM_LAN_NAME=lan.car.example.com   (default lan.STREAM_DOMAIN)
+#
+# On another network (both the car and the phone on a third device's
+# hotspot), the hotspot cannot redirect anything: STREAM_LAN_NAME's A record
+# follows the phone's Wi-Fi address there (checked every minute, set only
+# when it changes), and the car opens https://STREAM_LAN_NAME:8443/.
+# Whether a Tesla's browser opens a page at a private address under a
+# public name is not known yet (tesla-carplay says it refuses local
+# addresses).  The one certificate covers both names.
 #
 # Then the A record is set through the API, a certificate made by certbot's
 # DNS challenge (and renewed: checked every 12 hours), and the hotspot
@@ -24,9 +33,11 @@
 #
 #   /var/lib/pro1x/stream-tls/cert.pem, key.pem   the certificate (key: group users)
 #   /var/lib/pro1x/stream-tls/name, url           its name and link, for the stream menu
+#   /var/lib/pro1x/stream-tls/lan-url, lan-address   the same on another network
 #   /var/lib/pro1x/letsencrypt                    certbot's account and certificates
 #
-# State: written 2026-11-19, not yet run.
+# State: the hotspot way works from the author's Tesla (2026-11-19); the
+# other-network way written, not yet tried.
 
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 dir=/var/lib/pro1x/stream-tls
@@ -56,18 +67,39 @@ redirect() {
         '}' | nft -f -
 }
 
-once() {
-    [ -r "$settings" ] && grep -q '^STREAM_DOMAIN=.' "$settings" || return 0
+settings_ok() {
+    [ -r "$settings" ] && grep -q '^STREAM_DOMAIN=.' "$settings" || return 1
     . "$settings"
     : "${STREAM_ADDRESS:=240.3.3.4}" "${DNS_PROVIDER:=porkbun}"
+    : "${STREAM_LAN_NAME:=lan.$STREAM_DOMAIN}"
     hook=pro1x-stream-dns-$DNS_PROVIDER
+}
+
+# STREAM_LAN_NAME to the phone's Wi-Fi address on a network it joined (not
+# its own hotspot, where the redirect does the job).
+lan() {
+    settings_ok || return 0
+    address=$(ip -4 -o addr show dev wlan0 2>/dev/null |
+                  awk '{ sub("/.*", "", $4); print $4; exit }')
+    case "$address" in ""|10.42.0.1) return 0 ;; esac
+    [ "$address" = "$(cat "$dir/lan-address" 2>/dev/null)" ] && return 0
+    if "$hook" a "$STREAM_LAN_NAME" "$address"; then
+        mkdir -p "$dir"
+        echo "$address" > "$dir/lan-address"
+        echo "https://$STREAM_LAN_NAME:8443/" > "$dir/lan-url"
+        echo "$(date '+%F %T') $STREAM_LAN_NAME is $address"
+    fi
+}
+
+once() {
+    settings_ok || return 0
     "$hook" a "$STREAM_DOMAIN" "$STREAM_ADDRESS" ||
         echo "$(date '+%F %T') A record for $STREAM_DOMAIN not set"
     if certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
             --config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs" \
-            --manual --preferred-challenges dns --keep-until-expiring \
+            --manual --preferred-challenges dns --keep-until-expiring --expand \
             --manual-auth-hook "$hook auth" --manual-cleanup-hook "$hook cleanup" \
-            -d "$STREAM_DOMAIN" >/dev/null 2>&1; then
+            -d "$STREAM_DOMAIN" -d "$STREAM_LAN_NAME" >/dev/null 2>&1; then
         install_cert "$le/live/$STREAM_DOMAIN/fullchain.pem" \
                      "$le/live/$STREAM_DOMAIN/privkey.pem" \
                      "$STREAM_DOMAIN" "https://$STREAM_DOMAIN/" &&
@@ -80,5 +112,11 @@ once() {
 
 case "${1:-}" in
     once) once ;;
-    *) while :; do once; sleep 43200; done ;;
+    *) n=0
+       while :; do
+           [ $((n % 720)) -eq 0 ] && once
+           lan
+           n=$((n + 1))
+           sleep 60
+       done ;;
 esac
