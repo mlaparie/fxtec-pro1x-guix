@@ -83,6 +83,8 @@
 #define IDLE_POLL_MS 250
 #define ENROLL_TIMEOUT 90       /* s without a finger before enrol gives up */
 #define LIFT_TIMEOUT 5          /* s for the finger to leave */
+#define LIFT_STEADY_MS 300      /* no touch that long: lifted (wait_lift) */
+#define RETRY_PAUSE_MS 400      /* then this before the next try */
 
 enum {
 	CMD_INIT = 0xc8,                /* [drv version][key len][key] */
@@ -607,6 +609,33 @@ static int wait_touch(int mode, int touched, double seconds, int ms)
 	return 0;
 }
 
+/*
+ * After a miss: the finger gone for LIFT_STEADY_MS in a row, however long
+ * it stays, then a pause.  One no-touch reading came right after a capture
+ * with the finger still on, and the next tries fired in the same second
+ * (two misses in one, 2026-11-19).  1 lifted, 0 a gone client, -1 a
+ * failure.
+ */
+static int wait_lift(void)
+{
+	double since = 0;
+
+	for (;;) {
+		int t = detect_touch(0);
+
+		if (t < 0)
+			return -1;
+		if (t)
+			since = 0;
+		else if (!since)
+			since = now();
+		else if ((now() - since) * 1000 >= LIFT_STEADY_MS)
+			return still_wanted(RETRY_PAUSE_MS) ? 1 : 0;
+		if (!still_wanted(POLL_MS))
+			return 0;
+	}
+}
+
 static void do_list(void)
 {
 	uint32_t fids[5];
@@ -797,7 +826,7 @@ static void do_identify(void)
 		}
 		say("nomatch");
 		retry++;
-		if (wait_touch(0, 0, LIFT_TIMEOUT, POLL_MS) < 0 || client < 0)
+		if (wait_lift() <= 0 || client < 0)
 			return;
 	}
 }
