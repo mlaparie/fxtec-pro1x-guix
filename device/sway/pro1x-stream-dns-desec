@@ -1,0 +1,47 @@
+#!/bin/sh
+# pro1x-stream-dns-desec — deSEC's DNS API (desec.io) for pro1x-stream-cert, as root.
+#
+#   pro1x-stream-dns-desec a NAME ADDRESS   make NAME's A record ADDRESS
+#   pro1x-stream-dns-desec auth             certbot's manual-auth-hook
+#   pro1x-stream-dns-desec cleanup          certbot's manual-cleanup-hook
+#
+# The token comes from pro1x-stream-cert's environment (DESEC_TOKEN, from
+# the user's settings): Token management in deSEC's web interface.  deSEC
+# is free and keeps TTLs at 3600 s or more.  certbot gives CERTBOT_DOMAIN and
+# CERTBOT_VALIDATION to the hooks.
+#
+# State: written from deSEC's API documentation, not yet run.
+
+set -eu
+PATH=/run/current-system/profile/bin:$PATH
+DESEC_TOKEN=${DESEC_TOKEN:?DESEC_TOKEN missing}
+api=https://desec.io/api/v1
+
+# The registered domain of NAME and the part of NAME under it:
+# car.example.com -> example.com and car (a two-label domain assumed).
+zone() { echo "$1" | awk -F. '{ print $(NF-1) "." $NF }'; }
+sub() { z=$(zone "$1"); s=${1%"$z"}; echo "${s%.}"; }
+
+# Records set or removed (an empty list), in one bulk change that creates
+# the record set if needed.
+rrset() {                       # rrset DOMAIN SUBNAME TYPE RECORDS-JSON
+    code=$(curl -s -m 30 -o /dev/null -w '%{http_code}' -X PATCH \
+                -H "Authorization: Token $DESEC_TOKEN" -H "Content-Type: application/json" \
+                --data "[{\"subname\":\"$2\",\"type\":\"$3\",\"ttl\":3600,\"records\":$4}]" \
+                "$api/domains/$1/rrsets/")
+    case "$code" in 2??) ;; *) echo "desec: $3 record for $2.$1: HTTP $code" >&2; return 1 ;; esac
+}
+
+case "${1:-}" in
+    a)
+        rrset "$(zone "$2")" "$(sub "$2")" A "[\"$3\"]" ;;
+    auth)
+        s=$(sub "$CERTBOT_DOMAIN")
+        rrset "$(zone "$CERTBOT_DOMAIN")" "_acme-challenge${s:+.$s}" TXT "[\"\\\"$CERTBOT_VALIDATION\\\"\"]"
+        # deSEC's secondaries take a while to follow.
+        sleep 60 ;;
+    cleanup)
+        s=$(sub "$CERTBOT_DOMAIN")
+        rrset "$(zone "$CERTBOT_DOMAIN")" "_acme-challenge${s:+.$s}" TXT "[]" || true ;;
+    *) echo "usage: pro1x-stream-dns-desec a NAME ADDRESS | auth | cleanup" >&2; exit 2 ;;
+esac

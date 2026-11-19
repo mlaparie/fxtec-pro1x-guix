@@ -23,7 +23,8 @@
 #   STREAM_DOMAIN=stream.example.com   the name; empty or absent: nothing
 #   STREAM_ADDRESS=240.3.3.4           its A record
 #   DNS_PROVIDER=porkbun               pro1x-stream-dns-PROVIDER: its API
-#   PORKBUN_API_KEY=…  PORKBUN_SECRET_KEY=…   the provider's keys
+#                                      (porkbun; cloudflare, desec not yet run)
+#   PORKBUN_API_KEY=…  PORKBUN_SECRET_KEY=…   the provider's keys, PROVIDER_…
 # It is read as KEY=value lines, never run: names in capitals, values of
 # plain characters only.
 #
@@ -116,7 +117,7 @@ once() {
         *[!0-9.]*|*..*|.*|*.) say "STREAM_ADDRESS: not an address: $address"; return ;;
     esac
     provider=$(setting DNS_PROVIDER) || provider=
-    : "${provider:=porkbun}"
+    [ -n "$provider" ] || { say "DNS_PROVIDER: not set (porkbun, cloudflare or desec)"; return; }
     case "$provider" in *[!a-z0-9]*) say "DNS_PROVIDER: unknown: $provider"; return ;; esac
     hook=pro1x-stream-dns-$provider
     command -v "$hook" >/dev/null || { say "DNS_PROVIDER: unknown: $provider"; return; }

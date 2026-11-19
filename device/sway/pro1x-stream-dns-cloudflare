@@ -1,0 +1,59 @@
+#!/bin/sh
+# pro1x-stream-dns-cloudflare — Cloudflare's DNS API for pro1x-stream-cert, as root.
+#
+#   pro1x-stream-dns-cloudflare a NAME ADDRESS   make NAME's A record ADDRESS
+#   pro1x-stream-dns-cloudflare auth             certbot's manual-auth-hook
+#   pro1x-stream-dns-cloudflare cleanup          certbot's manual-cleanup-hook
+#
+# The token comes from pro1x-stream-cert's environment (CLOUDFLARE_API_TOKEN,
+# from the user's settings): an API token with Zone, DNS, Edit on the
+# domain (My Profile > API Tokens, "Edit zone DNS").  The record is not
+# proxied: it must reach the hotspot as it is.  certbot gives CERTBOT_DOMAIN
+# and CERTBOT_VALIDATION to the hooks.
+#
+# State: written from Cloudflare's API documentation (v4), not yet run.
+
+set -eu
+PATH=/run/current-system/profile/bin:$PATH
+CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN missing}
+api=https://api.cloudflare.com/client/v4
+
+# The registered domain of NAME: car.example.com -> example.com (a
+# two-label domain assumed).
+zone() { echo "$1" | awk -F. '{ print $(NF-1) "." $NF }'; }
+
+call() {                        # call METHOD PATH [JSON]
+    curl -s -m 30 -X "$1" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+         -H "Content-Type: application/json" ${3:+--data "$3"} "$api/$2"
+}
+ok() { jq -e '.success == true' >/dev/null; }
+
+zone_id() {
+    id=$(call GET "zones?name=$(zone "$1")" | jq -r '.result[0].id // empty')
+    [ -n "$id" ] || { echo "cloudflare: no zone for $1 (the token's rights?)" >&2; exit 1; }
+    echo "$id"
+}
+
+case "${1:-}" in
+    a)
+        z=$(zone_id "$2")
+        got=$(call GET "zones/$z/dns_records?type=A&name=$2")
+        rid=$(echo "$got" | jq -r '.result[0].id // empty')
+        [ "$(echo "$got" | jq -r '.result[0].content // empty')" = "$3" ] && exit 0
+        body="{\"type\":\"A\",\"name\":\"$2\",\"content\":\"$3\",\"ttl\":300,\"proxied\":false}"
+        if [ -n "$rid" ]; then call PUT "zones/$z/dns_records/$rid" "$body" | ok
+        else call POST "zones/$z/dns_records" "$body" | ok; fi ||
+            { echo "cloudflare: A record not set" >&2; exit 1; } ;;
+    auth)
+        z=$(zone_id "$CERTBOT_DOMAIN")
+        call POST "zones/$z/dns_records" \
+             "{\"type\":\"TXT\",\"name\":\"_acme-challenge.$CERTBOT_DOMAIN\",\"content\":\"$CERTBOT_VALIDATION\",\"ttl\":120}" | ok
+        sleep 30 ;;
+    cleanup)
+        z=$(zone_id "$CERTBOT_DOMAIN")
+        for rid in $(call GET "zones/$z/dns_records?type=TXT&name=_acme-challenge.$CERTBOT_DOMAIN" |
+                         jq -r '.result[].id'); do
+            call DELETE "zones/$z/dns_records/$rid" >/dev/null || true
+        done ;;
+    *) echo "usage: pro1x-stream-dns-cloudflare a NAME ADDRESS | auth | cleanup" >&2; exit 2 ;;
+esac

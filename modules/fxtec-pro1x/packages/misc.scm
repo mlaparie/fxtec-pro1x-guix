@@ -1896,6 +1896,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-stream-output            the output the screen-cast portal captures
 ;;;   bin/pro1x-stream-cert              the stream's HTTPS name on the hotspot (root)
 ;;;   bin/pro1x-stream-dns-porkbun       its DNS records through Porkbun's API
+;;;   bin/pro1x-stream-dns-cloudflare    ... Cloudflare's (not yet run)
+;;;   bin/pro1x-stream-dns-desec         ... deSEC's (not yet run)
 ;;;   bin/pro1x-stream                   send the screen to another device
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
@@ -1970,6 +1972,8 @@ window opened by a sway key binding.")
           ("pro1x-stream-output" "bin/")
           ("pro1x-stream-cert" "bin/")
           ("pro1x-stream-dns-porkbun" "bin/")
+          ("pro1x-stream-dns-cloudflare" "bin/")
+          ("pro1x-stream-dns-desec" "bin/")
           ("pro1x-hotspot-admin" "bin/")
           ("pro1x-wifi-powersave" "bin/")
           ("pro1x-timezone" "bin/")
@@ -2049,10 +2053,11 @@ window opened by a sway key binding.")
                            (map (lambda (p)
                                   (string-append (assoc-ref inputs p) "/bin"))
                                 '("certbot" "coreutils" "curl" "gawk" "grep"
-                                  "openssl" "sed"))
+                                  "jq" "openssl" "sed"))
                            (list (string-append (assoc-ref inputs "nftables")
                                                 "/sbin")))))))
-                 '("pro1x-stream-cert" "pro1x-stream-dns-porkbun"))
+                 '("pro1x-stream-cert" "pro1x-stream-dns-porkbun"
+                   "pro1x-stream-dns-cloudflare" "pro1x-stream-dns-desec"))
                 (let ((stream (string-append #$output "/bin/pro1x-stream")))
                   (chmod stream #o755)
                   (wrap-program stream
