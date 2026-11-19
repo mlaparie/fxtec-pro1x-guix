@@ -354,11 +354,16 @@ own_address() {
 
 # The address a stream is announced on (the bar, the Stop line): the
 # hotspot's if it is up, else the first network's; links lists them all.
-main_address() {
+main_address() { networks | head -1 | cut -d' ' -f1; }
+
+# The phone's addresses, best first: "ADDRESS INTERFACE", hotspot, Wi-Fi,
+# Tailscale, then the rest (mobile).
+networks() {
     ip -4 -o addr show scope global |
-        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ { sub("/.*", "", $4); print $4 }' |
-        sort -t. -k1,1 -k2,2 | awk '$0 == "10.42.0.1" { h = $0 } NR == 1 { f = $0 }
-                                    END { print h ? h : f }'
+        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ {
+                 sub("/.*", "", $4)
+                 r = $4 == "10.42.0.1" ? 0 : $2 ~ /^wlan/ ? 1 : $2 ~ /^tailscale/ ? 2 : 3
+                 print r, $4, $2 }' | sort -n -k1,1 -s | cut -d' ' -f2-
 }
 
 # A browser stream's links, HTTPS then HTTP on each network, with SUFFIX
@@ -367,8 +372,7 @@ links() {                       # links [SUFFIX]
     if funnel_on && funnel_offered && n=$(funnel_name) && [ -n "$n" ]; then
         printf 'https://%s/%s\t%-10s https://%s/\n' "$n" "${1:-}" public "$n"
     fi
-    ip -4 -o addr show scope global |
-        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ { sub("/.*", "", $4); print $4, $2 }' |
+    networks |
         while read -r a dev; do
             case "$dev" in
                 wlan*) [ "$a" = 10.42.0.1 ] && net=hotspot || net=wi-fi ;;
