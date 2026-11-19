@@ -663,10 +663,10 @@ function scroll() {
     scrollAt = p;
   }
 }
-// A real mouse, whatever the input mode: its buttons as they are, the
-// pointer following it with or without a button down, the wheel where it
-// is (author, 2026-11-19: right and middle clicks, hovering and the wheel
-// did not come through).  Touches and pens keep the modes.
+// A real mouse in the MOUSE mode: its buttons as they are, the pointer
+// following it with or without a button down (author, 2026-11-19: right
+// and middle clicks and hovering did not come through).  In the TOUCH and
+// PAD modes a mouse acts as they say (author); the wheel works in all.
 const MOUSE = ["left", "middle", "right"];
 let lastMove = 0;
 function mouseMove(e) {
@@ -680,7 +680,7 @@ function press(e) {
   if (captured) return;
   if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
   e.preventDefault();
-  if (e.pointerType === "mouse") {
+  if (e.pointerType === "mouse" && cfg.input === "mouse") {
     const n = norm(e);
     send({t: "move", x: n.x, y: n.y});
     if (e.button === 0) send({t: "down", x: n.x, y: n.y});
@@ -723,7 +723,7 @@ function press(e) {
 }
 function move(e) {
   if (captured) return;
-  if (e.pointerType === "mouse") {
+  if (e.pointerType === "mouse" && cfg.input === "mouse") {
     if (!(e.target.closest && e.target.closest("#bar, #set, #gate, #info"))) mouseMove(e);
     return;
   }
@@ -758,7 +758,7 @@ function move(e) {
   }
 }
 function release(e) {
-  if (e.pointerType === "mouse" && !captured && e.type === "pointerup") {
+  if (e.pointerType === "mouse" && cfg.input === "mouse" && !captured && e.type === "pointerup") {
     if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
     if (e.button === 0) send({t: "up"});
     else send({t: "rbtn", b: MOUSE[e.button] || "left", d: 0});
@@ -910,6 +910,18 @@ k.addEventListener("keydown", e => {
     e.preventDefault();
     send({t: "key", code: e.code, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey});
   }
+});
+// Keys typed on the page itself go to the Pro1x too, not only in the LKB
+// box (author, 2026-11-19: a terminal on the phone got none): not in the
+// page's own fields, not modifiers alone (they go with the key), and not
+// F5, F11 or F12 (the browser's reload, fullscreen and tools).
+addEventListener("keydown", e => {
+  if (captured || e.target === k) return;
+  if (e.target.closest && e.target.closest("input, select, textarea")) return;
+  if (!e.code || e.code === "Unidentified" || e.key === "Process") return;
+  if (/^(Shift|Control|Alt|Meta|OS)(Left|Right)$/.test(e.code) || ["F5", "F11", "F12"].includes(e.code)) return;
+  e.preventDefault();
+  send({t: "key", code: e.code, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey});
 });
 k.addEventListener("input", e => {
   if (k.value) {
