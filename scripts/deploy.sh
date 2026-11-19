@@ -147,7 +147,28 @@ deploy_system() {
         guix time-machine -C "$tmp$dir/channels.scm" -- \
         deploy ${PRO1X_GUIX_FLAGS:-} -L "$PWD/modules" deploy/pro1x.scm
 
+    restart_menus
     echo "Deployed.  Reboot the phone if the kernel, initrd or firmware changed."
+}
+
+# The Sway menus stay resident from login (pro1x-menu start ... hidden)
+# and kept running the scripts of the generation they started in: after
+# a deploy, quick actions ran old code for hours (2026-11-19).  Started
+# again, hidden, if a Sway session runs; other daemons still need the
+# session restarted.
+restart_menus() {
+    "${ssh_root[@]}" "su -s /run/current-system/profile/bin/sh '$user' -c '
+        export XDG_RUNTIME_DIR=/run/user/\$(id -u) PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin
+        s=\$(ls \$XDG_RUNTIME_DIR/sway-ipc.*.sock 2>/dev/null | head -1)
+        [ -n \"\$s\" ] || exit 0
+        export SWAYSOCK=\$s
+        for m in quickactions powermenu launcher windowswitcher; do
+            swaymsg \"[app_id=\\\"^\$m\$\\\"] kill\" >/dev/null 2>&1
+        done
+        sleep 1
+        for m in quickactions powermenu launcher windowswitcher; do
+            swaymsg exec \"pro1x-menu start \$m hidden\" >/dev/null 2>&1
+        done'" && echo "Menus restarted on the new code." || true
 }
 
 deploy_home() {
