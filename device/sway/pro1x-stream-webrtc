@@ -1156,12 +1156,15 @@ class Screen:
                         f"output {self.name} mode --custom {width}x{height}@60Hz "
                         f"position {right} 0"):
             subprocess.run(["swaymsg", "--", command], capture_output=True, timeout=5)
-        # The rule places "stream" only when it is made; one left on the
-        # panel (2026-11-19) is moved over.
-        for command in (f"workspace stream output {self.name}",
-                        f"focus output {self.name}", "workspace stream",
-                        f"move workspace to output {self.name}"):
-            subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
+        # Multi-monitor: the workspace "stream" for it (the rule places it
+        # only when it is made; one left on the panel is moved over).
+        # Client: the phone's own workspaces go to it (client); an empty
+        # "stream" there vanished once left (author, 2026-11-19).
+        if mode != "client":
+            for command in (f"workspace stream output {self.name}",
+                            f"focus output {self.name}", "workspace stream",
+                            f"move workspace to output {self.name}"):
+                subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
         with open(self.FILE, "w") as f:
             f.write(self.name + "\n")
         self.guard = None
@@ -1193,7 +1196,6 @@ class Screen:
             log_line(f"no mirror on the panel: {e}")
         time.sleep(1)
         swaymsg(f"focus output {self.name}")
-        swaymsg("workspace stream")
 
         def guard():
             focused = next((w["output"] for w in sway("-t", "get_workspaces") or []

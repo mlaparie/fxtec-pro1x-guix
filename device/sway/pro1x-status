@@ -44,6 +44,18 @@ case "${1:-}" in
                   sed -n 's/^modem.generic.signal-quality.value *: //p')
         [ -n "$tech" ] && [ "$tech" != -- ] &&
             echo "$(gen "$tech") ${sig}%" ;;
+    stream)                     # JSON: STREAM while pro1x-stream sends the screen
+        # Red while a viewer may also control the phone (the interactive
+        # stream), yellow while it only watches; nothing otherwise.
+        rt=${XDG_RUNTIME_DIR:-/tmp}
+        if [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null; then
+            case "$(cat "$rt/pro1x-stream.to" 2>/dev/null)" in
+                interactive*) echo '{"text": "STREAM", "state": "Critical"}' ;;
+                *) echo '{"text": "STREAM", "state": "Warning"}' ;;
+            esac
+        else
+            echo '{"text": ""}'
+        fi ;;
     hotspot)                    # JSON: its name, while wlan0 is an access point
         info=$(iw dev wlan0 info 2>/dev/null)
         case "$info" in

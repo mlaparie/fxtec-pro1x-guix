@@ -72,6 +72,17 @@ interval = 2
 inactive_format = ""
 missing_format = ""
 
+# STREAM while the screen is sent (pro1x-stream): red while the viewer may
+# also control the phone.
+[[block]]
+block = "custom"
+shell = "sh"
+command = "pro1x-status stream"
+json = true
+interval = 2
+hide_when_empty = true
+format = " $text "
+
 # The hotspot, in green, while it is on.
 [[block]]
 block = "custom"
