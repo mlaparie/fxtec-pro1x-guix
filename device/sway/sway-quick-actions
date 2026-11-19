@@ -433,6 +433,24 @@ operator_do_scan() {            # in this terminal; the list again afterwards
 # open); the current one marked; the pick applied (author: sub choices as
 # options, like the window switcher's, so the lines stay short enough for
 # portrait).
+# What a choice of LIST does, for its preview (only those that need one).
+choice_info() {                 # choice_info LIST CHOICE
+    case "$1:$2" in
+        wifi:powersave)
+            printf '%s\n' \
+                "Power saving: the Wi-Fi chip sleeps between the access" \
+                "point's beacons and wakes for what waits.  Less battery," \
+                "but replies come later and what the phone sends can" \
+                "stutter." \
+                "" \
+                "Off: steadier and quicker, more battery.  Streams turn it" \
+                "off while they run (the stream page's Wi-Fi setting), and" \
+                "back as it was after." \
+                "" \
+                "Now: $(iw dev wlan0 get power_save 2>/dev/null | awk '{ print $3 }')." ;;
+    esac
+}
+
 choose() {
     # The line, kept: the charge entry's `set --' replaces $1, and the
     # choice was then applied to no line at all (2026-11-02).
@@ -489,6 +507,12 @@ choose() {
                        [ -n "$ps" ] && printf 'powersave\tpower saving: %s (turn %s)\n' \
                            "$ps" "$([ "$ps" = on ] && echo off || echo on)"
                    fi) ;;
+        location)
+            # On, off, or Satellite's map and fix, location on first
+            # (author, 2026-11-19).
+            title=location
+            cur=$(location_now)
+            opts=$(printf 'on\ton\noff\toff\nsatellite\topen Satellite (turns location on)\n') ;;
         rotation)
             # Keyboard-dependent too (author, 2026-11-02).
             title="rotation"
@@ -514,6 +538,13 @@ choose() {
         *) return ;;
     esac
     asksock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
+    # A preview for the choices that need one (choice_info: Wi-Fi's power
+    # saving), shown only while such a line is highlighted.
+    pvcmd=: pvfocus=hide-preview
+    if [ "$line" = wifi ]; then
+        pvcmd="$self --choice-info $line {1}"
+        pvfocus='transform:[ {1} = powersave ] && echo show-preview || echo hide-preview'
+    fi
     # "back" first (author: back to the main menu); the cursor starts on
     # the current choice.
     at=$(printf '%s\n' "$opts" | awk -F'\t' -v cur="$cur" '$1 == cur { print NR + 1; exit }')
@@ -523,9 +554,11 @@ choose() {
                fzf --listen="$asksock" --delimiter='\t' --with-nth=2 \
                    --prompt="$title > " --layout=reverse-list --no-info --cycle \
                    --margin=1,2 --color=16,gutter:-1 \
+                   --preview="$pvcmd" --preview-window=hidden,right,50%,wrap,border-left \
+                   --bind="focus:$pvfocus" \
                    --bind="load:pos(${at:-1})+$sync_end" \
-                   --bind="enter:$sync_begin+accept" \
-                   --bind="esc:$sync_begin+abort" |
+                   --bind="enter,right:$sync_begin+accept" \
+                   --bind="esc,left:$sync_begin+abort" |
                cut -f1)
     rm -f "$asksock"
     case "$pick" in ""|back) return ;; esac
@@ -556,6 +589,12 @@ choose() {
             case "$pick" in [0-9]*) shown="$pick min locked" ;; *) shown=$pick ;; esac
             confirm autosleep "$shown" autosleep_set "$pick" ;;
         layout) confirm layout "$pick" layout_to "$pick" ;;
+        location)
+            if [ "$pick" = satellite ]; then
+                [ "$(location_now)" = on ] || toggle_to location on
+                qs_hide
+                swaymsg exec "pro1x-open satellite" >/dev/null
+            else confirm location "$(dim "$pick")" toggle_to location "$pick"; fi ;;
         rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
             if [ "$pick" = powersave ]; then
@@ -686,8 +725,8 @@ audio_choose() {
             --no-sort --margin=1,2 --color=16,gutter:-1 \
             --header="Return: select single    Tab: multi-select" \
             --bind="load:$sync_end" \
-            --bind="esc:$sync_begin+abort" \
-            --bind="enter:transform:case {1} in
+            --bind="esc,left:$sync_begin+abort" \
+            --bind="enter,right:transform:case {1} in
                       back) echo \"$sync_begin+accept\" ;;
                       *) echo \"execute-silent($self --audio-only {1})+reload-sync($self --audio-lines)\" ;;
                     esac" \
@@ -786,8 +825,8 @@ dict_choose() {
             --prompt="dictionaries > " --layout=reverse-list --no-info --cycle \
             --no-sort --margin=1,2 --color=16,gutter:-1 \
             --bind="load:$sync_end" \
-            --bind="esc:$sync_begin+abort" \
-            --bind="enter:transform:case {1} in
+            --bind="esc,left:$sync_begin+abort" \
+            --bind="enter,right:transform:case {1} in
                       back) echo \"$sync_begin+accept\" ;;
                       *) echo \"execute-silent($self --dict-toggle {1})+reload-sync($self --dict-lines)\" ;;
                     esac" >/dev/null
@@ -1499,8 +1538,8 @@ notif_dock() {
             --preview-window=down,60%,wrap \
             --bind="load:transform~$layout~+$sync_end" \
             --bind="resize:transform:$layout" \
-            --bind="esc:$sync_begin+abort" \
-            --bind="enter:transform:case {1} in
+            --bind="esc,left:$sync_begin+abort" \
+            --bind="enter,right:transform:case {1} in
                       back) echo \"$sync_begin+accept\" ;;
                       *) echo \"execute-silent($self --notif-default {1} {2})+reload($self --notif-lines)\" ;;
                     esac" \
@@ -1544,6 +1583,7 @@ case "${1:-}" in
     --audio-toggle) audio_toggle "$2"; exit ;;
     --audio-only) audio_apply "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
+    --choice-info) choice_info "$2" "$3"; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
     --notif-lines) notif_lines; exit ;;
@@ -1615,7 +1655,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|autosleep|wifi|bluetooth|location|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
@@ -1623,7 +1663,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="right:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  wifi|bluetooth) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wifi|bluetooth|location) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"execute($self --sim)+reload($self --lines)\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   gpu) echo \"execute-silent($self --act {1})\" ;;
