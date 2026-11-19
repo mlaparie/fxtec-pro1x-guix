@@ -1175,7 +1175,11 @@ class Approval:
         from gi.repository import Gio
         self.Gio = Gio
         self.mode = mode
-        self.state = {}            # address: "waiting", "allowed", or refusal time
+        # address: "waiting", "allowed", or refusal time.  The allowed ones
+        # are kept over a restart of the server (a new size, rate or fps):
+        # it asked again for each (author, 2026-11-19).
+        self.state = {ip: "allowed" for ip in
+                      os.environ.pop("PRO1X_STREAM_ALLOWED", "").split(",") if ip}
         self.session = Gio.bus_get_sync(Gio.BusType.SESSION)
 
     def check(self, ip):
@@ -2208,6 +2212,9 @@ def reexec():
     if screen:
         screen.stop(keep=True)
         os.environ["PRO1X_STREAM_OUTPUT"] = screen.name
+    if approval:
+        os.environ["PRO1X_STREAM_ALLOWED"] = ",".join(
+            ip for ip, st in approval.state.items() if st == "allowed")
     log_line(f"starting again: {Handler.size}, {Handler.mbps} Mbit/s")
     argv = ([sys.argv[0], "--raw", Handler.size] + own_args
             + Handler.capture["h264"] + ["--"] + Handler.capture["vp8"])
