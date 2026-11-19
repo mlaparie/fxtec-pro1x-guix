@@ -945,9 +945,12 @@ class Portal:
         self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
         self.count = 0
         self.session = None
-        # Once at start, to fall back to wf-recorder if the portal fails.
+        # Once at start, to fall back to wf-recorder if the portal fails;
+        # a moment before the next session (a session opened at once after
+        # it could stay without buffers, 2026-11-19).
         self.open()
         self.close()
+        time.sleep(0.5)
 
     def open(self):
         """A new portal session; its stream's node serial in self.serial."""
@@ -1411,12 +1414,7 @@ class Producer:
         self.calm = 0              # loss checks since the last loss
         self.steady = kept_setting("steady", True)
         self.pushed_at = 0.0
-        portal.open()
-        self.capture = Gst.parse_launch(
-            "identity name=frames ! appsink name=raw emit-signals=true sync=false "
-            "max-buffers=1 drop=true")
-        portal.video(self.capture, size, self.capture.get_by_name("frames"))
-        self.capture.get_by_name("raw").connect("new-sample", self.frame)
+        self.size = size
         self.pipeline = Gst.parse_launch(
             "appsrc name=in is-live=true format=time do-timestamp=true "
             "leaky-type=downstream max-buffers=1 ! "
@@ -1426,31 +1424,66 @@ class Producer:
         self.input = self.pipeline.get_by_name("in")
         self.encoder = self.pipeline.get_by_name("enc")
         self.pipeline.get_by_name("out").connect("new-sample", self.sample)
-        for p in (self.capture, self.pipeline):
-            bus = p.get_bus()
-            bus.add_signal_watch()
-            bus.connect("message::error", lambda _b, m: log_line(
-                f"capture error: {m.parse_error()[0].message}"))
+        bus = self.pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message::error", lambda _b, m: log_line(
+            f"encoder error: {m.parse_error()[0].message}"))
         self.keyframes = keep_keyframes(self.pipeline)
         # Frames a second from PipeWire, out of the GPU and out of the
         # encoder, in the log every 10 s.
         self.counts = {"portal": 0, "gpu": 0, "encoded": 0}
         self.bytes = 0
-        for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
-                          ("gpu", self.capture.get_by_name("raw").get_static_pad("sink")),
-                          ("encoded", self.pipeline.get_by_name("out").get_static_pad("sink"))):
-            pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
+        self.pipeline.get_by_name("out").get_static_pad("sink").add_probe(
+            Gst.PadProbeType.BUFFER, self.count, "encoded")
         GLib.timeout_add_seconds(10, self.report)
         self.pipeline.set_state(Gst.State.PLAYING)
-        self.capture.set_state(Gst.State.PLAYING)
+        self.capture = None
+        self.start_capture()
+        self.watcher = GLib.timeout_add_seconds(2, self.watch)
         self.running = True
         threading.Thread(target=self.pace, daemon=True).start()
+
+    def start_capture(self):
+        """A portal session and the pipeline from its frames to NV12 (the
+        encoder's pipeline stays): at the start, and again when it stalls."""
+        self.portal.open()
+        self.capture = Gst.parse_launch(
+            "identity name=frames ! appsink name=raw emit-signals=true sync=false "
+            "max-buffers=1 drop=true")
+        self.portal.video(self.capture, self.size, self.capture.get_by_name("frames"))
+        self.capture.get_by_name("raw").connect("new-sample", self.frame)
+        bus = self.capture.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message::error", lambda _b, m: log_line(
+            f"capture error: {m.parse_error()[0].message}"))
+        for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
+                          ("gpu", self.capture.get_by_name("raw").get_static_pad("sink"))):
+            pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
+        self.started_at = time.monotonic()
+        self.frame_at = 0.0
+        self.capture.set_state(Gst.State.PLAYING)
+
+    def watch(self):
+        """A capture that never got a frame (4 s), or none for 75 s (the
+        bar's clock changes every minute), starts again.  Its portal session
+        could stay without buffers from its start, the back end dropping
+        every frame ("out of buffers", 30 a second for 40 s, 2026-11-19)."""
+        now = time.monotonic()
+        if ((not self.frame_at and now - self.started_at > 4)
+                or (self.frame_at and now - self.frame_at > 75)):
+            log_line("capture stalled: its portal session again")
+            self.capture.set_state(Gst.State.NULL)
+            self.portal.close()
+            time.sleep(0.5)
+            self.start_capture()
+        return GLib.SOURCE_CONTINUE
 
     def frame(self, sink):
         sample = sink.emit("pull-sample")
         if self.last is None:
             self.input.set_caps(sample.get_caps())
         self.last = sample.get_buffer()
+        self.frame_at = time.monotonic()
         if (not self.steady and not self.paused
                 and time.monotonic() - self.pushed_at >= 0.9 / self.limit):
             self.push(self.last)
@@ -1570,6 +1603,7 @@ class Producer:
         if self.keyframes:
             GLib.source_remove(self.keyframes)
         self.running = False
+        GLib.source_remove(self.watcher)
         self.capture.set_state(Gst.State.NULL)
         self.last = None
         self.pipeline.set_state(Gst.State.NULL)
