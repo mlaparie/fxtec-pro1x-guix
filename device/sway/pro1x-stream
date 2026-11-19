@@ -71,6 +71,66 @@ https_wanted() {
     [ "$(main_address)" = 10.42.0.1 ] &&
         grep -qE '^[[:space:]]*STREAM_DOMAIN=[^[:space:]]' "$https_file" 2>/dev/null
 }
+# A public link to the interactive stream through Tailscale Funnel, for
+# a device that reaches the phone by no other way (a car's browser on
+# another device's hotspot refuses local addresses).  Opt-in, off by
+# default; offered only while Tailscale runs.  While the stream runs,
+# anyone with the link reaches its page: the key and the approval guard
+# it.  The video still goes straight over the local network when it can.
+funnel_file=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-funnel
+funnel_on() { [ "$(cat "$funnel_file" 2>/dev/null)" = on ]; }
+ts_json() { tailscale status --json 2>/dev/null; }
+funnel_offered() {
+    command -v tailscale >/dev/null &&
+        [ "$(ts_json | jq -r '.BackendState // empty')" = Running ]
+}
+funnel_name() { ts_json | jq -r '.Self.DNSName // empty' | sed 's/\.$//'; }
+# What Funnel still needs, one line each with how to set it; nothing when
+# ready.
+funnel_missing() {
+    j=$(ts_json)
+    [ "$(echo "$j" | jq -r '.CurrentTailnet.MagicDNSEnabled')" = true ] ||
+        echo "- MagicDNS: on, in the Tailscale admin console, DNS page."
+    [ "$(echo "$j" | jq -r '.CertDomains | length')" -gt 0 ] 2>/dev/null ||
+        echo "- HTTPS Certificates: on, same page (with MagicDNS)."
+    [ "$(echo "$j" | jq -r '.Self.CapMap | has("funnel")')" = true ] ||
+        printf '%s\n' "- Funnel allowed: Access controls > JSON editor, in \"nodeAttrs\":" \
+            '    {"target": ["autogroup:member"], "attr": ["funnel"]}' \
+            "  (new tailnets have it already)."
+    [ "$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // empty')" = "$(id -un)" ] ||
+        echo "- Funnel for this user, once, in a terminal:  sudo tailscale set --operator=$(id -un)"
+}
+funnel_state() {
+    if funnel_on; then echo "on, $(funnel_name)"; else echo off; fi
+}
+funnel_toggle() {
+    if funnel_on; then echo off > "$funnel_file"; return; fi
+    missing=$(funnel_missing)
+    clear_screen
+    if [ -n "$missing" ]; then
+        printf 'A public link through Tailscale Funnel needs:\n\n%s\n\n' "$missing"
+        printf 'It stays off.  Choose it again once these are done.\n'
+        pause
+        return
+    fi
+    echo on > "$funnel_file"
+    printf 'Public link on: https://%s/ while an interactive stream runs.\n' "$(funnel_name)"
+    printf 'Anyone with the link reaches its page; keep the key on, and\n'
+    printf 'maybe the approval.\n'
+    pause
+}
+# Funnel on for a stream, off when it ends.
+funnel_start() {                # funnel_start PID
+    funnel_on && funnel_offered || return 0
+    tailscale funnel --bg "$webrtc_port" >/dev/null 2>&1 || return 0
+    setsid sh -c 'while kill -0 "$1" 2>/dev/null; do sleep 5; done
+                  tailscale funnel --https=443 off' _ "$1" >/dev/null 2>&1 </dev/null &
+}
+funnel_stop() {
+    funnel_on && tailscale funnel --https=443 off >/dev/null 2>&1
+    return 0
+}
+
 # The settings in the user's editor, from a template the first time.
 https_setup() {
     mkdir -p "${https_file%/*}"
@@ -118,6 +178,7 @@ pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
 streaming() { [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; }
 
 stop_stream() {
+    funnel_stop
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
     rm -f "$pid_file" "$to_file"
 }
@@ -303,6 +364,9 @@ main_address() {
 # A browser stream's links, HTTPS then HTTP on each network, with SUFFIX
 # (the key): "URL<tab>network  URL".
 links() {                       # links [SUFFIX]
+    if funnel_on && funnel_offered && n=$(funnel_name) && [ -n "$n" ]; then
+        printf 'https://%s/%s\t%-10s https://%s/\n' "$n" "${1:-}" public "$n"
+    fi
     ip -4 -o addr show scope global |
         awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ { sub("/.*", "", $4); print $4, $2 }' |
         while read -r a dev; do
@@ -313,11 +377,9 @@ links() {                       # links [SUFFIX]
                 *) net=$dev ;;
             esac
             u=$(tls_url "$a")
-            printf '%s%s	%-10s %s
-' "$u" "${1:-}" "$net" "$u"
+            printf '%s%s\t%-10s %s\n' "$u" "${1:-}" "$net" "$u"
             u="http://$a:$webrtc_port/"
-            printf '%s%s	%-10s %s
-' "$u" "${1:-}" "$net" "$u"
+            printf '%s%s\t%-10s %s\n' "$u" "${1:-}" "$net" "$u"
         done | awk -F'\t' '!seen[$1]++'
 }
 
@@ -493,6 +555,7 @@ send_interactive() {
     streaming || { rm -f "$pid_file" "$to_file"
                    [ -n "${quiet:-}" ] && return 1
                    echo "Could not start."; pause; return; }
+    funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
     show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
@@ -543,6 +606,7 @@ while :; do
             size "Output size       $(out_size), long side" \
             key "Access key        $(key_on && echo "on, $(current_key)" || echo off), for Interactive" \
             https "HTTPS name        $(https_state)" \
+            $(funnel_offered && printf '%s\n' funnel "Public link       $(funnel_state) (Tailscale Funnel; Interactive)") \
             approve "Approval          $(approve), a new viewer allowed on the phone (Interactive)" \
             screen "Screen            $(screen): $(case "$(screen)" in client) echo "at the client's shape, shown on the phone too";; multi-monitor) echo "at the client's shape, a second monitor";; *) echo "the phone's own";; esac) (Interactive)" \
             renew "New access key    the old one and its bookmarks stop working")
@@ -565,6 +629,7 @@ while :; do
         screen) next_screen ;;
         renew) new_key ;;
         https) https_setup ;;
+        funnel) funnel_toggle ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;
