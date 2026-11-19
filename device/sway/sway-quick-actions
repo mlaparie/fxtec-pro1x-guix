@@ -301,6 +301,18 @@ mobile_set() {                  # mobile_set off|234|34|23|3
         off) nmcli radio wwan off ;;
         234|34|23|3)
             nmcli radio wwan on
+            # The carriers' profiles connect by themselves, with the SIM
+            # unlocked and mobile data on, the user's only two controls
+            # (author, 2026-11-19): Phosh's switch and GNOME Settings leave
+            # them with autoconnect off, and nothing then started data
+            # after a boot or an unlock.  Not the MMS profile, which
+            # connects only to fetch.
+            nmcli -t -f NAME,TYPE connection show 2>/dev/null |
+                awk -F: '$2 == "gsm" && $1 != "pro1x-mms" { print $1 }' |
+                while read -r c; do
+                    nmcli connection modify "$c" connection.autoconnect yes \
+                          connection.autoconnect-retries 0 >/dev/null 2>&1
+                done
             case "$opt" in
                 234) mmcli -m any --set-allowed-modes='2g|3g|4g' --set-preferred-mode=4g ;;
                 34) mmcli -m any --set-allowed-modes='3g|4g' --set-preferred-mode=4g ;;
