@@ -702,9 +702,11 @@ addEventListener("pointercancel", release);
 // Capture: fullscreen, the keyboard locked (Chromium's Keyboard Lock: Super,
 // Alt+Tab and the like come here instead of the computer's desktop, where
 // its compositor allows it) and the mouse pointer locked (relative moves).
-// Every key goes to the Pro1x, down and up, until Esc is held (the
-// browser's way out) or capture is turned off; then any key still down is
-// released.
+// Every key goes to the Pro1x, down and up, until capture ends: Esc held
+// (the browser's way out), Ctrl+Alt+Shift+Q (Moonlight's kind of combo), or
+// a touch on CAPTURED; then any key still down is released.  The locked
+// mouse cannot reach the buttons, and a car has no Esc: touches always
+// can (the pointer lock is the mouse's only).
 let captured = false;
 function note(text) {
   const n = document.getElementById("note");
@@ -726,6 +728,8 @@ async function capture() {
   }
   try { await (cfg.canvas ? c : v).requestPointerLock(); }
   catch (e) { log({ev: "pointer-lock-failed", err: String(e)}); }
+  if (navigator.keyboard && navigator.keyboard.lock)
+    note("Out of capture: Ctrl+Alt+Shift+Q, Esc held, or touch CAPTURED");
 }
 function release_capture() {
   try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) {}
@@ -749,13 +753,15 @@ const BUTTONS = ["left", "middle", "right"];
 document.addEventListener("mousemove", e => {
   if (captured && (e.movementX || e.movementY)) send({t: "rel", dx: e.movementX, dy: e.movementY});
 });
+// The buttons' own: a touch on them makes mouse events too.
+const onButtons = e => e.target.closest && e.target.closest("#bar, #set, #gate");
 document.addEventListener("mousedown", e => {
-  if (!captured) return;
+  if (!captured || onButtons(e)) return;
   e.preventDefault();
   send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 1});
 });
 document.addEventListener("mouseup", e => {
-  if (!captured) return;
+  if (!captured || onButtons(e)) return;
   e.preventDefault();
   send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 0});
 });
@@ -768,6 +774,10 @@ document.addEventListener("wheel", e => {
 document.addEventListener("keydown", e => {
   if (!captured || !e.code) return;
   e.preventDefault();
+  if (e.code === "KeyQ" && e.ctrlKey && e.altKey && e.shiftKey) {
+    release_capture();
+    return;
+  }
   if (!e.repeat) send({t: "kd", code: e.code});
 }, {capture: true});
 document.addEventListener("keyup", e => {
