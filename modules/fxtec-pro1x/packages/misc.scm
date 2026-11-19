@@ -1240,10 +1240,11 @@ completion and several layouts.")
                           '("coreutils" "gawk" "grep" "libnotify"
                             "network-manager" "sed"))))))))))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
-    (synopsis "Fetch MMS over a separate MMS APN, after asking")
+    (synopsis "Fetch MMS over a separate MMS APN")
     (description
      "pro1x-mms-fetch switches the mobile connection to the MMS APN while
-mmsd-tng downloads waiting MMS, after asking the user, then switches back.")
+mmsd-tng downloads waiting MMS, then switches back: by itself, or after
+asking while roaming with roaming off or while the phone's hotspot runs.")
     (license license:gpl3+)))
 
 ;;; ---------------------------------------------------------------------------
