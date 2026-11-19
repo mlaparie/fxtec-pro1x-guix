@@ -37,6 +37,11 @@ admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot
 udp_port=5000
 http_port=8080
 webrtc_port=8081
+# The same over HTTPS, for browsers that refuse plain HTTP (a car's): a
+# certificate of the phone's own (pro1x-stream-webrtc); on the hotspot
+# under the name pro1x.lan, which its DNS answers.
+tls_port=8443
+tls_url() { if [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"; else echo "https://$1:$tls_port/"; fi; }
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
@@ -313,7 +318,7 @@ send_webrtc() {
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
     # black.
-    setsid pro1x-stream-webrtc --raw "$hw_size" "${portal[@]}" "$webrtc_port" \
+    setsid pro1x-stream-webrtc --raw "$hw_size" --tls "$tls_port" "${portal[@]}" "$webrtc_port" \
         wf-recorder "${area[@]}" "${hw_capture[@]}" -- \
         wf-recorder "${area[@]}" "${scale[@]}" -D -r "$rate" \
             -m ivf -c libvpx \
@@ -321,8 +326,8 @@ send_webrtc() {
             -p b=4000000 -p g="$rate" -f pipe:1 \
         >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
-    url="http://$ip:$webrtc_port/"
-    echo "browser, $url" > "$to_file"
+    url=$(tls_url "$ip")
+    echo "browser, $url (or http://$ip:$webrtc_port/)" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
     clear_screen
@@ -356,7 +361,7 @@ send_interactive() {
     # PRO1X_STREAM_PORTAL=0: wf-recorder instead.
     portal=()
     [ -z "$target" ] && [ "${PRO1X_STREAM_PORTAL:-1}" != 0 ] && portal=(--portal "$turn")
-    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --screen "$(screen)" \
+    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --tls "$tls_port" --screen "$(screen)" \
         --approve "$(approve)" \
         "${portal[@]}" --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
@@ -365,8 +370,8 @@ send_interactive() {
             -p b=4000000 -p g="$rate" -f pipe:1 \
         >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
-    url="http://$ip:$webrtc_port/"
-    echo "interactive, $url${k:+  key $k}" > "$to_file"
+    url=$(tls_url "$ip")
+    echo "interactive, $url${k:+  key $k} (or http://$ip:$webrtc_port/)" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"
                    [ -n "${quiet:-}" ] && return 1
@@ -374,6 +379,7 @@ send_interactive() {
     [ -n "${quiet:-}" ] && return
     clear_screen
     printf 'Open on the other device:  %s\n' "$url"
+    printf '(or http://%s:%s/; the certificate is the phone'"'"'s own: accept it once)\n' "$ip" "$webrtc_port"
     if [ -n "$k" ]; then printf 'Key:  \033[1m%s\033[0m  (the code below includes it)\n' "$k"
     else echo; fi
     printf 'One viewer at a time; it runs until Stop.\n\n'

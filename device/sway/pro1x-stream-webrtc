@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--screen phone|client|multi-monitor] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--tls PORT] [--screen phone|client|multi-monitor] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
@@ -1432,6 +1432,52 @@ class Approval:
 approval = None
 
 
+# HTTPS beside HTTP (--tls PORT), for browsers that refuse plain HTTP (the
+# author's car, 2026-11-19): a certificate of the phone's own, made on first
+# use and kept, for pro1x.lan (the hotspot's DNS answers it) and the
+# phone's addresses.  Self-signed: the browser warns once.
+CERT = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                    "pro1x", "stream-cert.pem")
+CERT_KEY = CERT.replace("-cert.pem", "-key.pem")
+
+
+def certificate():
+    """The certificate and key files, made if missing."""
+    if os.path.exists(CERT) and os.path.exists(CERT_KEY):
+        return CERT, CERT_KEY
+    os.makedirs(os.path.dirname(CERT), exist_ok=True)
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr", "show", "scope", "global"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        out = ""
+    addresses = {"10.42.0.1", "127.0.0.1"} | {
+        line.split()[3].split("/")[0] for line in out.splitlines() if len(line.split()) > 3}
+    names = ",".join(["DNS:pro1x.lan", "DNS:pro1x.local", "DNS:localhost"]
+                     + [f"IP:{a}" for a in sorted(addresses)])
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-days", "3650", "-subj", "/CN=pro1x.lan",
+                    "-addext", f"subjectAltName={names}",
+                    "-keyout", CERT_KEY, "-out", CERT],
+                   capture_output=True, timeout=60, check=True)
+    os.chmod(CERT_KEY, 0o600)
+    log_line("stream certificate made: " + names)
+    return CERT, CERT_KEY
+
+
+def serve_tls(port):
+    """The same pages and offers over HTTPS on PORT."""
+    import ssl
+    cert, key = certificate()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    # The handshake in the request's thread, not in the one accepting.
+    server.socket = context.wrap_socket(server.socket, server_side=True,
+                                        do_handshake_on_connect=False)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
 POWERSAVE = "/run/current-system/profile/bin/pro1x-wifi-powersave"
 # Guix's setuid sudo; the profile's own is not setuid.
 SUDO = "/run/privileged/bin/sudo" if os.path.exists("/run/privileged/bin/sudo") else "sudo"
@@ -2815,6 +2861,10 @@ def main():
     if args[:1] == ["--key"]:
         Handler.key, args = args[1], args[2:]
         own_args.extend(["--key", Handler.key])
+    tls = None
+    if args[:1] == ["--tls"]:
+        own_args.extend(args[:2])
+        tls, args = int(args[1]), args[2:]
     global approval, screen
     if args[:1] == ["--screen"]:
         own_args.extend(args[:2])
@@ -2889,6 +2939,11 @@ def main():
     Handler.capture = {"h264": args[1:split], "vp8": args[split + 1:]}
     server = ThreadingHTTPServer(("0.0.0.0", int(args[0])), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    if tls:
+        try:
+            serve_tls(tls)
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            log_line(f"no HTTPS: {e}")
     loop = main_loop()
     try:
         loop.run()

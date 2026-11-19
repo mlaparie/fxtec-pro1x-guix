@@ -745,6 +745,19 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
         `("sway/pro1x-effects/swayfx.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 
+     ;; The hotspot's DNS (NetworkManager's dnsmasq) answers pro1x.lan with
+     ;; the phone (its shared address), for the stream's HTTPS link, which
+     ;; browsers that refuse plain HTTP need (pro1x-stream).  Written at
+     ;; activation: /etc/NetworkManager is a real directory (the
+     ;; NetworkManager service's), where an /etc entry of Guix's would clash.
+     (simple-service 'pro1x-hotspot-name activation-service-type
+       #~(let ((dir "/etc/NetworkManager/dnsmasq-shared.d"))
+           (for-each (lambda (d) (unless (file-exists? d) (mkdir d)))
+                     (list "/etc/NetworkManager" dir))
+           (call-with-output-file (string-append dir "/pro1x-lan.conf")
+             (lambda (port)
+               (display "host-record=pro1x.lan,pro1x.local,10.42.0.1\n" port)))))
+
      ;; The screen-cast portal's back end: no question asked (the
      ;; interactive stream opens it unattended): the panel, or the stream's
      ;; own output while it has one (pro1x-stream-output); at most 30 frames

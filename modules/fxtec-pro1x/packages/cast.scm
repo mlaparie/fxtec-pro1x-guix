@@ -21,6 +21,7 @@
   #:use-module (gnu packages python-build)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages tls)
   #:use-module (gnu packages video)
   #:use-module ((gnu packages window-management) #:select (wl-mirror))
   #:use-module (guix build-system copy)
@@ -200,12 +201,14 @@ Chromecast receivers.")
                     ,(in "/lib/gstreamer-1.0"
                          '("gstreamer" "gst-plugins-base" "gst-plugins-good"
                            "gst-plugins-bad" "libnice" "pipewire")))
-                  ;; wl-mirror: the stream's own output on the panel too.
-                  `("PATH" ":" suffix ,(in "/bin" '("pipewire" "wl-mirror"))))))))))
+                  ;; wl-mirror: the stream's own output on the panel too;
+                  ;; openssl: its HTTPS certificate.
+                  `("PATH" ":" suffix
+                    ,(in "/bin" '("pipewire" "wl-mirror" "openssl"))))))))))
     (inputs
      (list glib gobject-introspection gst-plugins-bad gst-plugins-base
            gst-plugins-good gstreamer libnice pipewire python python-evdev
-           python-pygobject wl-mirror))
+           python-pygobject wl-mirror openssl))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Serve an H.264 stream to a browser by WebRTC")
     (description "This package serves a web page, and sends the H.264 video of
