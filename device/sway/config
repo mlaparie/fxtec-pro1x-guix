@@ -3,7 +3,8 @@
 # The port's configuration (keys, menus, swipes, bar, window rules,
 # startup programs) is included first and updated by every deploy.  Put
 # your own settings after it: a later line wins, and a bindsym for a key
-# the port binds replaces the port's (sway logs "Overwriting binding").
+# the port binds replaces the port's, but sway shows that as a config
+# error unless written `bindsym --no-warn'.
 # The port's file: /etc/sway/pro1x.d/desktop.conf.
 
 include /etc/sway/pro1x.d/*

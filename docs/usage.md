@@ -63,6 +63,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   Super+q, Super+m, Super+Tab quick actions, launcher, window switcher
   Super+BackSpace, +Shift+q   close window
   Super+1…0, Ctrl+Super+1…0   go to / move to workspace; Super+; back
+  Alt/Shift+Super+-           scratchpad: put away / bring back
   Alt/Shift+Super+1…0         numbered scratchpad: put away / bring back
   Super+arrows, +Shift        focus, move
   Super+f, Super+space        fullscreen, floating
