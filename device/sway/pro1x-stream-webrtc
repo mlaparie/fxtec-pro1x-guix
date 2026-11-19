@@ -561,7 +561,7 @@ setInterval(async () => {
     const q = x => x === undefined ? "?" : x;
     it.textContent = [
       `picture ${s.video} ${(s.codec || "").replace("video/", "")}, ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
-      `fps     ${q(s.fps)} shown, phone ${phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " constant" : ""}`,
+      `fps     ${q(s.fps)} shown, phone ${phone.live && phone.live < phone.fps ? phone.live + " (losses)" : phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " constant" : ""}`,
       `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
       `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
       `sound   ${q(s.audio_lost)} lost, ${q(s.audio_concealed)}% made up`,
@@ -1075,6 +1075,8 @@ class Producer:
         self.viewers = {}          # appsrc: still waiting for a keyframe
         self.last = None
         self.fps = int(size.split("@")[1])
+        self.limit = self.fps      # lowered while the viewer loses packets
+        self.calm = 0              # loss checks since the last loss
         self.steady = kept_setting("steady", True)
         self.pushed_at = 0.0
         portal.open()
@@ -1117,7 +1119,7 @@ class Producer:
         if self.last is None:
             self.input.set_caps(sample.get_caps())
         self.last = sample.get_buffer()
-        if not self.steady:
+        if not self.steady and time.monotonic() - self.pushed_at >= 0.9 / self.limit:
             self.push(self.last)
         return Gst.FlowReturn.OK
 
@@ -1133,9 +1135,9 @@ class Producer:
         steady: only the last frame again for a viewer waiting for its
         keyframe on a still screen (the encoder makes one only from a
         frame)."""
-        step = 1 / self.fps
         due = time.monotonic()
         while self.running:
+            step = 1 / self.limit
             due += step
             wait = due - time.monotonic()
             if wait > 0:
@@ -1152,6 +1154,29 @@ class Producer:
                     waiting = any(self.viewers.values())
                 if waiting:
                     self.push(buf)
+
+    def loss(self, fraction):
+        """The viewer's share of packets lost (its receiver reports, every
+        few seconds): above 3%, a quarter fewer frames, down to 5 a second;
+        after 10 s under 0.5%, 2 more, up to the fps chosen.  The bit rate
+        falls with the frames (the encoder budgets each frame), which the
+        encoder's own rate could not do: changing it while running killed
+        its firmware.  As Parsec and Shadow lower their rate on loss."""
+        if fraction > 0.03:
+            self.calm = 0
+            limit = max(5, int(self.limit * 0.75))
+        elif fraction < 0.005:
+            self.calm += 1
+            if self.calm < 5:
+                return
+            self.calm = 0
+            limit = min(self.fps, self.limit + 2)
+        else:
+            self.calm = 0
+            return
+        if limit != self.limit:
+            log_line(f"viewer lost {fraction:.0%} of packets: {limit} fps")
+            self.limit = limit
 
     def count(self, _pad, info, name):
         self.counts[name] += 1
@@ -1577,6 +1602,8 @@ class Session:
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
         self.keyframes = keep_keyframes(self.pipeline)
+        self.losses = (GLib.timeout_add_seconds(2, self.ask_loss)
+                       if self.producer else None)
         if remote:
             # The viewer's input, in the same connection, made before the
             # offer so that the offer carries it.
@@ -1663,6 +1690,30 @@ class Session:
         )
         self.webrtc.emit("set-remote-description", answer, Gst.Promise.new())
 
+    def ask_loss(self):
+        self.webrtc.emit("get-stats", None,
+                         Gst.Promise.new_with_change_func(self.got_loss, None))
+        return GLib.SOURCE_CONTINUE
+
+    def got_loss(self, promise, _data):
+        """The video's fraction lost from the viewer's last receiver report."""
+        reply = promise.get_reply()
+        if reply is None:
+            return
+        found = []
+
+        def each(_field, value):
+            if (isinstance(value, Gst.Structure)
+                    and value.get_name() == "remote-inbound-rtp"
+                    and value.get_string("kind") == "video"):
+                ok, fraction = value.get_double("fraction-lost")
+                if ok:
+                    found.append(fraction)
+            return True
+        reply.foreach(each)
+        if found:
+            GLib.idle_add(lambda: self.producer.loss(max(found)) or GLib.SOURCE_REMOVE)
+
     def stop(self, background=False):
         """The pipeline down.  BACKGROUND, for a producer's viewer: in a
         thread, since stopping a webrtcbin whose viewer has gone held the
@@ -1671,6 +1722,9 @@ class Session:
         if self.keyframes:
             GLib.source_remove(self.keyframes)
             self.keyframes = None
+        if self.losses:
+            GLib.source_remove(self.losses)
+            self.losses = None
         if self.producer:
             self.producer.detach(self.pipeline.get_by_name("frames"))
             if background:
@@ -1955,6 +2009,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "target": Handler.target,
                                    "mbps": producer.mbps if producer else Handler.mbps,
                                    "wifi_powersave": wifi_powersave(),
+                                   "live": producer.limit if producer else None,
                                    "long": capture_long()}).encode(),
                        "application/json")
         elif path == "/settings":
