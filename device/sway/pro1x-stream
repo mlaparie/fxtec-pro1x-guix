@@ -282,6 +282,54 @@ own_address() {
     fi
 }
 
+# The address a stream is announced on (the bar, the Stop line): the
+# hotspot's if it is up, else the first network's; links lists them all.
+main_address() {
+    ip -4 -o addr show scope global |
+        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ { sub("/.*", "", $4); print $4 }' |
+        sort -t. -k1,1 -k2,2 | awk '$0 == "10.42.0.1" { h = $0 } NR == 1 { f = $0 }
+                                    END { print h ? h : f }'
+}
+
+# A browser stream's links, HTTPS then HTTP on each network, with SUFFIX
+# (the key): "URL<tab>network  URL".
+links() {                       # links [SUFFIX]
+    ip -4 -o addr show scope global |
+        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ { sub("/.*", "", $4); print $4, $2 }' |
+        while read -r a dev; do
+            case "$dev" in
+                wlan*) [ "$a" = 10.42.0.1 ] && net=hotspot || net=wi-fi ;;
+                tailscale*) net=tailscale ;;
+                qmap*|rmnet*|wwan*) net=mobile ;;
+                *) net=$dev ;;
+            esac
+            u=$(tls_url "$a")
+            printf '%s%s	%-10s %s
+' "$u" "${1:-}" "$net" "$u"
+            u="http://$a:$webrtc_port/"
+            printf '%s%s	%-10s %s
+' "$u" "${1:-}" "$net" "$u"
+        done | awk -F'\t' '!seen[$1]++'
+}
+
+# A QR code for fzf's preview, as large as the preview allows (a cell
+# being about 20x40 pixels).
+qr_preview() {
+    h=$(( ${FZF_PREVIEW_LINES:-20} * 40 - 40 )) w=$(( ${FZF_PREVIEW_COLUMNS:-40} * 20 - 40 ))
+    [ "$h" -lt "$w" ] && size=$h || size=$w
+    qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
+        convert png:- -filter point -resize "${size}x${size}" sixel:-
+}
+
+# A running stream's links, the highlighted one's QR code beside it.
+show_links() {                  # show_links HEADER [SUFFIX]
+    links "${2:-}" |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="links > " \
+            --header="$1" --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 --preview="$0 --qr {1}" \
+            --preview-window=right,50%,border-left >/dev/null
+}
+
 # The devices seen on the local networks: hotspot clients by name.
 devices() {
     leases=$($admin leases 2>/dev/null)
@@ -365,8 +413,8 @@ send_mjpeg() {
 # fallback for browsers without H.264.
 send_webrtc() {
     pick_source || return
-    ip=$(own_address)
-    [ -n "$ip" ] || return
+    ip=$(main_address)
+    [ -n "$ip" ] || { echo "No network."; pause; return; }
     stop_stream
     hw_source
     rate=$(fps)
@@ -389,11 +437,8 @@ send_webrtc() {
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
     run_hook started "$(cat "$pid_file")" webrtc
-    clear_screen
-    printf 'Open in a browser on the other device:  %s\n' "$url"
-    printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
-    show_qr "$url"
-    read -rsn1
+    show_links "Streaming.  Open a link on the other device (its code on the right);
+A certificate warning: accept it once.  One viewer; Esc, it keeps running."
     go_to_source
 }
 
@@ -407,8 +452,8 @@ send_interactive() {
         k=$(current_key)
         key=(--key "$k")
     fi
-    ip=${addr:-$(own_address)}
-    [ -n "$ip" ] || return
+    ip=${addr:-$(main_address)}
+    [ -n "$ip" ] || { [ -n "${quiet:-}" ] || { echo "No network."; pause; }; return 1; }
     stop_stream
     hw_source
     rate=$(fps)
@@ -436,14 +481,8 @@ send_interactive() {
                    echo "Could not start."; pause; return; }
     run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
-    clear_screen
-    printf 'Open on the other device:  %s\n' "$url"
-    printf '(or http://%s:%s/; a certificate warning: accept it once)\n' "$ip" "$webrtc_port"
-    if [ -n "$k" ]; then printf 'Key:  \033[1m%s\033[0m  (the code below includes it)\n' "$k"
-    else echo; fi
-    printf 'One viewer at a time; it runs until Stop.\n\n'
-    show_qr "$url${k:+?k=$k}" 4
-    read -rsn1
+    show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
+A certificate warning: accept it once.  One viewer; Esc, it runs until Stop." "${k:+?k=$k}"
 }
 
 try_catt() {
@@ -468,6 +507,7 @@ network_displays() {
     swaymsg exec gnome-network-displays >/dev/null
 }
 
+[ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
 # For scripts: start the interactive stream on ADDRESS without the menu, or stop.
 [ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
 [ "${1:-}" = --stop ] && { stop_stream; exit; }
