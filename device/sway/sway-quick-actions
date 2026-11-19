@@ -495,9 +495,10 @@ cached_state() {                # cached_state KEY
 # "ID<tab>name", ID camera, dialer, chats (this script's own) or an app's
 # desktop entry (foo.desktop).
 apps_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/app-shortcuts
-apps_list() {
+apps_list() {                   # by name (author)
     if [ -r "$apps_file" ]; then cat "$apps_file"
-    else printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n'; fi
+    else printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n'; fi |
+        sort -t'	' -k2,2f
 }
 # The installed apps: "ID<tab>name" from the desktop entries on the data
 # paths (system, home profile, Flatpak), shown ones only.
@@ -1149,8 +1150,8 @@ cache_put() {                   # cache_put KEY VALUE: a value just read
 }
 shown_value() {                 # what KEY's line says, without colours
     if [ -f "$pending/$1" ]; then cat "$pending/$1"
-    else grep "^$1 " "$cache" 2>/dev/null | cut -c34-
-    fi | sed 's/\x1b\[[0-9;]*m//g'
+    else grep "^$1 " "$cache" 2>/dev/null | cut -c40-
+    fi | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^ *//'
 }
 qs_reload() {
     curl -s -m 5 --unix-socket "$sock" -X POST http://localhost \
@@ -1695,9 +1696,6 @@ case "${1:-}" in
     # about 60 ms each only to start (author, 2026-11-06: sluggish).
     --step-cached) step "$2" "$3" >/dev/null 2>&1; cached_lines; exit ;;
     --act) act "$2" >/dev/null 2>&1; exit ;;
-    # On/off lines: Right on, Left off (author), through act's toggle when
-    # not already so.
-    --set) [ "$(state_of "$2")" = "$3" ] || act "$2" >/dev/null 2>&1; exit ;;
     --choose)
         case "$2" in
             dicts) dict_choose ;;
@@ -1790,7 +1788,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --set {1} on)+reload($self --cached)\" ;;
+                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
@@ -1799,7 +1797,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="left:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
-                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --set {1} off)+reload($self --cached)\" ;;
+                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
