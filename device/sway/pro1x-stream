@@ -55,7 +55,9 @@ fps() { cat "$fps_file" 2>/dev/null || echo 30; }
 # phone's owner: off, a tap on a notification, or a finger on the sensor.
 approve() { cat "$approve_file" 2>/dev/null || echo off; }
 next_approve() {
-    case "$(approve)" in
+    # Read before the redirection empties the file.
+    now=$(approve)
+    case "$now" in
         off) echo tap ;;
         tap) echo fingerprint ;;
         *) echo off ;;
