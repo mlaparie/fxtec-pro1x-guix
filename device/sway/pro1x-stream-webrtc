@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
@@ -145,7 +145,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <button class="x" id="bk">LKB</button><button class="x" id="bu">MUTED</button>
 <button class="x" id="bm">VIDEO</button><button class="x" id="bt">TOUCH</button>
 <button class="x" id="bp">FREE</button><button class="x" id="bs">SET</button>
-<button class="x" id="bi">INFO</button><button class="x" id="br">RELOAD</button>
+<button class="x" id="bi">INFO</button><button class="x" id="bz">PAUSE</button>
+<button class="x" id="bx">STOP</button><button class="x" id="br">RELOAD</button>
 <button id="bc"></button></div>
 <div id="set">
 <div class="h">now</div>
@@ -251,6 +252,21 @@ document.getElementById("bi").onclick = () => {
   if (on) { tick(); drawTemps(); }
 };
 document.getElementById("br").onclick = () => location.reload();
+// PAUSE: the phone sends nothing and its encoder idles (cooler); PLAY:
+// back, from a new keyframe.  STOP ends the stream on the phone; the page
+// waits for a new one.
+let paused = false;
+const bz = document.getElementById("bz");
+bz.onclick = () => {
+  paused = !paused;
+  send({t: paused ? "pause" : "play"});
+  bz.textContent = paused ? "PLAY" : "PAUSE";
+};
+document.getElementById("bx").onclick = () => {
+  if (!confirm("Stop the stream on the phone?")) return;
+  send({t: "stop"});
+  note("Stopped on the phone");
+};
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
 const bar = document.getElementById("bar"), bc = document.getElementById("bc");
 function showFold() {
@@ -461,6 +477,14 @@ async function connect() {
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
   const asked = await fetch(withKey("/offer?codec=" + codec + "&mbps=" + cfg.rate));
   if (asked.status === 503) { setTimeout(reloadWhenUp, 1000); return; }
+  // The phone asks its owner first (the stream menu's Approval).
+  if (asked.status === 202) {
+    note("Waiting for approval on the phone\\u2026");
+    started = false;
+    setTimeout(connect, 2000);
+    return;
+  }
+  if (asked.status === 403) { note("Refused on the phone"); return; }
   const offer = await asked.text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
   await pc.setLocalDescription(await pc.createAnswer());
@@ -1004,6 +1028,159 @@ class Portal:
 portal = None
 
 
+class Approval:
+    """A new viewer's address allowed from the phone (--approve, the stream
+    menu's Approval line), besides the key: a tap on the notification, or
+    a finger on the sensor (pro1x-fprintd, fprintd's D-Bus interface), within
+    a minute.  An address allowed stays allowed until the stream stops; one
+    refused waits a minute before it may ask again."""
+
+    NOTIFY = ("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+              "org.freedesktop.Notifications")
+    FPRINT = "net.reactivated.Fprint"
+
+    def __init__(self, mode):
+        from gi.repository import Gio
+        self.Gio = Gio
+        self.mode = mode
+        self.state = {}            # address: "waiting", "allowed", or refusal time
+        self.session = Gio.bus_get_sync(Gio.BusType.SESSION)
+
+    def check(self, ip):
+        """allowed, waiting or refused; a new address starts its question."""
+        st = self.state.get(ip)
+        if st == "allowed" or st == "waiting":
+            return st
+        if isinstance(st, float) and time.monotonic() - st < 60:
+            return "refused"
+        self.state[ip] = "waiting"
+        GLib.idle_add(self.ask, ip)
+        return "waiting"
+
+    def answer(self, ip, ok):
+        if self.state.get(ip) != "waiting":
+            return
+        self.state[ip] = "allowed" if ok else time.monotonic()
+        log_line(f"viewer {ip} " + ("allowed" if ok else "refused") + " on the phone")
+
+    def notify(self, body, actions, seconds=60):
+        try:
+            reply = self.session.call_sync(
+                *self.NOTIFY, "Notify",
+                GLib.Variant("(susssasa{sv}i)", (
+                    "Stream", 0, "", "Stream viewer", body, actions,
+                    {"urgency": GLib.Variant("y", 2)}, seconds * 1000)),
+                None, 0, -1, None)
+            return reply.unpack()[0]
+        except GLib.Error as e:
+            log_line(f"no notification: {e.message}")
+            return None
+
+    def close(self, nid):
+        if nid is None:
+            return
+        try:
+            self.session.call_sync(*self.NOTIFY, "CloseNotification",
+                                   GLib.Variant("(u)", (nid,)), None, 0, -1, None)
+        except GLib.Error:
+            pass
+
+    def ask(self, ip):
+        if self.mode == "fingerprint" and self.ask_finger(ip):
+            return GLib.SOURCE_REMOVE
+        # A tap (mako's default action) allows; dismissed or a minute
+        # gone, refused.
+        nid = self.notify(f"{ip} wants to watch and control the Pro\u00b9x: tap to allow",
+                          ["default", "Allow"])
+        if nid is None:
+            self.answer(ip, False)
+            return GLib.SOURCE_REMOVE
+        subs = []
+
+        def done(ok):
+            for sub in subs:
+                self.session.signal_unsubscribe(sub)
+            subs.clear()
+            self.answer(ip, ok)
+
+        def invoked(_c, _s, _p, _i, _sig, params):
+            got, action = params.unpack()
+            if got == nid and subs:
+                done(action == "default")
+
+        def closed(_c, _s, _p, _i, _sig, params):
+            if params.unpack()[0] == nid and subs:
+                done(False)
+        subs.append(self.session.signal_subscribe(
+            self.NOTIFY[0], self.NOTIFY[2], "ActionInvoked", self.NOTIFY[1], None, 0, invoked))
+        subs.append(self.session.signal_subscribe(
+            self.NOTIFY[0], self.NOTIFY[2], "NotificationClosed", self.NOTIFY[1], None, 0, closed))
+        GLib.timeout_add_seconds(65, lambda: subs and done(False) or False)
+        return GLib.SOURCE_REMOVE
+
+    def ask_finger(self, ip):
+        """The sensor, within a minute; False if it cannot be asked (then a
+        tap instead)."""
+        Gio = self.Gio
+        try:
+            system = Gio.bus_get_sync(Gio.BusType.SYSTEM)
+            manager = Gio.DBusProxy.new_sync(
+                system, 0, None, self.FPRINT, "/net/reactivated/Fprint/Manager",
+                self.FPRINT + ".Manager", None)
+            path = manager.call_sync("GetDefaultDevice", None, 0, -1, None).unpack()[0]
+            device = Gio.DBusProxy.new_sync(system, 0, None, self.FPRINT, path,
+                                            self.FPRINT + ".Device", None)
+            device.call_sync("Claim", GLib.Variant("(s)", ("",)), 0, -1, None)
+        except GLib.Error as e:
+            log_line(f"no fingerprint: {e.message}")
+            return False
+        nid = self.notify(f"{ip} wants to watch and control the Pro\u00b9x: "
+                          "touch the fingerprint sensor to allow", [])
+        tries = [0]
+
+        def finish(ok):
+            if self.state.get(ip) != "waiting":
+                return
+            try:
+                device.call_sync("VerifyStop", None, 0, -1, None)
+            except GLib.Error:
+                pass
+            try:
+                device.call_sync("Release", None, 0, -1, None)
+            except GLib.Error:
+                pass
+            self.close(nid)
+            self.answer(ip, ok)
+
+        def status(_proxy, _sender, signal_name, params):
+            if signal_name != "VerifyStatus":
+                return
+            result, done = params.unpack()
+            if result == "verify-match":
+                finish(True)
+            elif done:
+                tries[0] += 1
+                if tries[0] >= 3:
+                    finish(False)
+                else:
+                    try:
+                        device.call_sync("VerifyStart", GLib.Variant("(s)", ("any",)), 0, -1, None)
+                    except GLib.Error:
+                        finish(False)
+        device.connect("g-signal", status)
+        try:
+            device.call_sync("VerifyStart", GLib.Variant("(s)", ("any",)), 0, -1, None)
+        except GLib.Error as e:
+            log_line(f"no fingerprint: {e.message}")
+            finish(False)
+            return True
+        GLib.timeout_add_seconds(60, lambda: finish(False) or False)
+        return True
+
+
+approval = None
+
+
 POWERSAVE = "/run/current-system/profile/bin/pro1x-wifi-powersave"
 # Guix's setuid sudo; the profile's own is not setuid.
 SUDO = "/run/privileged/bin/sudo" if os.path.exists("/run/privileged/bin/sudo") else "sudo"
@@ -1080,6 +1257,7 @@ class Producer:
         self.fps = int(size.split("@")[1])
         self.limit = self.fps      # lowered while the viewer loses packets
         self.adaptive = kept_setting("adaptive", True)
+        self.paused = False        # the viewer's PAUSE: no frames encoded
         self.calm = 0              # loss checks since the last loss
         self.steady = kept_setting("steady", True)
         self.pushed_at = 0.0
@@ -1123,7 +1301,8 @@ class Producer:
         if self.last is None:
             self.input.set_caps(sample.get_caps())
         self.last = sample.get_buffer()
-        if not self.steady and time.monotonic() - self.pushed_at >= 0.9 / self.limit:
+        if (not self.steady and not self.paused
+                and time.monotonic() - self.pushed_at >= 0.9 / self.limit):
             self.push(self.last)
         return Gst.FlowReturn.OK
 
@@ -1149,7 +1328,7 @@ class Producer:
             elif wait < -step:
                 due = time.monotonic()
             buf = self.last
-            if buf is None:
+            if buf is None or self.paused:
                 continue
             if self.steady:
                 self.push(buf)
@@ -1260,7 +1439,7 @@ producer = None
 # from the next one rather than concealed.
 AUDIO = (
     "pulsesrc device=@DEFAULT_MONITOR@ buffer-time=200000 latency-time=20000 "
-    "slave-method=re-timestamp ! "
+    "slave-method=re-timestamp ! valve name=av ! "
     "audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! "
     "opusenc bitrate=96000 frame-size=20 inband-fec=true packet-loss-percentage=5 ! "
     "rtpopuspay pt=97 mtu=1200 ! "
@@ -1563,14 +1742,14 @@ class Session:
             "h264": ("" if self.producer
                      else (hardware(size, mbps=mbps) if size
                            else "h264parse config-interval=-1") + " ! ")
-                    + "rtph264pay config-interval=-1 pt=96 mtu=1200 ! "
+                    + "valve name=vv ! rtph264pay config-interval=-1 pt=96 mtu=1200 ! "
                     "application/x-rtp,media=video,encoding-name=H264,payload=96"
                     # The phone's encoder: constrained baseline, level 4.  The
                     # offer had no profile-level-id, which browsers read as
                     # level 3.1, too low for 1920x960.
                     + (",profile-level-id=(string)42c028,packetization-mode=(string)1"
                        if size else ""),
-            "vp8": "ivfparse ! rtpvp8pay pt=96 mtu=1200 ! "
+            "vp8": "ivfparse ! valve name=vv ! rtpvp8pay pt=96 mtu=1200 ! "
                    "application/x-rtp,media=video,encoding-name=VP8,payload=96",
         }[codec]
         self.pipeline = Gst.parse_launch(
@@ -1623,8 +1802,14 @@ class Session:
             self.producer.attach(self.pipeline.get_by_name("frames"))
 
     def message(self, text):
-        """The viewer's input, or a setting of the stream."""
-        if '"bitrate"' in text:
+        """The viewer's input, a setting of the stream, or its PAUSE, PLAY
+        and STOP buttons."""
+        if '"t":"pause"' in text or '"t":"play"' in text:
+            GLib.idle_add(self.pause, '"t":"pause"' in text)
+        elif '"t":"stop"' in text:
+            log_line("stopped by the viewer")
+            GLib.timeout_add(300, lambda: os.kill(os.getpid(), signal.SIGTERM) and False)
+        elif '"bitrate"' in text:
             try:
                 mbps = float(json.loads(text)["mbps"])
             except (ValueError, KeyError, TypeError):
@@ -1632,6 +1817,26 @@ class Session:
             GLib.idle_add(self.bitrate, min(20.0, max(0.5, mbps)))
         else:
             remote.handle(text)
+
+    def pause(self, on):
+        """Picture and sound held back (PAUSE), the encoder idle so that the
+        phone cools; or back (PLAY), from a new keyframe."""
+        for name in ("vv", "av"):
+            valve = self.pipeline.get_by_name(name)
+            if valve is not None:
+                valve.set_property("drop", on)
+        if self.producer:
+            self.producer.paused = on
+            if not on:
+                self.producer.keyframe()
+        else:
+            encoder = self.pipeline.get_by_name("enc")
+            if encoder is not None and not on:
+                encoder.get_static_pad("src").send_event(
+                    GstVideo.video_event_new_upstream_force_key_unit(
+                        Gst.CLOCK_TIME_NONE, True, 0))
+        log_line("paused by the viewer" if on else "playing again")
+        return GLib.SOURCE_REMOVE
 
     def bitrate(self, mbps):
         """A new bit rate from the page: the session starts again with it.
@@ -1733,6 +1938,7 @@ class Session:
             GLib.source_remove(self.losses)
             self.losses = None
         if self.producer:
+            self.producer.paused = False
             self.producer.detach(self.pipeline.get_by_name("frames"))
             if background:
                 threading.Thread(target=self.pipeline.set_state,
@@ -2037,6 +2243,11 @@ class Handler(BaseHTTPRequestHandler):
                     Handler.mbps = min(20.0, max(0.5, float(query["mbps"][0])))
                 except (KeyError, ValueError, IndexError):
                     pass
+            if approval:
+                st = approval.check(self.client_address[0])
+                if st != "allowed":
+                    self.reply(st.encode(), code=202 if st == "waiting" else 403)
+                    return
             created = {"done": threading.Event()}
             GLib.idle_add(new_session, self.capture[codec], codec, self.size, created)
             if (
@@ -2198,6 +2409,13 @@ def main():
     if args[:1] == ["--key"]:
         Handler.key, args = args[1], args[2:]
         own_args.extend(["--key", Handler.key])
+    global approval
+    if args[:1] == ["--approve"]:
+        own_args.extend(args[:2])
+        if args[1] in ("tap", "fingerprint"):
+            approval = Approval(args[1])
+            log_line(f"viewers approved on the phone ({args[1]})")
+        args = args[2:]
     if args[:1] == ["--portal"]:
         own_args.extend(args[:2])
         try:

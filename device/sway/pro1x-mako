@@ -33,6 +33,9 @@ apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
     for app in Chats gnome-calls Calls Clocks; do
         printf '\n[app-name="%s"]\ndefault-timeout=0\nignore-timeout=1\n' "$app"
     done
+    # A stream viewer waiting for approval (pro1x-stream-webrtc): a touch
+    # allows it, where mako's default touch would dismiss (refuse).
+    printf '\n[app-name="Stream"]\non-touch=invoke-default-action\non-button-left=invoke-default-action\n'
     # mako matches desktop entries whole: one section per Waydroid app.
     if [ -e "$muted" ]; then
         for f in "$apps"/waydroid.*.desktop; do
