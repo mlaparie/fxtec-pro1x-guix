@@ -405,7 +405,7 @@ operator_set() {                # operator_set auto|CODE [NAME]
         mmcli -m any --3gpp-register-home --timeout=120 >/dev/null 2>&1 || return
         rm -f "$operator_forced"
         # Registering goes on after mmcli has returned.
-        ( sleep 10; refresh_lines; qs_reload ) >/dev/null 2>&1 </dev/null &
+        ( sleep 10; refresh_keys wwan; qs_reload ) >/dev/null 2>&1 </dev/null &
         return
     fi
     if ! mmcli -m any --3gpp-register-in-operator="$1" --timeout=120 >/dev/null 2>&1; then
@@ -428,11 +428,11 @@ operator_watch() {              # operator_watch CODE NAME
         case "$(printf '%s\n' "$kv" | kv_get modem.3gpp.registration-state)" in
             home*|roaming*)
                 if [ "$(printf '%s\n' "$kv" | kv_get modem.3gpp.operator-code)" = "$1" ]; then
-                    refresh_lines; qs_reload
+                    refresh_keys wwan; qs_reload
                     return
                 fi ;;
         esac
-        [ "$i" = 2 ] && { refresh_lines; qs_reload; }
+        [ "$i" = 2 ] && { refresh_keys wwan; qs_reload; }
     done
     operator_give_up "$2"
 }
@@ -443,7 +443,7 @@ operator_give_up() {            # operator_give_up NAME
         --object-path /org/freedesktop/Notifications \
         --method org.freedesktop.Notifications.Notify Operator 0 "" Operator \
         "${1:-That network} refused or out of reach, back to auto" "[]" "{}" 5000
-    refresh_lines; qs_reload
+    refresh_keys wwan; qs_reload
 }
 operator_parse() {              # mmcli's scan -> code, name, radios; one per code
     sed -n 's/^modem\.3gpp\.scan-networks\.value\[[0-9]*\] *: //p' |
@@ -1176,6 +1176,55 @@ overlay() {
 refresh_lines() {
     lines > "$cache.$$" && mv "$cache.$$" "$cache"
 }
+# One line's value, as lines() computes it: after an action, only the
+# lines it touched are read again (author, 2026-11-20: a full refresh is
+# 1.7 s and dozens of commands).  Unknown key: nothing.
+line_value() {                  # line_value KEY
+    case "$1" in
+        notif) makoctl list 2>/dev/null | grep -c '^Notification ' ;;
+        osk) dim "$(osk_state)" ;;
+        apps) apps_list | cut -f2 | paste -sd, | sed 's/,/, /g' ;;
+        torch) dim "$(state_of torch)" ;;
+        waydroid) dim "$(pro1x-waydroid state 2>/dev/null)" ;;
+        stream) stream_state ;;
+        bluetooth) dim "$(blocked bluetooth)" ;;
+        wifi) w=$(onoff "$(nmcli radio wifi)")
+              printf '%s%s' "$(dim "$w")" "$([ "$w" = on ] && wifi_info)" ;;
+        hotspot) dim "$(hotspot_state)" ;;
+        wwan) kv=$(modem_kv)
+              m="$(dim "$(onoff "$(nmcli radio wwan)")")$(mobile_info "$kv")"
+              f=$(mobile_flash) && m="→ $f"
+              printf '%s' "$m" ;;
+        airplane) dim "$(airplane_now)" ;;
+        location) dim "$(location_now)" ;;
+        nfc) dim "$(nfc_now)" ;;
+        rotation) rotation_mode ;;
+        orient) o=$(orientation)
+                if [ "$(cat "$statedir/sway-autorotate" 2>/dev/null || echo off)" = fixed ]; then
+                    printf '%s' "$o"
+                else printf '\033[2m%s (%s)\033[0m' "$o" "$(rotation_mode)"; fi ;;
+        feedback) gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'" ;;
+        audio) audio_now ;;
+        volume) volume_shown "$(volume)" ;;
+        bright) brightnessctl -m 2>/dev/null | cut -d, -f4 ;;
+        caffeine) dim "$(state_of caffeine)" ;;
+        dicts) dict_shown ;;
+        layout) layout_now ;;
+        cpu) cpu_mode ;;
+        touchpad) touch_mode ;;
+        fingerprint) dim "$(fingerprint_state)" ;;
+        timezone) timezone_now ;;
+        charge) charge_limit ;;
+        *) return 1 ;;
+    esac
+}
+# Those lines read again into the cache; all of them for an unknown key.
+refresh_keys() {                # refresh_keys KEY...
+    for k in "$@"; do
+        v=$(line_value "$k") || { refresh_lines; return; }
+        cache_put "$k" "$v"
+    done
+}
 cached_lines() {                # at once, unless nothing was read yet
     [ -r "$cache" ] || refresh_lines
     overlay < "$cache"
@@ -1238,7 +1287,7 @@ confirm() {
         done
         QS_WHY="$pending/.why-$key"; rm -f "$QS_WHY"
         if "$@"; then ok=yes; else ok=; fi
-        refresh_lines
+        refresh_keys "$key" $QS_ALSO
         for k in $QS_ALSO; do rm -f "$pending/$k"; done
         # A later press on this line keeps its own value.
         if [ "$(cat "$pending/$key" 2>/dev/null)" = "$shown" ]; then
@@ -1714,22 +1763,15 @@ notif_dock() {
 
 case "${1:-}" in
     --lines) refresh_lines; overlay < "$cache"; exit ;;
+    --line) line_value "$2"; echo; exit ;;   # one line's value (checks)
     # On show (pro1x-menu, qs_show): a refresh now, then every 5 s while the
     # menu is shown (author, 2026-11-06), from one loop at a time.
     --refresh-while-shown)
         # Behind the menu itself: scrolling and drawing first.
         renice -n 10 $$ >/dev/null 2>&1
+        # Once per showing: actions refresh their own lines (refresh_keys);
+        # a refresh every 5 s, 1.7 s of CPU each, slowed the menu.
         refresh_swap
-        pidf="$rt/pro1x-qs-refresh.pid"
-        [ -r "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null && exit 0
-        echo $$ > "$pidf"
-        # Every 15 s, not 5: each refresh is 1.7 s of CPU; an action
-        # refreshes its own line at once anyway.
-        while sleep 15 && [ -e "$rt/pro1x-menu-shown" ] &&
-              [ "$(qs_state)" = shown ]; do
-            refresh_swap
-        done
-        rm -f "$pidf"
         exit ;;
     --cached) cached_lines; exit ;;
     # A step, then the lines, in one run: a held key made two runs per step,
