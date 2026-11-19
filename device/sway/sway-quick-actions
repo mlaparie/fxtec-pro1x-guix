@@ -485,6 +485,82 @@ choice_info() {                 # choice_info LIST CHOICE
     esac
 }
 
+# A line's value from the main list's cache, colours removed.
+cached_state() {                # cached_state KEY
+    awk -v k="$1" '$1 == k { print substr($0, 40); exit }' "$cache" 2>/dev/null |
+        sed 's/\x1b\[[0-9;]*m//g' | awk '{ print $1 }'
+}
+
+# App shortcuts, the user's own list (author, 2026-11-19): lines of
+# "ID<tab>name", ID camera, dialer, chats (this script's own) or an app's
+# desktop entry (foo.desktop).
+apps_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/app-shortcuts
+apps_list() {
+    if [ -r "$apps_file" ]; then cat "$apps_file"
+    else printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n'; fi
+}
+# The installed apps: "ID<tab>name" from the desktop entries on the data
+# paths (system, home profile, Flatpak), shown ones only.
+app_entries() {
+    for dir in $(echo "${XDG_DATA_DIRS:-/run/current-system/profile/share}" | tr : ' ') \
+               "$HOME/.local/share" "$HOME/.guix-profile/share" "$HOME/.guix-home/profile/share" \
+               /var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share"; do
+        for f in "$dir"/applications/*.desktop; do
+            [ -r "$f" ] || continue
+            awk -v id="${f##*/}" -F= '
+                /^\[/ { main = ($0 == "[Desktop Entry]") }
+                main && $1 == "Name" && !name { name = substr($0, 6) }
+                main && $1 == "NoDisplay" && $2 == "true" { hide = 1 }
+                main && $1 == "Type" && $2 != "Application" { hide = 1 }
+                END { if (name && !hide) print id "\t" name }' "$f"
+        done
+    done | sort -t'	' -k2,2f -u
+}
+app_desktop_file() {            # app_desktop_file ID: its path
+    for dir in $(echo "${XDG_DATA_DIRS:-/run/current-system/profile/share}" | tr : ' ') \
+               "$HOME/.local/share" "$HOME/.guix-profile/share" "$HOME/.guix-home/profile/share" \
+               /var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share"; do
+        [ -r "$dir/applications/$1" ] && { echo "$dir/applications/$1"; return; }
+    done
+}
+app_launch() {                  # app_launch ID
+    case "$1" in
+        camera|dialer|chats) act "$1"; return ;;
+    esac
+    f=$(app_desktop_file "$1") || return
+    # Exec without its field codes (%u, %F...); in a terminal if it asks.
+    cmd=$(sed -n '/^\[Desktop Entry\]/,/^\[/s/^Exec=//p' "$f" | head -1 | sed 's/ *%[a-zA-Z]//g')
+    [ -n "$cmd" ] || return
+    qs_hide
+    if grep -q '^Terminal=true' "$f"; then swaymsg exec "pro1x-term -e $cmd" >/dev/null
+    else swaymsg exec "pro1x-open $cmd" >/dev/null; fi
+}
+# A list in this window, as choose's: "key<tab>shown" in, key out.
+qa_pick() {                     # qa_pick PROMPT
+    { printf 'back\t← back\n'; cat; } |
+        fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock" \
+            --delimiter='\t' --with-nth=2 --prompt="$1 > " --layout=reverse-list \
+            --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+            --bind="load:pos(2)+$sync_end" --bind="enter,right:$sync_begin+accept" \
+            --bind="esc,left:$sync_begin+abort" | cut -f1 | sed '/^back$/d'
+}
+app_add() {
+    id=$(app_entries | qa_pick "add an app (type to search)")
+    [ -n "$id" ] || return
+    name=$(app_entries | awk -F'\t' -v id="$id" '$1 == id { print $2; exit }')
+    list=$(apps_list)
+    mkdir -p "${apps_file%/*}"
+    printf '%s\n' "$list" | awk -F'\t' -v id="$id" '$1 != id' > "$apps_file"
+    printf '%s\t%s\n' "$id" "${name:-$id}" >> "$apps_file"
+}
+app_remove() {
+    id=$(apps_list | qa_pick "remove a shortcut")
+    [ -n "$id" ] || return
+    list=$(apps_list)
+    mkdir -p "${apps_file%/*}"
+    printf '%s\n' "$list" | awk -F'\t' -v id="$id" '$1 != id' > "$apps_file"
+}
+
 choose() {
     # The line, kept: the charge entry's `set --' replaces $1, and the
     # choice was then applied to no line at all (2026-11-02).
@@ -494,15 +570,21 @@ choose() {
             # Its modes, then roaming, operator and SIM (author, 2026-11-19).
             title="mobile data"
             cur=$(cut -d' ' -f1 "${XDG_RUNTIME_DIR:-/tmp}/pro1x-qs-mobile" 2>/dev/null)
-            kv=$(modem_kv)
+            # The modem and NetworkManager asked at once, not one after
+            # the other (the list took about half a second to open).
+            d=$(mktemp -d)
+            modem_kv > "$d/kv" & roaming > "$d/roam" & wait
+            kv=$(cat "$d/kv") roam=$(cat "$d/roam"); rm -rf "$d"
             opts=$(for o in $MOBILE_OPTS; do printf '%s\t%s\n' "$o" "$(mobile_label "$o")"; done
-                   printf 'roaming\tRoaming: %s\n' "$(roaming)"
+                   printf 'roaming\tRoaming: %s\n' "$roam"
                    printf 'operator\tOperator: %s…\n' "$(operator_shown "$kv" | sed 's/\x1b\[[0-9;]*m//g')"
                    printf 'sim\tSIM: %s…\n' "$(sim_state "$kv")") ;;
         apps)
             title="app shortcuts"
             cur=
-            opts=$(printf 'camera\tCamera\ndialer\tDialer\nchats\tChats\n') ;;
+            opts=$(apps_list
+                   printf 'add\t+ add an app…\n'
+                   printf 'remove\t- remove one…\n') ;;
         operator)
             title="operator"
             cur=auto
@@ -539,9 +621,10 @@ choose() {
         wifi|bluetooth)
             # Power, Right or Enter (author, 2026-11-02): on or off, or the
             # list of networks (pro1x-wifi) or devices (bluetuith).
-            if [ "$1" = wifi ]; then title=Wi-Fi tool=networks
+            if [ "$1" = wifi ]; then title=WiFi tool=networks
             else title=Bluetooth tool=devices; fi
-            cur=$(state_of "$1")
+            # From the main list's cache: nmcli took 170 ms (2026-11-19).
+            cur=$(cached_state "$1"); [ -n "$cur" ] || cur=$(state_of "$1")
             opts=$(printf 'on\ton\noff\toff\ntool\t%s…\n' "$tool"
                    # Power saving: less battery, but delays and loses what
                    # the phone sends (streams hold it off while they run).
@@ -618,7 +701,12 @@ choose() {
                 sim) choose sim; choose wwan ;;
                 *) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
             esac ;;
-        apps) act "$pick" ;;
+        apps)
+            case "$pick" in
+                add) app_add; choose apps ;;
+                remove) app_remove; choose apps ;;
+                *) app_launch "$pick" ;;
+            esac ;;
         operator)
             if [ "$pick" = scan ]; then
                 operator_do_scan
@@ -1180,7 +1268,7 @@ lines() {
         "battery     Battery $(battery_state)" \
         "notif       Notifications              $(cat "$d/notif")" \
         "osk         On-screen keyboard         $(dim "$(cat "$d/osk")")" \
-        "apps        App shortcuts              camera, dialer, chats" \
+        "apps        App shortcuts              $(apps_list | cut -f2 | paste -sd, | sed 's/,/, /g')" \
         "torch       Torch                      $(dim "$t")" \
         "waydroid    Waydroid                   $(dim "$(cat "$d/waydroid")")" \
         "stream      Stream                     $(stream_state)" \
@@ -1698,13 +1786,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                   *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="right:transform:case {1} in
-                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  wifi|bluetooth|location|apps|wwan) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
-                  power) echo \"execute-silent($self --act {1})\" ;;
+                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
-                  gpu) echo \"execute-silent($self --act {1})\" ;;
+                  *) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="left:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
