@@ -168,10 +168,35 @@ restart_dsps() {
     herd start pro1x-pocket >/dev/null 2>&1
     herd restart pro1x-shake-torch >/dev/null 2>&1
 }
+# Drivers whose hardware loses its state with the power and that cannot
+# restore it: Wi-Fi and Bluetooth wait for the DSPs' firmware, the PMIC's
+# temperature alarm and ADC come back reset.  Restored as they were, they
+# held the device restore for 46 s, the temperature alarm's interrupt fired
+# without end and user space stalled before restart_dsps (2026-11-19).
+# They are unloaded for the image and loaded again after the DSPs.
+unloaded=
+unload_drivers() {
+    for m in ath10k_snoc hci_uart pro1x_adc_battery qcom_spmi_temp_alarm qcom_spmi_adc5; do
+        if rmmod "$m" 2>/dev/null; then
+            unloaded="$m $unloaded"
+        else
+            logger -t pro1x-sleep "could not unload $m"
+        fi
+    done
+}
+# sudo drops the variable that tells Guix's modprobe where modules are.
+load() { LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules modprobe "$1"; }
+load_drivers() {
+    for m in $unloaded; do
+        load "$m" || logger -t pro1x-sleep "could not load $m"
+    done
+    unloaded=
+}
 hibernate_now() {
     logger -t pro1x-sleep "hibernating"
     led_hibernating
     sync
+    unload_drivers
     rmmod smp2p_sleepstate 2>/dev/null && ss=1 || ss=
     # Modem messages wake the phone from suspend (pro1x-qrtr-modem-wake,
     # set by suspend_loop and left on): each aborted hibernation as it
@@ -188,11 +213,9 @@ hibernate_now() {
     else
         logger -t pro1x-sleep "hibernation failed"
     fi
+    load_drivers
     [ -n "$wod_was" ] && echo "$wod_was" > "$wod"
-    # sudo drops the variable that tells Guix's modprobe where modules are.
-    [ -n "$ss" ] &&
-        LINUX_MODULE_DIRECTORY=/run/booted-system/kernel/lib/modules \
-            modprobe smp2p_sleepstate
+    [ -n "$ss" ] && load smp2p_sleepstate
     led_awake
 }
 led_awake() { [ -w "$led/pattern" ] && echo "0 1000 0 1000" > "$led/pattern"; }
