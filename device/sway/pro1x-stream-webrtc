@@ -76,9 +76,32 @@ pc.ontrack = e => {
   document.getElementById("v").srcObject =
     e.streams[0] || new MediaStream([e.track]);
 };
+// VP8 for this tab only (never in the address, where browsers kept it):
+// a browser can list H.264 and have no decoder.  Judged 8 s after the
+// connection is up, not after the request: an approval on the phone and a
+// relay (Funnel) delayed the first frame past the old 5 s.
+const keptCodec = () => { try { return sessionStorage.getItem("codec"); } catch (x) { return null; } };
+function vp8IfNothing(pc, reload) {
+  let armed = false;
+  const check = () => {
+    if (armed || pc.connectionState !== "connected") return;
+    armed = true;
+    setTimeout(async () => {
+      let decoded = 0;
+      (await pc.getStats()).forEach(r => {
+        if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
+      });
+      if (decoded) return;
+      try { sessionStorage.setItem("codec", "vp8"); } catch (x) {}
+      reload();
+    }, 8000);
+  };
+  pc.addEventListener("connectionstatechange", check);
+  check();
+}
 (async () => {
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
-  const codec = new URLSearchParams(location.search).get("codec")
+  const codec = new URLSearchParams(location.search).get("codec") || keptCodec()
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   const offer = await (await fetch("/offer?codec=" + codec)).text();
   await pc.setRemoteDescription({type: "offer", sdp: offer});
@@ -91,14 +114,7 @@ pc.ontrack = e => {
     setTimeout(done, 2000);
   });
   await fetch("/answer", {method: "POST", body: pc.localDescription.sdp});
-  // A browser can list H.264 and have no decoder: VP8 if nothing was decoded.
-  if (codec === "h264") setTimeout(async () => {
-    let decoded = 0;
-    (await pc.getStats()).forEach(r => {
-      if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
-    });
-    if (!decoded) location.replace("/?codec=vp8");
-  }, 5000);
+  if (codec === "h264") vp8IfNothing(pc, () => location.reload());
 })();
 </script>
 """
@@ -185,6 +201,29 @@ const store = {
 // The access key, when the phone asks for one: from the link, else typed in
 // the box, then sent with each request.
 let key = P.get("k") || store.get("key", "");
+// VP8 for this tab only (never in the address, where browsers kept it):
+// a browser can list H.264 and have no decoder.  Judged 8 s after the
+// connection is up, not after the request: an approval on the phone and a
+// relay (Funnel) delayed the first frame past the old 5 s.
+const keptCodec = () => { try { return sessionStorage.getItem("codec"); } catch (x) { return null; } };
+function vp8IfNothing(pc, reload) {
+  let armed = false;
+  const check = () => {
+    if (armed || pc.connectionState !== "connected") return;
+    armed = true;
+    setTimeout(async () => {
+      let decoded = 0;
+      (await pc.getStats()).forEach(r => {
+        if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
+      });
+      if (decoded) return;
+      try { sessionStorage.setItem("codec", "vp8"); } catch (x) {}
+      reload();
+    }, 8000);
+  };
+  pc.addEventListener("connectionstatechange", check);
+  check();
+}
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
 const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true, adaptive: true, wifi_awake: true,
@@ -485,7 +524,7 @@ async function connect() {
   } catch (e) {}
   status();
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
-  const codec = P.get("codec")
+  const codec = P.get("codec") || keptCodec()
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
   const asked = await fetch(withKey("/offer?codec=" + codec + "&mbps=" + cfg.rate));
@@ -508,13 +547,7 @@ async function connect() {
     setTimeout(done, 2000);
   });
   await fetch(withKey("/answer"), {method: "POST", body: pc.localDescription.sdp});
-  if (codec === "h264") setTimeout(async () => {
-    let decoded = 0;
-    (await pc.getStats()).forEach(r => {
-      if (r.type === "inbound-rtp" && r.kind === "video") decoded = r.framesDecoded;
-    });
-    if (!decoded) location.replace(withKey("/?codec=vp8"));
-  }, 5000);
+  if (codec === "h264") vp8IfNothing(pc, () => location.replace(withKey("/")));
 }
 connect();
 
