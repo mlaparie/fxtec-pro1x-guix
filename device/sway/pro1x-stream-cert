@@ -8,7 +8,7 @@
 # does: a domain of the user's whose public A record is an address in no
 # private range, a Let's Encrypt certificate for it, and the hotspot
 # sending that address to the phone.  Set up by the user, in
-# /etc/pro1x/stream-tls.conf (root only, the user's own: never in
+# /var/lib/pro1x/stream-tls.conf (root only, the user's own: never in
 # config.scm nor in git):
 #
 #   STREAM_DOMAIN=car.example.com   the name the car opens
@@ -30,7 +30,7 @@
 
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 dir=/var/lib/pro1x/stream-tls
-settings=/etc/pro1x/stream-tls.conf
+settings=/var/lib/pro1x/stream-tls.conf
 le=/var/lib/pro1x/letsencrypt
 
 install_cert() {                # install_cert CERT KEY NAME URL

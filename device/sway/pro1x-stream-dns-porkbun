@@ -5,7 +5,7 @@
 #   pro1x-stream-dns-porkbun auth             certbot's manual-auth-hook
 #   pro1x-stream-dns-porkbun cleanup          certbot's manual-cleanup-hook
 #
-# The keys and the domain come from /etc/pro1x/stream-tls.conf
+# The keys and the domain come from /var/lib/pro1x/stream-tls.conf
 # (PORKBUN_API_KEY, PORKBUN_SECRET_KEY, STREAM_DOMAIN); API access must be
 # on for the domain at Porkbun.  certbot gives CERTBOT_DOMAIN and
 # CERTBOT_VALIDATION to the hooks.
@@ -14,7 +14,7 @@
 
 set -eu
 PATH=/run/current-system/profile/bin:$PATH
-. /etc/pro1x/stream-tls.conf
+. /var/lib/pro1x/stream-tls.conf
 api=https://api.porkbun.com/api/json/v3
 
 # The registered domain and the part of NAME under it: car.example.com ->

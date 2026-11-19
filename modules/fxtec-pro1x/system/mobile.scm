@@ -746,7 +746,7 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 
      ;; A certificate that browsers trust for the stream's HTTPS, for the
-     ;; user's own domain set in /etc/pro1x/stream-tls.conf, and the
+     ;; user's own domain set in /var/lib/pro1x/stream-tls.conf, and the
      ;; hotspot's redirect to it; without that file it does nothing
      ;; (pro1x-stream-cert).
      (simple-service 'pro1x-stream-cert shepherd-root-service-type
