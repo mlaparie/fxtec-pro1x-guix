@@ -214,6 +214,19 @@ pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
 
 streaming() { [ -f "$pid_file" ] && kill -0 "$(cat "$pid_file")" 2>/dev/null; }
 
+# The screen kept on while a stream runs: blanked, the panel is no longer
+# drawn and the capture freezes, and the lock screen would cover it.  On
+# if it was off, and off again when that stream ends, however it ends.
+keep_awake() {                  # keep_awake PID
+    caf=${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine
+    [ "$(cat "$caf" 2>/dev/null)" = on ] && return
+    sway-quick-actions --act caffeine >/dev/null 2>&1 </dev/null
+    setsid sh -c 'while kill -0 "$1" 2>/dev/null; do sleep 5; done
+                  [ "$(cat "$2" 2>/dev/null)" = on ] &&
+                      sway-quick-actions --act caffeine' _ "$1" "$caf" \
+        >/dev/null 2>&1 </dev/null &
+}
+
 stop_stream() {
     funnel_stop
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
@@ -321,12 +334,12 @@ scale_args() {
 limited() { if [ "$1" = native ] || [ "$1" -gt "$2" ]; then echo "$2"; else echo "$1"; fi; }
 
 # pick PROMPT: lines of "key<TAB>shown" from stdin, the key picked on stdout;
-# nothing for the back line, as for Esc.
+# nothing for the back line, as for Esc and Left (one level back).
 pick() {
     { printf 'back\t← back\n'; cat; } |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --bind='load:pos(2)' |
+            --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' |
         cut -f1 | sed '/^back$/d'
 }
 
@@ -464,7 +477,7 @@ show_links() {                  # show_links HEADER [SUFFIX]
     links "${2:-}" |
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="links > " \
             --header="$1" --layout=reverse-list --no-info --cycle --margin=1,2 \
-            --color=16,gutter:-1 --preview="$0 --qr {1}" \
+            --color=16,gutter:-1 --preview="$0 --qr {1}" --bind='left:abort' \
             --preview-window=right,50%,border-left >/dev/null
 }
 
@@ -512,7 +525,8 @@ send_udp() {                    # send_udp [ADDRESS]
     echo $! > "$pid_file"
     echo "VLC to $ip" > "$to_file"
     sleep 1
-    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; }
+    streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    keep_awake "$(cat "$pid_file")"
 }
 
 # ffmpeg serves one viewer at a time, and stops when that one leaves: the loop
@@ -535,6 +549,7 @@ send_mjpeg() {
             sleep 1
         done' _ "$http_port" "$rate" "${area[@]}" "${scale[@]}" >/dev/null 2>&1 </dev/null &
     echo $! > "$pid_file"
+    keep_awake "$(cat "$pid_file")"
     url="http://$ip:$http_port/"
     echo "browser, $url" > "$to_file"
     clear_screen
@@ -581,6 +596,7 @@ send_webrtc() {
     echo "read-only, $url${k:+  key $k} (or http://$ip:$webrtc_port/)" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    keep_awake "$(cat "$pid_file")"
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" webrtc
     show_links "Streaming.  Open a link on the other device (its code on the right${k:+, with the key $k});
@@ -650,6 +666,7 @@ send_interactive() {
     streaming || { rm -f "$pid_file" "$to_file"
                    [ -n "${quiet:-}" ] && return 1
                    echo "Could not start."; pause; return; }
+    keep_awake "$(cat "$pid_file")"
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
@@ -695,11 +712,11 @@ settings_menu() {
             screen "Screen mode          $(screen_label)" \
             fps "Capture rate         $(fps) fps, lower saves CPU" \
             size "Output size          $(out_size), long side" \
-            key "Access key           $(key_on && echo "on, $(current_key)" || echo off) (browser streams; not Simple, VLC)" \
+            key "Access key           $(key_on && echo "on, $(current_key)" || echo off) (for streams except Browser simple and VLC)" \
             approve "Connection approval  $(approve)" \
             visibility "Visibility           $(visibility)" \
             https "HTTPS name           $(https_state)" \
-            renew "Renew access key     the old one and its bookmarks stop working")
+            renew "Renew access key")
         case "$(printf '%s\n' "$lines" | pick "settings")" in
             screen) pick_screen ;;
             fps) pick_fps ;;
