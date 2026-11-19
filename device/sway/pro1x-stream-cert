@@ -40,6 +40,9 @@
 # other-network way written, not yet tried.
 
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+# Shepherd gives a bare environment: curl and certbot need the CA store.
+export SSL_CERT_DIR=/etc/ssl/certs
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 dir=/var/lib/pro1x/stream-tls
 settings=/var/lib/pro1x/stream-tls.conf
 le=/var/lib/pro1x/letsencrypt
@@ -83,7 +86,7 @@ lan() {
                   awk '{ sub("/.*", "", $4); print $4; exit }')
     case "$address" in ""|10.42.0.1) return 0 ;; esac
     [ "$address" = "$(cat "$dir/lan-address" 2>/dev/null)" ] && return 0
-    if "$hook" a "$STREAM_LAN_NAME" "$address"; then
+    if "$hook" a "$STREAM_LAN_NAME" "$address" 2>&1; then
         mkdir -p "$dir"
         echo "$address" > "$dir/lan-address"
         echo "https://$STREAM_LAN_NAME:8443/" > "$dir/lan-url"
@@ -93,7 +96,7 @@ lan() {
 
 once() {
     settings_ok || return 0
-    "$hook" a "$STREAM_DOMAIN" "$STREAM_ADDRESS" ||
+    "$hook" a "$STREAM_DOMAIN" "$STREAM_ADDRESS" 2>&1 ||
         echo "$(date '+%F %T') A record for $STREAM_DOMAIN not set"
     if certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
             --config-dir "$le" --work-dir "$le/work" --logs-dir "$le/logs" \
