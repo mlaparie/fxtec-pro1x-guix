@@ -614,11 +614,13 @@ choose() {
                        else printf '%s\t%s%% (charge again at %s%%)\n' "$o" "$o" $((o - 5)); fi
                    done) ;;
         cpu)
-            title="CPU mode (until reboot)"
+            # Performance: the CPU mode (until reboot), and the system and
+            # GPU monitors in their own windows (author, 2026-11-20).
+            title="performance (CPU mode until reboot)"
             cur=$(pro1x-cpu-mode get 2>/dev/null)
             pro1x-cpu-mode temporary || cur=default
             CPU_MODE=auto; . /etc/pro1x/cpu.conf 2>/dev/null
-            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\nbpytop\tbpytop (system monitor, own window)\n' "$CPU_MODE") ;;
+            opts=$(printf 'default\tconfig.scm: %s\nauto\tauto (battery when dark or low)\nbattery\tbattery (capped)\nbalanced\tbalanced (schedutil)\nperformance\tperformance (top speed)\nbpytop\topen bpytop in a new window\nnvtop\topen GPU monitor in a new window\n' "$CPU_MODE") ;;
         wifi|bluetooth)
             # Power, Right or Enter (author, 2026-11-02): on or off, or the
             # list of networks (pro1x-wifi) or devices (bluetuith).
@@ -720,8 +722,10 @@ choose() {
                 confirm operator "→ ${name:-$pick}" operator_set "$pick" "$name"
             fi ;;
         feedback) confirm feedback "$pick" feedback_to "$pick" ;;
-        cpu) if [ "$pick" = bpytop ]; then open_app bpytop
-             else confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick"; fi ;;
+        cpu) case "$pick" in
+                 bpytop|nvtop) open_app "$pick" ;;
+                 *) confirm cpu "$pick" sudo -n /run/current-system/profile/bin/pro1x-cpu-mode "$pick" ;;
+             esac ;;
         charge)
             case "$pick" in
                 default|off) shown=$pick ;;
@@ -1289,8 +1293,7 @@ lines() {
         "caffeine    Keep screen on             $(dim "$caf")" \
         "dicts       Word completion            $(cat "$d/dicts")" \
         "layout      On-screen keyboard layout  $(cat "$d/layout")" \
-        "cpu         CPU mode                   $(cpu_mode)" \
-        "gpu         GPU monitor                $(gpu_clock)" \
+        "cpu         Performance                $(cpu_mode)" \
         "touchpad    Touch input mode           $(touch_mode)" \
         "fingerprint Fingerprint                $(dim "$(fingerprint_state)")" \
         "timezone    Timezone                   $(timezone_now)" \
