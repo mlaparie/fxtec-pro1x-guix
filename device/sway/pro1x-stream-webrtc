@@ -151,12 +151,12 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <div class="h">now</div>
 <label title="the browser's buffer: more is smoother, later">smooth  <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
 <label title="above 0 the sound later, below 0 the picture later">a/v     <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
-<label title="frames at exactly the fps (games, films); off: only when the screen changes, cooler">steady  <input id="st" type="checkbox"></label>
+<label title="frames at exactly the fps (games, films); off: only when the screen changes, cooler">constant fps <input id="st" type="checkbox"></label>
 <label title="above it the phone lowers the fps by 5, and raises it 5 C cooler">heat    <input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
 <label title="power saving delays and loses what the phone sends; off costs battery">wifi    <input id="wp" type="checkbox"> no power saving while streaming</label>
 <div class="h">on apply (restarts the picture)</div>
 <label>rate    <input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
-<label title="steady needs one the phone keeps up: 20 at 1920, 25 at 1600">fps     <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
+<label title="constant fps needs one the phone keeps up: 20 at 1920, 25 at 1600">fps     <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
 <label>size    <select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> px wide</label>
 <button id="sy">RESYNC</button></div>
@@ -561,7 +561,7 @@ setInterval(async () => {
     const q = x => x === undefined ? "?" : x;
     it.textContent = [
       `picture ${s.video} ${(s.codec || "").replace("video/", "")}, ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
-      `fps     ${q(s.fps)} shown, phone ${phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " steady" : ""}`,
+      `fps     ${q(s.fps)} shown, phone ${phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " constant" : ""}`,
       `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
       `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
       `sound   ${q(s.audio_lost)} lost, ${q(s.audio_concealed)}% made up`,
@@ -1558,14 +1558,15 @@ class Session:
         # asks (NACK, RTX): without it each loss cost frames until the next
         # keyframe, and the picture jerked at a steady 20 fps from the
         # encoder (2026-11-19).
-        # And recovery packets (FEC, ULP in RED, as browsers take it): a
-        # loss mended without waiting a round trip, which was 300 ms or
-        # more on the phone's Wi-Fi.  20%, Moonlight's default.
+        # Recovery packets (ULP FEC in RED) only with VP8: with H.264 the
+        # author's Firefox showed no picture (2026-11-19), and browsers take
+        # ULP FEC reliably with VP8 only.
         video = self.webrtc.emit("get-transceiver", 0)
         if video is not None:
             video.set_property("do-nack", True)
-            video.set_property("fec-type", GstWebRTC.WebRTCFECType.ULP_RED)
-            video.set_property("fec-percentage", 20)
+            if codec == "vp8":
+                video.set_property("fec-type", GstWebRTC.WebRTCFECType.ULP_RED)
+                video.set_property("fec-percentage", 20)
         self.webrtc.connect("on-negotiation-needed", self.negotiate)
         self.webrtc.connect("notify::ice-gathering-state", self.gathering)
         self.webrtc.connect("notify::ice-connection-state", self.connection)
