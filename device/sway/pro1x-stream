@@ -44,7 +44,11 @@ webrtc_port=8081
 # name for the address (10-1-2-3.sslip.io), which public DNS answers.
 tls_port=8443
 tls_url() {
-    if [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"
+    # A name with a certificate browsers trust (pro1x-stream-cert), which
+    # the hotspot's DNS answers; else pro1x.lan, with the phone's own.
+    trusted=$(cat /var/lib/pro1x/stream-tls/name 2>/dev/null)
+    if [ "$1" = 10.42.0.1 ] && [ -n "$trusted" ]; then echo "https://$trusted:$tls_port/"
+    elif [ "$1" = 10.42.0.1 ]; then echo "https://pro1x.lan:$tls_port/"
     else echo "https://$(echo "$1" | tr . -).sslip.io:$tls_port/"; fi
 }
 

@@ -1441,8 +1441,17 @@ CERT = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.l
 CERT_KEY = CERT.replace("-cert.pem", "-key.pem")
 
 
+# A certificate browsers trust, when the phone has one (pro1x-stream-cert:
+# Tailscale's, for its tailnet name, which the hotspot's DNS answers).
+TRUSTED = "/var/lib/pro1x/stream-tls"
+
+
 def certificate():
-    """The certificate and key files, made if missing."""
+    """The certificate and key files: the trusted ones if readable, else the
+    phone's own, made if missing."""
+    cert, key = os.path.join(TRUSTED, "cert.pem"), os.path.join(TRUSTED, "key.pem")
+    if os.access(cert, os.R_OK) and os.access(key, os.R_OK):
+        return cert, key
     if os.path.exists(CERT) and os.path.exists(CERT_KEY):
         return CERT, CERT_KEY
     os.makedirs(os.path.dirname(CERT), exist_ok=True)

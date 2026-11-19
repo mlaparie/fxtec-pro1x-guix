@@ -758,6 +758,21 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
              (lambda (port)
                (display "host-record=pro1x.lan,pro1x.local,10.42.0.1\n" port)))))
 
+     ;; A certificate that browsers trust for the stream's HTTPS, from
+     ;; Tailscale for the phone's tailnet name, when MagicDNS and HTTPS
+     ;; certificates are on; the hotspot's DNS answers that name.  Without
+     ;; them it does nothing (pro1x-stream-cert).
+     (simple-service 'pro1x-stream-cert shepherd-root-service-type
+       (list (shepherd-service
+              (provision '(pro1x-stream-cert))
+              (requirement '(networking))
+              (documentation "Keep a trusted certificate for the stream.")
+              (start #~(make-forkexec-constructor
+                        (list #$(file-append pro1x-sway-config
+                                             "/bin/pro1x-stream-cert"))
+                        #:log-file "/var/log/pro1x-stream-cert.log"))
+              (stop #~(make-kill-destructor)))))
+
      ;; The screen-cast portal's back end: no question asked (the
      ;; interactive stream opens it unattended): the panel, or the stream's
      ;; own output while it has one (pro1x-stream-output); at most 30 frames

@@ -1,0 +1,55 @@
+#!/bin/sh
+# pro1x-stream-cert — a certificate that browsers trust for the stream's
+# HTTPS (pro1x-stream-webrtc), as root (Shepherd service pro1x-stream-cert).
+#
+# A car's browser refused both plain HTTP and the phone's self-signed
+# certificate, with no way past either (author, 2026-11-19).  With
+# Tailscale's MagicDNS and HTTPS certificates on, `tailscale cert' gives the
+# phone a Let's Encrypt certificate for its tailnet name (NAME.ts.net).  The
+# viewer need not be on the tailnet: on the phone's hotspot its DNS answers
+# that name with the phone's hotspot address (a dnsmasq host-record), so
+# the browser reaches the phone directly and finds the certificate it
+# expects.  Without Tailscale, or without a certificate name, it does
+# nothing, and the stream keeps its self-signed certificate.
+#
+#   /var/lib/pro1x/stream-tls/cert.pem, key.pem   the certificate (key: group users)
+#   /var/lib/pro1x/stream-tls/name                its name, for the stream menu
+#   /etc/NetworkManager/dnsmasq-shared.d/pro1x-stream-name.conf   the hotspot's answer
+#
+# Every 12 hours: tailscale renews the certificate only when it nears its end.
+# The name is published in the certificate transparency logs.
+#
+# State: run on the phone 2026-11-19.
+
+PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+dir=/var/lib/pro1x/stream-tls
+conf=/etc/NetworkManager/dnsmasq-shared.d/pro1x-stream-name.conf
+
+cert_name() {
+    tailscale status --json 2>/dev/null | tr -d '\n ' |
+        sed -n 's/.*"CertDomains":\["\([^"]*\)".*/\1/p'
+}
+
+once() {
+    command -v tailscale >/dev/null || return 0
+    name=$(cert_name)
+    [ -n "$name" ] || return 0
+    mkdir -p "$dir"
+    if tailscale cert --cert-file "$dir/cert.new" --key-file "$dir/key.new" "$name" >/dev/null 2>&1; then
+        chgrp users "$dir/key.new" && chmod 640 "$dir/key.new"
+        chmod 644 "$dir/cert.new"
+        mv "$dir/cert.new" "$dir/cert.pem"
+        mv "$dir/key.new" "$dir/key.pem"
+        echo "$name" > "$dir/name"
+        mkdir -p "${conf%/*}"
+        echo "host-record=$name,10.42.0.1" > "$conf"
+        echo "$(date '+%F %T') certificate for $name"
+    else
+        echo "$(date '+%F %T') tailscale cert failed for $name"
+    fi
+}
+
+case "${1:-}" in
+    once) once ;;
+    *) while :; do once; sleep 43200; done ;;
+esac
