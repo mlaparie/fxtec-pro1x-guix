@@ -41,13 +41,38 @@ if [ "${1:-}" = --close ]; then
     exit
 fi
 
+# The interactive stream's own output (pro1x-stream-webrtc), when it has
+# one and has the focus: a window picked there comes to its workspace, and
+# a workspace picked there moves onto it, at the viewer's size; going to
+# them on the panel left the viewer's screen (author, 2026-11-19).  Sway
+# puts them back on the panel when the stream ends.
+stream_out=$(cat "${XDG_RUNTIME_DIR:-/tmp}/pro1x-stream-output" 2>/dev/null)
+on_stream() {
+    [ -n "$stream_out" ] &&
+        [ "$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.focused) | .output')" = "$stream_out" ]
+}
+ws_arg() { case "$1" in [0-9]*) echo "number $1" ;; *) echo "$1" ;; esac; }
+go_window() {
+    if on_stream; then
+        swaymsg "[con_id=$1] move container to workspace current" >/dev/null
+    fi
+    swaymsg "[con_id=$1] focus" >/dev/null
+}
+go_workspace() {
+    if on_stream; then
+        swaymsg "workspace $(ws_arg "$1"); move workspace to output $stream_out" >/dev/null
+    else
+        swaymsg "workspace $(ws_arg "$1")" >/dev/null
+    fi
+}
+
 # pro1x-switcher --go ID: a window (con_id): focus it; a workspace line
 # (ws:N): switch to it; then the switcher goes away, its query cleared.
 if [ "${1:-}" = --go ]; then
     case "$2" in
         sov) ;;
-        ws:*) swaymsg "workspace number ${2#ws:}" >/dev/null ;;
-        *) swaymsg "[con_id=$2] focus" >/dev/null ;;
+        ws:*) go_workspace "${2#ws:}" ;;
+        *) go_window "$2" ;;
     esac
     curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
          -d "clear-query+first" >/dev/null 2>&1 &
@@ -100,7 +125,7 @@ if [ "${1:-}" = --ask ]; then
             curl -s -m 2 --unix-socket "$sock" -X POST http://localhost \
                  -d "clear-query+first" >/dev/null 2>&1 &
             swaymsg '[app_id="^windowswitcher$"] move scratchpad' >/dev/null
-            swaymsg "[con_id=$2] focus" >/dev/null ;;
+            go_window "$2" ;;
         Close) "$0" --close "$2" ;;
     esac
     exit
@@ -123,6 +148,11 @@ if [ "${1:-}" = --list ]; then
                 | ((.app_id // .window_properties.class // "?") | split(".") | last) as $app
                 | ((.name // "") | if length > 28 then .[0:27] + "…" else . end) as $title
                 | "\(.id)\t\($app)\t\($title) · \(if $w.num == 10 then "0" else $w.name end)"),
+               ([$ws[] | select(.name == "stream")]
+                | if length > 0
+                  then (.[0] | windows | length) as $k
+                       | "ws:stream\t\u001b[34mstream ::\t\($k) window\(if $k == 1 then "" else "s" end) (the viewer'"'"'s screen)\u001b[0m"
+                  else empty end),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
                 | "ws:\($n)\t\u001b[34m\(if $n == 10 then 0 else $n end) ::\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)\u001b[0m")'

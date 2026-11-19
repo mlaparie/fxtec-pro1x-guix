@@ -30,6 +30,23 @@ export TERMINAL_COMMAND="foot -e"
 sync_begin="execute-silent[printf '\\033[?2026h' >/dev/tty]"
 sync_end="execute-silent[(sleep 0.03; printf '\\033[?2026l' >/dev/tty) &]"
 
+# The interactive stream's own output (as in pro1x-switcher): started
+# from it, an app opens there, and a numbered workspace picked moves onto
+# it, at the viewer's size.
+stream_out=$(cat "${XDG_RUNTIME_DIR:-/tmp}/pro1x-stream-output" 2>/dev/null)
+on_stream() {
+    [ -n "$stream_out" ] &&
+        [ "$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.focused) | .output')" = "$stream_out" ]
+}
+go_workspace() {
+    case "$1" in [0-9]*) ws="number $1" ;; *) ws=$1 ;; esac
+    if on_stream; then
+        swaymsg "workspace $ws; move workspace to output $stream_out" >/dev/null
+    else
+        swaymsg "workspace $ws" >/dev/null
+    fi
+}
+
 workspaces() {                  # number TAB label: current, the others, back
     here=$(swaymsg -t get_workspaces -r 2>/dev/null |
                jq -r '.[] | select(.focused) | .name')
@@ -66,7 +83,7 @@ while :; do
         rm -f "$asksock"
         case "$pick" in ""|back) continue ;; esac   # back to the apps
         swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
-        swaymsg "workspace number $pick" >/dev/null
+        go_workspace "$pick"
         setsid /bin/sh -c "$cmd" >/dev/null 2>&1 </dev/null &
     else
         swaymsg "[app_id=\"^launcher\$\"] move scratchpad" >/dev/null
