@@ -1104,16 +1104,14 @@ class Screen:
         # not wander into it.
         right = max((o["rect"]["x"] + o["rect"]["width"] for o in outputs
                      if o["name"] != self.name), default=0)
-        # Upright and unscaled whatever the panel's settings, then the size
-        # checked (a custom mode if Sway did not take it).
+        # Upright and unscaled whatever the panel's settings, and a custom
+        # mode at 60 Hz: with "resolution" Sway gave it a refresh of 0, it
+        # never redrew, and the capture's first frame never came, which
+        # held the portal's capture for good (2026-11-19).
         for command in (f"output {self.name} transform normal scale 1",
-                        f"output {self.name} resolution {width}x{height} position {right} 0"):
-            subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
-        mode = next((o.get("current_mode") or {} for o in sway("-t", "get_outputs") or []
-                     if o["name"] == self.name), {})
-        if (mode.get("width"), mode.get("height")) != (int(width), int(height)):
-            subprocess.run(["swaymsg", f"output {self.name} mode --custom {width}x{height}"],
-                           capture_output=True, timeout=5)
+                        f"output {self.name} mode --custom {width}x{height}@60Hz "
+                        f"position {right} 0"):
+            subprocess.run(["swaymsg", "--", command], capture_output=True, timeout=5)
         for command in (f"workspace stream output {self.name}",
                         f"focus output {self.name}", "workspace stream"):
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
