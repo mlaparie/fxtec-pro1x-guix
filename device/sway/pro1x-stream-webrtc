@@ -114,12 +114,12 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #v,#c{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
   touch-action:none}
 #c{display:none}
-#bar{position:fixed;top:6px;right:6px;display:flex;gap:6px;opacity:.6;z-index:2}
+#bar{position:fixed;top:6px;right:6px;display:flex;gap:6px;opacity:.6;z-index:3}
 #bar button{font:18px monospace;background:#222;color:#eee;border:1px solid #555;
   border-radius:0;padding:10px 14px}
 #bar.folded .x{display:none}
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
-  background:rgba(0,0,0,.75);padding:8px;display:none;z-index:2}
+  background:rgba(0,0,0,.75);padding:8px;display:none;z-index:1}
 #info pre{margin:0;font:inherit}
 #note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
   z-index:3;background:#222;color:#ff0;font:16px monospace;padding:10px 14px;
@@ -628,7 +628,7 @@ setInterval(async () => {
       `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
       `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
       `sound   ${q(s.audio_lost)} lost, ${q(s.audio_concealed)}% made up`,
-      `delay   ${q(s.rtt_ms)} ms network, buffer ${q(s.buffer_ms)} ms video, ${q(s.audio_buffer_ms)} ms sound`,
+      `latency ${q(s.rtt_ms)} ms network, buffer ${q(s.buffer_ms)} ms video, ${q(s.audio_buffer_ms)} ms sound`,
       `phone   ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, Wi-Fi power saving ${phone.wifi_powersave || "?"}; 10 min:`,
     ].concat(rows.length ? ["events"].concat(rows) : []).join("\\n");
   }
@@ -663,10 +663,30 @@ function scroll() {
     scrollAt = p;
   }
 }
+// A real mouse, whatever the input mode: its buttons as they are, the
+// pointer following it with or without a button down, the wheel where it
+// is (author, 2026-11-19: right and middle clicks, hovering and the wheel
+// did not come through).  Touches and pens keep the modes.
+const MOUSE = ["left", "middle", "right"];
+let lastMove = 0;
+function mouseMove(e) {
+  const now = performance.now();
+  if (now - lastMove < 12) return;          // about a frame
+  lastMove = now;
+  const n = norm(e);
+  send({t: "move", x: n.x, y: n.y});
+}
 function press(e) {
   if (captured) return;
   if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
   e.preventDefault();
+  if (e.pointerType === "mouse") {
+    const n = norm(e);
+    send({t: "move", x: n.x, y: n.y});
+    if (e.button === 0) send({t: "down", x: n.x, y: n.y});
+    else send({t: "rbtn", b: MOUSE[e.button] || "left", d: 1});
+    return;
+  }
   active.set(e.pointerId, e);
   if (logged++ < 20) log({ev: "pointerdown", type: e.pointerType, n: active.size});
   if (cfg.input === "touch") {
@@ -702,7 +722,12 @@ function press(e) {
   }
 }
 function move(e) {
-  if (captured || !active.has(e.pointerId)) return;
+  if (captured) return;
+  if (e.pointerType === "mouse") {
+    if (!(e.target.closest && e.target.closest("#bar, #set, #gate, #info"))) mouseMove(e);
+    return;
+  }
+  if (!active.has(e.pointerId)) return;
   e.preventDefault();
   active.set(e.pointerId, e);
   if (cfg.input === "touch") {
@@ -733,6 +758,12 @@ function move(e) {
   }
 }
 function release(e) {
+  if (e.pointerType === "mouse" && !captured && e.type === "pointerup") {
+    if (e.target.closest && e.target.closest("#bar, #set, #gate")) return;
+    if (e.button === 0) send({t: "up"});
+    else send({t: "rbtn", b: MOUSE[e.button] || "left", d: 0});
+    return;
+  }
   if (!active.has(e.pointerId)) return;
   active.delete(e.pointerId);
   if (cfg.input === "touch") { send({t: "tup", id: e.pointerId}); return; }
@@ -839,11 +870,20 @@ document.addEventListener("mouseup", e => {
   e.preventDefault();
   send({t: "rbtn", b: BUTTONS[e.button] || "left", d: 0});
 });
+// The wheel in every mode: notches added up from smooth deltas (pixels,
+// lines or pages), at the pointer when not captured.
+let wheelV = 0, wheelH = 0;
 document.addEventListener("wheel", e => {
-  if (!captured) return;
+  if (onButtons(e) || (e.target.closest && e.target.closest("#info"))) return;
   e.preventDefault();
-  const v = Math.sign(-e.deltaY), h = Math.sign(e.deltaX);
-  if (v || h) send({t: "scroll", v, h});
+  const unit = e.deltaMode === 1 ? 1 / 3 : e.deltaMode === 2 ? 3 : 1 / 100;
+  wheelV -= e.deltaY * unit; wheelH += e.deltaX * unit;
+  const v = Math.trunc(wheelV), h = Math.trunc(wheelH);
+  if (!v && !h) return;
+  wheelV -= v; wheelH -= h;
+  const m = {t: "scroll", v, h};
+  if (!captured) Object.assign(m, norm(e));
+  send(m);
 }, {passive: false});
 document.addEventListener("keydown", e => {
   if (!captured || !e.code) return;
@@ -859,7 +899,8 @@ document.addEventListener("keyup", e => {
   e.preventDefault();
   send({t: "ku", code: e.code});
 }, {capture: true});
-document.addEventListener("contextmenu", e => { if (captured) e.preventDefault(); });
+// The browser's own menu never on the picture: right clicks go to the Pro1x.
+document.addEventListener("contextmenu", e => { if (captured || !onButtons(e)) e.preventDefault(); });
 showCapture();
 
 // Keys: the key's position when the browser gives it, else the text typed.
@@ -1923,6 +1964,9 @@ class Remote:
                 p.syn()
                 p.write(e.EV_KEY, e.BTN_RIGHT, 0)
             elif kind == "scroll":
+                if "x" in m:
+                    self.at(m["x"], m["y"])
+                    p.syn()
                 if m.get("v"):
                     p.write(e.EV_REL, e.REL_WHEEL, int(m["v"]))
                 if m.get("h"):
@@ -1935,6 +1979,93 @@ class Remote:
             p.syn()
 
 
+class PanelTouch:
+    """Client mode: the panel's own touches on the mirror (wl-mirror, fitted
+    with bars) played on the stream's screen, through the viewer's virtual
+    touchscreen (author, 2026-11-19).  The panel's touchscreen is taken from
+    Sway meanwhile, since Sway would play them on the panel, under the
+    mirror.  Its native axes are the panel's, turned as Sway turns the
+    panel (as Remote.place, undone), then out of the mirror's bars."""
+
+    NAME = "Goodix Capacitive TouchScreen"
+
+    def __init__(self, remote, size):
+        from evdev import InputDevice, ecodes, list_devices
+        self.remote, self.e = remote, ecodes
+        self.width, self.height = map(int, size.split("@")[0].split("x"))
+        self.device = next((d for d in map(InputDevice, list_devices())
+                            if d.name == self.NAME), None)
+        if self.device is None:
+            raise RuntimeError("no panel touchscreen")
+        self.maxx = self.device.absinfo(ecodes.ABS_MT_POSITION_X).max or 1
+        self.maxy = self.device.absinfo(ecodes.ABS_MT_POSITION_Y).max or 1
+        panel = next((o for o in sway("-t", "get_outputs") or [] if o["name"] == "DSI-1"), {})
+        mode = panel.get("current_mode") or {"width": 1080, "height": 2160}
+        self.turn = panel.get("transform", "normal")
+        pw, ph = mode["width"], mode["height"]
+        self.panel = (ph, pw) if self.turn in ("90", "270") else (pw, ph)
+        self.device.grab()
+        self.slots, self.slot = {}, 0     # slot: [tracking id, x, y, down]
+        threading.Thread(target=self.read, daemon=True).start()
+        log_line("the panel's touches go to the stream's screen")
+
+    def at(self, rx, ry):
+        """A raw point: the picture's 0-1 point, or None in the bars."""
+        u, v = rx / self.maxx, ry / self.maxy
+        x, y = {"90": (v, 1 - u), "180": (1 - u, 1 - v),
+                "270": (1 - v, u)}.get(self.turn, (u, v))
+        pw, ph = self.panel
+        scale = min(pw / self.width, ph / self.height)
+        ox, oy = (pw - self.width * scale) / 2, (ph - self.height * scale) / 2
+        nx = (x * pw - ox) / (self.width * scale)
+        ny = (y * ph - oy) / (self.height * scale)
+        if not (0 <= nx <= 1 and 0 <= ny <= 1):
+            return None
+        return nx, ny
+
+    def read(self):
+        e = self.e
+        try:
+            for ev in self.device.read_loop():
+                if ev.type == e.EV_ABS:
+                    if ev.code == e.ABS_MT_SLOT:
+                        self.slot = ev.value
+                    else:
+                        st = self.slots.setdefault(self.slot, [-1, 0, 0, False])
+                        if ev.code == e.ABS_MT_TRACKING_ID:
+                            st[0] = ev.value
+                        elif ev.code == e.ABS_MT_POSITION_X:
+                            st[1] = ev.value
+                        elif ev.code == e.ABS_MT_POSITION_Y:
+                            st[2] = ev.value
+                elif ev.type == e.EV_SYN and ev.code == e.SYN_REPORT:
+                    self.report()
+        except OSError:
+            pass
+
+    def report(self):
+        with self.remote.lock:
+            for slot, st in self.slots.items():
+                ident = f"panel{slot}"
+                if st[0] >= 0:
+                    point = self.at(st[1], st[2])
+                    if point is None:
+                        continue
+                    self.remote.touch_event("tmove" if st[3] else "tdown", ident, *point)
+                    st[3] = True
+                elif st[3]:
+                    self.remote.touch_event("tup", ident)
+                    st[3] = False
+
+    def stop(self):
+        try:
+            self.device.ungrab()
+            self.device.close()
+        except OSError:
+            pass
+
+
+panel_touch = None
 remote = None
 LOG = os.path.join(os.environ.get("XDG_STATE_HOME")
                    or os.path.expanduser("~/.local/state"),
@@ -2712,6 +2843,12 @@ def main():
         own_args.append("--interactive")
         args = args[1:]
         remote = Remote(screen.name if screen else "DSI-1")
+        global panel_touch
+        if screen and screen.mode == "client":
+            try:
+                panel_touch = PanelTouch(remote, Handler.size)
+            except (OSError, RuntimeError, ImportError) as err:
+                log_line(f"the panel's touches stay on the panel: {err}")
         log_line("started")
         try:
             caffeinated[0] = caffeine_on() or caffeinated[0]
@@ -2740,6 +2877,8 @@ def main():
             current.stop()
         if producer:
             producer.stop()
+        if panel_touch:
+            panel_touch.stop()
         if screen:
             screen.stop()
         wifi_hold(False)
