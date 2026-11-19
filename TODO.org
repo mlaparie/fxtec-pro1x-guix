@@ -108,6 +108,17 @@ Delay: the author's test went over Tailscale (round trip 855 ms); not yet measur
 same Wi-Fi or the hotspot.
 Next: the delay on a direct Wi-Fi; the encoder's ~20 fps cap at 1920 (the NV12 copy from
 gldownload's DMA-BUF, maybe: dmabuf-import needs one buffer, gldownload gives two).
+HTTPS (2026-11-19): browsers that refuse plain HTTP get the phone's
+own certificate, or a trusted one the owner puts in
+/var/lib/pro1x/stream-tls; ~/.config/pro1x/stream-hook may choose
+the link shown and act when a stream starts.  Found with a Tesla's
+browser: it refuses self-signed certificates and private addresses,
+and resolves names through its own DNS, so only a public name whose
+address is in no private range works, redirected by the phone's
+hotspot (as tesla-carplay does).  The author's setup for that is
+private (hook, certificate service).  On another device's hotspot
+the car reaches nothing on the phone (ERR_CONNECTION_REFUSED, no
+packet arrives), though the phone pings the car.
 *** WAIT [#C] Hotspot QR as an image
 *** WAIT [#B] 5 GHz hotspot
 Starts with nmcli on channels 149 and 36 (2026-11-18), with the
