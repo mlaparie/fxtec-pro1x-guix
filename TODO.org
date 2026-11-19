@@ -37,6 +37,12 @@ gtklock runs (author's wish).
 *** TODO [#C] Match rate (moWerk: about one touch in three)
 ** Waydroid
 *** TODO [#A] Bluetooth in Waydroid (the Tesla app's phone key)
+2026-11-19 at the car (author): the Tesla app's phone key reached the bridge, which found the
+car's LE address after a scan, but every LE connection timed out (5 tries, 25 s each, 18:11-18:18;
+the car's classic hands-free link to the phone was up meanwhile).  Not yet known: the car
+refusing, the WCN3990 holding both links, or the address type.  Next: btmon during a key setup.
+The phone key needs no Android pairing (the app connects, the key card confirms); the car's own
+Bluetooth list is classic Bluetooth, the phone's BlueZ, not Waydroid's (LE only).
 The image (LineageOS 20, TQ3A.230901.001, GAPPS) has no Bluetooth HAL and no Bluetooth app
 (Waydroid strips it from the btservices apex; "Package not found: com.android.bluetooth").
 Candidate: isyourbrainfoss/waydroid-host-stack (MIT, experimental, largely machine-written;
@@ -113,6 +119,15 @@ menu stopped checking beforehand (2ce4e2d); not deployed.
 Whether the WCN3990 can run an access point and a client at once (iw list, "valid interface
 combinations"), so the hotspot need not drop the Wi-Fi in use.  Not yet looked at.
 *** TODO [#A] Tesla leaves the hotspot without internet
+2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
+had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
+before the modem had attached to packet service, without a retry.  The car's DNS questions were
+all REFUSED (dnsmasq: no upstream).  Fixed: autoconnect on, unlimited retries, on the carrier
+profiles (quick actions' mobile data on does it; 0299c99); data up on 4G, the Tesla check URL
+answers.  Hotspot with the car not yet tried again.  Logger: /root/tesla-watch.sh on the phone
+(not in the repo), sessions in /var/log/tesla-watch/.  HTTPS for the stream (the car's browser
+refuses HTTP): https://pro1x.lan:8443/ on the hotspot, sslip.io names elsewhere; not yet seen
+working in the car.
 Trace 2026-11-18 17:54: DHCP fine (10.42.0.196), then it asks DNS for
 connman.vn.tesla.services, tesla.com, microsoft.com, google.com and
 apple.com, gets REFUSED (no upstream: mobile data was off), releases
