@@ -1852,9 +1852,10 @@ class Remote:
             if self.output != "DSI-1":
                 subprocess.run(["swaymsg", f"focus output {self.output}"],
                                capture_output=True, timeout=5)
-            subprocess.Popen(self.ACTIONS[name], stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True)
+            # Through Sway, in its session's environment: started from the
+            # server's, the launcher's terminal did not come up (2026-11-19).
+            subprocess.run(["swaymsg", "exec " + " ".join(self.ACTIONS[name])],
+                           capture_output=True, timeout=5)
 
     def text(self, text):
         for ch in text:
