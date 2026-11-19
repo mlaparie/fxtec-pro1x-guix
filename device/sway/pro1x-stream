@@ -442,7 +442,7 @@ pick_info() {                   # pick_info PROMPT WHAT
 # What can be sent: every window, with its Sway id and the area it covers.
 sources() {
     printf 'full\tFull screen\n'
-    swaymsg -t get_tree -r | jq -r '
+    swaymsg -t get_tree -r 2>/dev/null | jq -r '
         .. | objects | select(.type? == "workspace" and .name != "__i3_scratch")
         | .name as $ws
         | recurse(.nodes[]?, .floating_nodes[]?)
@@ -467,7 +467,7 @@ pick_source() {
 # 16 at 1920.  wf-recorder's rate label is 90000 in its other formats, which
 # the encoder also refuses.
 hw_source() {
-    read -r scale turn sw sh < <(swaymsg -t get_outputs -r | jq -r '
+    read -r scale turn sw sh < <(swaymsg -t get_outputs -r 2>/dev/null | jq -r '
         [.[] | select(.active)][0]
         | "\(.scale) \(.transform) \(.rect.width) \(.rect.height)"')
     if [ -n "$target" ]; then
@@ -491,8 +491,8 @@ hw_source() {
 # Hides this menu and brings the window on screen, for it to be captured.
 go_to_source() {
     [ -n "$target" ] || return 0
-    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
-    swaymsg "[con_id=$target] focus" >/dev/null
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null 2>&1
+    swaymsg "[con_id=$target] focus" >/dev/null 2>&1
 }
 
 # This phone's addresses, for a link that others open.
@@ -801,8 +801,8 @@ try_catt() {
 }
 
 network_displays() {
-    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null
-    swaymsg exec gnome-network-displays >/dev/null
+    swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null 2>&1
+    swaymsg exec gnome-network-displays >/dev/null 2>&1
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
