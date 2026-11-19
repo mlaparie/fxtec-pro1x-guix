@@ -359,6 +359,8 @@ const pc = new RTCPeerConnection();
 pc.ondatachannel = e => {
   chan = e.channel;
   chan.onopen = () => log({ev: "channel-open"});
+  // The phone's server stopped or started again: connect once it is back.
+  chan.onclose = () => setTimeout(reloadWhenUp, 1000);
   // The phone restarts its capture (a new fps): connect again.
   chan.onmessage = m => {
     try { if (JSON.parse(m.data).t === "reconnect") setTimeout(reloadWhenUp, 1000); }
@@ -374,6 +376,9 @@ async function reloadWhenUp() {
     await new Promise(done => setTimeout(done, 500));
   }
 }
+pc.onconnectionstatechange = () => {
+  if (pc.connectionState === "failed") setTimeout(reloadWhenUp, 1000);
+};
 // Picture and sound in one stream, played by the video element.
 const media = new MediaStream();
 pc.ontrack = e => {
@@ -943,7 +948,13 @@ class Producer:
     opened (2026-11-18, four times, also with a session per viewer and 3 s
     between them); the test programs, which opened both once per run, never
     did.  A new bit rate, size or frame rate starts the whole server again
-    (reexec) rather than the encoder alone."""
+    (reexec) rather than the encoder alone.
+
+    The portal sends a frame only when the screen changes, and the encoder
+    makes a keyframe only from a frame: a viewer joining a still screen got
+    no picture, and the page fell back to VP8 (author, 2026-11-19).  So the
+    capture and the encoder are two pipelines, and the last frame goes to
+    the encoder again while a viewer waits and the screen stays still."""
 
     CAPS = "video/x-h264,stream-format=byte-stream,alignment=au"
 
@@ -951,28 +962,62 @@ class Producer:
         self.portal, self.mbps = portal, mbps
         self.lock = threading.Lock()
         self.viewers = {}          # appsrc: still waiting for a keyframe
+        self.last, self.last_at = None, 0.0
         portal.open()
+        self.capture = Gst.parse_launch(
+            "identity name=frames ! appsink name=raw emit-signals=true sync=false "
+            "max-buffers=1 drop=true")
+        portal.video(self.capture, size, self.capture.get_by_name("frames"))
+        self.capture.get_by_name("raw").connect("new-sample", self.frame)
         self.pipeline = Gst.parse_launch(
-            f"identity name=frames ! {hardware(size, parse=False, mbps=mbps)} ! "
+            "appsrc name=in is-live=true format=time do-timestamp=true "
+            "leaky-type=downstream max-buffers=1 ! "
+            f"{hardware(size, parse=False, mbps=mbps)} ! "
             f"{self.CAPS} ! appsink name=out emit-signals=true sync=false "
             "max-buffers=4 drop=true")
-        portal.video(self.pipeline, size, self.pipeline.get_by_name("frames"))
+        self.input = self.pipeline.get_by_name("in")
         self.encoder = self.pipeline.get_by_name("enc")
         self.pipeline.get_by_name("out").connect("new-sample", self.sample)
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message::error", lambda _b, m: log_line(
-            f"capture error: {m.parse_error()[0].message}"))
+        for p in (self.capture, self.pipeline):
+            bus = p.get_bus()
+            bus.add_signal_watch()
+            bus.connect("message::error", lambda _b, m: log_line(
+                f"capture error: {m.parse_error()[0].message}"))
         self.keyframes = keep_keyframes(self.pipeline)
         # Frames a second from PipeWire, out of the GPU and out of the
         # encoder, in the log every 10 s.
         self.counts = {"portal": 0, "gpu": 0, "encoded": 0}
-        for name, pad in (("portal", self.pipeline.get_by_name("pw").get_static_pad("src")),
-                          ("gpu", self.pipeline.get_by_name("frames").get_static_pad("src")),
+        for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
+                          ("gpu", self.capture.get_by_name("raw").get_static_pad("sink")),
                           ("encoded", self.pipeline.get_by_name("out").get_static_pad("sink"))):
             pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
         GLib.timeout_add_seconds(10, self.report)
+        self.repeat = GLib.timeout_add(250, self.still)
         self.pipeline.set_state(Gst.State.PLAYING)
+        self.capture.set_state(Gst.State.PLAYING)
+
+    def push(self, buf):
+        copy = buf.copy()
+        copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
+        self.input.emit("push-buffer", copy)
+        self.last_at = time.monotonic()
+
+    def frame(self, sink):
+        sample = sink.emit("pull-sample")
+        if self.last is None:
+            self.input.set_caps(sample.get_caps())
+        self.last = sample.get_buffer()
+        self.push(self.last)
+        return Gst.FlowReturn.OK
+
+    def still(self):
+        """The last frame again, for a viewer still waiting for a keyframe
+        on a still screen."""
+        with self.lock:
+            waiting = any(self.viewers.values())
+        if waiting and self.last is not None and time.monotonic() - self.last_at > 0.5:
+            self.push(self.last)
+        return GLib.SOURCE_CONTINUE
 
     def count(self, _pad, _info, name):
         self.counts[name] += 1
@@ -1012,6 +1057,9 @@ class Producer:
     def stop(self):
         if self.keyframes:
             GLib.source_remove(self.keyframes)
+        GLib.source_remove(self.repeat)
+        self.capture.set_state(Gst.State.NULL)
+        self.last = None
         self.pipeline.set_state(Gst.State.NULL)
         self.portal.close()
 
