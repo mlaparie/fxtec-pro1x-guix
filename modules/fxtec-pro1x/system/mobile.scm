@@ -745,21 +745,6 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
         `("sway/pro1x-effects/swayfx.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 
-     ;; A certificate that browsers trust for the stream's HTTPS, for the
-     ;; user's own domain set in /var/lib/pro1x/stream-tls.conf, and the
-     ;; hotspot's redirect to it; without that file it does nothing
-     ;; (pro1x-stream-cert).
-     (simple-service 'pro1x-stream-cert shepherd-root-service-type
-       (list (shepherd-service
-              (provision '(pro1x-stream-cert))
-              (requirement '(networking))
-              (documentation "Keep a trusted certificate for the stream.")
-              (start #~(make-forkexec-constructor
-                        (list #$(file-append pro1x-sway-config
-                                             "/bin/pro1x-stream-cert"))
-                        #:log-file "/var/log/pro1x-stream-cert.log"))
-              (stop #~(make-kill-destructor)))))
-
      ;; The screen-cast portal's back end: no question asked (the
      ;; interactive stream opens it unattended): the panel, or the stream's
      ;; own output while it has one (pro1x-stream-output); at most 30 frames

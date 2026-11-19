@@ -1432,17 +1432,17 @@ class Approval:
 approval = None
 
 
-# HTTPS beside HTTP (--tls PORT), for browsers that refuse plain HTTP (the
-# author's car, 2026-11-19): a certificate browsers trust when
-# pro1x-stream-cert has one (the user's domain), else one of the phone's
-# own, made on first use and kept, for its addresses (self-signed: the
-# browser warns once; a Tesla's refuses it).
+# HTTPS beside HTTP (--tls PORT), for browsers that refuse plain HTTP: a
+# certificate browsers trust when the owner put one in
+# /var/lib/pro1x/stream-tls (cert.pem, key.pem readable by the user), else
+# one of the phone's own, made on first use and kept, for its addresses
+# (self-signed: the browser warns once; some refuse it).
 CERT = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
                     "pro1x", "stream-cert.pem")
 CERT_KEY = CERT.replace("-cert.pem", "-key.pem")
 
 
-# A certificate browsers trust, when the phone has one (pro1x-stream-cert).
+# A certificate browsers trust, when the owner put one there.
 TRUSTED = "/var/lib/pro1x/stream-tls"
 
 

@@ -37,20 +37,21 @@ admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot
 udp_port=5000
 http_port=8080
 webrtc_port=8081
-# The same over HTTPS, for browsers that refuse plain HTTP (a car's).  On
-# the phone's hotspot, the user's own domain when pro1x-stream-cert has its
-# certificate (the only way into a Tesla's browser), and its LAN name on a
-# network the phone joined; otherwise the address, with the phone's
-# self-signed certificate (pro1x-stream-webrtc).
+# The same over HTTPS, for browsers that refuse plain HTTP, with the
+# phone's own certificate, or a trusted one the owner put in
+# /var/lib/pro1x/stream-tls (pro1x-stream-webrtc).
 tls_port=8443
+# The owner's hook, if executable: `stream-hook url ADDRESS PORT' may print
+# another link to show (a name of the owner's own), and `stream-hook
+# started PID KIND' runs once a stream is up (KIND: webrtc or interactive);
+# a hook that fails is ignored.
+hook=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-hook
 tls_url() {
-    trusted=$(cat /var/lib/pro1x/stream-tls/url 2>/dev/null)
-    lan=$(cat /var/lib/pro1x/stream-tls/lan-url 2>/dev/null)
-    if [ "$1" = 10.42.0.1 ] && [ -n "$trusted" ]; then echo "$trusted"
-    elif [ "$1" = "$(cat /var/lib/pro1x/stream-tls/lan-address 2>/dev/null)" ] &&
-             [ -n "$lan" ]; then echo "$lan"
+    if [ -x "$hook" ] && u=$("$hook" url "$1" "$tls_port" 2>/dev/null) && [ -n "$u" ]
+    then echo "$u"
     else echo "https://$1:$tls_port/"; fi
 }
+run_hook() { [ -x "$hook" ] && setsid "$hook" "$@" >/dev/null 2>&1 </dev/null & }
 
 trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
@@ -70,7 +71,7 @@ fps() { cat "$fps_file" 2>/dev/null || echo 30; }
 # phone's owner: off, a tap on a notification, or a finger on the sensor.
 approve() { cat "$approve_file" 2>/dev/null || echo off; }
 # What the interactive stream shows: the phone's panel; or a screen of its
-# own at the client's window's shape (a car's squarish browser), mirrored
+# own at the client's window's shape (a squarish browser), mirrored
 # on the panel (client) or apart from it as a second monitor
 # (multi-monitor).
 screen() { cat "$screen_file" 2>/dev/null || echo phone; }
@@ -339,6 +340,7 @@ send_webrtc() {
     echo "browser, $url (or http://$ip:$webrtc_port/)" > "$to_file"
     sleep 1
     streaming || { rm -f "$pid_file" "$to_file"; echo "Could not start."; pause; return; }
+    run_hook started "$(cat "$pid_file")" webrtc
     clear_screen
     printf 'Open in a browser on the other device:  %s\n' "$url"
     printf 'One viewer at a time.  Press a key once it is open; it keeps running.\n\n'
@@ -348,8 +350,7 @@ send_webrtc() {
 }
 
 # The interactive stream (docs/interactive-stream.md): the whole screen by
-# hardware WebRTC, and the viewer's touches and keys back.  For a car's
-# browser on the hotspot.
+# hardware WebRTC, and the viewer's touches and keys back.
 send_interactive() {
     area=() target=
     # The page asks for the key in a box; the QR code's link carries it.
@@ -385,10 +386,11 @@ send_interactive() {
     streaming || { rm -f "$pid_file" "$to_file"
                    [ -n "${quiet:-}" ] && return 1
                    echo "Could not start."; pause; return; }
+    run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
     clear_screen
     printf 'Open on the other device:  %s\n' "$url"
-    printf '(or http://%s:%s/; the certificate is the phone'"'"'s own: accept it once)\n' "$ip" "$webrtc_port"
+    printf '(or http://%s:%s/; a certificate warning: accept it once)\n' "$ip" "$webrtc_port"
     if [ -n "$k" ]; then printf 'Key:  \033[1m%s\033[0m  (the code below includes it)\n' "$k"
     else echo; fi
     printf 'One viewer at a time; it runs until Stop.\n\n'
