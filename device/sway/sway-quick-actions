@@ -166,7 +166,10 @@ qs_show() {
         hidden)
             # pro1x-menu's geometry, for the current orientation.
             swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
-            "$0" --refresh-while-shown >/dev/null 2>&1 < /dev/null & ;;
+            # After the slide-in (a refresh takes 1.7 s of CPU here,
+            # 2026-11-20, and slowed it): the list shown first is the
+            # cached one.
+            (sleep 0.4; exec "$0" --refresh-while-shown) >/dev/null 2>&1 < /dev/null & ;;
         none) qs_start ;;
     esac
 }
@@ -1714,11 +1717,15 @@ case "${1:-}" in
     # On show (pro1x-menu, qs_show): a refresh now, then every 5 s while the
     # menu is shown (author, 2026-11-06), from one loop at a time.
     --refresh-while-shown)
+        # Behind the menu itself: scrolling and drawing first.
+        renice -n 10 $$ >/dev/null 2>&1
         refresh_swap
         pidf="$rt/pro1x-qs-refresh.pid"
         [ -r "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null && exit 0
         echo $$ > "$pidf"
-        while sleep 5 && [ -e "$rt/pro1x-menu-shown" ] &&
+        # Every 15 s, not 5: each refresh is 1.7 s of CPU; an action
+        # refreshes its own line at once anyway.
+        while sleep 15 && [ -e "$rt/pro1x-menu-shown" ] &&
               [ "$(qs_state)" = shown ]; do
             refresh_swap
         done

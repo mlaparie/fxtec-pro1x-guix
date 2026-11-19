@@ -319,7 +319,7 @@ case "$cmd" in
             slide_in "$id" "$first"
             # Refresh the list as it shows (cheap).
             case "$id" in
-                # Off screen, then every 5 s while shown (sway-quick-actions).
+                # After the slide, then every 15 s while shown (sway-quick-actions).
                 quickactions)
                     sway-quick-actions --refresh-while-shown >/dev/null 2>&1 < /dev/null &
                     sock= ;;
