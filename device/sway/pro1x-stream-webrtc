@@ -1196,6 +1196,12 @@ class Screen:
             log_line(f"no mirror on the panel: {e}")
         time.sleep(1)
         swaymsg(f"focus output {self.name}")
+        # One of the phone's workspaces in front: an empty "stream" left from
+        # an earlier mode then goes (Sway drops it once it is not shown).
+        mine = [w["name"] for w in sway("-t", "get_workspaces") or []
+                if w["output"] == self.name and w["name"] != "stream"]
+        if mine:
+            swaymsg(f'workspace "{mine[0]}"')
 
         def guard():
             focused = next((w["output"] for w in sway("-t", "get_workspaces") or []
