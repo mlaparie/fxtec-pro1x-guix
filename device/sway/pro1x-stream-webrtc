@@ -970,6 +970,8 @@ portal = None
 
 
 POWERSAVE = "/run/current-system/profile/bin/pro1x-wifi-powersave"
+# Guix's setuid sudo; the profile's own is not setuid.
+SUDO = "/run/privileged/bin/sudo" if os.path.exists("/run/privileged/bin/sudo") else "sudo"
 wifi_held = [False]
 
 
@@ -979,7 +981,7 @@ def wifi_hold(on):
     if on == wifi_held[0]:
         return
     try:
-        done = subprocess.run(["sudo", "-n", POWERSAVE, "hold" if on else "release"],
+        done = subprocess.run([SUDO, "-n", POWERSAVE, "hold" if on else "release"],
                               timeout=10, stdin=subprocess.DEVNULL, capture_output=True)
     except (OSError, subprocess.TimeoutExpired):
         return
