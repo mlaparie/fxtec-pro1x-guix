@@ -199,16 +199,13 @@ choose_one() {                  # choose_one PROMPT WHAT CURRENT
             --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left |
         cut -f1 | sed '/^back$/d'
 }
-five_ghz() { iw phy | grep -E '^[[:space:]]+\* 5[0-9]{3} MHz' | grep -qvE 'disabled|no IR'; }
 info() {                        # info WHAT KEY
     case "$1:$2" in
         band:bg) printf '%s\n' "2.4 GHz: reaches further and through walls, and every" \
                      "device has it; slower, and crowded where many networks are." ;;
         band:a)
             printf '%s\n' "5 GHz: faster and less crowded, shorter reach; some older" \
-                "devices (and some cars) lack it.  Channel 36." ""
-            if five_ghz; then echo "Possible here."
-            else echo "Not possible now: Time zone, Wi-Fi rules, says why."; fi ;;
+                "devices (and some cars) lack it.  Channel 36." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) printf '%s\n' "The name is not broadcast: a device joins by typing it" \
                         "(or by the QR code).  It hides little: the name still" \
