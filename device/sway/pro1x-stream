@@ -821,10 +821,10 @@ settings_menu() {
             screen "Screen mode          $(screen_label)" \
             fps "Capture rate         $(fps) fps, lower saves CPU" \
             size "Output size          $(out_size), long side" \
-            key "Access key           $(key_on && echo "on, $(current_key)" || echo off) (for streams except Browser simple and VLC)" \
             approve "Connection approval  $(approve)" \
             visibility "Visibility           $(visibility)" \
             https "HTTPS name           $(https_state)" \
+            key "Access key           $(key_on && echo "on, $(current_key)" || echo off) (for streams except Browser simple and VLC)" \
             renew "Renew access key")
         case "$(printf '%s\n' "$lines" | pick "settings")" in
             screen) pick_screen ;;
