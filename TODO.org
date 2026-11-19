@@ -85,19 +85,21 @@ First version in generation 88 (Stream > Interactive): video, touch and keys
 back, the car test page and its log; not yet seen in a browser.
 2026-11-18: used by the author from a PC (hotspot and Tailscale): sound, SET (smooth, a/v, rate,
 fps, size, heat), touch/mouse/pad, capture (Super needs Chromium on Wayland), key in a box.
-Capture costs: wf-recorder about 76-103% CPU at 19-20 fps (screen read back, scaled, rotated on
-the CPU), the server about 76% (frame copies).  PipeWire capture (portal) under way:
-- linking needs stream-properties media.type=Video, media.category=Capture (WirePlumber saw
-  Stream/Input/Unknown: "target not found");
-- xdg-desktop-portal-wlr 0.8.4 patched: one ext-image-copy frame at a time (Sway's
-  duplicate_frame ended it), DMA-BUF planes with their size (pipewiresrc got no memory);
-- pipewiresrc use-bufferpool=false min-buffers=8; caps DMA_DRM drm-format=XR24; GL elements
-  linked without the caps check (glupload knows its DMA-BUF formats once its context exists);
-  glvideoflip does not link after a DMA-BUF import;
-- result (busy screen): 5.7 fps, 94% CPU in the pipeline + 28% Sway, worse than wf-recorder
-  (19 fps, 76%).  Next: find which GL step is on the CPU (import or NV12 download), or export
-  the NV12 as DMA-BUF straight to v4l2h264enc (output-io-mode=dmabuf-import).
-Test script: scratch portal-test.py (portal handshake, pipewiresrc, CPU per process).
+Capture: the whole screen by the ScreenCast portal (PipeWire), on by default since
+2026-11-19 (PRO1X_STREAM_PORTAL=0: wf-recorder); a window still by wf-recorder.  The portal
+and the encoder open once for the server (Producer); each viewer takes the H.264 from the next
+keyframe.  Opened and closed for each viewer, they powered the phone off four times
+(2026-11-18).  A new bit rate, size or fps starts the server again (reexec), and the page
+reconnects once it answers.  Tested 2026-11-19 with the headless viewer (three viewers in a
+row, a bit-rate restart) and by the author from a PC: works, cooler than wf-recorder.
+Frame rate: the portal sends frames only when the screen changes (about 5 fps on a mostly
+still screen).  With a terminal changing all the time: 14-24 fps from the portal (varies
+between runs), all of them through the GPU, about 20 out of the encoder at 1920x960 (it
+caps there; 18.8 without the frame rate set in its caps).
+Delay: the author's test went over Tailscale (round trip 855 ms); not yet measured on the
+same Wi-Fi or the hotspot.
+Next: the delay on a direct Wi-Fi; the encoder's ~20 fps cap at 1920 (the NV12 copy from
+gldownload's DMA-BUF, maybe: dmabuf-import needs one buffer, gldownload gives two).
 *** WAIT [#C] Hotspot QR as an image
 *** WAIT [#B] 5 GHz hotspot
 Starts with nmcli on channels 149 and 36 (2026-11-18), with the

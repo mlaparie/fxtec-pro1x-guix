@@ -175,9 +175,13 @@ go_to_source() {
 }
 
 # This phone's addresses, for a link that others open.
+# The addresses other devices can reach: Wi-Fi or the hotspot, mobile data,
+# a VPN such as Tailscale when it runs (none of them needed); not USB, nor
+# Waydroid's bridge and containers, which only the phone reaches.
 own_address() {
     list=$(ip -4 -o addr show scope global |
-        awk '$2 != "usb0" && $2 != "lo" { sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
+        awk '$2 !~ /^(usb|lo|waydroid|veth|docker|br-)/ {
+                 sub("/.*", "", $4); print $4 "\t" $2 "  " $4 }')
     if [ -z "$list" ]; then
         { echo "No network."; pause; } >&2
     elif [ "$(printf '%s\n' "$list" | wc -l)" -le 1 ]; then
@@ -277,7 +281,7 @@ send_webrtc() {
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
     portal=()                   # see send_interactive
-    [ -z "$target" ] && [ -n "${PRO1X_STREAM_PORTAL:-}" ] && portal=(--portal "$turn")
+    [ -z "$target" ] && [ "${PRO1X_STREAM_PORTAL:-1}" != 0 ] && portal=(--portal "$turn")
     # -D -r: frames even on a still screen.  A viewer needs a keyframe sent
     # after it connects, and without frames none comes, so the picture stays
     # black.
@@ -318,11 +322,12 @@ send_interactive() {
     hw_source
     rate=$(fps)
     mapfile -t scale < <(scale_args "$(out_size)")
-    # The ScreenCast portal (half wf-recorder's CPU) powered the phone off
-    # three times as a viewer connected (2026-11-18); off until understood:
-    # PRO1X_STREAM_PORTAL=1 turns it on, for tests.
+    # The whole screen through the ScreenCast portal: half wf-recorder's
+    # CPU, and cooler.  Its capture and encoder open once for the server
+    # (they powered the phone off when opened for each viewer, 2026-11-18).
+    # PRO1X_STREAM_PORTAL=0: wf-recorder instead.
     portal=()
-    [ -z "$target" ] && [ -n "${PRO1X_STREAM_PORTAL:-}" ] && portal=(--portal "$turn")
+    [ -z "$target" ] && [ "${PRO1X_STREAM_PORTAL:-1}" != 0 ] && portal=(--portal "$turn")
     setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" "${portal[@]}" \
         --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
