@@ -497,10 +497,14 @@ let phone = {}, ticks = 0;
 async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
-    if (phone.long && document.activeElement !== sz) sz.value = String(phone.long);
+    // The phone's settings, unless one waits for APPLY here.
+    if (phone.long && !pending.long && document.activeElement !== sz) sz.value = String(phone.long);
     // The fps chosen, not the one the heat limit holds it to.
-    if (phone.target && phone.target !== cfg.fps && document.activeElement !== sf) {
+    if (phone.target && !pending.fps && phone.target !== cfg.fps && document.activeElement !== sf) {
       cfg.fps = phone.target; showFps();
+    }
+    if (phone.mbps && !pending.mbps && phone.mbps !== cfg.rate) {
+      cfg.rate = phone.mbps; store.set("settings", cfg); showRate();
     }
     if (phone.cpu !== undefined) { temps.push(phone.cpu); if (temps.length > 120) temps.shift(); }
     if (info.style.display === "block") drawTemps();
@@ -1419,7 +1423,12 @@ class Session:
                      else (hardware(size, mbps=mbps) if size
                            else "h264parse config-interval=-1") + " ! ")
                     + "rtph264pay config-interval=-1 pt=96 mtu=1200 ! "
-                    "application/x-rtp,media=video,encoding-name=H264,payload=96",
+                    "application/x-rtp,media=video,encoding-name=H264,payload=96"
+                    # The phone's encoder: constrained baseline, level 4.  The
+                    # offer had no profile-level-id, which browsers read as
+                    # level 3.1, too low for 1920x960.
+                    + (",profile-level-id=(string)42c028,packetization-mode=(string)1"
+                       if size else ""),
             "vp8": "ivfparse ! rtpvp8pay pt=96 mtu=1200 ! "
                    "application/x-rtp,media=video,encoding-name=VP8,payload=96",
         }[codec]
@@ -1811,6 +1820,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(json.dumps({"cpu": cpu_temperature(),
                                    "fps": capture_fps(),
                                    "target": Handler.target,
+                                   "mbps": producer.mbps if producer else Handler.mbps,
                                    "long": capture_long()}).encode(),
                        "application/json")
         elif path == "/settings":
@@ -1822,17 +1832,15 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/offer"):
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             codec = "h264" if query.get("codec") == ["h264"] else "vp8"
-            try:
-                Handler.mbps = min(20.0, max(0.5, float(query["mbps"][0])))
-            except (KeyError, ValueError, IndexError):
-                pass
-            # The producer's encoder has its bit rate for good: another one
-            # starts the server again, and the page asks once it is back.
-            if producer and codec == "h264" and Handler.mbps != producer.mbps:
-                log_line(f"bit rate {Handler.mbps} Mbit/s")
-                GLib.idle_add(reexec)
-                self.reply(b"restarting", code=503)
-                return
+            # The page's rate, unless the producer's encoder has its own: a
+            # different rate for each page restarted the server for each,
+            # and two pages open kept it restarting (2026-11-19).  Its rate
+            # changes by APPLY.
+            if not producer:
+                try:
+                    Handler.mbps = min(20.0, max(0.5, float(query["mbps"][0])))
+                except (KeyError, ValueError, IndexError):
+                    pass
             created = {"done": threading.Event()}
             GLib.idle_add(new_session, self.capture[codec], codec, self.size, created)
             if (
@@ -1991,11 +1999,15 @@ def main():
         except (GLib.Error, RuntimeError, KeyError, IndexError, OSError) as e:
             log_line(f"no ScreenCast portal ({e}): wf-recorder")
         args = args[2:]
-    # Set by reexec.
+    # Set by reexec, else the rate the page kept on the phone.
     try:
         Handler.mbps = float(os.environ.pop("PRO1X_STREAM_MBPS"))
     except (KeyError, ValueError):
-        pass
+        try:
+            with open(SETTINGS) as f:
+                Handler.mbps = min(20.0, max(0.5, float(json.load(f)["rate"])))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
     if Handler.size:
         Handler.target = int(os.environ.pop("PRO1X_STREAM_TARGET", "0")) or \
             int(Handler.size.split("@")[1])
