@@ -646,6 +646,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-sleep, "
                               ;; Quick actions' hotspot: expel, ban.
                               "/run/current-system/profile/bin/pro1x-hotspot-admin, "
+                              ;; Wi-Fi power saving: quick actions, streams.
+                              "/run/current-system/profile/bin/pro1x-wifi-powersave, "
                               ;; Quick actions' Waydroid: its image.
                               "/run/current-system/profile/bin/pro1x-waydroid-admin, "
                               ;; And its limits.

@@ -116,25 +116,26 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #c{display:none}
 #bar{position:fixed;top:6px;right:6px;display:flex;gap:6px;opacity:.6;z-index:2}
 #bar button{font:18px monospace;background:#222;color:#eee;border:1px solid #555;
-  border-radius:6px;padding:10px 14px}
+  border-radius:0;padding:10px 14px}
 #bar.folded .x{display:none}
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
   background:rgba(0,0,0,.75);padding:8px;display:none;z-index:2}
 #info pre{margin:0;font:inherit}
 #note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
   z-index:3;background:#222;color:#ff0;font:16px monospace;padding:10px 14px;
-  border-radius:6px;max-width:80%}
+  max-width:80%}
 #set{position:fixed;right:6px;top:64px;font:16px monospace;color:#eee;z-index:2;
-  background:rgba(0,0,0,.8);padding:10px;display:none;border-radius:6px}
-#set label{display:block;margin:8px 0}
-#set input{width:260px;vertical-align:middle}
+  background:rgba(0,0,0,.8);padding:10px;display:none}
+#set label{display:block;margin:8px 0;white-space:pre}
+#set input[type=range]{width:220px;vertical-align:middle}
+#set .h{margin-top:12px;opacity:.6;font-size:13px}
 #set button{font:16px monospace;background:#222;color:#eee;border:1px solid #555;
-  border-radius:6px;padding:8px 12px}
+  border-radius:0;padding:8px 12px;margin-top:8px}
 #k{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0}
 #clock{font:bold 16px monospace;color:#ff0;margin-bottom:4px}
 #gate{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
   z-index:3;background:#222;color:#eee;font:20px monospace;padding:16px;
-  border-radius:8px;text-align:center}
+  text-align:center}
 #gate input{font:24px monospace;width:8em;margin:10px}
 #gate button{font:20px monospace;padding:8px 16px}
 </style>
@@ -147,19 +148,17 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <button class="x" id="bi">INFO</button><button class="x" id="br">RELOAD</button>
 <button id="bc"></button></div>
 <div id="set">
-<label>smooth <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
-<label>a/v &nbsp; <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
-<div style="font-size:13px;opacity:.7">a/v above 0: the sound later; below 0: the picture later</div>
-<label>rate &nbsp;<input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
-<label>fps &nbsp; <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
-<div style="font-size:13px;opacity:.7">rate, fps and size: applied together by APPLY, which restarts the picture</div>
-<label>size &nbsp;<select id="sz"><option>1920</option><option>1600</option>
-<option>1280</option><option>960</option></select> long side</label>
-<div style="font-size:13px;opacity:.7">size: smaller lightens the phone's copies and encoder (not its screen capture)</div>
-<label>steady <input id="st" type="checkbox"> an even frame rate</label>
-<div style="font-size:13px;opacity:.7">steady: frames at exactly the fps, for games and films (the fps must be one the phone keeps up, 20 at 1920); off: only when the screen changes, cooler</div>
-<label>heat &nbsp;<input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
-<div style="font-size:13px;opacity:.7">heat: above it the phone lowers the fps, 5 at a time, and raises it back once 5 C cooler</div>
+<div class="h">now</div>
+<label title="the browser's buffer: more is smoother, later">smooth  <input id="ss" type="range" min="0" max="300" step="10"> <span id="ssv"></span> ms</label>
+<label title="above 0 the sound later, below 0 the picture later">a/v     <input id="sa" type="range" min="-500" max="500" step="20"> <span id="sav"></span> ms</label>
+<label title="frames at exactly the fps (games, films); off: only when the screen changes, cooler">steady  <input id="st" type="checkbox"></label>
+<label title="above it the phone lowers the fps by 5, and raises it 5 C cooler">heat    <input id="sh" type="range" min="0" max="85" step="5"> <span id="shv"></span></label>
+<label title="power saving delays and loses what the phone sends; off costs battery">wifi    <input id="wp" type="checkbox"> no power saving while streaming</label>
+<div class="h">on apply (restarts the picture)</div>
+<label>rate    <input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
+<label title="steady needs one the phone keeps up: 20 at 1920, 25 at 1600">fps     <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
+<label>size    <select id="sz"><option>1920</option><option>1600</option>
+<option>1280</option><option>960</option></select> px wide</label>
 <button id="sy">RESYNC</button></div>
 <div id="note"></div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
@@ -186,7 +185,7 @@ const store = {
 let key = P.get("k") || store.get("key", "");
 const withKey = path =>
   key ? path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key) : path;
-const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true,
+const cfg = Object.assign({smooth: 50, av: 0, rate: 6, fps: 30, heat: 70, sound: true, input: "touch", steady: true, wifi_awake: true,
                            canvas: false, folded: false}, store.get("settings", {}));
 if (P.get("mode")) cfg.canvas = P.get("mode") === "canvas";
 // Settings kept before the touchpad mode had touch true or false.
@@ -372,7 +371,9 @@ const sz = document.getElementById("sz");
 sz.onchange = () => { pending.long = Number(sz.value); showPending(); };
 function showRate() { sb.value = cfg.rate; sbv.textContent = cfg.rate; }
 const st = document.getElementById("st");
-function showSteady() { st.checked = cfg.steady; }
+function showSteady() { st.checked = cfg.steady; wp.checked = cfg.wifi_awake; }
+const wp = document.getElementById("wp");
+wp.onchange = () => { cfg.wifi_awake = wp.checked; save(); log({ev: "setting", name: "wifi_awake", value: cfg.wifi_awake}); };
 st.onchange = () => { cfg.steady = st.checked; save(); log({ev: "setting", name: "steady", value: cfg.steady}); };
 function refresh() { showHeat(); showFps(); showRate(); showSteady(); showMode(); showInput(); showFold(); showSliders(); showSound(); applyDelay(); }
 refresh();
@@ -557,18 +558,15 @@ setInterval(async () => {
     const ev = Object.entries(counts).map(([a, b]) => a + " " + b);
     const rows = [];
     for (let i = 0; i < ev.length; i += 3) rows.push("  " + ev.slice(i, i + 3).join("  "));
+    const q = x => x === undefined ? "?" : x;
     it.textContent = [
-      `screen  ${s.w}x${s.h}  video ${s.video}`,
-      `mode    ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
-      `fps     ${s.fps}  decoded ${s.decoded}  dropped ${s.dropped}`,
-      `rate    ${s.kbps} kbit/s  (set ${cfg.rate} Mbit/s)`,
-      `fps     capture ${phone.fps || "?"}${phone.fps < phone.target ? " (held by heat, chosen " + phone.target + ")" : ""}`,
-      `data    ${s.mb} MB so far`,
-      `buffer  video ${s.buffer_ms} ms, sound ${s.audio_buffer_ms} ms`,
-      `sound   lost ${s.audio_lost} packets, made up ${s.audio_concealed}% now`,
-      `set     smooth ${cfg.smooth} ms, a/v ${cfg.av} ms`,
-      `network rtt ${s.rtt_ms} ms, ${s.codec}`,
-      `phone   CPU ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, last 10 min:`,
+      `picture ${s.video} ${(s.codec || "").replace("video/", "")}, ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
+      `fps     ${q(s.fps)} shown, phone ${phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " steady" : ""}`,
+      `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
+      `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
+      `sound   ${q(s.audio_lost)} lost, ${q(s.audio_concealed)}% made up`,
+      `delay   ${q(s.rtt_ms)} ms network, buffer ${q(s.buffer_ms)} ms video, ${q(s.audio_buffer_ms)} ms sound`,
+      `phone   ${phone.cpu === undefined ? "?" : phone.cpu + " C"}, Wi-Fi power saving ${phone.wifi_powersave || "?"}; 10 min:`,
     ].concat(rows.length ? ["events"].concat(rows) : []).join("\\n");
   }
   if (++ticks % 10 === 0) log(Object.assign({ev: "stats"}, s));
@@ -808,10 +806,11 @@ def raw_source(fd, size):
     return f"fdsrc fd={fd} blocksize={width * height * 3 // 2}"
 
 
-def hardware(size, parse=True, mbps=6.0):
+def hardware(size, parse=True, mbps=6.0, gop=10):
     """Elements from raw NV12 frames to H.264, by the phone's encoder, from
-    the bytes of a pipe (PARSE) or from frames.  If the encoder falls behind,
-    the oldest frame waiting is dropped, so the delay cannot grow."""
+    the bytes of a pipe (PARSE) or from frames, a keyframe every GOP
+    seconds.  If the encoder falls behind, the oldest frame waiting is
+    dropped, so the delay cannot grow."""
     dimensions, fps = size.split("@")
     width, height = map(int, dimensions.split("x"))
     return (
@@ -821,8 +820,8 @@ def hardware(size, parse=True, mbps=6.0):
         + "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate={int(mbps * 1e6)},video_gop_size={3 * int(fps)},'
-        f'h264_i_frame_period={3 * int(fps)};" ! '
+        f'video_bitrate={int(mbps * 1e6)},video_gop_size={gop * int(fps)},'
+        f'h264_i_frame_period={gop * int(fps)};" ! '
         "video/x-h264,profile=constrained-baseline,level=(string)4 ! "
         "h264parse config-interval=-1"
     )
@@ -968,6 +967,37 @@ class Portal:
 
 
 portal = None
+
+
+POWERSAVE = "/run/current-system/profile/bin/pro1x-wifi-powersave"
+wifi_held = [False]
+
+
+def wifi_hold(on):
+    """Wi-Fi power saving off while the stream runs (the page's INFO
+    checkbox, on by default), and back as it was after."""
+    if on == wifi_held[0]:
+        return
+    try:
+        done = subprocess.run(["sudo", "-n", POWERSAVE, "hold" if on else "release"],
+                              timeout=10, stdin=subprocess.DEVNULL, capture_output=True)
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    if done.returncode == 0:
+        wifi_held[0] = on
+        log_line("Wi-Fi power saving " + ("off while streaming" if on else "as before"))
+    else:
+        log_line("Wi-Fi power saving unchanged: " + done.stderr.decode(errors="replace").strip()[:120])
+
+
+def wifi_powersave():
+    """on or off, or None without Wi-Fi."""
+    try:
+        out = subprocess.run(["iw", "dev", "wlan0", "get", "power_save"], timeout=5,
+                             capture_output=True, text=True).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return out.split()[-1] if out.strip() else None
 
 
 def kept_setting(name, default):
@@ -1167,10 +1197,11 @@ AUDIO = (
 )
 
 
-def keep_keyframes(pipeline):
-    """A full keyframe every 3 s, to recover from a loss: a new viewer gets a
-    new encoder, which starts with one.  Each keyframe is a burst of data;
-    every second they were a likely part of the choppiness."""
+def keep_keyframes(pipeline, every=10):
+    """A full keyframe every EVERY s, to recover from a loss.  Each is a
+    burst of data: every 3 s they filled a weak Wi-Fi link (2026-11-19);
+    WebRTC viewers get lost packets again (NACK) and ask for a keyframe
+    when they need one, so 10 s will do.  The UDP stream has neither: 3 s."""
     encoder = pipeline.get_by_name("enc")
     if encoder is None:
         return None
@@ -1183,7 +1214,7 @@ def keep_keyframes(pipeline):
         )
         return GLib.SOURCE_CONTINUE
 
-    return GLib.timeout_add_seconds(3, ask)
+    return GLib.timeout_add_seconds(every, ask)
 
 
 # Browser key positions (KeyboardEvent.code) to Linux key names.
@@ -1705,6 +1736,8 @@ def reexec():
     os.environ["PRO1X_STREAM_TARGET"] = str(Handler.target)
     if caffeinated[0]:
         os.environ["PRO1X_STREAM_CAFFEINE"] = "1"
+    if wifi_held[0]:
+        os.environ["PRO1X_STREAM_WIFI"] = "1"
     log_line(f"starting again: {Handler.size}, {Handler.mbps} Mbit/s")
     argv = ([sys.argv[0], "--raw", Handler.size] + own_args
             + Handler.capture["h264"] + ["--"] + Handler.capture["vp8"])
@@ -1876,6 +1909,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "fps": capture_fps(),
                                    "target": Handler.target,
                                    "mbps": producer.mbps if producer else Handler.mbps,
+                                   "wifi_powersave": wifi_powersave(),
                                    "long": capture_long()}).encode(),
                        "application/json")
         elif path == "/settings":
@@ -1983,6 +2017,7 @@ class Handler(BaseHTTPRequestHandler):
             os.replace(SETTINGS + ".new", SETTINGS)
             if producer:
                 producer.steady = bool(kept.get("steady", True))
+            wifi_hold(bool(kept.get("wifi_awake", True)))
             self.reply(b"ok")
             return
         if path == "/log":
@@ -2025,14 +2060,14 @@ def main_loop():
 def send_udp(host, port, size, command):
     proc = subprocess.Popen(command, stdout=subprocess.PIPE)
     pipeline = Gst.parse_launch(
-        f"{raw_source(proc.stdout.fileno(), size)} ! {hardware(size)} ! "
+        f"{raw_source(proc.stdout.fileno(), size)} ! {hardware(size, gop=3)} ! "
         f"mpegtsmux alignment=7 ! udpsink host={host} port={port} sync=false"
     )
     loop = main_loop()
     bus = pipeline.get_bus()
     bus.add_signal_watch()
     bus.connect("message::error", lambda *_args: loop.quit())
-    keep_keyframes(pipeline)
+    keep_keyframes(pipeline, every=3)
     pipeline.set_state(Gst.State.PLAYING)
     try:
         loop.run()
@@ -2078,6 +2113,9 @@ def main():
         except (GLib.Error, RuntimeError, KeyError, IndexError) as e:
             log_line(f"no ScreenCast portal ({e}): wf-recorder")
     caffeinated[0] = os.environ.pop("PRO1X_STREAM_CAFFEINE", "") == "1"
+    # Held by the server before a reexec, and still held.
+    wifi_held[0] = os.environ.pop("PRO1X_STREAM_WIFI", "") == "1"
+    wifi_hold(bool(kept_setting("wifi_awake", True)))
     if args[:1] == ["--interactive"]:
         own_args.append("--interactive")
         args = args[1:]
@@ -2110,6 +2148,7 @@ def main():
             current.stop()
         if producer:
             producer.stop()
+        wifi_hold(False)
 
 
 if __name__ == "__main__":

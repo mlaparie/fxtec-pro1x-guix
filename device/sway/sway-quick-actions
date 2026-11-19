@@ -469,7 +469,14 @@ choose() {
             if [ "$1" = wifi ]; then title=Wi-Fi tool=networks
             else title=Bluetooth tool=devices; fi
             cur=$(state_of "$1")
-            opts=$(printf 'on\ton\noff\toff\ntool\t%s…\n' "$tool") ;;
+            opts=$(printf 'on\ton\noff\toff\ntool\t%s…\n' "$tool"
+                   # Power saving: less battery, but delays and loses what
+                   # the phone sends (streams hold it off while they run).
+                   if [ "$1" = wifi ]; then
+                       ps=$(iw dev wlan0 get power_save 2>/dev/null | awk '{ print $3 }')
+                       [ -n "$ps" ] && printf 'powersave\tpower saving: %s (turn %s)\n' \
+                           "$ps" "$([ "$ps" = on ] && echo off || echo on)"
+                   fi) ;;
         rotation)
             # Keyboard-dependent too (author, 2026-11-02).
             title="rotation"
@@ -539,7 +546,12 @@ choose() {
         layout) confirm layout "$pick" layout_to "$pick" ;;
         rotation) confirm rotation "$pick" rotation_to "$pick" ;;
         wifi|bluetooth)
-            if [ "$pick" = tool ]; then
+            if [ "$pick" = powersave ]; then
+                ps=$(iw dev wlan0 get power_save 2>/dev/null | awk '{ print $3 }')
+                to=$([ "$ps" = on ] && echo off || echo on)
+                confirm wifi "power saving $to" \
+                        sudo -n /run/current-system/profile/bin/pro1x-wifi-powersave "$to"
+            elif [ "$pick" = tool ]; then
                 # Its networks or devices need it on (author, 2026-11-02).
                 [ "$(state_of "$line")" = on ] || set_to "$line" on
                 if [ "$line" = wifi ]; then
