@@ -745,16 +745,18 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
         `("sway/pro1x-effects/swayfx.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 
-     ;; The screen-cast portal's back end: the panel without a chooser (the
-     ;; interactive stream opens it unattended), at most 30 frames a second,
-     ;; linear buffers, which the GPU imports.  A file of the same name in
-     ;; ~/.config/xdg-desktop-portal-wlr/ takes precedence.
+     ;; The screen-cast portal's back end: no question asked (the
+     ;; interactive stream opens it unattended): the panel, or the stream's
+     ;; own output while it has one (pro1x-stream-output); at most 30 frames
+     ;; a second, linear buffers, which the GPU imports.  A file of the same
+     ;; name in ~/.config/xdg-desktop-portal-wlr/ takes precedence.
      (simple-service 'xdg-desktop-portal-wlr-config etc-service-type
        (list
         `("xdg/xdg-desktop-portal-wlr/config"
           ,(plain-file "xdg-desktop-portal-wlr-config"
-                       "[screencast]\noutput_name=DSI-1\nmax_fps=30\n\
-chooser_type=none\nforce_mod_linear=1\n"))))
+                       "[screencast]\nmax_fps=30\nchooser_type=simple\n\
+chooser_cmd=/run/current-system/profile/bin/pro1x-stream-output\n\
+force_mod_linear=1\n"))))
 
      ;; /etc/phoc.ini — scale 1.75 for the 1080×2160 panel (author's
      ;; default, 2026-10-30; was 2).  Phosh does not save display changes,

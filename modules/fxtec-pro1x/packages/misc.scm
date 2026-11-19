@@ -1892,6 +1892,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
 ;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
 ;;;   bin/pro1x-wifi-powersave           Wi-Fi power saving, off while streaming (sudoers)
+;;;   bin/pro1x-stream-output            the output the screen-cast portal captures
 ;;;   bin/pro1x-stream                   send the screen to another device
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
@@ -1963,6 +1964,7 @@ window opened by a sway key binding.")
           ("pro1x-wifi" "bin/")
           ("pro1x-hotspot" "bin/")
           ("pro1x-stream" "bin/")
+          ("pro1x-stream-output" "bin/")
           ("pro1x-hotspot-admin" "bin/")
           ("pro1x-wifi-powersave" "bin/")
           ("pro1x-timezone" "bin/")

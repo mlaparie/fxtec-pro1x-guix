@@ -31,6 +31,7 @@ size_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-size"
 key_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-key"   # on or off
 key_value="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-key-value"
 approve_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-approve"  # off, tap, fingerprint
+screen_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-screen"    # phone, separate, mirror
 
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
 udp_port=5000
@@ -54,6 +55,18 @@ fps() { cat "$fps_file" 2>/dev/null || echo 30; }
 # Besides the key, a new viewer of the interactive stream may need the
 # phone's owner: off, a tap on a notification, or a finger on the sensor.
 approve() { cat "$approve_file" 2>/dev/null || echo off; }
+# What the interactive stream shows: the phone's panel; or a screen of its
+# own at the viewer's window's shape (a car's squarish browser), separate
+# from the panel as a second monitor, or mirrored on it.
+screen() { cat "$screen_file" 2>/dev/null || echo phone; }
+next_screen() {
+    now=$(screen)
+    case "$now" in
+        phone) echo separate ;;
+        separate) echo mirror ;;
+        *) echo phone ;;
+    esac > "$screen_file"
+}
 next_approve() {
     # Read before the redirection empties the file.
     now=$(approve)
@@ -342,7 +355,8 @@ send_interactive() {
     # PRO1X_STREAM_PORTAL=0: wf-recorder instead.
     portal=()
     [ -z "$target" ] && [ "${PRO1X_STREAM_PORTAL:-1}" != 0 ] && portal=(--portal "$turn")
-    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --approve "$(approve)" \
+    setsid pro1x-stream-webrtc --raw "$hw_size" "${key[@]}" --screen "$(screen)" \
+        --approve "$(approve)" \
         "${portal[@]}" --interactive "$webrtc_port" \
         wf-recorder "${hw_capture[@]}" -- \
         wf-recorder "${scale[@]}" -D -r "$rate" -m ivf -c libvpx \
@@ -409,6 +423,7 @@ while :; do
             size "Output size       $(out_size), long side" \
             key "Access key        $(key_on && echo "on, $(current_key)" || echo off), for Interactive" \
             approve "Approval          $(approve), a new viewer allowed on the phone (Interactive)" \
+            screen "Screen            $(screen): $(case "$(screen)" in separate) echo "its own, at the viewer's shape";; mirror) echo "its own, mirrored on the phone";; *) echo "the phone's";; esac) (Interactive)" \
             renew "New access key    the old one and its bookmarks stop working")
     choice=$(printf '%s\n' "$lines" | pick "stream")
     case "$choice" in
@@ -426,6 +441,7 @@ while :; do
         size) pick_size ;;
         key) if key_on; then echo off > "$key_file"; else echo on > "$key_file"; fi ;;
         approve) next_approve ;;
+        screen) next_screen ;;
         renew) new_key ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;

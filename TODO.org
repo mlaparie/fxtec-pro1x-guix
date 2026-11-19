@@ -76,6 +76,8 @@ The author wants calls fixed before the release (2026-11-05).
 *** WAIT [#B] Stream menu end to end: hardware options, Capture rate, Output size
 WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 (=media.gmp-gmpopenh264.enabled=); catt on a Chromecast; Network Displays.
+2026-11-19 (author): Chromecast found the TV but failed to play a YouTube URL (an error);
+Miracast closed quick actions without doing anything.  Not looked at yet.
 *** WAIT [#B] Hotspot: devices with IP and name, stream to one; expel, ban, band, hidden name, auto-off, data used
 *** TODO [#B] Interactive stream: the Pro¹x's screen in a browser (car first), low delay
 Plan in docs/interactive-stream.md (branch =streaming=, 2026-11-18): headless output,

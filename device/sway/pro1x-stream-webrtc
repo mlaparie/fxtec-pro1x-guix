@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
+"""pro1x-stream-webrtc [--raw WxH@FPS] [--key KEY] [--screen phone|separate|mirror] [--approve off|tap|fingerprint] [--portal TRANSFORM] [--interactive] PORT COMMAND... -- VP8-COMMAND... -- serve by WebRTC.
 pro1x-stream-webrtc udp HOST PORT WxH@FPS COMMAND... -- send MPEG-TS by UDP.
 
 With --interactive (the interactive stream, docs/interactive-stream.md), the
@@ -160,7 +160,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>rate    <input id="sb" type="range" min="1" max="16" step="1"> <span id="sbv"></span> Mbit/s</label>
 <label title="constant fps needs one the phone keeps up: 20 at 1920, 25 at 1600">fps     <input id="sf" type="range" min="10" max="60" step="5"> <span id="sfv"></span></label>
 <label>size    <select id="sz"><option>1920</option><option>1600</option>
-<option>1280</option><option>960</option></select> px wide</label>
+<option>1280</option><option>960</option></select> px, long side</label>
 <button id="sy">RESYNC</button></div>
 <div id="note"></div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
@@ -385,7 +385,20 @@ sh.onchange = () => { save(); log({ev: "setting", name: "heat", value: cfg.heat}
 // The picture size, the phone's like the fps: from its status, a change
 // restarts the capture.
 const sz = document.getElementById("sz");
-sz.onchange = () => { pending.long = Number(sz.value); showPending(); };
+// With a screen of its own (the stream menu's Screen line), the size is
+// this window's shape at the long side chosen, for the phone to make.
+function fitted(long) {
+  const w = innerWidth * devicePixelRatio, h = innerHeight * devicePixelRatio;
+  const r = w / h;
+  let W = r >= 1 ? long : long * r, H = r >= 1 ? long / r : long;
+  return [Math.round(W / 2) * 2, Math.round(H / 2) * 2];
+}
+sz.onchange = () => {
+  delete pending.long; delete pending.w; delete pending.h;
+  if (phone.screen && phone.screen !== "phone") [pending.w, pending.h] = fitted(Number(sz.value));
+  else pending.long = Number(sz.value);
+  showPending();
+};
 function showRate() { sb.value = cfg.rate; sbv.textContent = cfg.rate; }
 const st = document.getElementById("st");
 function showSteady() { st.checked = cfg.steady; wp.checked = cfg.wifi_awake; ad.checked = cfg.adaptive; }
@@ -505,6 +518,12 @@ async function connect() {
 }
 connect();
 
+// The stream's shape against this window's, by more than 5%.
+function shapeOff() {
+  if (!v.videoWidth) return false;
+  const a = v.videoWidth / v.videoHeight, b = innerWidth / innerHeight;
+  return Math.abs(a / b - 1) > 0.05;
+}
 // What the browser reports, every second (logged every 10 s), in short
 // lines; the phone's temperature every 5 s, its last 10 minutes drawn.
 const it = document.getElementById("it");
@@ -531,7 +550,7 @@ async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
     // The phone's settings, unless one waits for APPLY here.
-    if (phone.long && !pending.long && document.activeElement !== sz) sz.value = String(phone.long);
+    if (phone.long && !pending.long && !pending.w && document.activeElement !== sz) sz.value = String(phone.long);
     // The fps chosen, not the one the heat limit holds it to.
     if (phone.target && !pending.fps && phone.target !== cfg.fps && document.activeElement !== sf) {
       cfg.fps = phone.target; showFps();
@@ -588,6 +607,7 @@ setInterval(async () => {
     const q = x => x === undefined ? "?" : x;
     it.textContent = [
       `picture ${s.video} ${(s.codec || "").replace("video/", "")}, ${s.mode}, ${cfg.input}, ${v.muted ? "muted" : "sound"}${captured ? ", captured" : ""}`,
+      `screen  ${phone.screen || "?"}${phone.screen && phone.screen !== "phone" && shapeOff() ? ", not this window's shape: SET size, APPLY" : ""}`,
       `fps     ${q(s.fps)} shown, phone ${phone.live && phone.live < phone.fps ? phone.live + " (losses)" : phone.fps || "?"}${phone.fps < phone.target ? " (heat; chosen " + phone.target + ")" : ""}${cfg.steady ? " constant" : ""}`,
       `rate    ${s.kbps} kbit/s of ${phone.mbps || cfg.rate} Mbit/s, ${s.mb} MB`,
       `loss    ${q(s.lost)} packets, ${q(s.nack)} resent, ${q(s.pli)} keyframes, ${q(s.freezes)} freezes, ${q(s.dropped)} dropped`,
@@ -1028,6 +1048,89 @@ class Portal:
 portal = None
 
 
+def sway(*args):
+    """swaymsg's JSON answer, or None."""
+    try:
+        return json.loads(subprocess.run(["swaymsg", "-r", *args], capture_output=True,
+                                         text=True, timeout=5).stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+class Screen:
+    """A Sway output of the stream's own (--screen separate|mirror, the
+    stream menu's Screen line): a headless output at the size the viewer's
+    window asks for (its shape, squarish in a car), with the workspace
+    "stream", captured by the portal in place of the panel
+    (pro1x-stream-output) and played on by the viewer's input.  Separate:
+    the panel keeps its own workspaces, as with a second monitor; mirror:
+    the panel shows the stream's output too (wl-mirror).  Kept over a
+    restart of the server (a new size), removed at its end; its windows
+    go back to the panel then."""
+
+    FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-stream-output")
+    SIZE = os.path.join(os.environ.get("XDG_STATE_HOME")
+                        or os.path.expanduser("~/.local/state"), "pro1x-stream-screen-size")
+
+    def __init__(self, mode, size):
+        self.mode, self.mirror = mode, None
+        width, height = size.split("@")[0].split("x")
+        outputs = sway("-t", "get_outputs") or []
+        names = {o["name"] for o in outputs}
+        self.name = os.environ.pop("PRO1X_STREAM_OUTPUT", "")
+        if self.name not in names:
+            subprocess.run(["swaymsg", "create_output"], capture_output=True, timeout=5)
+            new = {o["name"] for o in sway("-t", "get_outputs") or []} - names
+            if not new:
+                raise RuntimeError("Sway made no output")
+            self.name = new.pop()
+        # Right of the others, so that the panel's pointer and windows do
+        # not wander into it.
+        right = max((o["rect"]["x"] + o["rect"]["width"] for o in outputs
+                     if o["name"] != self.name), default=0)
+        for command in (f"output {self.name} resolution {width}x{height} position {right} 0",
+                        f"workspace stream output {self.name}",
+                        f"focus output {self.name}", "workspace stream"):
+            subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
+        with open(self.FILE, "w") as f:
+            f.write(self.name + "\n")
+        if mode == "mirror":
+            try:
+                self.mirror = subprocess.Popen(
+                    ["wl-mirror", "--fullscreen-output", "DSI-1", self.name],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+            except OSError as e:
+                log_line(f"no mirror on the panel: {e}")
+        log_line(f"screen of its own: {self.name} {width}x{height}" + (", mirrored" if self.mirror else ""))
+
+    @classmethod
+    def kept(cls, size):
+        """SIZE with the last width and height a viewer chose, if any."""
+        try:
+            with open(cls.SIZE) as f:
+                dims = f.read().strip()
+            width, height = map(int, dims.split("x"))
+            return f"{width}x{height}@{size.split('@')[1]}"
+        except (OSError, ValueError):
+            return size
+
+    def stop(self, keep=False):
+        if self.mirror:
+            self.mirror.terminate()
+            self.mirror = None
+        if keep:
+            return
+        try:
+            os.remove(self.FILE)
+        except OSError:
+            pass
+        subprocess.run(["swaymsg", f"output {self.name} unplug"], capture_output=True, timeout=5)
+
+
+screen = None
+
+
 class Approval:
     """A new viewer's address allowed from the phone (--approve, the stream
     menu's Approval line), besides the key: a tap on the notification, or
@@ -1152,13 +1255,27 @@ class Approval:
             self.close(nid)
             self.answer(ip, ok)
 
+        def buzz(event):
+            # As the lock screen (gtklock-fingerprint): feedbackd's events,
+            # one buzz for a match, two for a miss; fbcli ends its feedback
+            # when its input ends.
+            try:
+                subprocess.Popen(["sh", "-c", f"sleep 1 | fbcli -E {event} >/dev/null 2>&1"],
+                                 stdin=subprocess.DEVNULL)
+            except OSError:
+                pass
+
         def status(_proxy, _sender, signal_name, params):
             if signal_name != "VerifyStatus":
                 return
             result, done = params.unpack()
             if result == "verify-match":
+                buzz("fingerprint-match")
                 finish(True)
-            elif done:
+                return
+            if result == "verify-no-match":
+                buzz("fingerprint-nomatch")
+            if done:
                 tries[0] += 1
                 if tries[0] >= 3:
                     finish(False)
@@ -1503,9 +1620,10 @@ class Remote:
     a wheel, mapped to the panel and turned with it by Sway like the
     touchscreen (pro1x.conf), and a keyboard."""
 
-    def __init__(self):
+    def __init__(self, output="DSI-1"):
         from evdev import AbsInfo, UInput, ecodes
         self.e = ecodes
+        self.output = output
         axis = AbsInfo(value=0, min=0, max=65535, fuzz=0, flat=0, resolution=0)
         self.pointer = UInput(
             {ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT],
@@ -1541,8 +1659,8 @@ class Remote:
         self.turn, self.turn_at = "normal", 0.0
         # As pro1x.conf says, also before Sway has read it again.
         time.sleep(0.5)
-        for command in ('input "4660:22140:pro1x-remote-touch" map_to_output DSI-1',
-                        'input "4660:22138:pro1x-remote-pointer" map_to_output DSI-1',
+        for command in (f'input "4660:22140:pro1x-remote-touch" map_to_output {output}',
+                        f'input "4660:22138:pro1x-remote-pointer" map_to_output {output}',
                         'input "4660:22139:pro1x-remote-keyboard" xkb_layout us',
                         'input "4660:22139:pro1x-remote-keyboard" xkb_variant ""'):
             subprocess.run(["swaymsg", command], capture_output=True, timeout=5)
@@ -1554,7 +1672,8 @@ class Remote:
                 outputs = json.loads(subprocess.run(
                     ["swaymsg", "-t", "get_outputs", "-r"],
                     capture_output=True, text=True, timeout=2).stdout)
-                self.turn = next(o["transform"] for o in outputs if o.get("active"))
+                self.turn = next(o["transform"] for o in outputs
+                                 if o.get("active") and o["name"] == self.output)
             except (OSError, ValueError, StopIteration, subprocess.TimeoutExpired):
                 pass
             self.turn_at = time.monotonic()
@@ -2050,6 +2169,9 @@ def reexec():
         os.environ["PRO1X_STREAM_CAFFEINE"] = "1"
     if wifi_held[0]:
         os.environ["PRO1X_STREAM_WIFI"] = "1"
+    if screen:
+        screen.stop(keep=True)
+        os.environ["PRO1X_STREAM_OUTPUT"] = screen.name
     log_line(f"starting again: {Handler.size}, {Handler.mbps} Mbit/s")
     argv = ([sys.argv[0], "--raw", Handler.size] + own_args
             + Handler.capture["h264"] + ["--"] + Handler.capture["vp8"])
@@ -2223,6 +2345,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "mbps": producer.mbps if producer else Handler.mbps,
                                    "wifi_powersave": wifi_powersave(),
                                    "live": producer.limit if producer else None,
+                                   "screen": screen.mode if screen else "phone",
+                                   "size": Handler.size.split("@")[0] if Handler.size else None,
                                    "long": capture_long()}).encode(),
                        "application/json")
         elif path == "/settings":
@@ -2299,6 +2423,22 @@ class Handler(BaseHTTPRequestHandler):
                 except (KeyError, ValueError, IndexError):
                     return None
             mbps, fps, long = number("mbps", float), number("fps", int), number("long", int)
+            width, height = number("w", int), number("h", int)
+            if width is not None or height is not None:
+                # The stream's own output at the viewer's window's shape.
+                if (not screen or width is None or height is None
+                        or not (160 <= width <= 1920 and 160 <= height <= 1920)):
+                    self.reply(b"bad size", code=400)
+                    return
+                width, height = width // 2 * 2, height // 2 * 2
+                Handler.size = f"{width}x{height}@" + Handler.size.split("@")[1]
+                try:
+                    with open(Screen.SIZE, "w") as f:
+                        f.write(f"{width}x{height}\n")
+                except OSError:
+                    pass
+                log_line(f"screen size {width}x{height}")
+                long = None
             if ((fps is not None and not 5 <= fps <= 60)
                     or (long is not None and long not in (960, 1280, 1600, 1920))
                     or ((fps or long) and not self.size)):
@@ -2409,7 +2549,16 @@ def main():
     if args[:1] == ["--key"]:
         Handler.key, args = args[1], args[2:]
         own_args.extend(["--key", Handler.key])
-    global approval
+    global approval, screen
+    if args[:1] == ["--screen"]:
+        own_args.extend(args[:2])
+        if args[1] in ("separate", "mirror") and Handler.size:
+            Handler.size = Screen.kept(Handler.size)
+            try:
+                screen = Screen(args[1], Handler.size)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
+                log_line(f"no screen of its own ({e}): the panel")
+        args = args[2:]
     if args[:1] == ["--approve"]:
         own_args.extend(args[:2])
         if args[1] in ("tap", "fingerprint"):
@@ -2419,11 +2568,18 @@ def main():
     if args[:1] == ["--portal"]:
         own_args.extend(args[:2])
         try:
-            portal = Portal(args[1])
+            # The stream's own output is not turned.
+            portal = Portal("normal" if screen else args[1])
             log_line("capture by the ScreenCast portal")
         except (GLib.Error, RuntimeError, KeyError, IndexError, OSError) as e:
             log_line(f"no ScreenCast portal ({e}): wf-recorder")
         args = args[2:]
+    if screen and not portal:
+        # wf-recorder records the panel: no screen of its own without the
+        # portal.
+        log_line("no screen of its own without the ScreenCast portal")
+        screen.stop()
+        screen = None
     # Set by reexec, else the rate the page kept on the phone.
     try:
         Handler.mbps = float(os.environ.pop("PRO1X_STREAM_MBPS"))
@@ -2447,7 +2603,7 @@ def main():
     if args[:1] == ["--interactive"]:
         own_args.append("--interactive")
         args = args[1:]
-        remote = Remote()
+        remote = Remote(screen.name if screen else "DSI-1")
         log_line("started")
         try:
             caffeinated[0] = caffeine_on() or caffeinated[0]
@@ -2476,6 +2632,8 @@ def main():
             current.stop()
         if producer:
             producer.stop()
+        if screen:
+            screen.stop()
         wifi_hold(False)
 
 
