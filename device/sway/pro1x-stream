@@ -22,6 +22,21 @@ case "${FZF_DEFAULT_OPTS:-}" in
     *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
 esac
 
+# Run from SSH, without the session's environment: the phone's own Sway
+# session's, so that the portal, D-Bus and Sway are reached (a stream
+# started from SSH fell back to wf-recorder and got no frames while the
+# phone was locked, 2026-11-19).
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+[ -n "${WAYLAND_DISPLAY:-}" ] || for w in "$XDG_RUNTIME_DIR"/wayland-[0-9]; do
+    [ -S "$w" ] && export WAYLAND_DISPLAY="${w##*/}" && break
+done
+[ -n "${SWAYSOCK:-}" ] || for s in "$XDG_RUNTIME_DIR"/sway-ipc.*.sock; do
+    [ -S "$s" ] && export SWAYSOCK="$s" && break
+done
+[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || [ ! -S "$XDG_RUNTIME_DIR/bus" ] ||
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 pid_file="$rt/pro1x-stream.pid"
