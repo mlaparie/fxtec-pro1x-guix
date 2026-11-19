@@ -580,6 +580,11 @@ choose() {
                    printf 'roaming\tRoaming: %s\n' "$roam"
                    printf 'operator\tOperator: %s…\n' "$(operator_shown "$kv" | sed 's/\x1b\[[0-9;]*m//g')"
                    printf 'sim\tSIM: %s…\n' "$(sim_state "$kv")") ;;
+        touchpad)
+            # A list, not a toggle in place (author, 2026-11-20).
+            title="touch input mode"
+            cur=$(touch_mode)
+            opts=$(printf 'touchscreen\ttouchscreen (touches where they land)\ntouchpad\ttouchpad (a pointer moved by dragging)\n') ;;
         apps)
             title="app shortcuts"
             cur=
@@ -704,6 +709,7 @@ choose() {
                 sim) choose sim; choose wwan ;;
                 *) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
             esac ;;
+        touchpad) confirm touchpad "$pick" toggle_to touchpad "$([ "$pick" = touchpad ] && echo on || echo off)" ;;
         apps)
             case "$pick" in
                 add) app_add; choose apps ;;
@@ -1778,7 +1784,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   power) echo \"execute($self --power)+reload($self --cached)\" ;;
@@ -1786,9 +1792,9 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  caffeine|torch|airplane|osk|nfc) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                   hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   power) echo \"execute($self --power)+reload($self --cached)\" ;;
@@ -1796,7 +1802,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="left:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
-                  caffeine|torch|airplane|osk|nfc|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  caffeine|torch|airplane|osk|nfc) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
