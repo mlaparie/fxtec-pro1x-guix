@@ -15,6 +15,38 @@
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 
+# Where it shows: stevia's surface sits on the output focused when it
+# starts, and only one stevia can own sm.puri.OSK0; to show it on another
+# output it is ended there and the watchdog (run) starts it again within a
+# second (author, 2026-11-20: the panel's swipe and the Pro1x's Super+i on
+# the panel; the stream's OSK button and the remote keyboard's Super+i on
+# the stream's own screen).
+#   pro1x-osk toggle [panel|stream]   toggle it, on that output (panel)
+#   pro1x-osk place panel|stream      move it there, hidden, if elsewhere
+#   pro1x-osk home                    back to the panel (a stream's end)
+where="$rt/pro1x-osk-output"
+target() {                      # target panel|stream: an output name
+    case "${1:-panel}" in
+        stream) o=$(cat "$rt/pro1x-stream-output" 2>/dev/null); echo "${o:-DSI-1}" ;;
+        *) echo DSI-1 ;;
+    esac
+}
+owned() {
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner sm.puri.OSK0 2>/dev/null | grep -q true
+}
+place() {                       # place OUTPUT
+    [ "$(cat "$where" 2>/dev/null || echo DSI-1)" = "$1" ] && return 0
+    swaymsg "focus output $1" >/dev/null 2>&1
+    for p in $(pgrep -x phosh-osk-stevi); do kill "$p"; done
+    echo "$1" > "$where"
+    i=0
+    while [ "$i" -lt 30 ]; do
+        sleep 0.2; i=$((i + 1))
+        owned && { sleep 1.2; return 0; }   # its start hides it within a second
+    done
+}
+
 osk() {                         # osk true|false
     gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
         --method sm.puri.OSK0.SetVisible "$1" >/dev/null 2>&1
@@ -65,8 +97,11 @@ case "${1:-}" in
                 sleep 1
             fi
         done ;;
+    place) place "$(target "${2:-panel}")"; exit ;;
+    home) place DSI-1; exit ;;
     toggle)
         [ -e "$rt/pro1x-locked-app" ] && exit 0  # one app over the lock screen
+        out=$(target "${2:-panel}")
         stamp="$rt/pro1x-osk-toggled"
         now=$(date +%s%N)
         [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 600000000 ] && exit 0
@@ -83,8 +118,10 @@ case "${1:-}" in
         case "$(gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
                     --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
                     2>/dev/null)" in
-            *true*) osk false ;;
-            *) osk true ;;
+            # Shown on another output than asked: moved there, shown.
+            *true*) if [ "$(cat "$where" 2>/dev/null || echo DSI-1)" = "$out" ]; then osk false
+                    else place "$out"; osk true; fi ;;
+            *) place "$out"; osk true ;;
         esac ;;
-    *) echo "usage: pro1x-osk run|toggle" >&2; exit 1 ;;
+    *) echo "usage: pro1x-osk run|toggle [panel|stream]|place panel|stream|home" >&2; exit 1 ;;
 esac

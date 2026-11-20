@@ -117,9 +117,10 @@ if [ "${1:-}" = --osk ]; then
     fi
     echo "$now" > "$stamp"
     case "${2:-toggle}" in
-        show) osk true ;;
+        # Shown on the panel (pro1x-osk place: it may be on a stream's screen).
+        show) pro1x-osk place panel; osk true ;;
         hide) osk false ;;
-        *) [ "$(osk_state)" = shown ] && osk false || osk true ;;
+        *) if [ "$(osk_state)" = shown ]; then osk false; else pro1x-osk place panel; osk true; fi ;;
     esac
     exit
 fi

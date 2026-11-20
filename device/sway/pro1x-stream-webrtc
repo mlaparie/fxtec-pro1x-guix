@@ -1405,9 +1405,7 @@ class Screen:
             pass
         subprocess.run(["swaymsg", f"output {self.name} unplug"], capture_output=True, timeout=5)
         # The on-screen keyboard back to the panel, if moved here.
-        if osk_output() == self.name:
-            subprocess.run(["swaymsg", "focus output DSI-1"], capture_output=True, timeout=5)
-            threading.Thread(target=restart_osk, args=("DSI-1",), daemon=True).start()
+        subprocess.run(["swaymsg", "exec pro1x-osk home"], capture_output=True, timeout=5)
         if self.mode == "client":
             # Away from the mirror's workspace, which Sway then drops.
             mine = [w["name"] for w in sway("-t", "get_workspaces") or []
@@ -1418,53 +1416,6 @@ class Screen:
 
 
 screen = None
-
-OSK_OUTPUT = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "pro1x-osk-output")
-
-
-def osk_output():
-    try:
-        with open(OSK_OUTPUT) as f:
-            return f.read().strip()
-    except OSError:
-        return "DSI-1"
-
-
-def restart_osk(output):
-    """stevia ended, for pro1x-osk's watchdog to start it again on the
-    output focused now; back once it owns its D-Bus name again."""
-    for pid in os.listdir("/proc"):
-        try:
-            with open(f"/proc/{pid}/comm") as f:
-                if f.read().strip().startswith("phosh-osk-stev"):
-                    os.kill(int(pid), signal.SIGTERM)
-        except (OSError, ValueError):
-            pass
-    try:
-        with open(OSK_OUTPUT, "w") as f:
-            f.write(output + "\n")
-    except OSError:
-        pass
-    from gi.repository import Gio
-    try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
-    except GLib.Error:
-        return
-    for _ in range(30):
-        time.sleep(0.2)
-        try:
-            owned = bus.call_sync(
-                "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                "org.freedesktop.DBus", "NameHasOwner",
-                GLib.Variant("(s)", ("sm.puri.OSK0",)), None,
-                Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
-        except GLib.Error:
-            owned = False
-        if owned:
-            # Its own start hides it within a second (pro1x-osk run).
-            time.sleep(1.2)
-            return
-
 
 class Approval:
     """A new viewer's address allowed from the phone (--approve, the stream
@@ -2246,17 +2197,12 @@ class Remote:
                            capture_output=True, timeout=5)
 
     def osk_here(self):
-        """The on-screen keyboard on the stream's own screen: stevia puts
-        its surface on the output focused when it starts (the panel, at
-        login), where the mirror covered it and the stream did not show it
-        (author, 2026-11-20).  Ended with that output focused, pro1x-osk's
-        watchdog starts it again there within a second, hidden; then
-        shown.  Screen.stop sends it back to the panel."""
+        """The on-screen keyboard on the stream's own screen (pro1x-osk
+        moves stevia there, a second, when it is on the panel)."""
         subprocess.run(["swaymsg", f"focus output {self.output}"],
                        capture_output=True, timeout=5)
-        if osk_output() != self.output:
-            restart_osk(self.output)
-        subprocess.run(["swaymsg", "exec pro1x-osk toggle"], capture_output=True, timeout=5)
+        subprocess.run(["swaymsg", "exec pro1x-osk toggle stream"],
+                       capture_output=True, timeout=5)
 
     def text(self, text):
         for ch in text:
