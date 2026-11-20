@@ -273,19 +273,29 @@ jobs:
       # reflashing: on the PC, `sudo guix archive --authorize <
       # ci-signing-key.pub', `guix archive --import < linux-pro1x.nar', then
       # scripts/deploy.sh.  Same pinned guix and nonguix and the same tree as
-      # the deploy, hence the same derivation.  The key is this run's own.
+      # the deploy, hence the same derivation.  The key is the repository
+      # secrets' CI_SIGNING_KEY_SEC and CI_SIGNING_KEY_PUB, authorized once
+      # on the PC; without them, this run's own, to authorize each time.
       # Channels are authenticated here (their introductions are in
       # channels-ci.scm); the step cannot fail the job.
       - name: Export kernel
         if: always()
         continue-on-error: true
+        env:
+          KEY_SEC: ${{ secrets.CI_SIGNING_KEY_SEC }}
+          KEY_PUB: ${{ secrets.CI_SIGNING_KEY_PUB }}
         run: |
           K=$(guix time-machine -C channels-ci.scm -- \
                 build -L modules --no-grafts linux-pro1x 2>/tmp/kernel.log | tail -1)
           if [ -d "$K" ]; then
             mkdir -p kernel-export
-            # A fresh runner has no signing key (as in guix-cache.sh).
-            [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
+            if [ -n "$KEY_SEC" ] && [ -n "$KEY_PUB" ]; then
+              printf '%s' "$KEY_SEC" | sudo install -m 600 /dev/stdin /etc/guix/signing-key.sec
+              printf '%s' "$KEY_PUB" | sudo install -m 644 /dev/stdin /etc/guix/signing-key.pub
+            else
+              # A fresh runner has no signing key (as in guix-cache.sh).
+              [ -f /etc/guix/signing-key.sec ] || sudo guix archive --generate-key
+            fi
             sudo guix archive --export "$K" > kernel-export/linux-pro1x.nar
             echo "$K" > kernel-export/linux-pro1x.path
             sudo cat /etc/guix/signing-key.pub > kernel-export/ci-signing-key.pub
