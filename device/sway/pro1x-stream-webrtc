@@ -49,6 +49,7 @@ import hashlib
 import hmac
 import queue
 import json
+import select
 import os
 import signal
 import struct
@@ -1889,6 +1890,9 @@ class Producer:
         for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
                           ("gpu", self.capture.get_by_name("raw").get_static_pad("sink"))):
             pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
+        if PW_SYNC:
+            self.capture.get_by_name("pw").get_static_pad("src").add_probe(
+                Gst.PadProbeType.BUFFER, self.written)
         if BENCH:
             self.capture.get_by_name("pw").get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER, self.bench_portal)
@@ -2078,6 +2082,30 @@ class Producer:
                 return None
             v = v * 2 + (ra[x] > rb[x])
         return (v >> 1) ^ (0xffffff if v & 1 else 0)
+
+    def written(self, _pad, info):
+        """Waits until the compositor's copy into this frame has run: its
+        DMA-BUF reads as ready once its writer (the GPU) is done.  wlroots
+        sends "ready" as soon as it has queued the copy on the GPU; read at
+        once, the buffer still held its previous frame, one turn of the
+        portal's buffers earlier (about 400 ms, 2026-11-20)."""
+        buf = info.get_buffer()
+        start = time.monotonic()
+        if PW_WAIT_MS:
+            time.sleep(PW_WAIT_MS / 1000)
+            return Gst.PadProbeReturn.OK
+        for i in range(buf.n_memory()):
+            mem = buf.peek_memory(i)
+            if GstAllocators.is_dmabuf_memory(mem):
+                fd = GstAllocators.dmabuf_memory_get_fd(mem)
+                p = select.poll()
+                p.register(fd, select.POLLIN)
+                p.poll(100)
+        if BENCH:
+            with self.lock:
+                self.bench.setdefault("written", []).append(
+                    (time.monotonic() - start) * 1000)
+        return Gst.PadProbeReturn.OK
 
     def bench_portal(self, pad, info):
         """The clock's age in the portal's own frame, before the GPU: the
@@ -2623,6 +2651,15 @@ SETTINGS = os.path.join(os.path.dirname(LOG), "interactive-stream.json")
 # PRO1X_STREAM_BENCH=1: with scripts/stream-bench's test window on the
 # screen, the log gives each stage's delay every 10 s.
 BENCH = os.environ.get("PRO1X_STREAM_BENCH") == "1"
+# PRO1X_STREAM_PW_SYNC=1: wait for the compositor's copy into each frame
+# (Producer.written).  Tried once: the first frame was 195 ms old instead
+# of 400, then the portal sent no more (2026-11-20).  Off by default.
+PW_SYNC = os.environ.get("PRO1X_STREAM_PW_SYNC") == "1"
+# PRO1X_STREAM_PW_WAIT_MS=N (with PW_SYNC): a plain wait instead, a test.
+PW_WAIT_MS = int(os.environ.get("PRO1X_STREAM_PW_WAIT_MS", "0"))
+if PW_SYNC:
+    gi.require_version("GstAllocators", "1.0")
+    from gi.repository import GstAllocators  # noqa: E402
 
 
 def log_line(text):
