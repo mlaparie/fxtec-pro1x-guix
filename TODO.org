@@ -309,7 +309,10 @@ libcamera's software AWB has no manual mode.  Inverting its generic colour tempe
 gives gains that are not monotonic with temperature: presets need the vendor's AWB reference
 points (refPt in com.qti.tuned.lce_imx582.bin, stored transformed, not decoded) or a
 measurement under known light.  An AWB lock (keep the current gains) needs only a small patch.
-*** TODO [#A] CI: one stored signing key for the exported kernel
+*** WAIT [#A] CI: one stored signing key for the exported kernel
+5e2272d uses the secrets CI_SIGNING_KEY_SEC/PUB when set.  Key pair made on the PC in
+~/.config/guix/ci-signing-key (mode 700, not in git).  Waits for the author: the secrets set
+on GitHub, and once `sudo guix archive --authorize < ~/.config/guix/ci-signing-key/signing-key.pub'.
 Each run makes a new key, so importing a CI kernel needs the author's sudo every time.  A key
 kept as a repository secret, authorized once on the PC, would let the agent import unattended.
 Kernels build on CI only, never under QEMU on the PC (author, 2026-11-20).
