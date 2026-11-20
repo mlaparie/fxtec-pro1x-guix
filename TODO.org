@@ -100,6 +100,11 @@ screen) or panel (sideways: Sunshine does not turn the panel's buffer).  pro1x-v
 makes the screen; Sunshine selected it (2026-11-20).  To try: in Moonlight, the app "Screen at
 the client's size".  Sunshine encodes in software (x264): hot.  No mDNS (no avahi-daemon on
 the phone): add the host by address.
+Apollo (Sunshine fork) checked 2026-11-20: releases are Windows only (last 0.4.7-alpha.1,
+2025-08), its client-sized virtual display is Windows only ("Linux planned"); here
+pro1x-virtual-screen already gives Sunshine that.  Left: per-client permissions and clipboard
+sync, untested on Linux upstream.  Not worth packaging now; the author's draft (2025-04,
+unfinished) stays untracked in the private channel.
 *** TODO [#C] moonlight-web (moonlightweb.top) as a stream option
 github.com/linckosz/moonlight-web (GPL-3, C++17/Qt 6.11): a browser front end for Moonlight
 hosts (WebRTC or WSS, WebCodecs in the browser).  On the Pro¹x only as a relay for Sunshine
