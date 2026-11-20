@@ -165,7 +165,10 @@ The WCN3990 allows an AP and a client on one channel.  Since 8766b18 the hotspot
 beside a connected Wi-Fi network, on its channel, sharing it (e.g. a 5G phone hotspot as the
 uplink, the car on the Pro1x's own).  Started and stopped by pro1x-hotspot on the phone
 (2026-11-20): ap0 an AP on channel 11, 10.42.0.1, wlan0 still connected.  Not yet tried: a
-device joining and reaching the internet through it; a 5 GHz uplink (no-IR may refuse the AP).
+device joining and reaching the internet through it.  Keep Wi-Fi option (44de9a5).  A 5 GHz
+uplink: refused, every 5 GHz channel is no IR while wlan0 is a client (measured, rag-notes);
+falls back to wlan0.  Possible lead: a P2P group owner instead of an AP, with
+CFG80211_REG_RELAX_NO_IR (it relaxes GO only), author's decision.
 *** TODO [#A] Tesla leaves the hotspot without internet
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
 had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
