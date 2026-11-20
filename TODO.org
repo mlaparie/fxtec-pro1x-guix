@@ -85,6 +85,17 @@ WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 2026-11-19 (author): Chromecast found the TV but failed to play a YouTube URL (an error);
 Miracast closed quick actions without doing anything.  Not looked at yet.
 *** WAIT [#B] Hotspot: devices with IP and name, stream to one; expel, ban, band, hidden name, auto-off, data used
+*** TODO [#C] moonlight-web (moonlightweb.top) as a stream option
+github.com/linckosz/moonlight-web (GPL-3, C++17/Qt 6.11): a browser front end for Moonlight
+hosts (WebRTC or WSS, WebCodecs in the browser).  On the Pro¹x only as a relay for Sunshine
+(paired-host mode, no re-encoding): its own capture encodes with NVENC/AMF/QSV/VA-API or
+software, none of which is Venus, so as a host it would be software and hot.  No Linux arm64
+release (2026-11-20); packaging needs Qt 6.11.  Official builds send telemetry
+(MW_NO_TELEMETRY=1); its internet mode goes through stream.moonlightweb.top.  Worth it only
+for its interface and gamepads: the port's own DIRECT stream already encodes in Venus.
+Apollo (Sunshine fork) was considered too: its virtual displays and rotation are Windows-only
+(SudoVDA), its client Artemis Android-only; on Linux it is Sunshine.  A virtual monitor here:
+a Sway headless output for Sunshine's output_name.
 *** TODO [#B] Interactive stream: the Pro¹x's screen in a browser (car first), low delay
 Plan in docs/interactive-stream.md (branch =streaming=, 2026-11-18): headless output,
 hardware H.264 and Opus by WebRTC, input back over a data channel, over the
