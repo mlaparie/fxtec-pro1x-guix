@@ -159,6 +159,13 @@ hotspot (as tesla-carplay does).  The author's setup for that is
 private (hook, certificate service).  On another device's hotspot
 the car reaches nothing on the phone (ERR_CONNECTION_REFUSED, no
 packet arrives), though the phone pings the car.
+*** TODO [#B] Automations in quick actions (author, 2026-11-20)
+The author's car script (Bluetooth connected: hotspot and stream; private, started from the
+Sway config) works.  Make it a general feature: an Automations line at the root of quick
+actions, a sublist of the scripts in ~/.config/pro1x/automations, each on or off (Enter
+toggles and starts or stops it now), C-e edits one with $EDITOR, "Add a new script" opens
+$EDITOR on a template.  The enabled ones start at login.  The port ships one example: a
+Bluetooth device connects, the hotspot and the stream start (device name a variable).
 *** DONE [#C] Hotspot QR as an image
 chafa sixel in the hotspot tool, text elsewhere (2026-11-20).
 *** DONE [#B] 5 GHz hotspot
