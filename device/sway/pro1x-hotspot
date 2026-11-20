@@ -72,15 +72,15 @@ menu_lines() {
     esac
     printf '%s\t%s\n' \
         back "← back" \
-        toggle "Hotspot:   $s" \
-        name "Name:      $(ssid)" \
-        password "Password:  $(psk)" \
-        band "Band:      $(ghz "$(own_band)")$(on_ap0 && [ "$(band)" != "$(own_band)" ] &&
+        toggle "Hotspot:    $s" \
+        name "Name:       $(ssid)" \
+        password "Password:   $(psk)" \
+        band "Band:       $(ghz "$(own_band)")$(on_ap0 && [ "$(band)" != "$(own_band)" ] &&
                                  echo " ($(ghz "$(band)") now, the Wi-Fi's)")" \
         keep "Keep Wi-Fi: $(keep_line)" \
-        hidden "Hidden:    $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
-        idle "Auto-off:  $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
-        data "Data used: $(data_used)" \
+        hidden "Hidden:     $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
+        idle "Auto-off:   $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
+        data "Data used:  $(data_used)" \
         qr "QR code to join" \
         clients "Connected devices"
 }
