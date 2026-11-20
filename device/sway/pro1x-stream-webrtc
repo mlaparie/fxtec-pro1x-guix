@@ -356,7 +356,12 @@ function newDecoder() {
     }
   });
   // The phone's encoder: H.264 constrained baseline, level 4, Annex B.
-  decoder.configure({codec: "avc1.42c028", optimizeForLatency: true});
+  // Its colours: BT.709, limited range, as pro1x-screencast and the GPU
+  // stage write them; the stream does not say (Venus writes no colour
+  // information), and Chromium's guess looked wrong (author, 2026-11-20).
+  decoder.configure({codec: "avc1.42c028", optimizeForLatency: true,
+                     colorSpace: {primaries: "bt709", transfer: "bt709",
+                                  matrix: "bt709", fullRange: false}});
 }
 function onVideo(m) {
   if (!onVideo.seen) { onVideo.seen = true; log({ev: "video-first", bytes: m.data.byteLength}); }

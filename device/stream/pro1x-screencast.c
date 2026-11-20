@@ -105,13 +105,18 @@ static bool shot_dmabuf_ok, shot_buffer_done;
 static struct zwlr_screencopy_frame_v1 *frame;
 static struct shot *frame_shot;
 
+/* Each output's transform, kept with it (its listener's data): with one
+ * variable, the last output listed (a stream's own, not turned) gave its
+ * turn to the panel, whose picture came sideways (2026-11-20). */
 static void output_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
 			    int32_t pw, int32_t ph, int32_t sub, const char *make,
 			    const char *model, int32_t transform)
 {
-	(void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub;
+	(void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub;
 	(void)make; (void)model;
-	output_transform = transform;
+	*(int *)d = transform;
+	if (o == output)
+		output_transform = transform;
 }
 static void output_mode(void *d, struct wl_output *o, uint32_t f, int32_t w,
 			int32_t h, int32_t r) { (void)d; (void)o; (void)f; (void)w; (void)h; (void)r; }
@@ -120,9 +125,10 @@ static void output_scale(void *d, struct wl_output *o, int32_t s) { (void)d; (vo
 static struct wl_output *candidate;
 static void output_name(void *d, struct wl_output *o, const char *name)
 {
-	(void)d;
-	if (!strcmp(name, want_output))
+	if (!strcmp(name, want_output)) {
 		output = o;
+		output_transform = *(int *)d;
+	}
 }
 static void output_description(void *d, struct wl_output *o, const char *s) { (void)d; (void)o; (void)s; }
 static const struct wl_output_listener output_listener = {
@@ -141,7 +147,7 @@ static void global(void *d, struct wl_registry *reg, uint32_t name,
 		dmabuf = wl_registry_bind(reg, name, &zwp_linux_dmabuf_v1_interface, 3);
 	else if (!strcmp(iface, wl_output_interface.name) && version >= 4) {
 		candidate = wl_registry_bind(reg, name, &wl_output_interface, 4);
-		wl_output_add_listener(candidate, &output_listener, NULL);
+		wl_output_add_listener(candidate, &output_listener, calloc(1, sizeof(int)));
 	}
 }
 static void global_remove(void *d, struct wl_registry *r, uint32_t n) { (void)d; (void)r; (void)n; }
@@ -192,20 +198,22 @@ static const char *vertex_src =
 	"  else if (turn == 2) s = vec2(1.0 - q.x, 1.0 - q.y);\n" \
 	"  else if (turn == 3) s = vec2(1.0 - q.y, q.x);\n" \
 	"  if (flip > 0.5) s.y = 1.0 - s.y;\n" \
-	"  return texture2D(tex, s).bgr;\n" \
+	"  return texture2D(tex, s).rgb;\n" /* EGL samples in the format's own order */ \
 	"}\n"
 
-/* BT.601, limited range, as the encoder's VUI says by default. */
+/* BT.709, limited range, as the stream's VUI says (venus_setup): with no
+ * colour information, Chromium assumed BT.709 and the BT.601 colours of the
+ * first version looked wrong (author, 2026-11-20). */
 static const char *y_src = SAMPLE
 	"void main() { vec3 c = at(uv);\n"
-	"  gl_FragColor = vec4(dot(c, vec3(0.257, 0.504, 0.098)) + 0.0625, 0.0, 0.0, 1.0); }\n";
+	"  gl_FragColor = vec4(dot(c, vec3(0.1826, 0.6142, 0.0620)) + 0.0625, 0.0, 0.0, 1.0); }\n";
 static const char *uv_src = SAMPLE
 	"uniform vec2 px;\n"     /* one stream pixel, in uv */
 	"void main() {\n"
 	"  vec3 c = 0.25 * (at(uv + vec2(-0.5, -0.5) * px) + at(uv + vec2(0.5, -0.5) * px)\n"
 	"                 + at(uv + vec2(-0.5, 0.5) * px) + at(uv + vec2(0.5, 0.5) * px));\n"
-	"  float u = dot(c, vec3(-0.148, -0.291, 0.439)) + 0.5;\n"
-	"  float v = dot(c, vec3(0.439, -0.368, -0.071)) + 0.5;\n"
+	"  float u = dot(c, vec3(-0.1006, -0.3386, 0.4392)) + 0.5;\n"
+	"  float v = dot(c, vec3(0.4392, -0.3989, -0.0403)) + 0.5;\n"
 	"  gl_FragColor = vec4(u, v, 0.0, 1.0); }\n";
 
 static GLuint program(const char *frag, GLint *turn, GLint *flip)
@@ -348,6 +356,11 @@ static void venus_setup(void)
 	f.fmt.pix_mp.height = H;
 	f.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
 	f.fmt.pix_mp.num_planes = 1;
+	/* What the shaders write; Venus puts it in the stream's VUI. */
+	f.fmt.pix_mp.colorspace = V4L2_COLORSPACE_REC709;
+	f.fmt.pix_mp.ycbcr_enc = V4L2_YCBCR_ENC_709;
+	f.fmt.pix_mp.quantization = V4L2_QUANTIZATION_LIM_RANGE;
+	f.fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_709;
 	if (xioctl(enc, VIDIOC_S_FMT, &f) < 0)
 		die("S_FMT output");
 	stride = f.fmt.pix_mp.plane_fmt[0].bytesperline;
