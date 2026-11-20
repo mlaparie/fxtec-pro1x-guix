@@ -1613,7 +1613,7 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "App launcher        s-m      or right swipe\n"
                      "On-screen keyboard  s-i      or bottom swipe\n"
                      "Open terminal       s-<ret>\n"
-                     "Close window        s-<backspace>\n"
+                     "Close window        s-<backspace> or bottom in-out\n"
                      "Help                C-s-h\n"
                      "Power menu          power key (long press)\n"
                      "Touchpad            s-t      or camera button (hold)\n"
@@ -2003,6 +2003,7 @@ window opened by a sway key binding.")
           ("pro1x-sov" "bin/")
           ("pro1x-osk" "bin/")
           ("pro1x-virtual-screen" "bin/")
+          ("pro1x-bt-log" "bin/")
           ("pro1x-alarm-watch" "bin/")
           ("pro1x-kbd-light" "bin/")
           ("pro1x-power-button" "bin/")
