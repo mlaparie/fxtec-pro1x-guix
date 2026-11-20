@@ -104,6 +104,8 @@ https_wanted() {
 # (Wi-Fi, mobile, Tailscale), the default; wan, also the public link.
 visibility_file=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-visibility
 visibility() {
+    # A TEST may ask for another than the setting (test 1: wan).
+    [ -n "${visibility_override:-}" ] && { echo "$visibility_override"; return; }
     case "$(cat "$visibility_file" 2>/dev/null)" in
         hotspot) echo hotspot ;;
         wan) echo wan ;;
@@ -175,6 +177,22 @@ info() {                        # info WHAT KEY
             echo "The picture's long side scaled to $2 pixels, the ratio kept."
             echo
             echo "Smaller: less work for the phone and less bandwidth, a softer picture; 1280 is a good start for a car or a tablet." ;;
+        test:1)
+            echo "A car (or any device) on a hotspot the phone does not run, reaching the stream through Tailscale Funnel, in VIDEO mode: only the page goes through Tailscale; the video, sound and touches go by WebRTC, which tries the hotspot's own network first."
+            echo
+            echo "Needs Tailscale Funnel ready (Visibility, WAN).  Open the link in the car, wait a minute, touch the screen a few times, then Stop stream.  The page logs which way WebRTC went." ;;
+        test:2)
+            echo "A car on a hotspot the phone does not run, reaching the phone's own public IPv6 address on that hotspot (the phone's own certificate: the browser warns once).  Shows whether the car uses IPv6 and accepts the phone's address at all."
+            echo
+            echo "Needs the hotspot to give IPv6 (the phone shows its address below).  Open the https link, accept the warning if one shows, or try the http one; wait a minute, then Stop stream."
+            echo
+            v6=$(global_v6); echo "The phone's IPv6 address now: ${v6:-none}" ;;
+        test:3)
+            echo "As test 2, by the HTTPS name with its trusted certificate: the name gets an IPv6 (AAAA) record pointing to the phone while the test runs, cleared at Stop stream (caches may keep it 10 minutes)."
+            echo
+            echo "Needs the HTTPS name set up (SETTINGS) and IPv6 on the hotspot.  Open the link in the car, wait a minute, then Stop stream."
+            echo
+            v6=$(global_v6); echo "The phone's IPv6 address now: ${v6:-none}" ;;
         approve:off) echo "The access key alone lets a viewer in." ;;
         approve:tap) echo "A notification on the phone: a tap lets the viewer in." ;;
         approve:fingerprint)
@@ -301,6 +319,7 @@ keep_awake() {                  # keep_awake PID
 }
 
 stop_stream() {
+    [ -f "$aaaa_file" ] && aaaa_clear &
     funnel_stop
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
     rm -f "$pid_file" "$to_file" "$kind_file"
@@ -313,6 +332,7 @@ running_links() {
         interactive|webrtc) show_links "$(streaming_note "$arg")" "${arg:+?k=$arg}" ;;
         mjpeg) simple_links ;;
         moonlight) moonlight_links ;;
+        test[123]) test_links "${kind#test}" "$arg" ;;
         udp) printf '%s\t%-10s %s\n' "udp://@:$udp_port" vlc "udp://@:$udp_port" |
                  show_urls "Sending to $arg: in VLC there, open the URL above." >/dev/null ;;
     esac
@@ -643,6 +663,129 @@ simple_links() {
     done | show_urls "$(streaming_note)" >/dev/null
 }
 
+# TESTS: numbered ways for a car on a hotspot the phone does not run to
+# reach the stream (author, 2026-11-20; the phone's own hotspot and its
+# HTTPS name work already).  Each writes a marked section to
+# ~/.local/state/pro1x/stream-tests.log (the phone's addresses, routes and
+# Wi-Fi connection), and starts the interactive stream with
+# PRO1X_STREAM_TEST=N: the server logs every connection, request and
+# failure (refused TLS handshakes too), and the page which way WebRTC went,
+# in ~/.local/state/pro1x/interactive-stream.log.
+# State: written 2026-11-20, not yet run in a car.
+tests_log=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/stream-tests.log
+aaaa_file="$rt/pro1x-stream-aaaa"         # test 3: the name given an AAAA
+
+# The phone's public IPv6 address on its Wi-Fi: not a temporary one (they
+# change) nor a deprecated one.
+global_v6() {
+    ip -6 -o addr show dev wlan0 scope global 2>/dev/null |
+        awk '!/temporary|deprecated|tentative/ { sub("/.*", "", $4); print $4; exit }'
+}
+
+https_setting() {               # https_setting KEY: its value in the HTTPS file
+    sed -n "s/^[[:space:]]*$1=//p" "$https_file" 2>/dev/null | tail -1 |
+        sed 's/^["'"'"']//; s/["'"'"']$//'
+}
+
+# The DNS provider's script, as this user, with only its own keys from the
+# HTTPS file in its environment.
+dns_hook() {                    # dns_hook COMMAND ARG...
+    provider=$(https_setting DNS_PROVIDER)
+    case "$provider" in ''|*[!a-z0-9]*) return 1 ;; esac
+    command -v "pro1x-stream-dns-$provider" >/dev/null || return 1
+    prefix=$(echo "$provider" | tr a-z A-Z)_
+    (
+        for name in $(sed -n "s/^[[:space:]]*\($prefix[A-Z0-9_]*\)=.*/\1/p" "$https_file" | sort -u); do
+            export "$name=$(https_setting "$name")"
+        done
+        "pro1x-stream-dns-$provider" "$@"
+    )
+}
+
+aaaa_clear() {
+    [ -f "$aaaa_file" ] || return 0
+    name=$(cat "$aaaa_file")
+    rm -f "$aaaa_file"
+    if dns_hook aaaa-clear "$name" >>"$tests_log" 2>&1; then
+        echo "$(date '+%F %T') test 3: AAAA of $name cleared" >> "$tests_log"
+    else
+        echo "$(date '+%F %T') test 3: AAAA of $name NOT cleared" >> "$tests_log"
+    fi
+}
+
+test_header() {                 # test_header N TEXT
+    mkdir -p "${tests_log%/*}"
+    {
+        echo
+        echo "=== $(date '+%F %T') test $1: $2"
+        echo "--- addresses"; ip -o addr show dev wlan0 2>/dev/null | awk '{ print $3, $4, $NF }'
+        echo "--- routes"; ip route show default 2>/dev/null; ip -6 route show default 2>/dev/null
+        echo "--- connections"; nmcli -t -f TYPE,DEVICE,STATE c show --active 2>/dev/null
+        echo "--- tailscale"; tailscale status --self --peers=false 2>/dev/null | head -2
+    } >> "$tests_log" 2>&1
+}
+
+test_links() {                  # test_links N KEY
+    k=$2
+    case "$1" in
+        1) printf 'https://%s/?k=%s&mode=video\t%-10s https://%s/  (VIDEO)\n' \
+                  "$(funnel_name)" "$k" funnel "$(funnel_name)" ;;
+        2) v6=$(global_v6)
+           printf 'https://[%s]:%s/?k=%s\t%-10s https://[%s]:%s/\n' "$v6" "$tls_port" "$k" "IPv6" "$v6" "$tls_port"
+           printf 'http://[%s]:%s/?k=%s\t%-10s http://[%s]:%s/\n' "$v6" "$webrtc_port" "$k" "IPv6 http" "$v6" "$webrtc_port" ;;
+        3) name=$(https_setting STREAM_DOMAIN)
+           printf 'https://%s:%s/?k=%s\t%-10s https://%s:%s/  (IPv6 by name)\n' \
+                  "$name" "$tls_port" "$k" "$name" "$name" "$tls_port" ;;
+    esac | show_urls "Test $1, key ${k:-none}: open the link in the car, wait a minute, touch the screen, then Stop stream.  Logged for later." >/dev/null
+}
+
+run_test() {                    # run_test N
+    n=$1
+    case "$n" in
+        1) missing=$(funnel_missing)
+           [ -z "$missing" ] || { notice "Test 1 needs Tailscale Funnel: $missing"; return; } ;;
+        2|3) [ -n "$(global_v6)" ] ||
+                 { notice "Test $n needs a public IPv6 address on the Wi-Fi: this network gives none."; return; } ;;
+    esac
+    if [ "$n" = 3 ]; then
+        name=$(https_setting STREAM_DOMAIN)
+        [ -n "$name" ] || { notice "Test 3 needs the HTTPS name (SETTINGS, HTTPS name)."; return; }
+        aaaa_clear
+        if dns_hook aaaa "$name" "$(global_v6)" >>"$tests_log" 2>&1; then
+            echo "$name" > "$aaaa_file"
+        else
+            notice "Test 3: the name's AAAA record could not be set (see $tests_log)."
+            return
+        fi
+    fi
+    case "$n" in
+        1) test_header 1 "Funnel, VIDEO (page by Tailscale, media by WebRTC)" ;;
+        2) test_header 2 "IPv6 address $(global_v6), own certificate" ;;
+        3) test_header 3 "IPv6 by name $(https_setting STREAM_DOMAIN) -> $(global_v6)" ;;
+    esac
+    export PRO1X_STREAM_TEST=$n
+    visibility_override=$([ "$n" = 1 ] && echo wan || echo lan)
+    quiet=1 send_interactive
+    started=$?
+    unset PRO1X_STREAM_TEST visibility_override
+    [ "$started" = 0 ] ||
+        { notice "Test $n: the stream did not start."; aaaa_clear; return; }
+    k=$(key_on && current_key)
+    echo "test$n ${k:-}" > "$kind_file"
+    echo "$(date '+%F %T') test $n: stream started (key ${k:-none})" >> "$tests_log"
+    test_links "$n" "$k"
+    leave_menu
+}
+
+tests_menu() {
+    choice=$(printf '%s\t%s\n' \
+        1 "Test 1  Funnel, VIDEO: page by Tailscale, video and touch by WebRTC" \
+        2 "Test 2  Another hotspot, the phone's IPv6 address (own certificate)" \
+        3 "Test 3  Another hotspot, IPv6 by the HTTPS name (trusted certificate)" |
+        pick_info "tests" test)
+    [ -n "$choice" ] && run_test "$choice"
+}
+
 # Moonlight: Sunshine, a Moonlight host, if the owner installed it (it is
 # not part of the port: their home config, from a channel that packages it).
 # It encodes in software (no Moonlight host uses Venus): hot, a fallback to
@@ -887,7 +1030,8 @@ while :; do
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
             catt "Chromecast            sends a video URL or file; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
-            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
+            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" \
+            tests "TESTS                 numbered ways to reach the stream from a car; logged" |
             # The running stream's line: "active: show links" (author).
             awk -F'\t' -v k="$(running_kind)" '$1 == k { print $1 "\t" substr($2, 1, 22) "active: show links"; next } { print }')
     choice=$(printf '%s\n' "$lines" | pick "stream")
@@ -907,6 +1051,7 @@ while :; do
         webrtc) send_webrtc ;;
         interactive) send_interactive ;;
         settings) settings_menu ;;
+        tests) tests_menu ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;

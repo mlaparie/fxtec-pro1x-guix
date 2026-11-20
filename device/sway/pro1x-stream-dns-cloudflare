@@ -35,15 +35,20 @@ zone_id() {
 }
 
 case "${1:-}" in
-    a)
+    a|aaaa)
+        type=$(echo "$1" | tr a-z A-Z)
         z=$(zone_id "$2")
-        got=$(call GET "zones/$z/dns_records?type=A&name=$2")
+        got=$(call GET "zones/$z/dns_records?type=$type&name=$2")
         rid=$(echo "$got" | jq -r '.result[0].id // empty')
         [ "$(echo "$got" | jq -r '.result[0].content // empty')" = "$3" ] && exit 0
-        body="{\"type\":\"A\",\"name\":\"$2\",\"content\":\"$3\",\"ttl\":300,\"proxied\":false}"
+        body="{\"type\":\"$type\",\"name\":\"$2\",\"content\":\"$3\",\"ttl\":300,\"proxied\":false}"
         if [ -n "$rid" ]; then call PUT "zones/$z/dns_records/$rid" "$body" | ok
         else call POST "zones/$z/dns_records" "$body" | ok; fi ||
-            { echo "cloudflare: A record not set" >&2; exit 1; } ;;
+            { echo "cloudflare: $type record not set" >&2; exit 1; } ;;
+    aaaa-clear)
+        z=$(zone_id "$2")
+        rid=$(call GET "zones/$z/dns_records?type=AAAA&name=$2" | jq -r '.result[0].id // empty')
+        [ -z "$rid" ] || call DELETE "zones/$z/dns_records/$rid" | ok ;;
     auth)
         z=$(zone_id "$CERTBOT_DOMAIN")
         call POST "zones/$z/dns_records" \

@@ -35,6 +35,10 @@ rrset() {                       # rrset DOMAIN SUBNAME TYPE RECORDS-JSON
 case "${1:-}" in
     a)
         rrset "$(zone "$2")" "$(sub "$2")" A "[\"$3\"]" ;;
+    aaaa)
+        rrset "$(zone "$2")" "$(sub "$2")" AAAA "[\"$3\"]" ;;
+    aaaa-clear)
+        rrset "$(zone "$2")" "$(sub "$2")" AAAA "[]" ;;
     auth)
         s=$(sub "$CERTBOT_DOMAIN")
         rrset "$(zone "$CERTBOT_DOMAIN")" "_acme-challenge${s:+.$s}" TXT "[\"\\\"$CERTBOT_VALIDATION\\\"\"]"

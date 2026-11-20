@@ -2,6 +2,8 @@
 # pro1x-stream-dns-porkbun — Porkbun's DNS API for pro1x-stream-cert, as root.
 #
 #   pro1x-stream-dns-porkbun a NAME ADDRESS   make NAME's A record ADDRESS
+#   pro1x-stream-dns-porkbun aaaa NAME ADDRESS, aaaa-clear NAME: its AAAA
+#                                             (the stream menu's TESTS)
 #   pro1x-stream-dns-porkbun auth             certbot's manual-auth-hook
 #   pro1x-stream-dns-porkbun cleanup          certbot's manual-cleanup-hook
 #
@@ -31,21 +33,25 @@ call() {                        # call PATH [JSON-FIELDS]
 }
 
 case "${1:-}" in
-    a)
+    a|aaaa)
+        type=$(echo "$1" | tr a-z A-Z)
         name=$2 address=$3 z=$(zone "$2") s=$(sub "$2")
-        got=$(call "dns/retrieveByNameType/$z/A/$s")
+        got=$(call "dns/retrieveByNameType/$z/$type/$s")
         case "$got" in
             *"\"content\":\"$address\""*) exit 0 ;;
             *"\"records\":[]"*)
-                done=$(call "dns/create/$z" "\"name\":\"$s\",\"type\":\"A\",\"content\":\"$address\",\"ttl\":\"600\"") ;;
+                done=$(call "dns/create/$z" "\"name\":\"$s\",\"type\":\"$type\",\"content\":\"$address\",\"ttl\":\"600\"") ;;
             *"\"records\":[{"*)
-                done=$(call "dns/editByNameType/$z/A/$s" "\"content\":\"$address\",\"ttl\":\"600\"") ;;
+                done=$(call "dns/editByNameType/$z/$type/$s" "\"content\":\"$address\",\"ttl\":\"600\"") ;;
             *) echo "porkbun: $got" >&2; exit 1 ;;
         esac
         case "$done" in
             *'"status":"SUCCESS"'*) ;;
-            *) echo "porkbun: A record not set: $done" >&2; exit 1 ;;
+            *) echo "porkbun: $type record not set: $done" >&2; exit 1 ;;
         esac ;;
+    aaaa-clear)
+        z=$(zone "$2") s=$(sub "$2")
+        call "dns/deleteByNameType/$z/AAAA/$s" | grep -q '"status":"SUCCESS"' ;;
     auth)
         z=$(zone "$CERTBOT_DOMAIN") s=$(sub "$CERTBOT_DOMAIN")
         call "dns/create/$z" "\"name\":\"_acme-challenge${s:+.$s}\",\"type\":\"TXT\",\"content\":\"$CERTBOT_VALIDATION\",\"ttl\":\"600\"" |
@@ -55,5 +61,5 @@ case "${1:-}" in
     cleanup)
         z=$(zone "$CERTBOT_DOMAIN") s=$(sub "$CERTBOT_DOMAIN")
         call "dns/deleteByNameType/$z/TXT/_acme-challenge${s:+.$s}" >/dev/null || true ;;
-    *) echo "usage: pro1x-stream-dns-porkbun a NAME ADDRESS | auth | cleanup" >&2; exit 2 ;;
+    *) echo "usage: pro1x-stream-dns-porkbun a|aaaa NAME ADDRESS | aaaa-clear NAME | auth | cleanup" >&2; exit 2 ;;
 esac
