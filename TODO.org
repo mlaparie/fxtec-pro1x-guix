@@ -108,6 +108,15 @@ Delay: the author's test went over Tailscale (round trip 855 ms); not yet measur
 same Wi-Fi or the hotspot.
 Next: the delay on a direct Wi-Fi; the encoder's ~20 fps cap at 1920 (the NV12 copy from
 gldownload's DMA-BUF, maybe: dmabuf-import needs one buffer, gldownload gives two).
+Measured 2026-11-20 night from Chromium on the same Wi-Fi (scripts/stream-bench, host mode
+1600x800@20, 2 Mbit/s CBR, DIRECT): steady on 5.7 fps, frames 1.5 s old, key round trip
+1.6 s; steady off 12 fps, 0.55 s (p95 0.69 s), keys 0.66 s.  The author's phone has steady
+off since (SET).  Of the 0.55 s: capture 0.40 s (the portal's frames are already that old;
+grim's are fresh; cause not found), GPU stage 0.03, encoder 0.06, network and browser 0.09.
+Restarting the server hung the phone twice (watchdog reboot after 5-7 min): no restart cycles.
+Next: the capture's 0.4 s (PRO1X_STREAM_PW_LEAKY=1 untried; swayfx/wlroots damage capture);
+steady without the copies (copy each new frame once to cached memory, repeat that); the
+first frame after loading (8-38 s); A/V sync with a film.
 HTTPS (2026-11-19): browsers that refuse plain HTTP get the phone's
 own certificate, or a trusted one the owner puts in
 /var/lib/pro1x/stream-tls; ~/.config/pro1x/stream-hook may choose

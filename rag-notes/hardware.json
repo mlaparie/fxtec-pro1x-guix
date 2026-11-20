@@ -271,6 +271,38 @@
         "confidence": "inferred",
         "date": "2026-10-28",
         "source": "kernel source 8cd9520; Konrad Dybcio, Venus QoL series v4 (LKML 2023-05, names SM6115/QCM2290 AR50 Lite); Jorge Ramirez-Ortiz, QCM2290 AR50 Lite series v7 (2025-07)"
+      },
+      {
+        "title": "gldownload's output is uncached memory: CPU reads per pixel are ~10x slower, and a Python buffer map copies the whole frame",
+        "general": "On Adreno/Mesa, GStreamer's gldownload hands over buffers mapped from GPU memory without CPU caching. A block copy from them (the V4L2 encoder's input copy) costs a few ms, but any element or callback that reads them pixel by pixel collapses (videoflip after gldownload: 1.9 fps against 17.8 without). From Python, Gst.Buffer.map() copies the whole mapping into a Python object; use extract_dup(offset, size) for a few bytes. Every extra copy of a frame (e.g. pushing the same frame again to keep a steady rate) costs a full uncached read.",
+        "instance": "Pro1x, Mesa freedreno A610, GStreamer 1.28.1. perf: 55% of the stream server in __memcpy_generic, in the encoder's input thread (queue0, 35%) and the GPU stage (20%). A per-frame Python map of the 1600x800 NV12 frame held the GPU stage at 6 of its 18 fps. Synthetic: upload+scale+turn+NV12 convert+download about 25 ms a frame, CPU conversion instead slower (8.9 fps vs 12.7).",
+        "confidence": "confirmed",
+        "date": "2026-11-20",
+        "source": "scripts/stream-bench (phone-clock.py, stream-bench.py), PRO1X_STREAM_BENCH=1 in device/sway/pro1x-stream-webrtc; measured 2026-11-20 03:40-04:50"
+      },
+      {
+        "title": "Repeated (damage-tracked) screen capture on swayfx 0.6 returns frames ~400-540 ms old; a one-shot grim capture is fresh",
+        "general": "Measure capture age with a clock drawn on screen and decoded from the captured frames, at each stage. Here the portal's frames (xdg-desktop-portal-wlr 0.8.4, which prefers ext-image-copy-capture) were already ~400 ms old when pipewiresrc handed them over, at any frame rate (5-28/s), buffer count (2-8, min/max), or portal max-framerate; wf-recorder (wlr-screencopy with damage) read directly showed 544 ms (min 273), while grim's one-shot frames were drawn within +-30 ms. The GPU stage after it took 30-40 ms, the encoder 55-80 ms, network plus browser decode about 85 ms. Cause not found. Note: pipewiresrc hands buffers over oldest first, one per create(), with no skip to the newest.",
+        "instance": "Pro1x, swayfx 0.6 (Sway 1.12), xdpw 0.8.4 (max_fps=30, force_mod_linear), PipeWire 1.6.8, host mode 1600x800@20. Untried: a leaky queue right after pipewiresrc (PRO1X_STREAM_PW_LEAKY=1); its only run was followed by a hang, as was a restart without it.",
+        "confidence": "confirmed",
+        "date": "2026-11-20",
+        "source": "scripts/stream-bench (phone-clock.py, stream-bench.py), PRO1X_STREAM_BENCH=1 in device/sway/pro1x-stream-webrtc; measured 2026-11-20 03:40-04:50"
+      },
+      {
+        "title": "Restarting the stream server (closing and reopening the portal capture and Venus) hard-hangs the phone at times",
+        "general": "Each start opens a ScreenCast session and the Venus encoder, each stop closes them. Cycled every minute or two, about 1 restart in 15 was followed within 30 s by a hard hang: nothing more in the log, no pstore record, and a watchdog reboot after 5-7 minutes. Matches the 2026-11-18 note that opening them per viewer powered the phone off. Avoid restart cycles; the server's own reexec (new size, rate or screen mode) goes through the same close and open.",
+        "instance": "Pro1x, 2026-11-20 04:18 and 04:40 (logs stop at 04:18:34 and 04:40:28, reboots 04:24 and 04:47). Kernel 7.2.x of this port. Which driver hangs is unknown (Venus firmware, GPU, or DMA-BUF).",
+        "confidence": "confirmed",
+        "date": "2026-11-20",
+        "source": "/var/log/messages on the phone; scripts/stream-bench/phone-run-dev.sh restarts"
+      },
+      {
+        "title": "Repeating the last frame to keep the stream's rate steady tripled its delay on this phone",
+        "general": "A clock that pushes the latest frame again when the screen sends none keeps the encoder's output even, but each push copies the frame again into the encoder. Where those copies are the bottleneck (uncached source memory), the real frames wait behind the repeats. Measured from a browser with the same settings: steady on 5.7 frames shown a second, 1.5 s old (key round trip 1.6 s); steady off 12 frames a second, 0.55 s old (95th percentile 0.69 s), key round trip 0.66 s, first frame 8 s after loading.",
+        "instance": "Pro1x, installed server of 27dbdce, host mode 1600x800@20, 2 Mbit/s constant bitrate, DIRECT (WebCodecs) in Chromium 151 on the same Wi-Fi.",
+        "confidence": "confirmed",
+        "date": "2026-11-20",
+        "source": "scripts/stream-bench (phone-clock.py, stream-bench.py), PRO1X_STREAM_BENCH=1 in device/sway/pro1x-stream-webrtc; measured 2026-11-20 03:40-04:50; scripts/stream-bench/stream-bench.jsonl"
       }
     ],
     "keyboard": [
