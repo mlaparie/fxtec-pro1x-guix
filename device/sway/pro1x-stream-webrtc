@@ -326,7 +326,7 @@ document.getElementById("bm").onclick = async () => {
 // buffer.  Behind (the decoder holding more than two), frames are skipped
 // to the next keyframe, asked for at once: the newest frame wins.
 let decoder = null, dframes = 0, dskipped = 0, derrors = 0, needKey = true;
-let askedKey = 0, dkeys = 0;
+let askedKey = 0, dkeys = 0, behindSince = 0;
 // How old each frame is when drawn: from leaving the phone's encoder
 // (its clock and this one both set by NTP), and the encoder's own delay.
 const sentAt = new Map();
@@ -380,7 +380,13 @@ function onVideo(m) {
   }
   parts.chunks[i] = new Uint8Array(m.data, 19);
   if (++parts.got < parts.n) return;
-  if (!parts.key && (needKey || decoder.decodeQueueSize > 2)) {
+  // Behind: more than 2 frames waiting in the decoder for 300 ms, or 8.
+  // Firefox's decoder holds a few as it works, and skipping at once at 3
+  // cut it to 8 fps (2026-11-20); Chromium's never holds that many.
+  const q = decoder.decodeQueueSize, now0 = performance.now();
+  if (q > 2) { if (!behindSince) behindSince = now0; } else behindSince = 0;
+  const behind = q > 8 || (behindSince && now0 - behindSince > 300);
+  if (!parts.key && (needKey || behind)) {
     needKey = true;
     // Asked again every second while waiting: one request, dropped by the
     // phone's limit, left the picture frozen until a reload (2026-11-20).
