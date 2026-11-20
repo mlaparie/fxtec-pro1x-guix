@@ -291,7 +291,10 @@ SoCs. Mostly from moWerk's SailfishOS port; the ones not yet seen here are marke
 - Lead with the result, then the evidence, then what you need from the author, numbered.
 - State failures as plainly as successes, with the log line. Say what you did not verify.
 - Correct your own earlier mistakes explicitly when you find them.
-- Keep it short; the details live in the notes and the commits.
+- Keep it short; the details live in the notes and the commits.  The author finds the
+  agent's messages too long (2026-11-07, again 2026-11-21): a few lines, only what the author
+  needs (the result, a failure, a decision or an action for them).  No tables or lists of
+  what was done, no test logs, no background the author did not ask for.
 - No fluff, in the terminal or in commit messages: no preamble, no restating the request,
   no recap of what was just shown, no filler adjectives. Commit messages say what changed,
   why, and what was tested, in as few lines as that takes.
