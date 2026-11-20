@@ -82,7 +82,7 @@ redirect() {
         'table ip pro1x_stream {' \
         '    chain prerouting {' \
         '        type nat hook prerouting priority dstnat - 1;' \
-        "        iifname \"wlan0\" ip daddr $1 tcp dport { 443, 8443 } dnat to 10.42.0.1:8443" \
+        "        iifname { \"wlan0\", \"ap0\" } ip daddr $1 tcp dport { 443, 8443 } dnat to 10.42.0.1:8443" \
         '    }' \
         '}' | nft -f -
 }

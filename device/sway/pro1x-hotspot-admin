@@ -7,6 +7,10 @@
 #   unban MAC
 #   apply       set the rules from the saved list (at each hotspot start)
 #   leases      print the devices' DHCP leases, in a directory only root reads
+#   ap-up       make ap0, the hotspot's interface beside a Wi-Fi network
+#               (pro1x-hotspot), with an address of its own; NetworkManager
+#               does not connect it to networks by itself
+#   ap-down     remove it
 #
 # A banned device can still associate, since NetworkManager has no access list
 # for an access point.  Its traffic is dropped by nftables, matched on its MAC;
@@ -15,8 +19,11 @@
 # State: not yet run on the phone.
 
 set -eu
+PATH=/run/current-system/profile/bin:$PATH
 
+# The hotspot's interface: ap0 beside a Wi-Fi network, else wlan0.
 iface=wlan0
+[ -e /sys/class/net/ap0 ] && iface=ap0
 dir=/var/lib/pro1x-hotspot
 banned=$dir/banned
 
@@ -55,5 +62,19 @@ case "${1:-}" in
         apply ;;
     apply) apply ;;
     leases) cat "/var/lib/NetworkManager/dnsmasq-$iface.leases" 2>/dev/null || true ;;
-    *) echo "usage: pro1x-hotspot-admin expel|ban|unban MAC, apply, or leases" >&2; exit 2 ;;
+    ap-up)
+        if [ ! -e /sys/class/net/ap0 ]; then
+            # wlan0's address with its last byte changed, local and unicast:
+            # wlan0's own (a random local one already) made both fail.
+            mac=$(cat /sys/class/net/wlan0/address)
+            mac=${mac%:*}:$(printf '%02x' $(( 0x${mac##*:} ^ 0x01 )))
+            mac=$(printf '%02x' $(( (0x${mac%%:*} | 2) & 0xfe ))):${mac#*:}
+            iw dev wlan0 interface add ap0 type __ap addr "$mac"
+            sleep 1
+        fi
+        nmcli device set ap0 autoconnect no ;;
+    ap-down)
+        [ -e /sys/class/net/ap0 ] && iw dev ap0 del
+        true ;;
+    *) echo "usage: pro1x-hotspot-admin expel|ban|unban MAC, apply, leases, ap-up, ap-down" >&2; exit 2 ;;
 esac

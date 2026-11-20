@@ -5,16 +5,19 @@
 # banned, or sent the screen.  Opened by Enter or Right on the Hotspot line of
 # sway-quick-actions, inside its window.
 #
-# It is a NetworkManager connection in shared mode.  wlan0 cannot be a client
-# at the same time here, so starting it drops the Wi-Fi network in use, and the
-# internet it shares comes from mobile data.
+# It is a NetworkManager connection in shared mode.  With no Wi-Fi network
+# in use it runs on wlan0 and shares mobile data.  Beside a Wi-Fi network it
+# runs on a second interface, ap0, on that network's channel, and shares
+# that network (place, below): the Wi-Fi in use stays up.
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
 # A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
 # Wi-Fi client, the access point's country beacon closes every 5 GHz channel
 # ("no IR"), so the band can only be checked once the client link is dropped.
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
-# run on the phone.
+# run on the phone.  Beside a Wi-Fi network: ap0 an access point on the
+# network's channel with wlan0 still connected, by hand (2026-11-20); this
+# script's start and stop with it not yet run.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -24,7 +27,10 @@ esac
 rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 con=pro1x-hotspot
+# The hotspot's interface: wlan0, or ap0 beside a Wi-Fi network (start).
 iface=wlan0
+[ -e /sys/class/net/ap0 ] && iface=ap0
+saved_band="$rt/pro1x-hotspot-band"     # the owner's band and channel, kept
 banned=/var/lib/pro1x-hotspot/banned
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
 idle_file="$statedir/hotspot-idle"      # minutes without a device, 0 for never
@@ -129,9 +135,54 @@ in_background() {
     ' "$0" "$@" > /dev/null 2>&1 < /dev/null &
 }
 
+# The Wi-Fi network wlan0 is on, as its frequency in MHz; empty if none.
+client_freq() {
+    nmcli -t -f DEVICE,STATE device | grep -qx 'wlan0:connected' || return 0
+    iw dev wlan0 link 2>/dev/null | sed -n 's/.*freq: \([0-9]*\).*/\1/p' | head -1
+}
+
+# Beside a Wi-Fi network (wlan0 connected), the hotspot is a second
+# interface, ap0, on that network's channel: the WCN3990 allows an access
+# point and a client together on one channel ("#{ managed } <= 2, #{ AP }
+# <= 2, #channels <= 1").  So the Wi-Fi stays up, e.g. a phone's 5G hotspot
+# as the uplink, and the car on the Pro1x's own (author, 2026-11-20).  ap0
+# needs an address of its own: wlan0's (already a random local one) made
+# both fail ("Name not unique on network").  Otherwise wlan0 itself, on the
+# owner's band and channel.
+place() {
+    f=$(client_freq)
+    if [ -n "$f" ]; then
+        $admin ap-up || return 1
+        iface=ap0
+        if [ "$f" = 2484 ]; then b=bg ch=14
+        elif [ "$f" -lt 3000 ]; then b=bg ch=$(( (f - 2407) / 5 ))
+        else b=a ch=$(( (f - 5000) / 5 )); fi
+        [ -f "$saved_band" ] ||
+            echo "$(band) $(nmcli -e no -g 802-11-wireless.channel connection show "$con")" > "$saved_band"
+        nmcli connection modify "$con" connection.interface-name ap0 \
+              802-11-wireless.band "$b" 802-11-wireless.channel "$ch" \
+              802-11-wireless.cloned-mac-address "$(cat /sys/class/net/ap0/address)"
+    else
+        iface=wlan0
+        $admin ap-down
+        if [ -f "$saved_band" ]; then
+            read -r b ch < "$saved_band"
+            nmcli connection modify "$con" 802-11-wireless.band "$b" 802-11-wireless.channel "${ch:-0}"
+            rm -f "$saved_band"
+        fi
+        nmcli connection modify "$con" connection.interface-name wlan0 \
+              802-11-wireless.cloned-mac-address ""
+    fi
+}
+
 start() {
+    place || { notify-send -u critical Hotspot "Could not make its interface beside the Wi-Fi"; return 1; }
     nmcli connection up "$con" || {
-        if [ "$(band)" = a ]; then
+        [ "$iface" = ap0 ] && $admin ap-down
+        if [ "$iface" = ap0 ]; then
+            notify-send -u critical Hotspot \
+                "Could not start beside the Wi-Fi network (on its channel); disconnect it to use another"
+        elif [ "$(band)" = a ]; then
             notify-send -u critical Hotspot \
                 "Could not start on 5 GHz: try 2.4 GHz"
         else
@@ -162,7 +213,11 @@ watch_idle() {
     rm -f "$watch_pid"
 }
 
-stop() { nmcli connection down "$con"; notify-send Hotspot Off; }
+stop() {
+    nmcli connection down "$con"
+    [ -e /sys/class/net/ap0 ] && $admin ap-down
+    notify-send Hotspot Off
+}
 
 restart() { nmcli connection down "$con"; start; }
 
@@ -218,7 +273,9 @@ info() {                        # info WHAT KEY
     case "$1:$2" in
         band:bg) echo "2.4 GHz: reaches further and through walls, and every device has it; slower, and crowded where many networks are." ;;
         band:a)
-            echo "5 GHz: faster and less crowded, shorter reach; some older devices (and some cars) lack it.  Channel 36." ;;
+            echo "5 GHz: faster and less crowded, shorter reach; some older devices (and some cars) lack it.  Channel 36."
+            echo
+            echo "Beside a Wi-Fi network the hotspot takes that network's band and channel instead (one channel for both)." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) echo "The name is not broadcast: a device joins by typing it (or by the QR code).  It hides little: the name still travels when devices connect." ;;
         idle:0) echo "The hotspot stays on until turned off." ;;
