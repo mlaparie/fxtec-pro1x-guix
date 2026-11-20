@@ -709,14 +709,28 @@ async function connect() {
 }
 // DIRECT's frames by WebSocket on the same address (the phone's /video):
 // a WebRTC data channel for them drained at about 4 kB/s (2026-11-20).
+let videoOpened = false;
 function openVideo() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://")
                            + location.host + withKey("/video"));
   ws.binaryType = "arraybuffer";
-  ws.onopen = () => { log({ev: "video-socket-open"}); newDecoder(); needKey = true; send({t: "keyframe"}); };
+  ws.onopen = () => {
+    videoOpened = true;
+    log({ev: "video-socket-open"}); newDecoder(); needKey = true; send({t: "keyframe"});
+  };
   ws.onmessage = onVideo;
   // The phone's server started again or the socket dropped: once more.
   ws.onclose = () => setTimeout(() => { if (cfg.direct) openVideo(); }, 1000);
+  // Never opened in 4 s: VIDEO (WebRTC) for this tab.  Firefox behind
+  // Tailscale Funnel never saw the socket open, though the phone took it,
+  // and showed black (2026-11-20; Chromium through the same Funnel did).
+  if (!videoOpened)
+    setTimeout(() => {
+      if (videoOpened || !cfg.direct) return;
+      log({ev: "video-socket-failed"});
+      try { sessionStorage.setItem("nodirect", "1"); } catch (x) {}
+      location.reload();
+    }, 4000);
 }
 connect();
 
