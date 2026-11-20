@@ -42,14 +42,21 @@ fi
 # bottom O: the swipe up from the bottom edge (lisgd, at 80 px, the finger
 # still down; O its orientation, as lisgd's -o): the on-screen keyboard
 # shown or hidden at once, then the finger followed until it lifts or for
-# 1.5 s.  Gone 140 px in and back within 30 px of that edge (or lifted
-# there, sliding off the panel): the keyboard as it was, and the focused
+# 1.5 s.  Gone 140 px in and back within 90 px of that edge (or lifted
+# within 150 px, sliding off the panel; 30 and 60 were too strict, author
+# 2026-11-20): the keyboard as it was, and the focused
 # window closed, as Super+BackSpace, with a buzz (author, 2026-11-20).
 # lisgd sees only straight swipes, hence this watcher.  The distance from
 # the edge in the touchscreen's own (portrait) coordinates, as lisgd turns
 # its edges: o 0 bottom (2160 - y), 1 left (x), 2 top (y), 3 right (1080 - x).
 if [ "${1:-}" = bottom ]; then
     o=${2:-0}
+    # Once per swipe: lisgd fires again as the finger goes on, which
+    # toggled the keyboard back and started watchers that saw only the end.
+    stamp="${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom"
+    now=$(date +%s%N)
+    [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 800000000 ] && exit 0
+    echo "$now" > "$stamp"
     pro1x-osk toggle &
     # The axis that moves away from that edge: only once it is known.
     # Line by line (stdbuf): into a pipe evtest wrote 4 kB blocks, and the
@@ -58,14 +65,14 @@ if [ "${1:-}" = bottom ]; then
           awk -v o="$o" '
         /ABS_MT_POSITION_X\), value/ { x = $NF; if (o % 2) seen = 1 }
         /ABS_MT_POSITION_Y\), value/ { y = $NF; if (!(o % 2)) seen = 1 }
-        /BTN_TOUCH\), value 0/ { if (gone && d <= 60) print "close"; exit }
+        /BTN_TOUCH\), value 0/ { if (gone && d <= 150) { print "close"; c = 1 }; exit }
         /SYN_REPORT/ && seen {
             d = (o == 1) ? x : (o == 2) ? y : (o == 3) ? 1080 - x : 2160 - y
             if (d > max) max = d
             if (d >= 140) gone = 1
-            if (gone && d <= 30) { print "close"; exit }
+            if (gone && d <= 90) { print "close"; c = 1; exit }
         }
-        END { if (!gone) print "no: went " max " px in" }')
+        END { if (c) exit; if (!gone) print "no: went " max " px in"; else print "no: came back to " d " px" }')
     # The last decision, for tuning.
     echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
     if [ "$out" = close ]; then
