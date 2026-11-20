@@ -735,7 +735,10 @@ choose() {
     case "$line" in
         wwan)
             case "$pick" in
-                roaming) act roaming; choose wwan ;;
+                # Its real state, not a main-list line (gone there since it
+                # moved here; the toggle could only turn it on, author).
+                roaming) [ "$(roaming)" = on ] && want=off || want=on
+                         toggle_to roaming "$want"; choose wwan ;;
                 operator) choose operator; choose wwan ;;
                 sim) choose sim; choose wwan ;;
                 *) confirm wwan "→ $(mobile_label "$pick")" mobile_set "$pick" ;;
