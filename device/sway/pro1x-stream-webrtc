@@ -1167,7 +1167,9 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
     it below), and the picture is refreshed a part at a time over a second
     (cyclic intra refresh, as game streaming does), so that no frame is a
     large keyframe burst on the link.  Venus's constant bit rate sent twice
-    the rate asked (6-8 Mbit/s for 3, 2026-11-19): the variable one.
+    the rate asked (6-8 Mbit/s for 3, 2026-11-19), so the variable one was
+    used; that one sent 4 to 7 times it (8-15 Mbit/s for 2, 2026-11-20):
+    the constant one again.
     Venus here ignores slice limits (one slice a frame, by bytes or by
     macroblocks, 2026-11-19).  Set only at the start: changing controls on
     a running encoder killed its firmware."""
@@ -1180,7 +1182,7 @@ def hardware(size, parse=True, mbps=6.0, gop=10):
         + "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 "
         "leaky=downstream ! "
         'v4l2h264enc name=enc extra-controls="controls,'
-        f'video_bitrate_mode=0,video_bitrate={int(mbps * 1e6)},'
+        f'video_bitrate_mode=1,video_bitrate={int(mbps * 1e6)},'
         f'video_peak_bitrate={int(mbps * 1e6)},'
         f'intra_refresh_period={int(fps)},intra_refresh_period_type=1,'
         f'video_gop_size={gop * int(fps)},h264_i_frame_period={gop * int(fps)};" ! '
@@ -1304,11 +1306,16 @@ class Portal:
             "video/x-raw(memory:DMABuf),format=DMA_DRM,drm-format=XR24",
             "glupload",
             "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream",
-            "glcolorscale",
-            "video/x-raw(memory:GLMemory),"
-            + (f"width={height},height={width}" if turned
-               else f"width={width},height={height}"),
-            f"glvideoflip method={self.flip}",
+            # On a screen of its own (Client, Multi-monitor) the frames have
+            # the stream's size and are upright already: neither the scale
+            # nor the turn, two GPU passes for nothing (the GPU passed 10 of
+            # the portal's 16 fps at 1600x800, 2026-11-20).
+            *([] if screen else [
+                "glcolorscale",
+                "video/x-raw(memory:GLMemory),"
+                + (f"width={height},height={width}" if turned
+                   else f"width={width},height={height}"),
+                f"glvideoflip method={self.flip}"]),
             "glcolorconvert", "video/x-raw(memory:GLMemory),format=NV12",
             "gldownload", "video/x-raw,format=NV12",
             # The portal's frames come at a variable rate, and the encoder
