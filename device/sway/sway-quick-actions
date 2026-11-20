@@ -482,14 +482,9 @@ choice_info() {                 # choice_info LIST CHOICE
     case "$1:$2" in
         wifi:powersave)
             printf '%s\n' \
-                "Power saving: the Wi-Fi chip sleeps between the access" \
-                "point's beacons and wakes for what waits.  Less battery," \
-                "but replies come later and what the phone sends can" \
-                "stutter." \
+                "Power saving: the Wi-Fi chip sleeps between the access point's beacons and wakes for what waits.  Less battery, but replies come later and what the phone sends can stutter." \
                 "" \
-                "Off: steadier and quicker, more battery.  Streams turn it" \
-                "off while they run (the stream page's Wi-Fi setting), and" \
-                "back as it was after." \
+                "Off: steadier and quicker, more battery.  Streams turn it off while they run (the stream page's Wi-Fi setting), and back as it was after." \
                 "" \
                 "Now: $(iw dev wlan0 get power_save 2>/dev/null | awk '{ print $3 }')." ;;
     esac

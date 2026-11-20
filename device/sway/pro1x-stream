@@ -126,18 +126,15 @@ funnel_missing() {
     [ "$(echo "$j" | jq -r '.CertDomains | length')" -gt 0 ] 2>/dev/null ||
         echo "- HTTPS Certificates: on, same page (with MagicDNS)."
     [ "$(echo "$j" | jq -r '.Self.CapMap | has("funnel")')" = true ] ||
-        printf '%s\n' "- Funnel allowed: Access controls > JSON editor, in \"nodeAttrs\":" \
-            '    {"target": ["autogroup:member"], "attr": ["funnel"]}' \
-            "  (new tailnets have it already)."
+        printf '%s\n' "- Funnel allowed (new tailnets have it already): Access controls > JSON editor, in \"nodeAttrs\":" \
+            '    {"target": ["autogroup:member"], "attr": ["funnel"]}'
     [ "$(tailscale debug prefs 2>/dev/null | jq -r '.OperatorUser // empty')" = "$(id -un)" ] ||
         echo "- Funnel for this user, once, in a terminal:  sudo tailscale set --operator=$(id -un)"
 }
 # What WAN still needs, one item a line; nothing when ready.
 wan_missing() {
     if ! command -v tailscale >/dev/null; then
-        printf '%s\n' "- Tailscale, installed and logged in: docs/configure.md" \
-            "  has it in config.scm (the tailscale channel and its service);" \
-            "  then, once:  sudo tailscale up"
+        echo "- Tailscale, installed and logged in: docs/configure.md has it in config.scm (the tailscale channel and its service); then, once: sudo tailscale up"
     elif ! funnel_offered; then
         echo "- Tailscale running and logged in:  sudo tailscale up"
     else
@@ -157,41 +154,27 @@ info() {                        # info WHAT KEY
             echo
             networks_all | awk '{ print "  " $2 "  " $1 }' ;;
         visibility:wan)
-            echo "LAN, and a public link on the internet through Tailscale"
-            echo "Funnel while a browser stream runs: for a device that reaches"
-            echo "the phone by no other way.  Anyone with the link reaches the"
-            echo "page: keep the access key on, and an approval."
+            echo "LAN, and a public link on the internet through Tailscale Funnel while a browser stream runs: for a device that reaches the phone by no other way.  Anyone with the link reaches the page: keep the access key on, and an approval."
             echo
             missing=$(wan_missing)
             if [ -n "$missing" ]; then printf 'Still needed:\n\n%s\n' "$missing"
             else echo "Ready: https://$(funnel_name)/"; fi ;;
         screen:phone)
-            echo "The client sees the phone's screen as it is: its ratio and"
-            echo "resolution (Output size scales it down).  A window of"
-            echo "another shape shows it with bars." ;;
+            echo "The client sees the phone's screen as it is: its ratio and resolution (Output size scales it down).  A window of another shape shows it with bars." ;;
         screen:client)
-            echo "The phone's screen takes the client's window's shape and the"
-            echo "Output size, and follows the window when it is resized; the"
-            echo "panel shows it too, its touches passed on.  Interactive only." ;;
+            echo "The phone's screen takes the client's window's shape and the Output size, and follows the window when it is resized; the panel shows it too, its touches passed on.  Interactive only." ;;
         screen:multi-monitor)
-            echo "A second display at the client's shape, apart from the"
-            echo "panel: windows move between the two, as with a second"
-            echo "monitor.  Interactive only." ;;
+            echo "A second display at the client's shape, apart from the panel: windows move between the two, as with a second monitor.  Interactive only." ;;
         fps:*)
             echo "Frames captured a second: $2."
             echo
-            echo "Lower rates save CPU and heat (copying the screen costs more"
-            echo "than encoding it) and bandwidth; 30 is smoothest.  The phone"
-            echo "lowers it by itself when it gets hot." ;;
+            echo "Lower rates save CPU and heat (copying the screen costs more than encoding it) and bandwidth; 30 is smoothest.  The phone lowers it by itself when it gets hot." ;;
         size:native)
-            echo "The picture's long side as the screen's (2160): the sharpest,"
-            echo "and the most work.  The phone's encoder takes 1920 at most:"
-            echo "above, software encoding (VLC) or 1920." ;;
+            echo "The picture's long side as the screen's (2160): the sharpest, and the most work.  The phone's encoder takes 1920 at most: above, software encoding (VLC) or 1920." ;;
         size:*)
             echo "The picture's long side scaled to $2 pixels, the ratio kept."
             echo
-            echo "Smaller: less work for the phone and less bandwidth, a"
-            echo "softer picture; 1280 is a good start for a car or a tablet." ;;
+            echo "Smaller: less work for the phone and less bandwidth, a softer picture; 1280 is a good start for a car or a tablet." ;;
         approve:off) echo "The access key alone lets a viewer in." ;;
         approve:tap) echo "A notification on the phone: a tap lets the viewer in." ;;
         approve:fingerprint)
