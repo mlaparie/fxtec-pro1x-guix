@@ -159,7 +159,9 @@ hotspot (as tesla-carplay does).  The author's setup for that is
 private (hook, certificate service).  On another device's hotspot
 the car reaches nothing on the phone (ERR_CONNECTION_REFUSED, no
 packet arrives), though the phone pings the car.
-*** TODO [#B] Automations in quick actions (author, 2026-11-20)
+*** WAIT [#B] Automations in quick actions (author, 2026-11-20)
+Done in 5bb6b32, tested on the PC only; waits for a deploy.  Then: move the author's car
+script from the Sway config into ~/.config/pro1x/automations.
 The author's car script (Bluetooth connected: hotspot and stream; private, started from the
 Sway config) works.  Make it a general feature: an Automations line at the root of quick
 actions, a sublist of the scripts in ~/.config/pro1x/automations, each on or off (Enter
