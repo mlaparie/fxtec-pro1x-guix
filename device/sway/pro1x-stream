@@ -1058,6 +1058,8 @@ network_displays() {
 # For scripts: start the interactive stream on ADDRESS without the menu, or stop.
 [ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
 [ "${1:-}" = --stop ] && { stop_stream; exit; }
+# The tests list alone: quick actions' Tests line (author: at its root).
+[ "${1:-}" = --tests ] && { tests_menu; exit; }
 # From Hotspot > Connected devices: this menu, VLC sending to that device.
 to=
 [ "${1:-}" = --to ] && to=${2:-}
@@ -1099,8 +1101,7 @@ while :; do
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
             catt "Chromecast            sends a video URL or file; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
-            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" \
-            tests "TESTS                 numbered ways to reach the stream from a car; logged" |
+            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
             # The running stream's line: "active: show links" (author).
             awk -F'\t' -v k="$(running_kind)" '$1 == k { print $1 "\t" substr($2, 1, 22) "active: show links"; next } { print }')
     choice=$(printf '%s\n' "$lines" | pick "stream")
@@ -1120,7 +1121,6 @@ while :; do
         webrtc) send_webrtc ;;
         interactive) send_interactive ;;
         settings) settings_menu ;;
-        tests) tests_menu ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
         *) break ;;
