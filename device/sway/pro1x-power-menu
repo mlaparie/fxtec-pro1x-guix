@@ -23,6 +23,10 @@ case "${FZF_DEFAULT_OPTS:-}" in
 esac
 
 sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-power-menu.sock"
+# In quick actions' window (--menu): its sublists' socket, which its keys
+# drive; the resident menu holds this one, and a second fzf on it did not
+# start (the power menu line did nothing, 2026-11-20).
+[ "${1:-}" = --menu ] && sock="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-ask.sock"
 
 case "${1:-}" in
     --menu|--lines|--resident) ;;
