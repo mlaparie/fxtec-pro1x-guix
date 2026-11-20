@@ -541,7 +541,9 @@ function fitted(long) {
   const w = innerWidth * devicePixelRatio, h = innerHeight * devicePixelRatio;
   const r = w / h;
   let W = r >= 1 ? long : long * r, H = r >= 1 ? long / r : long;
-  return [Math.round(W / 2) * 2, Math.round(H / 2) * 2];
+  // Multiples of 16, H.264's blocks: at 1280x666 the encoder padded 6 rows,
+  // seen as a thin line flickering at the picture's edge (2026-11-20).
+  return [Math.round(W / 16) * 16, Math.round(H / 16) * 16];
 }
 sz.onchange = () => {
   delete pending.long; delete pending.w; delete pending.h;
@@ -1447,6 +1449,7 @@ class Screen:
             with open(cls.SIZE) as f:
                 dims = f.read().strip()
             width, height = map(int, dims.split("x"))
+            width, height = width // 16 * 16, height // 16 * 16   # H.264's blocks
             return f"{width}x{height}@{size.split('@')[1]}"
         except (OSError, ValueError):
             return size
@@ -3151,7 +3154,7 @@ class Handler(BaseHTTPRequestHandler):
                     width, height = int(query["w"][0]), int(query["h"][0])
                     if 320 <= width <= 3840 and 320 <= height <= 3840:
                         with open(Screen.SIZE, "w") as f:
-                            f.write(f"{width - width % 2}x{height - height % 2}\n")
+                            f.write(f"{width - width % 16}x{height - height % 16}\n")
                 except (KeyError, ValueError, IndexError, OSError):
                     pass
                 os.environ["PRO1X_STREAM_SCREEN_NOW"] = "1"
@@ -3217,7 +3220,8 @@ class Handler(BaseHTTPRequestHandler):
                         or not (160 <= width <= 1920 and 160 <= height <= 1920)):
                     self.reply(b"bad size", code=400)
                     return
-                width, height = width // 2 * 2, height // 2 * 2
+                # Multiples of 16 (H.264's blocks; see fitted in the page).
+                width, height = width // 16 * 16, height // 16 * 16
                 Handler.size = f"{width}x{height}@" + Handler.size.split("@")[1]
                 try:
                     with open(Screen.SIZE, "w") as f:
