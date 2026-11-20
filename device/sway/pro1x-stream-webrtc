@@ -44,7 +44,10 @@ State: VP8 played in a browser (author, 2026-11-10).  The hardware path encodes
 real screen frames on the phone; not yet seen in a browser.
 """
 
+import base64
+import hashlib
 import hmac
+import queue
 import json
 import os
 import signal
@@ -663,6 +666,18 @@ async function connect() {
   });
   await fetch(withKey("/answer"), {method: "POST", body: pc.localDescription.sdp});
   if (codec === "h264" && !cfg.direct) vp8IfNothing(pc, () => location.replace(withKey("/")));
+  if (cfg.direct) openVideo();
+}
+// DIRECT's frames by WebSocket on the same address (the phone's /video):
+// a WebRTC data channel for them drained at about 4 kB/s (2026-11-20).
+function openVideo() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://")
+                           + location.host + withKey("/video"));
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { log({ev: "video-socket-open"}); newDecoder(); needKey = true; send({t: "keyframe"}); };
+  ws.onmessage = onVideo;
+  // The phone's server started again or the socket dropped: once more.
+  ws.onclose = () => setTimeout(() => { if (cfg.direct) openVideo(); }, 1000);
 }
 connect();
 
@@ -1280,6 +1295,34 @@ class Portal:
 
 
 portal = None
+
+
+def output_shape(name):
+    """The output's scale and mode, as Sway reports them."""
+    for o in sway("-t", "get_outputs") or []:
+        if o.get("name") == name:
+            m = o.get("current_mode") or {}
+            return (o.get("scale"), m.get("width"), m.get("height"), o.get("transform"))
+    return None
+
+
+def watch_output(name):
+    """The captured output's scale, size or rotation changed (Super+- or
+    Super+=): the capture stopped sending frames, so the stream starts
+    again (author, 2026-11-20: frozen until refreshed)."""
+    shape = output_shape(name)
+    try:
+        events = subprocess.Popen(["swaymsg", "-m", "-t", "subscribe", '["output"]'],
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        return
+    for _ in events.stdout:
+        now = output_shape(name)
+        if now and shape and now != shape:
+            log_line(f"{name} changed {shape} -> {now}: starting again")
+            GLib.idle_add(lambda: restart_session() and False)
+            break
+    events.terminate()
 
 
 def sway(*args):
@@ -2410,7 +2453,7 @@ class Session:
 
     def __init__(self, command, codec, size, mbps=6.0, direct=False):
         self.mbps = mbps
-        self.video_channel = None   # DIRECT's, below; read by negotiate
+        self.video_channel = None   # DIRECT: the RTP video closed after the offer
         self.offer_ready = threading.Event()
         self.offer = None
         self.producer = producer if codec == "h264" and size else None
@@ -2489,56 +2532,14 @@ class Session:
             if self.fast is not None:
                 self.fast.connect("on-message-string",
                                   lambda _c, text: self.message(text))
-        # DIRECT: the encoder's access units in a data channel of their own,
-        # which the page decodes (WebCodecs) and draws at once, without the
-        # browser's playout buffer; the RTP video stays unused.
-        self.video_channel = None
-        self.vseq = 0
-        if direct and self.producer and remote:
-            self.video_channel = self.webrtc.emit("create-data-channel", "video", None)
+        # DIRECT: the encoder's access units go to the page by WebSocket
+        # (/video, DirectViewer); the RTP video feeds the offer's parameters
+        # (negotiate), then its valve closes.  A data channel for them
+        # drained at about 4 kB/s in GStreamer (2026-11-20).
+        self.video_channel = bool(direct and self.producer and remote)
         self.pipeline.set_state(Gst.State.PLAYING)
         if self.producer:
-            # Also with DIRECT, until the offer: it waits for the RTP
-            # video's parameters (negotiate); then its valve closes.
             self.producer.attach(self.pipeline.get_by_name("frames"))
-        if self.video_channel:
-            self.producer.attach_direct(self.send_frame)
-
-    # A chunk of an access unit: frame number, chunk index, chunk count and
-    # keyframe flag before the data.
-    CHUNK = 16000
-    BEHIND = 512 * 1024             # bytes waiting in the channel
-
-    def send_frame(self, data, key, enc_ms=0):
-        """One access unit to a DIRECT viewer, in chunks; False if the
-        channel is not open, or so full that the viewer is behind: the
-        producer then skips to the next keyframe, as a game stream drops
-        late frames rather than queue them."""
-        ch = self.video_channel
-        state = ch.get_property("ready-state")
-        queued = ch.get_property("buffered-amount")
-        if state != GstWebRTC.WebRTCDataChannelState.OPEN or queued > self.BEHIND:
-            # Why nothing goes, once a second at most (DIRECT drew nothing
-            # on 2026-11-20, without a trace).
-            now = time.monotonic()
-            if now - getattr(self, "held_logged", 0) > 1:
-                self.held_logged = now
-                log_line(f"direct: frame held (channel {state.value_nick}, {queued} bytes queued)")
-            return False
-        if not getattr(self, "sent_logged", False):
-            self.sent_logged = True
-            log_line(f"direct: first frame sent ({len(data)} bytes, key {key})")
-        self.vseq = (self.vseq + 1) & 0xFFFFFFFF
-        n = max(1, -(-len(data) // self.CHUNK))
-        # The time it left the encoder (wall clock, ms; the page compares
-        # with its own, both set by NTP) and the encoder's delay: the page
-        # shows how old each frame is when drawn.
-        sent = int(time.time() * 1000)
-        for i in range(n):
-            head = struct.pack(">IHHBQH", self.vseq, i, n, 1 if key else 0,
-                               sent, min(enc_ms, 65535))
-            ch.emit("send-data", GLib.Bytes.new(head + data[i * self.CHUNK:(i + 1) * self.CHUNK]))
-        return True
 
     def message(self, text):
         """The viewer's input, a setting of the stream, or its PAUSE, PLAY
@@ -2684,7 +2685,6 @@ class Session:
         if self.producer:
             self.producer.paused = False
             self.producer.detach(self.pipeline.get_by_name("frames"))
-            self.producer.detach_direct(self.send_frame)
             if background:
                 threading.Thread(target=self.pipeline.set_state,
                                  args=(Gst.State.NULL,), daemon=True).start()
@@ -2959,6 +2959,65 @@ def new_session(command, codec, size, created, direct=False):
     return GLib.SOURCE_REMOVE
 
 
+class DirectViewer:
+    """A DIRECT page's WebSocket: each encoded access unit as one binary
+    message, its header as the page reads it (frame number, index 0, count
+    1, keyframe flag, the time it left the encoder in ms, the encoder's
+    delay in ms).  At most three frames wait for the network; more, and the
+    producer skips to a keyframe (the newest frame wins, as in a game
+    stream).  One viewer at a time: a new one ends the old."""
+
+    current = None
+    GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, sock):
+        self.sock = sock
+        self.frames = queue.Queue(maxsize=3)
+        self.seq = 0
+        self.alive = True
+
+    def send(self, data, key, enc_ms=0):
+        if not self.alive:
+            return False
+        self.seq = (self.seq + 1) & 0xFFFFFFFF
+        head = struct.pack(">IHHBQH", self.seq, 0, 1, 1 if key else 0,
+                           int(time.time() * 1000), min(enc_ms, 65535))
+        try:
+            self.frames.put_nowait(head + data)
+            return True
+        except queue.Full:
+            return False
+
+    def run(self):
+        """Writes the frames until the page goes (in its HTTP thread)."""
+        if DirectViewer.current:
+            DirectViewer.current.alive = False
+        DirectViewer.current = self
+        if producer:
+            producer.attach_direct(self.send)
+        log_line("direct: viewer connected")
+        try:
+            while self.alive:
+                try:
+                    msg = self.frames.get(timeout=1)
+                except queue.Empty:
+                    continue
+                n = len(msg)
+                if n < 126:
+                    frame = struct.pack(">BB", 0x82, n)
+                elif n < 65536:
+                    frame = struct.pack(">BBH", 0x82, 126, n)
+                else:
+                    frame = struct.pack(">BBQ", 0x82, 127, n)
+                self.sock.sendall(frame + msg)
+        except OSError:
+            pass
+        self.alive = False
+        if producer:
+            producer.detach_direct(self.send)
+        log_line("direct: viewer gone")
+
+
 class Handler(BaseHTTPRequestHandler):
     screen_waiting = None           # client or multi-monitor, until a viewer
     # Not "command": the HTTP request's method goes there.
@@ -3002,6 +3061,18 @@ class Handler(BaseHTTPRequestHandler):
                        "text/html; charset=utf-8")
             return
         if not self.allowed():
+            return
+        if path == "/video" and self.headers.get("Upgrade", "").lower() == "websocket":
+            accept = base64.b64encode(hashlib.sha1(
+                self.headers.get("Sec-WebSocket-Key", "").encode() + DirectViewer.GUID).digest())
+            self.send_response(101)
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", accept.decode())
+            self.end_headers()
+            self.wfile.flush()
+            self.close_connection = True
+            DirectViewer(self.connection).run()
             return
         if path == "/check":
             self.reply(b"ok")
@@ -3322,6 +3393,9 @@ def main():
             serve_tls(tls)
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             log_line(f"no HTTPS: {e}")
+    if producer:
+        threading.Thread(target=watch_output, args=(screen.name if screen else "DSI-1",),
+                         daemon=True).start()
     loop = main_loop()
     try:
         loop.run()
