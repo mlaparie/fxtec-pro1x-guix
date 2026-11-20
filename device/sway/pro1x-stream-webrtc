@@ -304,7 +304,13 @@ function showMode() {
 document.getElementById("bm").onclick = async () => {
   const was = cfg.direct;
   if (cfg.direct) { cfg.direct = false; cfg.canvas = false; }
-  else if (cfg.canvas) { cfg.canvas = false; cfg.direct = directOk(); if (!cfg.direct) cfg.canvas = false; }
+  else if (cfg.canvas) {
+    // Chosen by hand, DIRECT is tried again even where the tab fell back
+    // from it (the mark stays in a reloaded or duplicated tab).
+    cfg.canvas = false;
+    cfg.direct = "VideoDecoder" in window;
+    if (cfg.direct) try { sessionStorage.removeItem("nodirect"); } catch (x) {}
+  }
   else cfg.canvas = true;
   save(); showMode(); log({ev: "mode", canvas: cfg.canvas, direct: cfg.direct});
   // DIRECT in or out: a new connection, the phone sending the other way.
