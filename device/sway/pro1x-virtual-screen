@@ -21,7 +21,8 @@
 # on Windows (its own is Windows only).  Default size 1920x1080.
 #
 # State: both modes run by hand on the phone 2026-11-20 (upright, sized,
-# resized, removed with the panel's workspace back); not yet with Sunshine.
+# resized, removed with the panel's workspace back); Sunshine selected it
+# ("Selected monitor [Headless output 18]"); no Moonlight session yet.
 
 rt=${XDG_RUNTIME_DIR:-/tmp}
 state=$rt/pro1x-virtual-screen          # NAME MODE MIRROR-PID GUARD-PID PANEL-WS
@@ -35,9 +36,10 @@ size() {                        # size NAME WxH [FPS]
     fps=${3:-60}
     case "$2" in *[!0-9x]*|x*|*x|"") echo "pro1x-virtual-screen: bad size $2" >&2; return 1 ;; esac
     case "$fps" in *[!0-9]*|"") fps=60 ;; esac
-    # Its blocks: H.264 encodes 16x16; a custom mode, as "resolution" gave
-    # a refresh of 0 and it never redrew (2026-11-19).
-    w=$(( ${2%x*} / 16 * 16 )) h=$(( ${2#*x} / 16 * 16 ))
+    # The size asked, exactly (rounded to 16 for H.264, Sunshine got 1072
+    # for a 1080 client and scaled); a custom mode, as "resolution" gave a
+    # refresh of 0 and it never redrew (2026-11-19).
+    w=${2%x*} h=${2#*x}
     right=$(swaymsg -t get_outputs -r |
                 jq --arg n "$1" '[.[] | select(.name != $n) | .rect.x + .rect.width] | max // 0')
     sw "output $1 transform normal scale 1"

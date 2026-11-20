@@ -85,6 +85,12 @@ WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 2026-11-19 (author): Chromecast found the TV but failed to play a YouTube URL (an error);
 Miracast closed quick actions without doing anything.  Not looked at yet.
 *** WAIT [#B] Hotspot: devices with IP and name, stream to one; expel, ban, band, hidden name, auto-off, data used
+*** TODO [#B] Moonlight (Sunshine, owner's home config): try a session on a screen of its own
+Stream menu, Moonlight: client (the phone at the client's size, panel mirrors), multi (second
+screen) or panel (sideways: Sunshine does not turn the panel's buffer).  pro1x-virtual-screen
+makes the screen; Sunshine selected it (2026-11-20).  To try: in Moonlight, the app "Screen at
+the client's size".  Sunshine encodes in software (x264): hot.  No mDNS (no avahi-daemon on
+the phone): add the host by address.
 *** TODO [#C] moonlight-web (moonlightweb.top) as a stream option
 github.com/linckosz/moonlight-web (GPL-3, C++17/Qt 6.11): a browser front end for Moonlight
 hosts (WebRTC or WSS, WebCodecs in the browser).  On the Pro¹x only as a relay for Sunshine
