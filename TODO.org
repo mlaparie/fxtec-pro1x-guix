@@ -239,6 +239,11 @@ Fixed in the commit after this note: decided at the release, one finger, at most
 60 units.  Built on the PC; waits for a deploy and the author's handling.
 *** TODO [#A] Lock and suspend: once frozen on wake (author, 2026-11-20)
 gtklock frozen, the sleep LED still on, a hard reboot needed; a second try worked.
+Logs (2026-11-20, boot before 20:21): suspend at 20:00:37 aborted (smp2p-sleepstate; the
+camera's dw9800 timed out on I2C in that resume), pro1x-sleep retried 4 s later, and the log
+ends at that "PM: suspend entry (s2idle)": a hang inside the kernel's suspend or resume, after
+user space froze, so nothing more was written.  Next: the kernel's pstore/ramoops, or a serial
+console, to see where; whether a retry right after an abort is what hangs.
 *** WAIT [#B] Quick actions: notifications stay until the dock is opened (30f0d12)
 Deployed; the resident quick actions takes it after a new login.*** DONE [#B] Auto-sleep quick action (1-60 min locked) and config.scm =auto-sleep=
 In the deployed quick actions (checked 2026-11-20).
