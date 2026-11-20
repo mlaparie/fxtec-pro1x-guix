@@ -2150,6 +2150,9 @@ window opened by a sway key binding.")
                    "pro1x-launcher"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
                    "pro1x-osk" "pro1x-alarm-watch" "pro1x-waydroid"))
+                ;; Run by sudo; it sets its own PATH (the system profile's
+                ;; waydroid, btmon, bluetoothctl).
+                (chmod (string-append #$output "/bin/pro1x-bt-log") #o755)
                 ;; wl-mirror: the panel shows the screen (client mode).
                 (let ((vs (string-append #$output "/bin/pro1x-virtual-screen")))
                   (chmod vs #o755)
