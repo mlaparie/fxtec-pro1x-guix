@@ -3533,11 +3533,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/video" and self.headers.get("Upgrade", "").lower() == "websocket":
             accept = base64.b64encode(hashlib.sha1(
                 self.headers.get("Sec-WebSocket-Key", "").encode() + DirectViewer.GUID).digest())
-            self.send_response(101)
-            self.send_header("Upgrade", "websocket")
-            self.send_header("Connection", "Upgrade")
-            self.send_header("Sec-WebSocket-Accept", accept.decode())
-            self.end_headers()
+            # HTTP/1.1, written by hand: send_response says HTTP/1.0 (the
+            # server's protocol_version), which Chromium let pass and
+            # Firefox did not (its socket never opened, 2026-11-20).
+            self.wfile.write(b"HTTP/1.1 101 Switching Protocols\r\n"
+                             b"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                             b"Sec-WebSocket-Accept: " + accept + b"\r\n\r\n")
             self.wfile.flush()
             self.close_connection = True
             DirectViewer(self.connection).run()
