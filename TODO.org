@@ -210,7 +210,9 @@ serve a connectivity check: done outside the port, in the author's
 hotspot and the stream).
 *** TODO [#A] A/V sync for films in the browser stream, maybe a preset (as Tesor)
 The best stream (DIRECT, zero copy) must play a video with sound in sync on the client.
-*** TODO [#B] Wallpaper missing in the stream (author, 2026-11-20)
+*** WAIT [#B] Wallpaper missing in the stream (author, 2026-11-20)
+It was set on DSI-1 only; now on every output.  Tried live on a headless output; waits for a
+deploy.
 *** TODO [#A] Tests at the root of quick actions; analyse test 1
 Moved (7f3cc05, not deployed).  Tests 2 and 3 need IPv6 on the other hotspot (author).  Test 1
 (2026-11-20 20:46-20:48, Tesla browser on the phone's hotspot, phone on mobile data): page by
