@@ -2106,11 +2106,12 @@ window opened by a sway key binding.")
                 ;; monitor-sensor and swaymsg come from the system profile.
                 (let ((rot (string-append #$output "/bin/sway-autorotate")))
                   (chmod rot #o755)
+                  ;; procps: pgrep, for the lock screen's held turns.
                   (wrap-program rot
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "evtest" "jq" "sed")))))
+                            '("coreutils" "evtest" "jq" "procps" "sed")))))
                 (let ((qs (string-append #$output "/bin/sway-quick-actions")))
                   (chmod qs #o755)
                   (wrap-program qs

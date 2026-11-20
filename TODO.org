@@ -74,6 +74,9 @@ login: =waydroid-configuration= =autostart?= (2026-11-12).
 *** TODO [#A] Outgoing calls on 4G take 22-26 s and fall back to 3G
 The author wants calls fixed before the release (2026-11-05).
 *** TODO [#A] Mute button in calls has no effect
+pro1x-voice-call follows Calls' mute (the Voice Call source) with the codec-to-DSP capture
+route since 8545724 (2026-10-30); this entry came over from older notes on 2026-11-11, with
+no retest after the fix.  To verify in a call (the author).
 *** TODO [#B] One silent VoLTE call; VoLTE after a reboot, with data off, in airplane mode
 *** TODO [#B] ~2 s of lock screen on an incoming call
 *** TODO [#B] No noise or echo processing on the uplink (ECNS topology silences it)
@@ -185,6 +188,9 @@ hotspot and the stream).
 Built; not deployed.
 *** WAIT [#B] Back line in every sublist; Wi-Fi networks sublist; portrait bar with the hotspot
 *** TODO [#B] gtklock loses the typed password when the screen turns
+Cause: gtklock dies when the panel turns under it ("Error 71"), so pro1x-lock --rotate starts a
+new one, empty.  Fix (2026-11-20, not yet tried): under the lock screen sway-autorotate holds
+the sensor's turns and applies the last one once unlocked; the slider still turns it.
 *** TODO [#C] Menu slides jump at the start (what is ruled out: History, Smaller things)
 *** TODO [#C] keyd segfaulted once (2026-11-09), cause unknown
 ** Boot, storage, release
