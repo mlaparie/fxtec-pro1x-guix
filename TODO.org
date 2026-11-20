@@ -198,8 +198,13 @@ hotspot and the stream).
 The best stream (DIRECT, zero copy) must play a video with sound in sync on the client.
 *** TODO [#B] Wallpaper missing in the stream (author, 2026-11-20)
 *** TODO [#A] Tests at the root of quick actions; analyse test 1
-Moved (7f3cc05, not deployed).  Tests 2 and 3 need IPv6 on the other hotspot (author).  The
-author ran test 1 on 2026-11-20 20:45: to analyse.
+Moved (7f3cc05, not deployed).  Tests 2 and 3 need IPv6 on the other hotspot (author).  Test 1
+(2026-11-20 20:46-20:48, Tesla browser on the phone's hotspot, phone on mobile data): page by
+Funnel, media by WebRTC, but ICE paired over TCP (prflx/tcp/10.42.0.196 <-> host/tcp/
+the phone's Tailscale address), not UDP to 10.42.0.1.  Screen of its own 1600x1248: encode
+delay 180-490 ms (110-220 ms on the panel just before), 4-6 frames/s encoded, 0-5 shown,
+frame age up to 1.8 s, RTT 3-350 ms, audio buffer 0.9-1.7 s, 60-65 °C.  To find: why no UDP
+pair (server-side ICE log), and why encoding the larger screen takes twice as long.
 *** TODO [#B] pro1x-screencast as its own project (author)
 Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a Guix package and
 CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
