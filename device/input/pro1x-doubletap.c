@@ -19,7 +19,8 @@
  * Usage: pro1x-doubletap [interval-ms [distance]]   (defaults 400, 150)
  *
  * State: double tap tested on the phone (author, 2026-10-30); Esc written
- * 2026-10-30, not yet run.
+ * 2026-10-30, not yet run.  Taps decided at the release (2026-11-21): built
+ * on the PC only.
  */
 
 #include <dirent.h>
@@ -43,6 +44,9 @@
 
 static long interval_ms = 400;
 static long distance = 150;
+/* A tap: one finger, down at most this long, moved at most this far. */
+#define TAP_MAX_MS 250
+#define TAP_MOVE 60
 
 static long now_ms(void)
 {
@@ -363,11 +367,48 @@ static void drag_end(void)
 	drag_button = 0;
 }
 
+/* A touch has ended.  It is a tap if one finger stayed short and still;
+ * two taps close in time and place wake the panel (or, on a lock screen,
+ * blank it).  Decided at the release, not at the touch-down: the position of
+ * a new touch comes after its BTN_TOUCH in the frame, so at the touch-down
+ * the previous touch's position was compared, and a palm or a grip held
+ * while the phone moved counted as taps (author: the blanked panel lit again
+ * unless the proximity sensor was covered, 2026-11-20). */
+static void double_tap(int out, long *last, long *quiet_until, int fingers,
+		       long start_t, int start_x, int start_y, int x, int y,
+		       int ymax)
+{
+	static int last_x, last_y;
+	long t = now_ms();
+	int off = panel_off();
+
+	if (fingers || t - start_t > TAP_MAX_MS ||
+	    abs(x - start_x) > TAP_MOVE || abs(y - start_y) > TAP_MOVE ||
+	    t < *quiet_until || pocketed() || (!off && !locker_running())) {
+		*last = 0;
+		return;
+	}
+	if (*last && start_t - *last < interval_ms &&
+	    abs(start_x - last_x) < distance && abs(start_y - last_y) < distance) {
+		*last = 0;
+		if (!off && !lock_tap_allowed(start_y, ymax))
+			return;
+		press_power(out);
+		fprintf(stderr, "pro1x-doubletap: double tap, power key sent (%s)\n",
+			off ? "wake" : "lock screen, blank");
+		*quiet_until = t + 1500;
+		return;
+	}
+	*last = start_t;
+	last_x = start_x;
+	last_y = start_y;
+}
+
 int main(int argc, char **argv)
 {
 	int touch, out, x = 0, y = 0;
 	long last_down = 0, quiet_until = 0;
-	int last_x = 0, last_y = 0;
+	int fingers = 0;		/* a second finger during this touch */
 	int ymax = 0, xmax = 0, down = 0, moved = 0;
 	int pointer, pfifo, layers, have_prev = 0, was_down = 0;
 	double px = 0, py = 0;		/* the pointer, touchscreen units */
@@ -517,20 +558,21 @@ int main(int argc, char **argv)
 		if (!(p[0].revents & POLLIN))
 			continue;
 		while (read(touch, &ev, sizeof ev) == sizeof ev) {
-			long t;
-
 			if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_X)
 				x = ev.value, moved = 1;
 			else if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_Y)
 				y = ev.value, moved = 1;
 			else if (ev.type == EV_KEY && ev.code == BTN_TOUCH)
 				down = ev.value, moved = 1;
+			else if (ev.type == EV_ABS && ev.code == ABS_MT_SLOT && ev.value > 0)
+				fingers = 1;
 			else if (ev.type == EV_SYN && ev.code == SYN_REPORT && moved) {
 				note_touch(x, y, xmax, ymax, down);
 				if (down && !was_down) {	/* a touch begins */
 					start_t = now_ms();
 					start_x = x;
 					start_y = y;
+					fingers = 0;
 					/* Touchpad mode: not over a lock screen. */
 					if (pad && !holding)
 						set_grab(!locker_running());
@@ -541,6 +583,8 @@ int main(int argc, char **argv)
 						drag_start();
 					}
 				} else if (!down && was_down) {	/* it ends */
+					double_tap(out, &last_down, &quiet_until, fingers,
+						   start_t, start_x, start_y, x, y, ymax);
 					if (drag_button)
 						drag_end();
 					else if (grabbed && now_ms() - start_t < 200 &&
@@ -561,35 +605,6 @@ int main(int argc, char **argv)
 				prev_x = x;
 				prev_y = y;
 				moved = 0;
-			}
-			if (!(ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 1))
-				continue;
-
-			/* A touch-down.  Position events of this touch may follow in
-			 * the same frame; the previous ones are close enough. */
-			t = now_ms();
-			int off = panel_off();
-			/* Panel off: a double tap wakes it.  Panel on with a lock
-			 * screen: a double tap blanks it (author, 2026-10-31). */
-			if (t < quiet_until || pocketed() || (!off && !locker_running())) {
-				last_down = 0;
-				continue;
-			}
-			if (last_down && t - last_down < interval_ms &&
-			    abs(x - last_x) < distance && abs(y - last_y) < distance) {
-				if (!off && !lock_tap_allowed(y, ymax)) {
-					last_down = 0;
-					continue;
-				}
-				press_power(out);
-				fprintf(stderr, "pro1x-doubletap: double tap, power key sent (%s)\n",
-					off ? "wake" : "lock screen, blank");
-				last_down = 0;
-				quiet_until = t + 1500;
-			} else {
-				last_down = t;
-				last_x = x;
-				last_y = y;
 			}
 		}
 	}

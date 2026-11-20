@@ -226,12 +226,17 @@ Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a 
 CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
 h264_v4l2m2m, OBS) before calling it unique.
 ** Sway session
-*** TODO [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
+*** WAIT [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
 Unless the proximity sensor is covered.  It should stay dark until a double tap, the power
 button, Esc or the keyboard slide; a fingerprint should wait for a lit screen, not light it.
 2026-11-21 00:23: one idle blank logged (input devices, Sway output events): dark 2.5 min,
 woken by a key press only, no stray event.  The panel comes back through swayidle's resume
 (pro1x-idle), so any input event lights it.  Not reproduced; next try with the phone untouched.
+Likely cause (code read): pro1x-doubletap, the one waker the proximity sensor holds back.  It
+compared a new touch with the previous touch's position (BTN_TOUCH comes before the position
+in a frame) and never checked that a tap was short, so a grip while the phone moves passed.
+Fixed in the commit after this note: decided at the release, one finger, at most 250 ms and
+60 units.  Built on the PC; waits for a deploy and the author's handling.
 *** TODO [#A] Lock and suspend: once frozen on wake (author, 2026-11-20)
 gtklock frozen, the sleep LED still on, a hard reboot needed; a second try worked.
 *** WAIT [#B] Quick actions: notifications stay until the dock is opened (30f0d12)
