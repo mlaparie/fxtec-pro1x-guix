@@ -113,7 +113,10 @@ Measured 2026-11-20 night from Chromium on the same Wi-Fi (scripts/stream-bench,
 1.6 s; steady off 12 fps, 0.55 s (p95 0.69 s), keys 0.66 s.  The author's phone has steady
 off since (SET).  Of the 0.55 s: capture 0.40 s (the portal's frames are already that old;
 grim's are fresh; cause not found), GPU stage 0.03, encoder 0.06, network and browser 0.09.
-Restarting the server hung the phone twice (watchdog reboot after 5-7 min): no restart cycles.
+Restarting the server hung the phone three times (04:18, 04:40: watchdog reboot after 5-7
+min; 05:02: no reboot, held for a power cycle): no restart cycles.  DIRECT holds frames
+before the encoder while the WebSocket is behind (748a44f): p95 0.72 s against 1.48,
+longest freeze 1.0 s against 2.7.  Not deployed: tried from /tmp/dev on the phone.
 Next: the capture's 0.4 s (PRO1X_STREAM_PW_LEAKY=1 untried; swayfx/wlroots damage capture);
 steady without the copies (copy each new frame once to cached memory, repeat that); the
 first frame after loading (8-38 s); A/V sync with a film.
