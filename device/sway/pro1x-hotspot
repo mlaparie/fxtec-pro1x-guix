@@ -16,8 +16,9 @@
 # ("no IR"), so the band can only be checked once the client link is dropped.
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
 # run on the phone.  Beside a Wi-Fi network: ap0 an access point on the
-# network's channel with wlan0 still connected, by hand (2026-11-20); this
-# script's start and stop with it not yet run.
+# network's channel with wlan0 still connected (2026-11-20).  A network on
+# 5 GHz cannot have one beside it ("no IR" on all 5 GHz channels while a
+# client): it is dropped as before.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -149,8 +150,17 @@ client_freq() {
 # needs an address of its own: wlan0's (already a random local one) made
 # both fail ("Name not unique on network").  Otherwise wlan0 itself, on the
 # owner's band and channel.
+# A channel the radio may not start an access point on ("no IR"): every
+# 5 GHz one while wlan0 is a client (channel 149, author, 2026-11-20).
+no_ir() { iw phy 2>/dev/null | grep " $1 MHz " | grep -q "no IR"; }
+
 place() {
     f=$(client_freq)
+    if [ -n "$f" ] && no_ir "$f"; then
+        notify-send Hotspot \
+            "The Wi-Fi network is on 5 GHz, where no hotspot can run beside it: it is dropped, and mobile data shared (a 2.4 GHz network stays up)"
+        f=
+    fi
     if [ -n "$f" ]; then
         $admin ap-up || return 1
         iface=ap0
