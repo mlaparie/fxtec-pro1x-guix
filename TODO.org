@@ -160,11 +160,12 @@ Starts with nmcli on channels 149 and 36 (2026-11-18), with the
 the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
 a user hint, and the client link drops when the hotspot starts.  The
 menu stopped checking beforehand (2ce4e2d); not deployed.
-*** TODO [#C] Hotspot while on a Wi-Fi network
-Whether the WCN3990 can run an access point and a client at once (iw list, "valid interface
-combinations"), so the hotspot need not drop the Wi-Fi in use.  It can (2026-11-20):
-"#{ managed } <= 2, #{ AP, P2P-client, P2P-GO } <= 2, total <= 4, #channels <= 1": an AP on a
-second interface, on the client link's channel.  Not yet tried.
+*** TODO [#C] Hotspot while on a Wi-Fi network: works, to try with a device
+The WCN3990 allows an AP and a client on one channel.  Since 8766b18 the hotspot runs on ap0
+beside a connected Wi-Fi network, on its channel, sharing it (e.g. a 5G phone hotspot as the
+uplink, the car on the Pro1x's own).  Started and stopped by pro1x-hotspot on the phone
+(2026-11-20): ap0 an AP on channel 11, 10.42.0.1, wlan0 still connected.  Not yet tried: a
+device joining and reaching the internet through it; a 5 GHz uplink (no-IR may refuse the AP).
 *** TODO [#A] Tesla leaves the hotspot without internet
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
 had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
