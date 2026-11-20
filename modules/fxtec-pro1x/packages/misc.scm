@@ -39,6 +39,7 @@
   #:use-module (gnu packages curl)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages image)        ; grim, slurp
+  #:use-module (gnu packages image-viewers) ; chafa
   #:use-module (gnu packages imagemagick)
   #:use-module (gnu packages package-management) ; guix-backgrounds
   #:use-module (gnu packages fonts)
@@ -1929,7 +1930,7 @@ window opened by a sway key binding.")
     (source (local-file (repository-file "device/sway") "pro1x-sway"
                         #:recursive? #t))
     (build-system copy-build-system)
-    (inputs (list bash certbot coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
+    (inputs (list bash certbot chafa coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
                   mobile-broadband-provider-info qrencode sed slurp swayidle
                   openssl tzdata wl-clipboard
@@ -2029,7 +2030,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("curl" "imagemagick" "libnotify" "qrencode")))))
+                            '("chafa" "curl" "imagemagick" "libnotify" "qrencode")))))
                 ;; Run by sudo, with a bare environment.
                 (let ((hotspot-admin
                        (string-append #$output "/bin/pro1x-hotspot-admin")))
@@ -2068,7 +2069,7 @@ window opened by a sway key binding.")
                     `("PATH" ":" prefix
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
-                            '("ffmpeg" "imagemagick" "qrencode")))))
+                            '("chafa" "ffmpeg" "imagemagick" "qrencode")))))
                 (let ((zoneinfo (string-append (assoc-ref inputs "tzdata")
                                                "/share/zoneinfo")))
                   (chmod (string-append #$output "/bin/pro1x-timezone") #o755)

@@ -569,28 +569,16 @@ links() {                       # links [SUFFIX]
 # overflowed elsewhere (author, 2026-11-20).  About 15% taller than wide
 # in this font.
 qr_preview() {
-    # In quick actions' own window (foot draws sixel images): an image at
-    # a whole number of pixels per module, the largest that fits the pane,
-    # from the cell's size (the window's pixels over fzf's size in cells).
-    # Elsewhere (SSH, tmux), text: the cell's size is not known there.
+    # In quick actions' own window (foot draws sixel): chafa, which fits the
+    # image to the preview's cells itself (the author's choice; sizing it
+    # here from the window's pixels came out wrong).  Elsewhere (SSH,
+    # tmux) text: sixel may not get through.
     case "${PRO1X_TOOL_SOCK:-}" in
         *quick-actions*)
-            set -- "$1" $(swaymsg -t get_tree -r 2>/dev/null | jq -r '
-                .. | objects | select(.focused? == true) | "\(.rect.width) \(.rect.height)"' | head -1) \
-                $(swaymsg -t get_outputs -r 2>/dev/null | jq -r '.[] | select(.focused) | .scale')
-            if [ -n "${3:-}" ] && [ -n "${FZF_COLUMNS:-}" ] && [ -n "${FZF_LINES:-}" ]; then
-                px=$(awk -v w="$2" -v h="$3" -v s="${4:-1}" -v c="$FZF_COLUMNS" -v l="$FZF_LINES" \
-                         -v pc="${FZF_PREVIEW_COLUMNS:-40}" -v pl="${FZF_PREVIEW_LINES:-20}" '
-                         BEGIN { cw = w * s / c; ch = h * s / l
-                                 a = (pc - 2) * cw; b = (pl - 1) * ch
-                                 print int(a < b ? a : b) }')
-                modules=$(qrencode -t ASCII -m 1 -l L "$1" | wc -l)
-                k=$(( px / modules ))
-                if [ "$k" -ge 1 ]; then
-                    qrencode -t PNG -s "$k" -m 1 -l L -o - "$1" | convert png:- sixel:-
-                    return
-                fi
-            fi ;;
+            qrencode -t PNG -s 8 -m 2 -l L -o - "$1" |
+                chafa -f sixel --animate=off --polite=on \
+                      -s "${FZF_PREVIEW_COLUMNS:-40}x${FZF_PREVIEW_LINES:-20}" -
+            return ;;
     esac
     qrencode -t UTF8 -m 1 -l L "$1"
 }
