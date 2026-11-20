@@ -40,12 +40,12 @@ if [ "${1:-}" = menu ]; then
 fi
 
 # bottom O: the swipe up from the bottom edge (lisgd, at 80 px, the finger
-# still down; O its orientation, as lisgd's -o): the on-screen keyboard
-# shown or hidden at once, then the finger followed until it lifts or for
-# 1.5 s.  Gone 140 px in and back within 90 px of that edge (or lifted
-# within 150 px, sliding off the panel; 30 and 60 were too strict, author
-# 2026-11-20): the keyboard as it was, and the focused
-# window closed, as Super+BackSpace, with a buzz (author, 2026-11-20).
+# still down; O its orientation, as lisgd's -o): the finger followed until
+# it lifts or for 1.5 s.  Gone 140 px in and back within 90 px of that edge
+# (or lifted within 150 px, sliding off the panel; 30 and 60 were too
+# strict, author 2026-11-20): the focused window closed, as
+# Super+BackSpace, with a buzz (author, 2026-11-20); else the on-screen
+# keyboard shown or hidden, on lift.
 # lisgd sees only straight swipes, hence this watcher.  The distance from
 # the edge in the touchscreen's own (portrait) coordinates, as lisgd turns
 # its edges: o 0 bottom (2160 - y), 1 left (x), 2 top (y), 3 right (1080 - x).
@@ -57,7 +57,6 @@ if [ "${1:-}" = bottom ]; then
     now=$(date +%s%N)
     [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 800000000 ] && exit 0
     echo "$now" > "$stamp"
-    pro1x-osk toggle &
     # The axis that moves away from that edge: only once it is known.
     # Line by line (stdbuf): into a pipe evtest wrote 4 kB blocks, and the
     # watcher saw nothing before its time ran out (author: it never closed).
@@ -75,11 +74,13 @@ if [ "${1:-}" = bottom ]; then
         END { if (c) exit; if (!gone) print "no: went " max " px in"; else print "no: came back to " d " px" }')
     # The last decision, for tuning.
     echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
+    # The keyboard only once it is known not to be a close (author: it
+    # showed or hid, then the window closed): on lift, or after 1.5 s.
     if [ "$out" = close ]; then
-        wait
-        pro1x-osk toggle >/dev/null 2>&1 &
         swaymsg kill >/dev/null 2>&1
         { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
+    else
+        pro1x-osk toggle >/dev/null 2>&1 &
     fi
     exit 0
 fi
