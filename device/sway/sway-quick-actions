@@ -1765,6 +1765,9 @@ notif_dock() {
 case "${1:-}" in
     --lines) refresh_lines; overlay < "$cache"; exit ;;
     --line) line_value "$2"; echo; exit ;;   # one line's value (checks)
+    # Back from a sublist or a tool: its line read again (changes made in
+    # place, such as the audio outputs or roaming, showed only later).
+    --refreshed) refresh_keys "$2"; cached_lines; exit ;;
     # On show (pro1x-menu, qs_show): a refresh now, then every 5 s while the
     # menu is shown (author, 2026-11-06), from one loop at a time.
     --refresh-while-shown)
@@ -1880,8 +1883,8 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   power) echo \"execute($self --power)+reload($self --cached)\" ;;
@@ -1890,8 +1893,8 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="right:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   caffeine|torch|airplane|osk|nfc) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
-                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --cached)\" ;;
-                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  hotspot|timezone|stream|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
+                  wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
                   power) echo \"execute($self --power)+reload($self --cached)\" ;;
@@ -1903,12 +1906,12 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="f1:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f2:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} -)\" ;;
-                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --cached)+$sync_end\" ;;
+                  feedback|wwan|operator|orient|cpu|charge|rotation|layout|audio|dicts) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   wifi|bluetooth|airplane|caffeine|osk|torch|roaming|touchpad) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
                 esac" \
         --bind="f3:transform:case {1} in
