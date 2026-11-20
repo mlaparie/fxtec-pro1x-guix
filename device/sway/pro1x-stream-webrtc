@@ -1299,6 +1299,17 @@ class Portal:
             "pipewiresrc name=pw min-buffers=8 do-timestamp=true stream-properties="
             "props,media.type=Video,media.category=Capture,media.role=Screen,"
             f"target.object={self.serial}",
+            # The portal's frames were already 400 ms old here, whatever
+            # the frame rate (5 to 28 a second), the buffers (2 to 8) or the
+            # rate asked of the portal; pipewiresrc hands its buffers over
+            # oldest first, one at a time (read from the portal's frames
+            # with PRO1X_STREAM_BENCH, 2026-11-20).  This queue takes them
+            # at once, the newest winning: PRO1X_STREAM_PW_LEAKY=1, untried
+            # (the phone hung 30 s after its first start, as it did after
+            # another restart without it: restarting the server hangs the
+            # phone at times).
+            *(["queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"]
+              if os.environ.get("PRO1X_STREAM_PW_LEAKY") == "1" else []),
             # Below the portal's own 30 fps only: videorate also dropped
             # frames it need not (15.4 fps out of the GPU without it, 11 with,
             # 2026-11-19).
@@ -1823,7 +1834,9 @@ class Producer:
         self.heat_cap = None       # lowered by the heat limit, in place
         self.caps = None           # the frames' caps the encoder was made for
         self.restarting = False
-        self.pushed_mono = []      # push times, for the encoder's delay
+        self.entered = {}          # pts: when the frame entered the encoder
+        self.bench = {"portal": [], "captured": [], "gpu": [], "encoded": [], "encoder": []}
+        self.vinfo = (None, None)  # caps, GstVideo.VideoInfo
         self.adaptive = kept_setting("adaptive", True)
         self.paused = False        # the viewer's PAUSE: no frames encoded
         self.calm = 0              # loss checks since the last loss
@@ -1850,6 +1863,8 @@ class Producer:
         self.bytes = 0
         self.pipeline.get_by_name("out").get_static_pad("sink").add_probe(
             Gst.PadProbeType.BUFFER, self.count, "encoded")
+        self.encoder.get_static_pad("sink").add_probe(
+            Gst.PadProbeType.BUFFER, self.entering)
         GLib.timeout_add_seconds(10, self.report)
         self.pipeline.set_state(Gst.State.PLAYING)
         self.capture = None
@@ -1874,6 +1889,9 @@ class Producer:
         for name, pad in (("portal", self.capture.get_by_name("pw").get_static_pad("src")),
                           ("gpu", self.capture.get_by_name("raw").get_static_pad("sink"))):
             pad.add_probe(Gst.PadProbeType.BUFFER, self.count, name)
+        if BENCH:
+            self.capture.get_by_name("pw").get_static_pad("src").add_probe(
+                Gst.PadProbeType.BUFFER, self.bench_portal)
         self.started_at = time.monotonic()
         self.frame_at = 0.0
         self.capture.set_state(Gst.State.PLAYING)
@@ -1919,6 +1937,16 @@ class Producer:
             GLib.idle_add(lambda: restart_session() and False)
         self.last = sample.get_buffer()
         self.frame_at = time.monotonic()
+        if BENCH:
+            age = self.bench_age(self.last, caps)
+            if age is not None:
+                self.bench["captured"].append(age)
+            # From PipeWire's handover (pipewiresrc's timestamp) to here:
+            # the GPU stage; the rest of "captured" is Sway and the portal.
+            clock = self.capture.get_clock()
+            if clock and self.last.pts != Gst.CLOCK_TIME_NONE:
+                self.bench["gpu"].append(
+                    (clock.get_time() - self.capture.get_base_time() - self.last.pts) / 1e6)
         if (not self.paused
                 and time.monotonic() - self.pushed_at >= 0.9 / self.rate()):
             self.push(self.last)
@@ -1929,9 +1957,6 @@ class Producer:
         copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
         self.input.emit("push-buffer", copy)
         self.pushed_at = time.monotonic()
-        with self.lock:
-            self.pushed_mono.append(self.pushed_at)
-            del self.pushed_mono[:-8]
 
     def pace(self):
         """The latest frame to the encoder every 1/fps s, on a schedule that
@@ -1998,7 +2023,90 @@ class Producer:
                  + f"; encoded {self.bytes * 8 / 10e6:.1f} Mbit/s")
         self.counts = dict.fromkeys(self.counts, 0)
         self.bytes = 0
+        with self.lock:
+            bench = {k: sorted(v) for k, v in self.bench.items()}
+            for v in self.bench.values():
+                v.clear()
+        if any(bench.values()):
+            log_line("delay ms (median/worst): " + ", ".join(
+                f"{k} {v[len(v) // 2]:.0f}/{v[-1]:.0f}" for k, v in bench.items() if v))
         return GLib.SOURCE_CONTINUE
+
+    def entering(self, _pad, info):
+        """When each frame enters the encoder, by its timestamp: the
+        encoder's own delay is measured on the frame that comes out."""
+        buf = info.get_buffer()
+        value = (self.bench_value(buf, Gst.Caps.from_string(self.caps))
+                 if BENCH and self.caps else None)
+        with self.lock:
+            self.entered[buf.pts] = (time.monotonic(), value)
+            if len(self.entered) > 64:
+                del self.entered[next(iter(self.entered))]
+        return Gst.PadProbeReturn.OK
+
+    def bench_value(self, buf, caps):
+        """The phone's clock (ms modulo 2^24) that scripts/stream-bench's
+        test window drew on this NV12 frame, or None: 25 blocks across (24
+        bits, then the phase that inverts them every other second), at
+        17.5% of the height and the same inverted at 32.5%."""
+        if self.vinfo[0] != caps.to_string():
+            self.vinfo = (caps.to_string(), GstVideo.VideoInfo.new_from_caps(caps))
+        vi = self.vinfo[1]
+        if vi is None:
+            return None
+        w, h, stride = vi.width, vi.height, vi.stride[0]
+        # Two rows only: a map from Python copies the whole frame, out of
+        # gldownload's uncached memory, which held the GPU stage to 6 of
+        # its 18 frames a second (2026-11-20).
+        ra = buf.extract_dup(int(h * 0.175) * stride, w)
+        rb = buf.extract_dup(int(h * 0.325) * stride, w)
+        v = 0
+        for i in range(25):
+            x = int(w * (0.02 + 0.96 * (i + 0.5) / 25))
+            if abs(ra[x] - rb[x]) < 60:
+                return None
+            v = v * 2 + (ra[x] > rb[x])
+        return (v >> 1) ^ (0xffffff if v & 1 else 0)
+
+    def bench_portal(self, pad, info):
+        """The clock's age in the portal's own frame, before the GPU: the
+        output's buffer, not turned (XR24, linear), read a pixel per block
+        in each of the two ways it may be turned."""
+        buf = info.get_buffer()
+        caps = pad.get_current_caps()
+        meta = GstVideo.buffer_get_video_meta(buf)
+        if caps is None:
+            return Gst.PadProbeReturn.OK
+        st = caps.get_structure(0)
+        bw, bh = st.get_value("width"), st.get_value("height")
+        stride = meta.stride[0] if meta else bw * 4
+        W, H = max(bw, bh), min(bw, bh)
+        def px(bx, by):
+            b = buf.extract_dup(by * stride + bx * 4 + 1, 1)
+            return b[0] if b else 0
+        for turn in (lambda X, Y: (Y, W - 1 - X), lambda X, Y: (H - 1 - Y, X)):
+            v, ok = 0, True
+            for i in range(25):
+                X = int(W * (0.02 + 0.96 * (i + 0.5) / 25))
+                a, b = px(*turn(X, int(H * 0.175))), px(*turn(X, int(H * 0.325)))
+                if abs(a - b) < 60:
+                    ok = False
+                    break
+                v = v * 2 + (a > b)
+            if ok:
+                v = (v >> 1) ^ (0xffffff if v & 1 else 0)
+                d = time.time_ns() // 1_000_000 % (1 << 24) - v
+                with self.lock:
+                    self.bench["portal"].append(d + (1 << 24) if d < -(1 << 23) else d)
+                break
+        return Gst.PadProbeReturn.OK
+
+    def bench_age(self, buf, caps):
+        v = self.bench_value(buf, caps)
+        if v is None:
+            return None
+        d = time.time_ns() // 1_000_000 % (1 << 24) - v
+        return d + (1 << 24) if d < -(1 << 23) else d
 
     def sample(self, sink):
         buf = sink.emit("pull-sample").get_buffer()
@@ -2017,10 +2125,17 @@ class Producer:
             copy = buf.copy()
             copy.pts = copy.dts = copy.duration = Gst.CLOCK_TIME_NONE
             src.emit("push-buffer", copy)
-        # The encoder's delay: from the oldest push not yet out.
+        # The encoder's delay: from this frame's way in (by its timestamp).
         with self.lock:
-            enc_ms = int(1000 * (time.monotonic() - self.pushed_mono.pop(0))) \
-                if self.pushed_mono else 0
+            entered = self.entered.pop(buf.pts, None)
+        enc_ms = int(1000 * (time.monotonic() - entered[0])) if entered else 0
+        if BENCH and entered:
+            with self.lock:
+                self.bench["encoder"].append(enc_ms)
+            if entered[1] is not None:
+                d = time.time_ns() // 1_000_000 % (1 << 24) - entered[1]
+                with self.lock:
+                    self.bench["encoded"].append(d + (1 << 24) if d < -(1 << 23) else d)
         if direct:
             ok, info = buf.map(Gst.MapFlags.READ)
             data = bytes(info.data) if ok else b""
@@ -2494,6 +2609,9 @@ LOG = os.path.join(os.environ.get("XDG_STATE_HOME")
                    "pro1x", "interactive-stream.log")
 # The page's settings and modes, kept on the phone for any browser.
 SETTINGS = os.path.join(os.path.dirname(LOG), "interactive-stream.json")
+# PRO1X_STREAM_BENCH=1: with scripts/stream-bench's test window on the
+# screen, the log gives each stage's delay every 10 s.
+BENCH = os.environ.get("PRO1X_STREAM_BENCH") == "1"
 
 
 def log_line(text):
