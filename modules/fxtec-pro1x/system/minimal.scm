@@ -43,8 +43,7 @@
              (fxtec-pro1x services modem)
              (fxtec-pro1x services usb-network))
 
-(define* (pro1x-minimal-operating-system #:key (root-ssh-keys '())
-                                         (root-file-system-type "btrfs"))
+(define* (pro1x-minimal-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x minimal operating system; ROOT-SSH-KEYS are public key
 files root may log in with."
 (operating-system
@@ -101,9 +100,8 @@ files root may log in with."
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
    (cons*
-    ;; Root on the userdata partition, labelled guix (btrfs, or ext4 on
-    ;; phones flashed before 2026-11-07).
-    (pro1x-root-file-system root-file-system-type)
+    ;; Root on the userdata partition: btrfs labelled guix.
+    (pro1x-root-file-system)
     %base-file-systems))
 
   ;; ── User accounts ─────────────────────────────────────────────────────────

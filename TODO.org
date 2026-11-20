@@ -271,7 +271,10 @@ the fix (=btrfs-progs/pro1x=) 0, every file identical.  CI's mkfs now uses it wi
 43071407700 (b633813): every file read back through the kernel, rootfs 6341 MiB for
 9726 MiB of files.  Waiting: a flash when the author has time.  Drop
 =btrfs-progs/pro1x= once the pinned Guix has 7.1.
-*** TODO [#B] Drop the ext4 support, the root-type check, the ext4 pin, the ext4 releases and tags
+*** WAIT [#B] Drop the ext4 support, the root-type check, the ext4 pin, the ext4 releases and tags
+Code done (the commit after this note): btrfs root only, no root-type check in the deploy, root
+resize btrfs only; the phone's config.scm had no ext4 pin.  The flash scripts keep reading an
+ext4 rootfs (a locally built image is ext4).  Left: which releases and tags to delete (author).
 The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 *** TODO [#B] Plain =flash.sh= with a btrfs root (=systems/minimal.scm= cannot be flashed)
 *** WAIT [#B] After the reflash: a reboot test, the new U-Boot entry

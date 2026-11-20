@@ -8,7 +8,7 @@
   #:use-module (gnu packages bash)
   #:use-module (gnu packages base)
   #:use-module (gnu packages gawk)
-  #:use-module (gnu packages linux)          ; e2fsprogs, inotify-tools, lvm2
+  #:use-module (gnu packages linux)          ; inotify-tools, lvm2
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -198,29 +198,10 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
     (one-shot? #t)
     (start
      #~(make-forkexec-constructor
-        (list "/bin/sh" "-c"
-              (string-append
-               ;; btrfs grows online, and not at all when it fills the
-               ;; device already.
-               "if [ \"$(awk '$2==\"/\" {print $3; exit}' /proc/mounts)\" = btrfs ]; then "
-               "exec " #$(file-append btrfs-progs "/bin/btrfs")
-               " filesystem resize max /; fi; "
-               ;; ext4: locate root device.
-               "dev=$(awk '$2==\"/\" {print $1; exit}' /proc/mounts) || exit 1; "
-               ;; /dev/mapper/pro1x-crypt is dm-0 in /proc/partitions.
-               "dev=$(readlink -f \"$dev\"); "
-               ;; Partition size in 1 KiB blocks (from /proc/partitions).
-               "devname=${dev##*/}; "
-               "pblocks=$(awk -v d=\"$devname\" '$4==d {print $3}' /proc/partitions); "
-               ;; Filesystem block count (4 KiB blocks, from tune2fs).
-               "fsblocks=$("
-               #$(file-append e2fsprogs "/sbin/tune2fs") " -l \"$dev\""
-               " | awk '/^Block count:/ {print $3}'); "
-               ;; Mirror Droidian's threshold: resize if gap > 10000 * 4 KiB (~40 MiB).
-               "diff=$((pblocks - 4 * fsblocks)); "
-               "if [ \"$diff\" -gt 10000 ]; then "
-               #$(file-append e2fsprogs "/sbin/resize2fs") " -f \"$dev\"; "
-               "fi"))
+        ;; btrfs grows online, and not at all when it fills the device
+        ;; already.
+        (list #$(file-append btrfs-progs "/bin/btrfs")
+              "filesystem" "resize" "max" "/")
         #:log-file "/var/log/pro1x-rootfs-resize.log"))
     (stop #~(make-kill-destructor)))))
 
@@ -232,7 +213,5 @@ Without this, the ABL falls back to fastboot after a hard reboot.")))
      (service-extension shepherd-root-service-type
                         pro1x-rootfs-resize-shepherd-services)))
    (default-value #f)
-   (description "Expand the root file system to fill its partition: btrfs
-always (a no-op once full), ext4 when the gap between partition size and
-filesystem size exceeds ~40 MiB, as the resize_userdata_if_needed logic from
-Droidian's initramfs-tools-halium.")))
+   (description "Expand the btrfs root file system to fill its partition (a
+no-op once full).")))

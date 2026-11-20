@@ -532,11 +532,9 @@ screen-keyboard-enabled=true
 ;; object (swaybar grew about 0.5 GB an hour).
 (define sway-session (make-sway-session "start-sway" swayfx/pro1x "swayfx"))
 
-(define* (pro1x-mobile-operating-system #:key (root-ssh-keys '())
-                                        (root-file-system-type "btrfs"))
+(define* (pro1x-mobile-operating-system #:key (root-ssh-keys '()))
   "Return the Pro¹x mobile operating system; ROOT-SSH-KEYS are public key
-files root may log in with; ROOT-FILE-SYSTEM-TYPE is \"btrfs\", or \"ext4\"
-for phones flashed before the root became btrfs.  It boots on both layouts
+files root may log in with.  It boots on both layouts
 of scripts/flash.sh, plain or encrypted: it finds out which from the disk
 (services/fde.scm)."
 (operating-system
@@ -584,7 +582,7 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
 
   ;; ── Filesystems ───────────────────────────────────────────────────────────
   (file-systems
-   (cons (pro1x-root-file-system root-file-system-type)
+   (cons (pro1x-root-file-system)
          %base-file-systems))
 
   ;; ── Home skeleton for new accounts ────────────────────────────────────

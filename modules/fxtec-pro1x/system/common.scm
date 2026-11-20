@@ -44,17 +44,16 @@ of public key files."
       '()
       `((".ssh/pro1x-guix.pub" ,(car keys)))))
 
-(define* (pro1x-root-file-system #:optional (type "btrfs"))
-  "Return the root file system, labelled guix, of TYPE: \"btrfs\" (zstd
-compression; the images and flash scripts make it) or \"ext4\" (phones
-flashed before 2026-11-07)."
+(define (pro1x-root-file-system)
+  "Return the root file system: btrfs labelled guix, zstd compression (the
+images and flash scripts make it)."
   (file-system
     (device (file-system-label "guix"))
     (mount-point "/")
-    (type type)
+    (type "btrfs")
     (flags '(no-atime))
     ;; Level 1: cheap on this SoC's CPU, most of zstd's gain.
-    (options (and (string=? type "btrfs") "compress=zstd:1"))))
+    (options "compress=zstd:1")))
 
 (define (pro1x-user-config module procedure)
   "Return the text of /etc/guix/config.scm for the system that PROCEDURE, a
