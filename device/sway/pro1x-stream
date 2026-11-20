@@ -177,6 +177,16 @@ info() {                        # info WHAT KEY
             echo "The picture's long side scaled to $2 pixels, the ratio kept."
             echo
             echo "Smaller: less work for the phone and less bandwidth, a softer picture; 1280 is a good start for a car or a tablet." ;;
+        moonlight:client)
+            echo "A screen of the client's size for Sunshine, with the whole phone on it (as the interactive stream's Client mode); the panel mirrors it.  Upright, whatever the panel's turn."
+            echo
+            echo "In Moonlight, open \"Screen at the client's size\": it takes the client's resolution and frame rate before the session (as Apollo's virtual display on Windows)." ;;
+        moonlight:multi)
+            echo "A second screen for the client, apart from the panel: windows move between the two, as with a second monitor."
+            echo
+            echo "In Moonlight, \"Screen at the client's size\" sizes it to the client's resolution." ;;
+        moonlight:panel)
+            echo "Sunshine captures the panel as it is: its buffer is portrait (the panel is turned in software), so the picture comes sideways." ;;
         test:1)
             echo "A car (or any device) on a hotspot the phone does not run, reaching the stream through Tailscale Funnel, in VIDEO mode: only the page goes through Tailscale; the video, sound and touches go by WebRTC, which tries the hotspot's own network first."
             echo
@@ -320,9 +330,12 @@ keep_awake() {                  # keep_awake PID
 
 stop_stream() {
     [ -f "$aaaa_file" ] && aaaa_clear &
+    # Moonlight's screen of its own (pro1x-virtual-screen), after Sunshine.
+    stop_screen=$([ -f "$rt/pro1x-virtual-screen" ] && echo 1)
     funnel_stop
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
     rm -f "$pid_file" "$to_file" "$kind_file"
+    [ -n "${stop_screen:-}" ] && pro1x-virtual-screen stop
 }
 
 # The running stream's links again (Show links, or its line chosen again).
@@ -802,6 +815,17 @@ moonlight_links() {
 Software encoding: the phone gets hot.  Stop stream ends it." >/dev/null
 }
 
+# Sunshine's app that sizes the screen to the viewer's before its session
+# (SUNSHINE_CLIENT_WIDTH, _HEIGHT, _FPS), added once to its apps.json.
+sunshine_app() {
+    apps=$HOME/.config/sunshine/apps.json
+    [ -f "$apps" ] || echo '{"env": {}, "apps": []}' > "$apps"
+    jq -e '.apps[] | select(.name == "Screen at the client'"'"'s size")' "$apps" >/dev/null 2>&1 && return
+    jq '.apps += [{"name": "Screen at the client'"'"'s size", "image-path": "desktop.png",
+                   "prep-cmd": [{"do": "sh -c \"pro1x-virtual-screen size ${SUNSHINE_CLIENT_WIDTH}x${SUNSHINE_CLIENT_HEIGHT} ${SUNSHINE_CLIENT_FPS}\"",
+                                 "undo": ""}]}]' "$apps" > "$apps.new" && mv "$apps.new" "$apps"
+}
+
 send_moonlight() {
     if ! command -v sunshine >/dev/null; then
         notice "Moonlight needs Sunshine, a Moonlight host, which the port does not ship: add \"sunshine\" to your home packages (from a channel that packages it) and apply your home config."
@@ -814,10 +838,28 @@ send_moonlight() {
         [ -n "$pass" ] || return
         sunshine --creds "$user" "$pass" >/dev/null 2>&1 </dev/null
     fi
+    shape=$(printf '%s\t%s\n' \
+        client "The phone, at the client's size  the panel mirrors it (upright)" \
+        multi  "A second screen for the client    the panel keeps its own" \
+        panel  "The panel as it is                Sunshine shows it sideways" |
+        pick_info "moonlight" moonlight)
+    [ -n "$shape" ] || return
     stop_stream
+    conf=$HOME/.config/sunshine/sunshine.conf
+    mkdir -p "${conf%/*}"
+    touch "$conf"
+    sed -i '/^[[:space:]]*output_name[[:space:]]*=/d' "$conf"
+    if [ "$shape" != panel ]; then
+        # Sunshine finds its output by name, read once at its start: the
+        # screen first, then Sunshine (src/platform/linux/wlgrab.cpp).
+        name=$(pro1x-virtual-screen start "$shape") ||
+            { notice "No screen of its own: $name"; return; }
+        echo "output_name = $name" >> "$conf"
+        sunshine_app
+    fi
     setsid sunshine >"$rt/sunshine.log" 2>&1 </dev/null &
     echo $! > "$pid_file"
-    echo "moonlight" > "$kind_file"
+    echo "moonlight $shape" > "$kind_file"
     echo "moonlight, Sunshine on port $sunshine_port" > "$to_file"
     sleep 2
     streaming || { rm -f "$pid_file" "$to_file" "$kind_file"

@@ -1,0 +1,117 @@
+#!/bin/sh
+# pro1x-virtual-screen — a Sway screen of its own for a remote viewer
+#
+#   pro1x-virtual-screen start client|multi [WxH]   make it; prints its name
+#   pro1x-virtual-screen size WxH [FPS]             resize it (a viewer's size)
+#   pro1x-virtual-screen name                       its name, if it exists
+#   pro1x-virtual-screen stop                       remove it
+#
+# A headless output, upright and unscaled whatever the panel's settings,
+# right of the panel, for a stream host to capture in place of the panel
+# (Sunshine, from the stream menu's Moonlight entry: Sunshine captures the
+# panel's buffer as it is, sideways, since the panel is turned in software).
+#   client: the whole phone at the viewer's size: every workspace moves to
+#           it, the panel shows it (wl-mirror) and the focus is kept on it;
+#   multi:  a second monitor: the workspace "virtual" on it, the panel keeps
+#           its own.
+# As the interactive stream's Client and Multi-monitor screens
+# (pro1x-stream-webrtc, class Screen).  For Sunshine's apps, size sets the
+# viewer's resolution before a session (prep-cmd, with
+# SUNSHINE_CLIENT_WIDTH, _HEIGHT and _FPS), as Apollo's virtual display does
+# on Windows (its own is Windows only).  Default size 1920x1080.
+#
+# State: both modes run by hand on the phone 2026-11-20 (upright, sized,
+# resized, removed with the panel's workspace back); not yet with Sunshine.
+
+rt=${XDG_RUNTIME_DIR:-/tmp}
+state=$rt/pro1x-virtual-screen          # NAME MODE MIRROR-PID GUARD-PID PANEL-WS
+panel=DSI-1
+
+sw() { swaymsg -- "$@" >/dev/null 2>&1; }
+outputs() { swaymsg -t get_outputs -r | jq -r '.[].name'; }
+read_state() { [ -f "$state" ] && read -r name mode mirror guard was < "$state"; }
+
+size() {                        # size NAME WxH [FPS]
+    fps=${3:-60}
+    case "$2" in *[!0-9x]*|x*|*x|"") echo "pro1x-virtual-screen: bad size $2" >&2; return 1 ;; esac
+    case "$fps" in *[!0-9]*|"") fps=60 ;; esac
+    # Its blocks: H.264 encodes 16x16; a custom mode, as "resolution" gave
+    # a refresh of 0 and it never redrew (2026-11-19).
+    w=$(( ${2%x*} / 16 * 16 )) h=$(( ${2#*x} / 16 * 16 ))
+    right=$(swaymsg -t get_outputs -r |
+                jq --arg n "$1" '[.[] | select(.name != $n) | .rect.x + .rect.width] | max // 0')
+    sw "output $1 transform normal scale 1"
+    sw "output $1 mode --custom ${w}x${h}@${fps}Hz position $right 0"
+}
+
+case "${1:-}" in
+    start)
+        mode=${2:-client}
+        case "$mode" in client|multi) ;; *) echo "pro1x-virtual-screen: client or multi" >&2; exit 2 ;; esac
+        if read_state && outputs | grep -qx "$name"; then echo "$name"; exit 0; fi
+        before=$(outputs)
+        # The panel's workspace now, shown again at stop.
+        was=$(swaymsg -t get_workspaces -r |
+                  jq -r --arg p "$panel" '.[] | select(.output == $p and .visible) | .name' | head -1)
+        sw create_output
+        name=$(outputs | grep -vxF "$before" | head -1)
+        [ -n "$name" ] || { echo "pro1x-virtual-screen: Sway made no output" >&2; exit 1; }
+        size "$name" "${3:-1920x1080}"
+        mirror= guard=
+        if [ "$mode" = client ]; then
+            sw 'no_focus [app_id="^at.yrlf.wl_mirror$"]'
+            for ws in $(swaymsg -t get_workspaces -r | jq -r --arg n "$name" '.[] | select(.output != $n) | .name'); do
+                sw "workspace \"$ws\""
+                sw "move workspace to output $name"
+            done
+            sw "focus output $panel"
+            sw "workspace mirror"
+            setsid wl-mirror --fullscreen-output "$panel" "$name" </dev/null >/dev/null 2>&1 &
+            mirror=$!
+            sleep 1
+            sw "focus output $name"
+            # The focus back on it whenever it lands on the panel, under the
+            # mirror (menus and apps opened from the viewer went there).
+            setsid sh -c '
+                while [ -f "$1" ]; do
+                    f=$(swaymsg -t get_workspaces -r | jq -r ".[] | select(.focused) | .output")
+                    [ -n "$f" ] && [ "$f" != "$2" ] && swaymsg "focus output $2" >/dev/null 2>&1
+                    sleep 2
+                done' _ "$state" "$name" </dev/null >/dev/null 2>&1 &
+            guard=$!
+        else
+            sw "workspace virtual output $name"
+            sw "focus output $name"
+            sw "workspace virtual"
+            sw "move workspace to output $name"
+        fi
+        echo "$name $mode ${mirror:--} ${guard:--} ${was:--}" > "$state"
+        echo "$name" ;;
+    size)
+        read_state || { echo "pro1x-virtual-screen: none" >&2; exit 1; }
+        size "$name" "${2:-1920x1080}" "${3:-}" ;;
+    name)
+        read_state && outputs | grep -qx "$name" && echo "$name" ;;
+    stop)
+        read_state || exit 0
+        rm -f "$state"
+        [ "$mirror" != - ] && kill "$mirror" 2>/dev/null
+        [ "$guard" != - ] && kill "$guard" 2>/dev/null
+        # The workspace shown on it as it ends, shown on the panel after.
+        shown=$(swaymsg -t get_workspaces -r |
+                    jq -r --arg n "$name" '.[] | select(.output == $n and .visible) | .name' | head -1)
+        sw "output $name unplug"
+        sw "exec pro1x-osk home"
+        left=$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.name != "mirror") | .name')
+        if [ -n "$shown" ] && printf '%s\n' "$left" | grep -qxF "$shown"; then
+            sw "workspace \"$shown\""
+        elif [ "$was" != - ] && printf '%s\n' "$left" | grep -qxF "$was"; then
+            sw "workspace \"$was\""
+        else
+            back=$(printf '%s\n' "$left" | head -1)
+            if [ -n "$back" ]; then sw "workspace \"$back\""; else sw "workspace number 1"; fi
+        fi ;;
+    *)
+        echo "usage: pro1x-virtual-screen start client|multi [WxH] | size WxH [FPS] | name | stop" >&2
+        exit 2 ;;
+esac
