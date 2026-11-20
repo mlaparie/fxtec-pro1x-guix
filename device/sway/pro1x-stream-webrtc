@@ -168,7 +168,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <div id="bar"><button class="x" id="bw">WIN</button><button class="x" id="bq">QA</button>
 <button class="x" id="ba">APPS</button><button class="x" id="bo">OSK</button>
 <button class="x" id="bk">LKB</button><button class="x" id="bu">MUTED</button>
-<button class="x" id="bm">VIDEO</button><button class="x" id="bt">TOUCH</button>
+<button class="x" id="bm">VIDEO</button><button class="x" id="bv">HOST</button><button class="x" id="bt">TOUCH</button>
 <button class="x" id="bp">FREE</button><button class="x" id="bs">SET</button>
 <button class="x" id="bi">INFO</button><button class="x" id="bz">PAUSE</button>
 <button class="x" id="bx">STOP</button><button class="x" id="br">RELOAD</button>
@@ -418,6 +418,30 @@ document.getElementById("bx").onclick = () => {
   note("Stopped on the phone");
 };
 document.getElementById("bk").onclick = () => { k.focus(); log({ev: "keys-button"}); };
+// The screen mode: HOST (the phone's own), CLIENT (the phone at this
+// window's shape), MULTI (a second display).  Each press steps it; the
+// phone switches 2 s after the last press (author: rapid presses).
+const bv = document.getElementById("bv");
+const SCREENS = ["phone", "client", "multi-monitor"];
+const SCREEN_LABEL = {phone: "HOST", client: "CLIENT", "multi-monitor": "MULTI"};
+let screenWanted = null, screenTimer = null;
+function showScreen() {
+  bv.textContent = SCREEN_LABEL[screenWanted || phone.screen_mode || "phone"] || "HOST";
+}
+bv.onclick = () => {
+  const now = screenWanted || phone.screen_mode || "phone";
+  screenWanted = SCREENS[(SCREENS.indexOf(now) + 1) % SCREENS.length];
+  showScreen();
+  clearTimeout(screenTimer);
+  screenTimer = setTimeout(async () => {
+    const mode = screenWanted;
+    if (mode === (phone.screen_mode || "phone")) { screenWanted = null; return; }
+    log({ev: "screen-mode", mode});
+    note("Switching the screen mode on the phone\\u2026");
+    try { await fetch(withKey("/screen?mode=" + encodeURIComponent(mode)), {method: "POST"}); } catch (e) {}
+    setTimeout(reloadWhenUp, 1500);
+  }, 2000);
+};
 const bar = document.getElementById("bar"), bc = document.getElementById("bc");
 function showFold() {
   bar.classList.toggle("folded", cfg.folded);
@@ -742,6 +766,7 @@ addEventListener("resize", () => setTimeout(autofit, 1500));
 async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
+    if (!screenWanted) showScreen();
     document.getElementById("lockmsg").style.display = phone.locked ? "block" : "none";
     autofit();
     // The phone's settings, unless one waits for APPLY here.
@@ -2780,6 +2805,31 @@ def set_size(long, restart=True):
         restart_session()
 
 
+def switch_screen(mode):
+    """The stream's screen mode changed from the page (main loop)."""
+    global screen
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    try:
+        with open(os.path.join(state, "pro1x-stream-screen"), "w") as f:
+            f.write(mode + "\n")
+    except OSError:
+        pass
+    i = own_args.index("--screen")
+    own_args[i + 1] = mode
+    # A new screen at once (a viewer is here), none for the panel.
+    if mode == "phone":
+        os.environ.pop("PRO1X_STREAM_SCREEN_NOW", None)
+    else:
+        os.environ["PRO1X_STREAM_SCREEN_NOW"] = "1"
+    os.environ.pop("PRO1X_STREAM_OUTPUT", None)
+    if screen:
+        screen.stop()
+        screen = None
+    log_line(f"screen mode {mode}, from the page")
+    restart_session()
+    return GLib.SOURCE_REMOVE
+
+
 def restart_session():
     """The viewer's session ends, its page told to connect again; with the
     producer, the server starts again with the new settings."""
@@ -3116,6 +3166,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "wifi_powersave": wifi_powersave(),
                                    "live": producer.rate() if producer else None,
                                    "screen": screen.mode if screen else "phone",
+                                   "screen_mode": (screen.mode if screen else
+                                                   Handler.screen_waiting or "phone"),
                                    "size": Handler.size.split("@")[0] if Handler.size else None,
                                    "long": capture_long(),
                                    "locked": phone_locked(),
@@ -3178,6 +3230,17 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return
         path = self.path.split("?")[0]
+        if path == "/screen":
+            # The page's screen mode button: kept as the menu's setting, the
+            # old screen taken down, the server started again with the new.
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            mode = query.get("mode", [""])[0]
+            if mode not in ("phone", "client", "multi-monitor") or "--screen" not in own_args:
+                self.reply(b"bad mode", code=400)
+                return
+            self.reply(b"ok")
+            GLib.idle_add(switch_screen, mode)
+            return
         if path == "/fps":
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             try:
