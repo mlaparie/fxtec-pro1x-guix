@@ -351,6 +351,7 @@ function newDecoder() {
   decoder.configure({codec: "avc1.42c028", optimizeForLatency: true});
 }
 function onVideo(m) {
+  if (!onVideo.seen) { onVideo.seen = true; log({ev: "video-first", bytes: m.data.byteLength}); }
   const d = new DataView(m.data);
   const seq = d.getUint32(0), i = d.getUint16(4), n = d.getUint16(6), key = d.getUint8(8) === 1;
   const sent = Number(d.getBigUint64(9)), enc = d.getUint16(17);
@@ -403,6 +404,8 @@ bz.onclick = () => {
 };
 document.getElementById("bx").onclick = () => {
   if (!confirm("Stop the stream on the phone?")) return;
+  // Logged: a Stop did not reach the phone (2026-11-20).
+  log({ev: "stop", channel: chan ? chan.readyState : "none"});
   send({t: "stop"});
   note("Stopped on the phone");
 };
@@ -1720,6 +1723,8 @@ class Producer:
         self.fps = int(size.split("@")[1])
         self.limit = self.fps      # lowered while the viewer loses packets
         self.heat_cap = None       # lowered by the heat limit, in place
+        self.caps = None           # the frames' caps the encoder was made for
+        self.restarting = False
         self.pushed_mono = []      # push times, for the encoder's delay
         self.adaptive = kept_setting("adaptive", True)
         self.paused = False        # the viewer's PAUSE: no frames encoded
@@ -1802,8 +1807,18 @@ class Producer:
         frame of delay (33 ms at 30 fps); the clock only repeats the last
         frame when the screen sends none."""
         sample = sink.emit("pull-sample")
+        caps = sample.get_caps()
         if self.last is None:
-            self.input.set_caps(sample.get_caps())
+            self.input.set_caps(caps)
+            self.caps = caps.to_string()
+        elif caps.to_string() != self.caps and not self.restarting:
+            # A new frame size (Sway's scale changed on the captured
+            # output): the encoder was made for the old one and stalled
+            # until the stream was started again (author, 2026-11-20).
+            self.restarting = True
+            log_line(f"capture size changed ({caps.get_structure(0).get_value('width')}x"
+                     f"{caps.get_structure(0).get_value('height')}): starting again")
+            GLib.idle_add(lambda: restart_session() and False)
         self.last = sample.get_buffer()
         self.frame_at = time.monotonic()
         if (not self.paused
@@ -2496,9 +2511,19 @@ class Session:
         producer then skips to the next keyframe, as a game stream drops
         late frames rather than queue them."""
         ch = self.video_channel
-        if (ch.get_property("ready-state") != GstWebRTC.WebRTCDataChannelState.OPEN
-                or ch.get_property("buffered-amount") > self.BEHIND):
+        state = ch.get_property("ready-state")
+        queued = ch.get_property("buffered-amount")
+        if state != GstWebRTC.WebRTCDataChannelState.OPEN or queued > self.BEHIND:
+            # Why nothing goes, once a second at most (DIRECT drew nothing
+            # on 2026-11-20, without a trace).
+            now = time.monotonic()
+            if now - getattr(self, "held_logged", 0) > 1:
+                self.held_logged = now
+                log_line(f"direct: frame held (channel {state.value_nick}, {queued} bytes queued)")
             return False
+        if not getattr(self, "sent_logged", False):
+            self.sent_logged = True
+            log_line(f"direct: first frame sent ({len(data)} bytes, key {key})")
         self.vseq = (self.vseq + 1) & 0xFFFFFFFF
         n = max(1, -(-len(data) // self.CHUNK))
         # The time it left the encoder (wall clock, ms; the page compares
