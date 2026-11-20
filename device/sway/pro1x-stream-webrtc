@@ -316,6 +316,7 @@ document.getElementById("bm").onclick = async () => {
 // buffer.  Behind (the decoder holding more than two), frames are skipped
 // to the next keyframe, asked for at once: the newest frame wins.
 let decoder = null, dframes = 0, dskipped = 0, derrors = 0, needKey = true;
+let askedKey = 0, dkeys = 0;
 // How old each frame is when drawn: from leaving the phone's encoder
 // (its clock and this one both set by NTP), and the encoder's own delay.
 const sentAt = new Map();
@@ -365,11 +366,15 @@ function onVideo(m) {
   parts.chunks[i] = new Uint8Array(m.data, 19);
   if (++parts.got < parts.n) return;
   if (!parts.key && (needKey || decoder.decodeQueueSize > 2)) {
-    if (!needKey) { needKey = true; send({t: "keyframe"}); }
+    needKey = true;
+    // Asked again every second while waiting: one request, dropped by the
+    // phone's limit, left the picture frozen until a reload (2026-11-20).
+    const now = performance.now();
+    if (now - askedKey > 1000) { askedKey = now; send({t: "keyframe"}); }
     dskipped++;
     return;
   }
-  if (parts.key) needKey = false;
+  if (parts.key) { needKey = false; dkeys++; }
   const data = new Uint8Array(parts.chunks.reduce((a, b) => a + b.length, 0));
   let at = 0;
   for (const part of parts.chunks) { data.set(part, at); at += part.length; }
@@ -757,6 +762,7 @@ setInterval(async () => {
   if (cfg.direct) {
     s.fps = delta("direct", "f", dframes);
     s.skipped = dskipped;
+    s.keys = dkeys;
     s.decode_queue = decoder ? decoder.decodeQueueSize : null;
     if (ageN) { s.age_ms = Math.round(ageSum / ageN); ageSum = ageN = 0; }
     if (encN) { s.enc_ms = Math.round(encSum / encN); encSum = encN = 0; }
@@ -1995,11 +2001,12 @@ class Producer:
         return Gst.FlowReturn.OK
 
     def keyframe_soon(self):
-        """keyframe() from a streaming thread, at most every 2 s: each
+        """keyframe() from a streaming thread, at most once a second: each
         skip asked for one, keyframes (850 kB) filled the link, which made
-        more skips (35 Mbit/s out of a 7 Mbit/s encoder, 2026-11-20)."""
+        more skips (35 Mbit/s out of a 7 Mbit/s encoder, 2026-11-20).  The
+        page asks again every second while it waits."""
         now = time.monotonic()
-        if now - self.asked_key >= 2.0:
+        if now - self.asked_key >= 1.0:
             self.asked_key = now
             GLib.idle_add(lambda: self.keyframe() and False)
 
