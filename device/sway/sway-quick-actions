@@ -1770,9 +1770,19 @@ case "${1:-}" in
     --refresh-while-shown)
         # Behind the menu itself: scrolling and drawing first.
         renice -n 10 $$ >/dev/null 2>&1
-        # Once per showing: actions refresh their own lines (refresh_keys);
-        # a refresh every 5 s, 1.7 s of CPU each, slowed the menu.
+        # When shown, then every 30 s while shown (author, 2026-11-20), at
+        # nice 10 (above) so scrolling comes first; the list is redrawn only
+        # if a value changed.  Actions refresh their own lines at once
+        # (refresh_keys); every 5 s, 1.7 s of CPU each, had slowed the menu.
         refresh_swap
+        pidf="$rt/pro1x-qs-refresh.pid"
+        [ -r "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null && exit 0
+        echo $$ > "$pidf"
+        while sleep 30 && [ -e "$rt/pro1x-menu-shown" ] &&
+              [ "$(qs_state)" = shown ]; do
+            refresh_swap
+        done
+        rm -f "$pidf"
         exit ;;
     --cached) cached_lines; exit ;;
     # A step, then the lines, in one run: a held key made two runs per step,
