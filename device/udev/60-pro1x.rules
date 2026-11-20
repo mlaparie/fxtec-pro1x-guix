@@ -19,3 +19,10 @@ KERNEL=="rfkill", SUBSYSTEM=="misc", GROUP="netdev", MODE="0664"
 # xremap, started by Sway as the user: virtual input devices for members of
 # input, as on the author's PC (they can already read every input device).
 KERNEL=="uinput", GROUP="input", MODE="0660"
+
+# Venus (the video encoder and decoder) kept powered: when it powered down
+# idle during a stream and woke for the next frame, the phone hard-hung
+# (six times on 2026-11-20, each seconds after a stream viewer connected
+# with the stream's steady off; none in five tries with this, and no
+# measurable cost at idle: 850-1010 mA either way).
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="5a00000.video-codec*", ATTR{power/control}="on"
