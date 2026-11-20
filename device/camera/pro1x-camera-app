@@ -285,6 +285,9 @@ button.shutter.video { background: #cc241d; }
 button.shutter.recording { background: #cc241d; border-radius: 12px; }
 button.shutter:disabled { background: #665c54; }
 button.on, button.on label { background: #d79921; color: #000000; }
+/* No theme shadow or outline on the text: black on yellow read as black
+   with a white contour (author, 2026-11-20). */
+button, button label { text-shadow: none; -gtk-icon-shadow: none; outline: none; }
 label.status { color: #ebdbb2; background: rgba(0,0,0,0.45);
                padding: 4px 10px; border-radius: 8px; font-size: 16px; }
 grid.panel { background: rgba(0,0,0,0.7); border-radius: 18px; padding: 16px; }
