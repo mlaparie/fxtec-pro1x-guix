@@ -181,7 +181,7 @@ NIGHT_LABELS = {"off": "OFF", "additive": "ADDITIVE", "stack": "STACK (AVG)",
 # additive: frames added for this many seconds; stack: this many frames
 # averaged (author, 2026-11-17).
 ADDITIVE_SECONDS = [1, 2, 4, 8]
-STACK_COUNTS = [4, 8, 16]
+STACK_COUNTS = [4, 8, 16, 32, 64]          # 64: pro1x-develop's most
 # Night stack's exposure for each frame, µs (0: the viewfinder's own).
 STACK_SHUTTERS = [0, 16667, 33333, 66667, 125000, 250000, 500000]
 BULB_SECONDS = 60
@@ -2417,11 +2417,23 @@ class Camera(Gtk.Application):
             GLib.idle_add(self.raw_taken, None, None)
             return
         print("capture: raw frame at %s, %s" % (self.since(), meta["order"]), flush=True)
-        base = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
-                            "pro1x-camera-%d" % threading.get_ident())
         files = []
         # Night stack: this frame and the next ones, each saved as it comes.
         count = self.stack_count if self.night == "stack" else 1
+        # In XDG_RUNTIME_DIR (RAM, fast) when the burst fits with room to
+        # spare, else in the cache on disk: the runtime tmpfs is 1 GB, and
+        # 64 raw frames are about 1.5 GB (author, 2026-11-20: up to 64).
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        buf_size = sample.get_buffer().get_size()
+        try:
+            st = os.statvfs(runtime)
+            fits = count * buf_size < st.f_bavail * st.f_frsize * 0.6
+        except OSError:
+            fits = False
+        where = runtime if fits else os.path.join(
+            os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "pro1x-camera")
+        os.makedirs(where, exist_ok=True)
+        base = os.path.join(where, "pro1x-camera-%d" % threading.get_ident())
         while sample and len(files) < count:
             name = "%s-%d.raw" % (base, len(files))
             buf = sample.get_buffer()
