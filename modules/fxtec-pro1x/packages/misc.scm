@@ -2004,6 +2004,8 @@ window opened by a sway key binding.")
           ("pro1x-osk" "bin/")
           ("pro1x-virtual-screen" "bin/")
           ("pro1x-bt-log" "bin/")
+          ("pro1x-automations" "bin/")
+          ("automations" "share/pro1x-sway/automations")
           ("pro1x-alarm-watch" "bin/")
           ("pro1x-kbd-light" "bin/")
           ("pro1x-power-button" "bin/")
@@ -2149,7 +2151,8 @@ window opened by a sway key binding.")
                    "pro1x-power-key" "pro1x-osd" "pro1x-power-menu"
                    "pro1x-launcher"
                    "pro1x-power-button" "pro1x-camera-button" "pro1x-open"
-                   "pro1x-osk" "pro1x-alarm-watch" "pro1x-waydroid"))
+                   "pro1x-osk" "pro1x-alarm-watch" "pro1x-waydroid"
+                   "pro1x-automations"))
                 ;; Run by sudo; it sets its own PATH (the system profile's
                 ;; waydroid, btmon, bluetoothctl).
                 (chmod (string-append #$output "/bin/pro1x-bt-log") #o755)

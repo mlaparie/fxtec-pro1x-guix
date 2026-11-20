@@ -1379,6 +1379,7 @@ lines() {
         "waydroid    Waydroid                   $(dim "$(cat "$d/waydroid")")" \
         "stream      Stream                     $(stream_state)" \
         "tests       Tests                      car stream ways, Tesla key logs" \
+        "automations Automations                $(dim "$(pro1x-automations --count)")" \
         "bluetooth   Bluetooth                  $(dim "$bt")" \
         "wifi        Wi-Fi                      $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
         "hotspot     Hotspot                    $(dim "$(hotspot_state)")" \
@@ -1905,7 +1906,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="load:transform:$preview" \
         --bind="resize:transform:$preview" \
         --bind="enter:transform:case {1} in
-                  hotspot|timezone|stream|tests|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
+                  hotspot|timezone|stream|tests|automations|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
@@ -1915,7 +1916,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
         --bind="right:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
                   caffeine|torch|airplane|osk|nfc) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
-                  hotspot|timezone|stream|tests|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
+                  hotspot|timezone|stream|tests|automations|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;

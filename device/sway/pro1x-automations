@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# pro1x-automations — the owner's own scripts that run in the background
+# during the Sway session, each switched on or off.  Opened by Enter or Right
+# on the Automations line of sway-quick-actions, inside its window.
+#
+# A script is a file in ~/.config/pro1x/automations; it is on when the file
+# is executable.  Every one that is on starts at login (desktop.conf runs
+# `pro1x-automations --start'), runs until the session ends, and logs to
+# ~/.local/state/pro1x/automations/NAME.log.  Each runs in its own process
+# group, so stopping it also stops what it started.
+#
+# In the list: Enter turns a script on (it starts now) or off (it stops now),
+# C-e edits it with $EDITOR (a running one restarts after), "Add a new script"
+# copies an example or an empty template and opens it.  The examples are in
+# share/pro1x-sway/automations.
+#
+#   pro1x-automations              the list
+#   pro1x-automations --start      at login: start the ones that are on
+#   pro1x-automations --count      for the quick actions line: "2 on of 3"
+#
+# State: not yet run on the phone.
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
+dir="${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/automations"
+logs="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/automations"
+pids="$rt/pro1x-automations"
+examples="$(dirname "$(readlink -f "$0")")/../share/pro1x-sway/automations"
+
+scripts() { [ -d "$dir" ] && find "$dir" -maxdepth 1 -type f ! -name '.*' ! -name '*~' -printf '%f\n' | sort; }
+enabled() { [ -x "$dir/$1" ]; }
+pid_of() {                      # the process group's leader, if it runs
+    local p
+    p=$(cat "$pids/$1.pid" 2>/dev/null) || return 1
+    kill -0 "$p" 2>/dev/null && echo "$p"
+}
+
+start() {
+    pid_of "$1" > /dev/null && return
+    mkdir -p "$pids" "$logs"
+    echo "$(date '+%F %T') started" >> "$logs/$1.log"
+    # setsid: a group of its own, which stop kills as a whole.
+    setsid sh -c 'echo $$ > "$1"; exec "$2" >> "$3" 2>&1' sh \
+           "$pids/$1.pid" "$dir/$1" "$logs/$1.log" < /dev/null &
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -s "$pids/$1.pid" ] && break
+        sleep 0.1
+    done
+}
+
+stop() {
+    local p
+    p=$(pid_of "$1") || { rm -f "$pids/$1.pid"; return; }
+    kill -TERM -- "-$p" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        kill -0 "$p" 2>/dev/null || break
+        sleep 0.1
+    done
+    kill -KILL -- "-$p" 2>/dev/null
+    rm -f "$pids/$1.pid"
+    echo "$(date '+%F %T') stopped" >> "$logs/$1.log"
+}
+
+state() {
+    if ! enabled "$1"; then echo off
+    elif pid_of "$1" > /dev/null; then echo on
+    else echo "on, not running (see its log)"
+    fi
+}
+
+case "${1:-}" in
+    --start)
+        for s in $(scripts); do enabled "$s" && start "$s"; done
+        exit ;;
+    --count)
+        n=0 on=0
+        for s in $(scripts); do n=$((n + 1)); enabled "$s" && on=$((on + 1)); done
+        if [ "$n" = 0 ]; then echo none; else echo "$on on of $n"; fi
+        exit ;;
+    --preview)                  # the script's opening comment, then its log
+        [ -f "$dir/$2" ] || exit
+        sed -n '2,/^[^#]/{/^#/p}' "$dir/$2" | sed 's/^# \{0,1\}//'
+        printf '\n── log ──\n'
+        tail -n 30 "$logs/$2.log" 2>/dev/null
+        exit ;;
+esac
+
+trap 'rm -f "$rt/pro1x-tool.done"' EXIT
+
+edit() {
+    local was
+    pid_of "$1" > /dev/null && was=1
+    ${EDITOR:-nano} "$dir/$1"
+    [ -n "${was:-}" ] && { stop "$1"; start "$1"; }
+}
+
+add() {
+    local from name
+    mkdir -p "$dir"
+    from=$( { printf 'template\t%-26s %s\n' template '(empty)'
+              for f in "$examples"/*; do
+                  [ -f "$f" ] && [ "${f##*/}" != template ] &&
+                      printf '%s\t%-26s %s\n' "${f##*/}" "${f##*/}" "$(sed -n 2p "$f" | sed 's/^# *//')"
+              done; } |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='start from > ' \
+            --layout=reverse-list --no-info --margin=1,2 --color=16,gutter:-1 \
+            --bind='left:abort' --bind='right:accept' | cut -f1)
+    [ -n "$from" ] || return
+    printf '\033[H\033[2J\033[3J'
+    read -rp "Name of the new script: " -e -i "$([ "$from" = template ] || echo "$from")" name
+    name=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '-')
+    [ -n "$name" ] || return
+    if [ -e "$dir/$name" ]; then
+        printf '%s exists already.\nPress any key to go back.\n' "$name"; read -rsn1; return
+    fi
+    # Off until the owner turns it on in the list.
+    install -m 644 "$examples/$from" "$dir/$name"
+    ${EDITOR:-nano} "$dir/$name"
+}
+
+toggle() {
+    if enabled "$1"; then
+        chmod a-x "$dir/$1"
+        stop "$1"
+    else
+        chmod u+x "$dir/$1"
+        start "$1"
+    fi
+}
+
+at=2
+while :; do
+    choice=$( { printf '%s\t%s\n' back "← back"
+                for s in $(scripts); do printf '%s\t%-26s %s\n' "$s" "$s" "$(state "$s")"; done
+                printf '%s\t%s\n' +add "＋ Add a new script"; } |
+        fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt='automations > ' \
+            --layout=reverse-list --no-info --cycle --margin=1,2 \
+            --color=16,gutter:-1 --bind="load:pos($at)" --bind='left:abort' --bind='right:accept' \
+            --header='Enter: on/off   C-e: edit' \
+            --expect=ctrl-e \
+            --preview="$0 --preview {1}" --preview-window=right,50%,wrap,border-left \
+            --bind='focus:transform:case {1} in back|+add) echo hide-preview ;; *) echo show-preview ;; esac')
+    key=$(printf '%s\n' "$choice" | sed -n 1p)
+    pick=$(printf '%s\n' "$choice" | sed -n 2p | cut -f1)
+    at=$(( $(scripts | grep -nxF -- "$pick" | cut -d: -f1) + 1 ))
+    [ "$at" -gt 1 ] || at=2
+    case "$pick" in
+        ""|back) break ;;
+        +add) add ;;
+        *) if [ "$key" = ctrl-e ]; then edit "$pick"; else toggle "$pick"; fi ;;
+    esac
+done
+: > "$rt/pro1x-tool.done"

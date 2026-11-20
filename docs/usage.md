@@ -114,7 +114,13 @@ of the power key is its Enter, a long one closes it.  In quick actions:
 - the Notifications line opens them, with the text beside (landscape) or
   below (portrait); Del dismisses one;
 - the GPU monitor line opens nvtop (GPU load, clock, GPU time per app),
-  and CPU mode's choices bpytop, each in its own window.
+  and CPU mode's choices bpytop, each in its own window;
+- Automations lists your own scripts in `~/.config/pro1x/automations`,
+  which run in the background while they are on and start at login:
+  Enter turns one on or off, C-e edits it with `$EDITOR`, "Add a new
+  script" starts from an empty template or an example (a Bluetooth
+  device connects: the hotspot and the stream start).  Each logs to
+  `~/.local/state/pro1x/automations/`.
 
 Settings changed there last until reboot (operator, CPU mode, charge
 limit) unless the line says otherwise; the lasting ones are in

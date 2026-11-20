@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# What this script does, in one line (shown when choosing an example).
+#
+# These opening comments are shown beside the script in Quick actions,
+# Automations.  The script runs during the whole Sway session while it is on:
+# usually a loop that waits for something, then acts.  What it prints goes to
+# its log, ~/.local/state/pro1x/automations/NAME.log.
+
+while sleep 10; do
+    :
+done
