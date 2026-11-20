@@ -10,19 +10,17 @@ requests; the author re-ranks.  Older dated notes are under History, newest firs
 TODO.md before 2026-11-11 is in git history.
 
 * State on the phone
-- 2026-11-12: generation 33, from =dev= 15df2cc (Waydroid, its quick-actions menu), kernel
-  7.3.0 with the QSEECOM fixes from CI run 43071407700 (b633813); generation 27 (=main=
-  1efc6f3) is the fallback.  Waydroid's GAPPS image is downloaded (=waydroid init -s
-  GAPPS=, 2026-11-12); Android not started yet.  Encrypted btrfs root since the reflash of 2026-11-08 (generation
-  1 there): =/home= a subvolume, hourly btrbk snapshots, =pro1x-rootfs-compress= done,
-  mounted =compress=zstd:1=.
-- Release: v0.4.0 (=main= 5719006), CI run 43050723557.
-- Branches: =main=; =dev= with the fingerprint work, the Auto-sleep quick action and the
-  tree cleanup, on the phone since generation 28.
-- Backup on the PC: =~/pro1x-backup-2026-11-11.tar= (=backup-phone.sh=, without =~/.mail=,
-  which syncs again from the PC).
-- Measured (screen on): idle 10% CPU; screen capture alone 35%; hardware H.264 at 30 fps
-  41-43%, VP8 at 1280 49%.  Hardware H.264 at 1920 makes about 16 fps.
+- 2026-11-20: generation 225 (=dev-next=, built from the PC with the owner's config.scm), kernel
+  7.3.0 without the ath patch yet; generation 224 the fallback.  Waydroid runs (GAPPS, Tesla
+  app 4.62.5) with waydroid-host-stack's Bluetooth bridge.  Encrypted btrfs root since
+  2026-11-08, hourly btrbk snapshots.
+- Pushed: =dev= ab00bb5 (sr.ht and GitHub, 2026-11-20).  =dev-next= has the later commits
+  (Bluetooth logger fix, Tests at the root, menu alignment), not deployed: sr.ht's HTTPS timed
+  out for guix time-machine.  The patched kernel (ath country IE) comes from CI run
+  44783494665, imported on the PC.
+- Release: v0.4.0 (=main= 5719006).  Backup on the PC: =~/pro1x-backup-2026-11-11.tar=.
+- Stream (2026-11-20, zero-copy capture, Chromium on the same Wi-Fi): about 70 ms end to end,
+  4 % CPU for capture and encoding.
 
 * Tasks
 ** Fingerprint
@@ -43,6 +41,12 @@ the car's classic hands-free link to the phone was up meanwhile).  Not yet known
 refusing, the WCN3990 holding both links, or the address type.  Next: btmon during a key setup.
 The phone key needs no Android pairing (the app connects, the key card confirms); the car's own
 Bluetooth list is classic Bluetooth, the phone's BlueZ, not Waydroid's (LE only).
+2026-11-20: waydroid-host-stack d9a316e installed (soft HCI bridge, JNI timerfd patch); Android's
+side OK (Bluetooth on, permissions, no microG needed).  Android dropped the LE link 2 s after
+discovery, before subscribing to the key's notify characteristic: Android's log is needed.
+Tests > Test 4 logs a session (logcat, btmon, bridge) to /var/log/pro1x-bt-tests/; it failed to
+start (installed read-only), fixed in 5db9b33, not deployed.  The bridge authors' Tesla claims
+are reported, not verified.
 The image (LineageOS 20, TQ3A.230901.001, GAPPS) has no Bluetooth HAL and no Bluetooth app
 (Waydroid strips it from the btservices apex; "Package not found: com.android.bluetooth").
 Candidate: isyourbrainfoss/waydroid-host-stack (MIT, experimental, largely machine-written;
@@ -60,20 +64,20 @@ The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, aut
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
 GNSS HAL and gets only network location, hence the poor accuracy.  Next: waydroid-host-stack's
 forwarder (host position into Android test providers), with the Bluetooth work.
-*** WAIT [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
-Packaged after phodina's Guix series (bug #51737); image downloaded.  Not yet started:
-the container under Guix's LXC and cgroup v2, the session in Sway and Phosh, Google
-Play's registration.  Window mode and sleep when unused are in the menu (Android's own
-properties; a config.scm setting would be overridden by them).
+*** DONE [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
+Runs with GAPPS and Google Play (2026-11-20, session and container running).
 *** TODO [#B] Measure Android's cost: running, frozen, off (CPU, battery current)
 *** TODO [#C] Freeze when no Android window is shown
 Only if the measurement shows it is worth it.  Android's own "Sleep when unused"
 (=persist.waydroid.suspend=) freezes it already, after its screen timeout.  Start at
 login: =waydroid-configuration= =autostart?= (2026-11-12).
 ** Calls and modem
-*** TODO [#A] Outgoing calls on 4G take 22-26 s and fall back to 3G
-The author wants calls fixed before the release (2026-11-05).
-*** TODO [#A] Mute button in calls has no effect
+*** NEXT [#A] Outgoing calls on 4G take 22-26 s and fall back to 3G
+The author wants calls fixed before the release (2026-11-05), asked again 2026-11-20; test calls
+to the author's other phone are allowed (number not in the repo).  2026-11-20: 81voltd and
+pro1x-volte-watch run, the IMS bearer comes back after restarts; IMSA answers InvalidOperation.
+Not started past that.
+*** WAIT [#A] Mute button in calls has no effect
 pro1x-voice-call follows Calls' mute (the Voice Call source) with the codec-to-DSP capture
 route since 8545724 (2026-10-30); this entry came over from older notes on 2026-11-11, with
 no retest after the fix.  To verify in a call (the author).
@@ -87,6 +91,8 @@ WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 (=media.gmp-gmpopenh264.enabled=); catt on a Chromecast; Network Displays.
 2026-11-19 (author): Chromecast found the TV but failed to play a YouTube URL (an error);
 Miracast closed quick actions without doing anything.  Not looked at yet.
+Since then the stream menu changed a lot (zero-copy capture, DIRECT in Firefox, Moonlight,
+tests); the entry stays for catt and Miracast.
 *** WAIT [#B] Hotspot: devices with IP and name, stream to one; expel, ban, band, hidden name, auto-off, data used
 *** TODO [#B] Moonlight (Sunshine, owner's home config): try a session on a screen of its own
 Stream menu, Moonlight: client (the phone at the client's size, panel mirrors), multi (second
@@ -137,9 +143,11 @@ Restarting the server hung the phone three times (04:18, 04:40: watchdog reboot 
 min; 05:02: no reboot, held for a power cycle): no restart cycles.  DIRECT holds frames
 before the encoder while the WebSocket is behind (748a44f): p95 0.72 s against 1.48,
 longest freeze 1.0 s against 2.7.  Not deployed: tried from /tmp/dev on the phone.
-Next: the capture's 0.4 s (PRO1X_STREAM_PW_LEAKY=1 untried; swayfx/wlroots damage capture);
-steady without the copies (copy each new frame once to cached memory, repeat that); the
-first frame after loading (8-38 s); A/V sync with a film.
+2026-11-20: the portal's 0.4 s is gone with pro1x-screencast (wlr-screencopy into GBM
+buffers, GLES to NV12, Venus by DMA-BUF): 32-45 ms from Sway's frame to H.264, about 70 ms end
+to end in Chromium on the LAN, about 4 % CPU.  The phone's shutdowns were Venus's runtime PM
+(udev keeps it powered).  DIRECT works in Firefox.
+Next: A/V sync with a film (separate entry); the wallpaper (separate entry).
 HTTPS (2026-11-19): browsers that refuse plain HTTP get the phone's
 own certificate, or a trusted one the owner puts in
 /var/lib/pro1x/stream-tls; ~/.config/pro1x/stream-hook may choose
@@ -154,22 +162,21 @@ packet arrives), though the phone pings the car.
 *** DONE [#C] Hotspot QR as an image
 chafa sixel in the hotspot tool, text elsewhere (2026-11-20).
 *** DONE [#B] 5 GHz hotspot
-The author makes 5 GHz hotspots (2026-11-20); the menu no longer warns.
-Starts with nmcli on channels 149 and 36 (2026-11-18), with the
-=ATH_REG_*= options in the kernel.  While the phone is a Wi-Fi client
-the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
-a user hint, and the client link drops when the hotspot starts.  The
-menu stopped checking beforehand (2ce4e2d); not deployed.
-*** TODO [#C] Hotspot while on a Wi-Fi network: works, to try with a device
-The WCN3990 allows an AP and a client on one channel.  Since 8766b18 the hotspot runs on ap0
-beside a connected Wi-Fi network, on its channel, sharing it (e.g. a 5G phone hotspot as the
-uplink, the car on the Pro1x's own).  Started and stopped by pro1x-hotspot on the phone
-(2026-11-20): ap0 an AP on channel 11, 10.42.0.1, wlan0 still connected.  Not yet tried: a
-device joining and reaching the internet through it.  Keep Wi-Fi option (44de9a5).  A 5 GHz
-uplink: refused, every 5 GHz channel is no IR while wlan0 is a client (measured, rag-notes);
-falls back to wlan0.  Possible lead: a P2P group owner instead of an AP, with
-CFG80211_REG_RELAX_NO_IR (it relaxes GO only), author's decision.
-*** TODO [#A] Tesla leaves the hotspot without internet
+The author makes 5 GHz hotspots (2026-11-20); on channels 149 and 36 with no Wi-Fi network in
+use.  Beside a 5 GHz network: next entry.
+*** WAIT [#A] Hotspot beside a Wi-Fi network (Keep Wi-Fi)
+The WCN3990 allows an AP and a client on one channel: with Keep Wi-Fi on (44de9a5, off by
+default) the hotspot runs on ap0 on the network's channel and shares it.  Run by hand and by
+pro1x-hotspot beside a 2.4 GHz network (channel 11, 2026-11-20); no device joined it yet.
+Beside a 5 GHz network every 5 GHz channel was no-IR (rag-notes, wifi): ath kept its world
+rules for a card with an EEPROM country.  Patch pro1x-ath-country-ie-no-ir (ab00bb5, any
+country's rules, radar channels excepted), built by CI run 44783494665; to deploy, reboot, test.
+2026-11-20 evening (author): the Tesla refused the hotspot with a 2.4 GHz uplink.  The log shows
+Keep Wi-Fi off at that start (20:39: on wlan0, mobile data shared) and the uplink network
+lost four times before (ssid-not-found, 20:29-20:38); the Tesla held a lease 20:40-21:38.
+Next: the author's test again with Keep Wi-Fi on; check NAT and DNS through ap0 with a device.
+*** WAIT [#A] Tesla leaves the hotspot without internet
+2026-11-20: on the hotspot with mobile data, the Tesla kept its lease (19:06-19:29, 20:40-21:38).
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
 had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
 before the modem had attached to packet service, without a retry.  The car's DNS questions were
@@ -187,15 +194,32 @@ with mobile data on; for offline use, answer those names locally and
 serve a connectivity check: done outside the port, in the author's
 ~/.local/bin/scripts/tesla-stream on the phone (car Bluetooth starts the
 hotspot and the stream).
+*** TODO [#A] A/V sync for films in the browser stream, maybe a preset (as Tesor)
+The best stream (DIRECT, zero copy) must play a video with sound in sync on the client.
+*** TODO [#B] Wallpaper missing in the stream (author, 2026-11-20)
+*** TODO [#A] Tests at the root of quick actions; analyse test 1
+Moved (7f3cc05, not deployed).  Tests 2 and 3 need IPv6 on the other hotspot (author).  The
+author ran test 1 on 2026-11-20 20:45: to analyse.
+*** TODO [#B] pro1x-screencast as its own project (author)
+Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a Guix package and
+CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
+h264_v4l2m2m, OBS) before calling it unique.
 ** Sway session
-*** WAIT [#B] Auto-sleep quick action (1-60 min locked) and config.scm =auto-sleep=
-Built; not deployed.
+*** TODO [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
+Unless the proximity sensor is covered.  It should stay dark until a double tap, the power
+button, Esc or the keyboard slide; a fingerprint should wait for a lit screen, not light it.
+*** TODO [#A] Lock and suspend: once frozen on wake (author, 2026-11-20)
+gtklock frozen, the sleep LED still on, a hard reboot needed; a second try worked.
+*** WAIT [#B] Quick actions: notifications stay until the dock is opened (30f0d12)
+Deployed; the resident quick actions takes it after a new login.*** DONE [#B] Auto-sleep quick action (1-60 min locked) and config.scm =auto-sleep=
+In the deployed quick actions (checked 2026-11-20).
 *** WAIT [#B] Back line in every sublist; Wi-Fi networks sublist; portrait bar with the hotspot
-*** TODO [#B] gtklock loses the typed password when the screen turns
+*** WAIT [#B] gtklock loses the typed password when the screen turns
 Cause: gtklock dies when the panel turns under it ("Error 71"), so pro1x-lock --rotate starts a
 new one, empty.  Fix (2026-11-20, not yet tried): a gtklock module, keep-typed, saves the
 field's text on SIGUSR2 (to $XDG_RUNTIME_DIR, user-only, deleted at once by the next gtklock,
-which puts it back); pro1x-lock --rotate sends it before the swap.  The screen turns while
+which puts it back); pro1x-lock --rotate sends it before the swap.  Deployed (generation 225),
+not tried.  The screen turns while
 locked as before (holding the turns was tried first, and reverted: the author preferred this).
 *** TODO [#C] Menu slides jump at the start (what is ruled out: History, Smaller things)
 *** TODO [#C] keyd segfaulted once (2026-11-09), cause unknown
@@ -260,9 +284,10 @@ libcamera's software AWB has no manual mode.  Inverting its generic colour tempe
 gives gains that are not monotonic with temperature: presets need the vendor's AWB reference
 points (refPt in com.qti.tuned.lce_imx582.bin, stored transformed, not decoded) or a
 measurement under known light.  An AWB lock (keep the current gains) needs only a small patch.
-*** TODO [#B] CI: one stored signing key for the exported kernel
+*** TODO [#A] CI: one stored signing key for the exported kernel
 Each run makes a new key, so importing a CI kernel needs the author's sudo every time.  A key
 kept as a repository secret, authorized once on the PC, would let the agent import unattended.
+Kernels build on CI only, never under QEMU on the PC (author, 2026-11-20).
 *** TODO [#B] libcamera 0.8.0: lens shading correction, AWB without saturated pixels
 moWerk's autofocus series (0005-0018) does not apply: 0.8.0 renamed src/ipa/simple to
 src/ipa/softisp and moved AWB and CCM to libipa.  Rebase it, or wait for the series' next version.
@@ -271,18 +296,17 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
-*** WAIT [#B] Hibernation: saved and restored, the session does not survive (2026-11-19)
+*** TODO [#A] Hibernation: saved and restored, the session does not survive (2026-11-19)
 Off in this branch: no power menu line, no low-battery hibernation.  The work and its status:
 branch dev-hibernate, docs/hibernation.md.  Next is kernel work: what hangs after an ADSP stop
 and start on a running phone.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
-*** TODO [#C] Video decoding on Venus: works; enable it in players
-The node is there (/dev/video13 qcom-venus-decoder, 2026-11-20): GStreamer's v4l2h264dec
-decodes 1080p at 67 fps; mpv --hwdec=v4l2m2m-copy: 1.3 s of CPU for a clip software
-decodes in 4.1 s.  To do: hwdec in mpv by default (the owner's mpv.conf), browsers.
-** Apps and later
+*** DONE [#C] Video decoding on Venus in mpv
+/dev/video13: v4l2h264dec 1080p at 67 fps; mpv's hwdec=v4l2m2m-copy is in the port's mpv.conf
+(1.3 s of CPU against 4.1 s), and the author's mpv.conf includes it (2026-11-20).  Browsers: not
+done.
 *** TODO [#C] GPS apps; fingerprint app beyond quick actions
 *** CANCELLED [#C] Moonlight fork
 Sunshine instead, in the owner's home config; Apollo's extras are Windows-only (2026-11-20).
