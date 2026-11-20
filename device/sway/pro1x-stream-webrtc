@@ -698,6 +698,10 @@ let phone = {}, ticks = 0;
 // same long side, once per shape (a refusal does not loop).
 function autofit() {
   if (!phone.screen || phone.screen === "phone" || !phone.size || Object.keys(pending).length) return;
+  // Not while captured or fullscreen: the new size starts the phone's
+  // encoder again, the page reloads, and the capture ended at once
+  // (author, 2026-11-20).  It fits once the capture is left.
+  if (captured || document.fullscreenElement) return;
   const [w, h] = phone.size.split("x").map(Number);
   if (Math.abs((w / h) / (innerWidth / innerHeight) - 1) <= 0.05) return;
   const [W, H] = fitted(Math.max(w, h));
