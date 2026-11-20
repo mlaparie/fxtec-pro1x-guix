@@ -2197,13 +2197,14 @@ window opened by a sway key binding.")
                       (,(string-append (assoc-ref inputs "foot") "/bin")))))
                 (let ((g (string-append #$output "/bin/pro1x-gestures")))
                   (chmod g #o755)
-                  ;; swaymsg, foot and the menus: system profile and $output.
+                  ;; swaymsg, foot and the menus: system profile and $output;
+                  ;; evtest and gawk: the close gesture's watcher.
                   (wrap-program g
                     `("PATH" ":" prefix
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "grep" "jq" "lisgd"))))))
+                              '("coreutils" "evtest" "gawk" "grep" "jq" "lisgd"))))))
                 (let ((notify (string-append #$output "/bin/pro1x-notify")))
                   (chmod notify #o755)
                   ;; swaymsg comes from the system profile.
