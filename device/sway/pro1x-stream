@@ -312,6 +312,7 @@ running_links() {
     case "$kind" in
         interactive|webrtc) show_links "$(streaming_note "$arg")" "${arg:+?k=$arg}" ;;
         mjpeg) simple_links ;;
+        moonlight) moonlight_links ;;
         udp) printf '%s\t%-10s %s\n' "udp://@:$udp_port" vlc "udp://@:$udp_port" |
                  show_urls "Sending to $arg: in VLC there, open the URL above." >/dev/null ;;
     esac
@@ -642,6 +643,48 @@ simple_links() {
     done | show_urls "$(streaming_note)" >/dev/null
 }
 
+# Moonlight: Sunshine, a Moonlight host, if the owner installed it (it is
+# not part of the port: their home config, from a channel that packages it).
+# It encodes in software (no Moonlight host uses Venus): hot, a fallback to
+# the browser stream for Moonlight's own apps.  It asks a login once (its web
+# page, where Moonlight's PIN is typed) and then runs until Stop stream.
+# State: started by hand on the phone 2026-11-20; this entry untried.
+sunshine_port=47990
+moonlight_links() {
+    networks | while read -r a dev; do
+        printf 'https://%s:%s/	%-10s %s  (PIN page: https://%s:%s/)
+' \
+            "$a" "$sunshine_port" "$(net_name "$a" "$dev")" "$a" "$a" "$sunshine_port"
+    done | show_urls "Moonlight: add this host by its address, then type the PIN Moonlight shows on the PIN page (Sunshine's login).
+Software encoding: the phone gets hot.  Stop stream ends it." >/dev/null
+}
+
+send_moonlight() {
+    if ! command -v sunshine >/dev/null; then
+        notice "Moonlight needs Sunshine, a Moonlight host, which the port does not ship: add \"sunshine\" to your home packages (from a channel that packages it) and apply your home config."
+        return
+    fi
+    if ! grep -qs '"username"' "$HOME/.config/sunshine/sunshine_state.json"; then
+        user=$(ask "Sunshine login, name" "Sunshine's web page (where Moonlight's PIN goes) asks for it; once.")
+        [ -n "$user" ] || return
+        pass=$(ask "Sunshine login, password" "Shown as you type it.")
+        [ -n "$pass" ] || return
+        sunshine --creds "$user" "$pass" >/dev/null 2>&1 </dev/null
+    fi
+    stop_stream
+    setsid sunshine >"$rt/sunshine.log" 2>&1 </dev/null &
+    echo $! > "$pid_file"
+    echo "moonlight" > "$kind_file"
+    echo "moonlight, Sunshine on port $sunshine_port" > "$to_file"
+    sleep 2
+    streaming || { rm -f "$pid_file" "$to_file" "$kind_file"
+                   notice "Sunshine did not start: $(tail -n 3 "$rt/sunshine.log")"; return; }
+    keep_awake "$(cat "$pid_file")"
+    run_hook started "$(cat "$pid_file")" moonlight
+    moonlight_links
+    leave_menu
+}
+
 # ffmpeg serves one viewer at a time, and stops when that one leaves: the loop
 # is ready for the next.  At most 15 images a second keep the bandwidth bearable.
 send_mjpeg() {
@@ -841,6 +884,7 @@ while :; do
             webrtc "Browser, read-only    screen and sound, no input; full screen or a window" \
             mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
+            moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
             catt "Chromecast            sends a video URL or file; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
             settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
@@ -859,6 +903,7 @@ while :; do
                  send_udp "$to"
              fi ;;
         mjpeg) send_mjpeg ;;
+        moonlight) send_moonlight ;;
         webrtc) send_webrtc ;;
         interactive) send_interactive ;;
         settings) settings_menu ;;
