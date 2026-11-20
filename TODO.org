@@ -271,7 +271,10 @@ The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 *** TODO [#B] Plain =flash.sh= with a btrfs root (=systems/minimal.scm= cannot be flashed)
 *** WAIT [#B] After the reflash: a reboot test, the new U-Boot entry
 *** TODO [#B] Bootcount fallback; a pinned known-good boot entry
-*** TODO [#C] Wi-Fi takes about 100 s to connect after a boot
+*** DONE [#C] Wi-Fi takes about 100 s to connect after a boot
+Not on the boot of 2026-11-20 20:21 (/var/log/messages): ath10k's firmware at 26-34 s, wlan0
+in NetworkManager at 34 s, associated at 39.7 s, 5 s after wlan0 appeared.  Reopen with a
+boot log if it comes back.
 *** TODO [#C] Drop json-c/pro1x's leak patch once the pinned Guix has c4a2ab4
 Guix fixed it upstream on 2026-11-09 (PR 12277); keep our locale patch.  Not yet: the pin
 (8b96d76) is of 2026-10-28, the fix of 2026-11-08 (checked 2026-11-20); at the next bump.
