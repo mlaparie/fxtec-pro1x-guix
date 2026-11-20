@@ -2,7 +2,7 @@
 """stream-bench.py: measure the interactive stream from a browser on the PC.
 
     guix shell python python-websocket-client -- \\
-        python3 scripts/stream-bench/stream-bench.py URL [SECONDS] [LABEL]
+        python3 scripts/stream-bench/stream-bench.py URL|auto [SECONDS] [LABEL]
 
 Needs Chromium started with --remote-debugging-port=9222, the phone on
 USB (172.16.42.1, root's key ~/.ssh/pro1x-guix) and phone-clock.py full
@@ -149,6 +149,13 @@ def pct(xs, p):
 
 def main():
     url = sys.argv[1]
+    if url == "auto":
+        # The address the menu shows (it changes with the phone's lease),
+        # with the stream's key.
+        to = subprocess.run(PHONE + ["cat /run/user/1000/pro1x-stream.to"],
+                            capture_output=True, text=True).stdout.split()
+        key = to[to.index("key") + 1] if "key" in to else ""
+        url = to[1].rstrip(",") + (f"?k={key}" if key else "")
     seconds = int(sys.argv[2]) if len(sys.argv) > 2 else 30
     label = sys.argv[3] if len(sys.argv) > 3 else ""
     offset, rtt = clock_offset()
@@ -162,9 +169,17 @@ def main():
     first = round(time.time() - loaded + 8, 1)
     tab.eval("window.__bench.reset()")
     end = time.time() + seconds
+    offsets = [offset]
+    n = 0
     while time.time() < end:
         time.sleep(2)
         tab.key()
+        n += 1
+        # The phone's clock moves while NTP corrects it (230 ms in 4 min
+        # after a boot, 2026-11-20): measured again every 10 s.
+        if n % 5 == 0:
+            offsets.append(clock_offset()[0])
+            tab.eval(f"window.__bench.offset = {offsets[-1]:.1f}")
     b = tab.eval("({ages: __bench.ages, shown: __bench.shown, keys: __bench.keys,"
                  " bad: __bench.bad})")
     ages, shown, keys = b["ages"], b["shown"], b["keys"]
@@ -172,7 +187,8 @@ def main():
     span = (shown[-1] - shown[0]) / 1000 if len(shown) > 1 else 0
     r = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "label": label,
          "seconds": seconds, "offset_ms": round(offset, 1),
-         "offset_rtt_ms": round(rtt, 1), "frames": len(ages),
+         "offset_rtt_ms": round(rtt, 1),
+         "offset_moved_ms": round(max(offsets) - min(offsets), 1), "frames": len(ages),
          "fps": round(len(ages) / span, 1) if span else 0,
          "age_p50": pct(ages, 0.5), "age_p95": pct(ages, 0.95),
          "age_max": max(ages) if ages else None,

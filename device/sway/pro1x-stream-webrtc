@@ -1859,7 +1859,7 @@ class Producer:
         self.keyframes = keep_keyframes(self.pipeline)
         # Frames a second from PipeWire, out of the GPU and out of the
         # encoder, in the log every 10 s.
-        self.counts = {"portal": 0, "gpu": 0, "encoded": 0}
+        self.counts = {"portal": 0, "gpu": 0, "encoded": 0, "held": 0}
         self.bytes = 0
         self.pipeline.get_by_name("out").get_static_pad("sink").add_probe(
             Gst.PadProbeType.BUFFER, self.count, "encoded")
@@ -1949,8 +1949,19 @@ class Producer:
                     (clock.get_time() - self.capture.get_base_time() - self.last.pts) / 1e6)
         if (not self.paused
                 and time.monotonic() - self.pushed_at >= 0.9 / self.rate()):
-            self.push(self.last)
+            if self.held():
+                self.counts["held"] += 1
+            else:
+                self.push(self.last)
         return Gst.FlowReturn.OK
+
+    def held(self):
+        """A DIRECT viewer's network behind: no new frame for the encoder
+        until it catches up (DirectViewer)."""
+        with self.lock:
+            sends = list(self.direct)
+        return any(getattr(send, "__self__", None) is not None
+                   and send.__self__.behind() for send in sends)
 
     def push(self, buf):
         copy = buf.copy()
@@ -1974,7 +1985,7 @@ class Producer:
             elif wait < -step:
                 due = time.monotonic()
             buf = self.last
-            if buf is None or self.paused:
+            if buf is None or self.paused or self.held():
                 continue
             # Steady: the last frame again only if none went this tick.
             if self.steady:
@@ -3160,16 +3171,24 @@ class DirectViewer:
     """A DIRECT page's WebSocket: each encoded access unit as one binary
     message, its header as the page reads it (frame number, index 0, count
     1, keyframe flag, the time it left the encoder in ms, the encoder's
-    delay in ms).  At most three frames wait for the network; more, and the
-    producer skips to a keyframe (the newest frame wins, as in a game
-    stream).  One viewer at a time: a new one ends the old."""
+    delay in ms).  While the network is behind (a frame waiting here, or
+    more than UNSENT bytes not yet sent by TCP), the producer gives the
+    encoder no new frame: nothing encoded is dropped, so no keyframe is
+    needed after a stall, and the delay stays bounded (Tesor, a WebSocket
+    stream for car browsers, also measures what its socket carries).
+    Dropping encoded frames turned each Wi-Fi stall into 2-3 s frozen
+    while a keyframe crossed the same link (2026-11-20).  Only a full
+    queue still skips to a keyframe.  One viewer at a time: a new one ends
+    the old."""
+
+    UNSENT = 48 * 1024          # about 0.2 s at 2 Mbit/s
 
     current = None
     GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     def __init__(self, sock):
         self.sock = sock
-        self.frames = queue.Queue(maxsize=2)
+        self.frames = queue.Queue(maxsize=12)
         self.seq = 0
         self.alive = True
 
@@ -3183,6 +3202,20 @@ class DirectViewer:
             self.frames.put_nowait(head + data)
             return True
         except queue.Full:
+            return False
+
+    def behind(self):
+        """Whether the network has not caught up: a frame waiting, or TCP
+        holding more than UNSENT bytes (TIOCOUTQ: not sent or not yet
+        acknowledged)."""
+        if not self.frames.empty():
+            return True
+        try:
+            import fcntl
+            import termios
+            out = fcntl.ioctl(self.sock, termios.TIOCOUTQ, b"\0\0\0\0")
+            return struct.unpack("i", out)[0] > self.UNSENT
+        except OSError:
             return False
 
     def run(self):
