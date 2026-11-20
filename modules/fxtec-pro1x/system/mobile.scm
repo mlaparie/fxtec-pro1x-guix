@@ -652,6 +652,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-stream-cert, "
                               ;; Quick actions' Waydroid: its image.
                               "/run/current-system/profile/bin/pro1x-waydroid-admin, "
+                              ;; The stream menu's TESTS: Bluetooth logs.
+                              "/run/current-system/profile/bin/pro1x-bt-log, "
                               ;; And its limits.
                               "/run/current-system/profile/bin/pro1x-waydroid-limits, "
                               ;; Quick actions' timezone.
@@ -907,9 +909,15 @@ Dracula palette, no kernel messages over the greeter.")
      ;; does not answer again after a power-down (reported on SailfishOS,
      ;; gone on 7.3), so it is powered at start and toggling it off in the
      ;; shell can need a reboot to bring it back.
+     ;; Background connections (Waydroid's Bluetooth bridge, the Tesla
+     ;; phone key: the kernel's LE auto-connect list) scan 30 ms every
+     ;; 1.28 s, as Android does, instead of 30 ms every 60 ms: values from
+     ;; waydroid-host-stack (docs/tesla-passive-autoconnect.md).
      (service bluetooth-service-type
               (bluetooth-configuration
-               (auto-enable? #t)))
+               (auto-enable? #t)
+               (scan-interval-auto-connect #x0800)
+               (scan-window-auto-connect #x0030)))
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type

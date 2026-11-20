@@ -203,6 +203,14 @@ info() {                        # info WHAT KEY
             echo "Needs the HTTPS name set up (SETTINGS) and IPv6 on the hotspot.  Open the link in the car, wait a minute, then Stop stream."
             echo
             v6=$(global_v6); echo "The phone's IPv6 address now: ${v6:-none}" ;;
+        test:4)
+            echo "The Tesla phone key through Waydroid's Bluetooth (the soft HCI bridge): logs only, no stream.  Records Android's log (Tesla, Bluetooth, GATT), the Bluetooth trace and the bridge's log, for 20 minutes at most."
+            echo
+            echo "Near the car: start this, open the Tesla app and set up the phone key (or use it), then come back here and stop it (Test 4 again).  The logs stay in /var/log/pro1x-bt-tests/."
+            echo
+            if s=$(sudo -n /run/current-system/profile/bin/pro1x-bt-log status 2>/dev/null) && [ -n "$s" ]; then
+                echo "Logging now: $s"
+            fi ;;
         approve:off) echo "The access key alone lets a viewer in." ;;
         approve:tap) echo "A notification on the phone: a tap lets the viewer in." ;;
         approve:fingerprint)
@@ -752,8 +760,26 @@ test_links() {                  # test_links N KEY
     esac | show_urls "Test $1, key ${k:-none}: open the link in the car, wait a minute, touch the screen, then Stop stream.  Logged for later." >/dev/null
 }
 
+# Test 4: Bluetooth logs only (pro1x-bt-log, as root through sudo): the
+# same entry starts and stops them.
+bt_log_test() {
+    bt_log="sudo -n /run/current-system/profile/bin/pro1x-bt-log"
+    running=$($bt_log status 2>/dev/null)
+    if [ -n "$running" ]; then
+        dir=$($bt_log stop 2>/dev/null)
+        echo "$(date '+%F %T') test 4: Bluetooth logs stopped: $dir" >> "$tests_log"
+        notice "Test 4: logs stopped and kept in $dir."
+    else
+        test_header 4 "Tesla phone key, Waydroid Bluetooth (logs)"
+        dir=$($bt_log start 2>/dev/null) || { notice "Test 4: the logs could not start."; return; }
+        echo "$(date '+%F %T') test 4: Bluetooth logs in $dir" >> "$tests_log"
+        notice "Test 4: logging (20 minutes at most).  Set up or use the phone key in the Tesla app, then choose Test 4 again to stop."
+    fi
+}
+
 run_test() {                    # run_test N
     n=$1
+    [ "$n" = 4 ] && { bt_log_test; return; }
     case "$n" in
         1) missing=$(funnel_missing)
            [ -z "$missing" ] || { notice "Test 1 needs Tailscale Funnel: $missing"; return; } ;;
@@ -794,7 +820,8 @@ tests_menu() {
     choice=$(printf '%s\t%s\n' \
         1 "Test 1  Funnel, VIDEO: page by Tailscale, video and touch by WebRTC" \
         2 "Test 2  Another hotspot, the phone's IPv6 address (own certificate)" \
-        3 "Test 3  Another hotspot, IPv6 by the HTTPS name (trusted certificate)" |
+        3 "Test 3  Another hotspot, IPv6 by the HTTPS name (trusted certificate)" \
+        4 "Test 4  Tesla phone key, Waydroid's Bluetooth: logs (start/stop)" |
         pick_info "tests" test)
     [ -n "$choice" ] && run_test "$choice"
 }

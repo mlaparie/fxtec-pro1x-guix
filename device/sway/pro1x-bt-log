@@ -1,0 +1,82 @@
+#!/bin/sh
+# pro1x-bt-log — Bluetooth logs for a test of Waydroid's Bluetooth (the
+# Tesla phone key), as root: sudo without a password (system/mobile.scm),
+# from the stream menu's TESTS.  No argument but the command.
+#
+#   start    a new session in /var/log/pro1x-bt-tests/session-DATE/:
+#              logcat.txt     Android's log, all buffers (waydroid shell)
+#              logcat-bt.txt  the same, Tesla, Bluetooth and GATT lines
+#                             (waydroid-host-stack's diag filters)
+#              hci.snoop      the controller's traffic (btmon -w)
+#              btmon.txt      the same as text
+#              bridge.txt     waydroid-bt-host's log (the soft HCI bridge)
+#              messages.txt   bluetoothd and the kernel's Bluetooth lines
+#              state.txt      Android's Bluetooth and the bridge at the start
+#            readable by the user who asked; ends by itself after 20 minutes
+#   stop     ends the session, adds state at the end
+#   status   the session running, if any
+#
+# State: written 2026-11-20, not yet run.
+set -u
+PATH=/run/current-system/profile/bin:/run/setuid-programs:$PATH
+root=/var/log/pro1x-bt-tests
+run=/run/pro1x-bt-log                   # PID-FILE-DIR, current session
+mkdir -p "$root" "$run"
+
+state() {                       # Android's Bluetooth and the bridge now
+    echo "--- $(date '+%F %T')"
+    cat /run/waydroid-bt/bridge-status 2>/dev/null
+    timeout 25 waydroid shell -- dumpsys bluetooth_manager 2>/dev/null | sed -n '1,25p'
+    timeout 25 waydroid shell -- dumpsys package com.teslamotors.tesla 2>/dev/null |
+        grep -E 'versionName|BLUETOOTH_|LOCATION.*granted|POST_NOTIF'
+    bluetoothctl show 2>/dev/null | grep -vE 'Address|UUID'
+}
+
+stop() {
+    [ -f "$run/dir" ] || { echo "no session"; return 0; }
+    dir=$(cat "$run/dir")
+    # Each logger is the leader of its own group (setsid): the group goes.
+    for p in $(cat "$run/pids" 2>/dev/null); do kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null; done
+    state >> "$dir/state.txt" 2>&1
+    echo "stopped $(date '+%F %T')" >> "$dir/state.txt"
+    owner=$(cat "$run/owner" 2>/dev/null)
+    [ -n "$owner" ] && chown -R "$owner" "$dir"
+    rm -f "$run/dir" "$run/pids" "$run/owner"
+    echo "$dir"
+}
+
+case "${1:-}" in
+    start)
+        [ -f "$run/dir" ] && stop >/dev/null
+        dir=$root/session-$(date +%Y%m%d-%H%M%S)
+        mkdir -p "$dir"
+        echo "$dir" > "$run/dir"
+        : > "$run/pids"
+        state > "$dir/state.txt" 2>&1
+        timeout 25 waydroid shell -- logcat -c 2>/dev/null
+        setsid sh -c 'waydroid shell -- logcat -b all -v threadtime 2>&1 | tee "$1/logcat.txt" |
+            grep --line-buffered -iE "tesla|vcsec|BLEVehicle|whitelist|keycard|phonekey|phone key|BluetoothGatt|GattService|bt_gatt|bt_stack|bt_btm|bt_l2cap|bt_hci|Soft HCI|bt_hci_waydroid|AdapterState|BluetoothManager|avc:" > "$1/logcat-bt.txt"' \
+            _ "$dir" </dev/null >/dev/null 2>&1 &
+        echo $! >> "$run/pids"
+        setsid btmon -t -w "$dir/hci.snoop" > "$dir/btmon.txt" 2>&1 </dev/null &
+        echo $! >> "$run/pids"
+        setsid tail -n 0 -F /var/log/waydroid-bt-host.log > "$dir/bridge.txt" 2>&1 </dev/null &
+        echo $! >> "$run/pids"
+        setsid sh -c 'tail -n 0 -F /var/log/messages | grep --line-buffered -iE "bluetooth|bluez|hci"' \
+            > "$dir/messages.txt" 2>&1 </dev/null &
+        echo $! >> "$run/pids"
+        # Never left on: it ends by itself after 20 minutes.
+        setsid sh -c 'sleep 1200; [ "$(cat "$2/dir" 2>/dev/null)" = "$1" ] && "$0" stop' \
+            "$0" "$dir" "$run" </dev/null >/dev/null 2>&1 &
+        # For the user who asked (sudo), to read and copy.
+        if [ -n "${SUDO_UID:-}" ]; then
+            echo "$SUDO_UID" > "$run/owner"
+            sleep 2
+            chown -R "$SUDO_UID" "$dir"
+            chmod 755 "$root"
+        fi
+        echo "$dir" ;;
+    stop) stop ;;
+    status) [ -f "$run/dir" ] && cat "$run/dir" ;;
+    *) echo "usage: pro1x-bt-log start|stop|status" >&2; exit 2 ;;
+esac
