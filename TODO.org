@@ -229,6 +229,10 @@ locked as before (holding the turns was tried first, and reverted: the author pr
 *** TODO [#C] Menu slides jump at the start (what is ruled out: History, Smaller things)
 *** TODO [#C] keyd segfaulted once (2026-11-09), cause unknown
 ** Boot, storage, release
+*** TODO [#A] Full backup of the phone's home, overnight (author, 2026-11-20)
+The last one is =~/pro1x-backup-2026-11-11.tar=, from before Waydroid.  Run
+=scripts/backup-phone.sh backup= at night with =PRO1X_WAYDROID=all= and Waydroid's session
+stopped; check free space on the PC first (54 GB on 2026-11-20).
 *** WAIT [#B] btrfs: a compressed root from CI again
 Cause found (2026-11-11): btrfs-progs 7.0's mkfs writes an extent that did not compress
 as plain data still marked zstd (kdave/btrfs-progs#1135, fixed in 7.1 by 6a877fb).
