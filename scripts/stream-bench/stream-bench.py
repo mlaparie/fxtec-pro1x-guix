@@ -30,7 +30,8 @@ import urllib.request
 import websocket
 
 PHONE = ["ssh", "-i", os.path.expanduser("~/.ssh/pro1x-guix"),
-         "-o", "IdentitiesOnly=yes", "root@172.16.42.1"]
+         "-o", "IdentitiesOnly=yes",
+         "root@" + os.environ.get("PRO1X_PHONE", "172.16.42.1")]
 CDP = "http://127.0.0.1:9222"
 HERE = os.path.dirname(os.path.abspath(__file__))
 

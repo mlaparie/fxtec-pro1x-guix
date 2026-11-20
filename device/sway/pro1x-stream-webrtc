@@ -50,6 +50,8 @@ import hmac
 import queue
 import json
 import select
+import shutil
+import re
 import os
 import signal
 import struct
@@ -2246,6 +2248,164 @@ class Producer:
         self.pipeline.set_state(Gst.State.NULL)
         self.portal.close()
 
+class Screencast(Producer):
+    """The screen to H.264 by pro1x-screencast (device/stream), with no CPU
+    copy of a pixel, as scrcpy does on Android: Sway copies the output into
+    the helper's GPU buffers, the GPU turns, scales and converts it to NV12
+    in Venus's own input buffers, and Venus encodes.  In place of the
+    portal, PipeWire, the GPU stage and the encoder pipeline of Producer,
+    whose frames were 0.4 s old before the encoder and which used more than
+    a core in copies; the helper took 4% of a core and 69 ms from Sway's
+    frame to the encoded one (2026-11-20).  The viewers are Producer's:
+    RTP pipelines (attach) and DIRECT pages (attach_direct).  While a
+    DIRECT page's network is behind, the helper copies no new frame (h, g
+    on its stdin); k asks it for a keyframe."""
+
+    HEAD = struct.Struct("<4sIBQQ")
+
+    def __init__(self, output, size, mbps):
+        self.portal, self.mbps = None, mbps
+        self.lock = threading.Lock()
+        self.viewers = {}
+        self.direct = {}
+        self.asked_key = 0.0
+        self.last = None
+        self.fps = int(size.split("@")[1])
+        self.limit = self.fps
+        self.heat_cap = None
+        self.caps = None
+        self.restarting = False
+        self.entered = {}
+        self.bench = {"encoder": []}
+        self.adaptive = kept_setting("adaptive", True)
+        self.paused = False
+        self.calm = 0
+        self.steady = False
+        self.pushed_at = 0.0
+        self.size = size
+        self.keyframes = None
+        self.counts = {"encoded": 0, "held": 0}
+        self.bytes = 0
+        self.headers = b""          # SPS and PPS, for later keyframes
+        self.holding = False
+        self.proc = subprocess.Popen(
+            [SCREENCAST, "-o", output, "-s", size.split("@")[0], "-r", str(self.fps),
+             "-b", str(int(mbps * 1e6))],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.running = True
+        threading.Thread(target=self.read, daemon=True).start()
+        threading.Thread(target=self.errors, daemon=True).start()
+        threading.Thread(target=self.watch_hold, daemon=True).start()
+        self.reporter = GLib.timeout_add_seconds(10, self.report)
+        log_line(f"capture and encoding by pro1x-screencast ({output})")
+
+    def tell(self, c):
+        try:
+            self.proc.stdin.write(c)
+            self.proc.stdin.flush()
+        except (OSError, ValueError):
+            pass
+
+    def errors(self):
+        for line in self.proc.stderr:
+            log_line("screencast: " + line.decode(errors="replace").rstrip())
+
+    def watch_hold(self):
+        """h while a DIRECT page's network is behind (or PAUSE), g after."""
+        while self.running:
+            hold = self.paused or self.held()
+            if hold != self.holding:
+                self.holding = hold
+                self.tell(b"h" if hold else b"g")
+            if hold:
+                self.counts["held"] += 1
+            time.sleep(0.02)
+
+    def read(self):
+        out = self.proc.stdout
+        while self.running:
+            head = out.read(self.HEAD.size)
+            if len(head) < self.HEAD.size:
+                break
+            magic, n, key, captured, done = self.HEAD.unpack(head)
+            data = out.read(n)
+            if magic != b"PXSC" or len(data) < n:
+                break
+            key = bool(key)
+            if key:
+                data = self.with_headers(data)
+            self.counts["encoded"] += 1
+            self.bytes += len(data)
+            enc_ms = max(0, (done - captured) // 1000)
+            with self.lock:
+                self.bench["encoder"].append(enc_ms)
+            self.deliver(data, key, enc_ms)
+        if self.running:
+            log_line(f"pro1x-screencast ended ({self.proc.poll()})")
+
+    def with_headers(self, data):
+        """Venus puts SPS and PPS only before the first keyframe; a viewer
+        joining later needs them before its own."""
+        nals = re.split(b"(?=\x00\x00\x00\x01)", data)
+        kinds = [x[4] & 0x1F for x in nals if len(x) > 4]
+        if 7 in kinds:
+            self.headers = b"".join(x for x in nals if len(x) > 4 and x[4] & 0x1F in (7, 8))
+            return data
+        return self.headers + data
+
+    def deliver(self, data, key, enc_ms):
+        with self.lock:
+            viewers = [src for src, waiting in self.viewers.items() if key or not waiting]
+            for src in viewers:
+                self.viewers[src] = False
+            direct = [send for send, waiting in self.direct.items() if key or not waiting]
+            for send in direct:
+                self.direct[send] = False
+        if viewers:
+            buf = Gst.Buffer.new_wrapped(data)
+            if not key:
+                buf.set_flags(Gst.BufferFlags.DELTA_UNIT)
+            for src in viewers:
+                src.emit("push-buffer", buf)
+        for send in direct:
+            if not send(data, key, enc_ms):
+                with self.lock:
+                    if send in self.direct:
+                        self.direct[send] = True
+                self.keyframe_soon()
+
+    def keyframe(self):
+        self.tell(b"k")
+
+    def report(self):
+        log_line("frames/s: " + ", ".join(f"{k} {v / 10:.1f}" for k, v in self.counts.items())
+                 + f"; encoded {self.bytes * 8 / 10e6:.1f} Mbit/s")
+        self.counts = dict.fromkeys(self.counts, 0)
+        self.bytes = 0
+        with self.lock:
+            enc = sorted(self.bench["encoder"])
+            self.bench["encoder"].clear()
+        if enc:
+            log_line(f"delay ms, Sway's frame to encoded (median/worst): "
+                     f"{enc[len(enc) // 2]}/{enc[-1]}")
+        return GLib.SOURCE_CONTINUE
+
+    def stop(self):
+        self.running = False
+        GLib.source_remove(self.reporter)
+        self.tell(b"q")
+        try:
+            self.proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
+
+# pro1x-screencast, if installed (PRO1X_STREAM_SCREENCAST=0: the portal;
+# =PATH: that build of it).
+_sc = os.environ.get("PRO1X_STREAM_SCREENCAST", "1")
+SCREENCAST = (None if _sc == "0" else _sc if os.path.isfile(_sc)
+              else shutil.which("pro1x-screencast"))
+
 
 producer = None
 
@@ -3632,6 +3792,11 @@ def main():
         own_args.extend(args[:2])
         Handler.only_hotspot = args[1] == "hotspot"
         args = args[2:]
+    if args[:1] == ["--portal"] and SCREENCAST:
+        # The helper captures by itself: no portal session.
+        own_args.extend(args[:2])
+        portal = "screencast"
+        args = args[2:]
     if args[:1] == ["--portal"]:
         own_args.extend(args[:2])
         try:
@@ -3658,7 +3823,13 @@ def main():
     if Handler.size:
         Handler.target = int(os.environ.pop("PRO1X_STREAM_TARGET", "0")) or \
             int(Handler.size.split("@")[1])
-    if portal and Handler.size:
+    if portal == "screencast" and Handler.size:
+        try:
+            producer = Screencast(screen.name if screen else "DSI-1",
+                                  Handler.size, Handler.mbps)
+        except OSError as e:
+            log_line(f"pro1x-screencast failed to start ({e})")
+    elif portal and Handler.size:
         try:
             producer = Producer(portal, Handler.size, Handler.mbps)
         except (GLib.Error, RuntimeError, KeyError, IndexError) as e:

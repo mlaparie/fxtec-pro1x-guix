@@ -1,0 +1,27 @@
+device/stream: pro1x-screencast, the screen to H.264 with no CPU copy
+
+What it does: Sway copies the output into the helper's own GPU buffers
+(wlr-screencopy, on damage, at most the frame rate asked); the GPU turns,
+scales and converts each copy to NV12 straight into Venus's input buffers
+(V4L2 MMAP buffers exported as DMA-BUFs and imported into EGL as an R8 and
+a GR88 image: Y, then UV); Venus encodes; each access unit goes to stdout
+with its capture time.  pro1x-stream-webrtc (class Screencast) starts it
+when it is on PATH and sends the H.264 to its viewers.
+
+Why: the portal path (xdg-desktop-portal-wlr, PipeWire, GStreamer's GL
+stage, then a CPU copy into Venus) delivered frames already 400 ms old and
+spent more than a core in copies (perf, 2026-11-20).  GStreamer's own
+DMA-BUF export from GL does not work on this GPU (no DMA-BUF caps from
+gldownload, with any EGL display), hence this helper.
+
+Build: package pro1x-screencast (modules/fxtec-pro1x/packages/cast.scm), or
+on the phone: guix shell gcc-toolchain pkg-config wayland wayland-protocols
+wlr-protocols mesa libdrm linux-libre-headers -- sh build.sh
+
+State (2026-11-20, on the phone): 100 frames of a mostly still screen for
+0.27 s user + 0.49 s system CPU over 20 s (about 4% of a core); 20 fps of a
+busy screen at 32 ms median (55-75 worst) from Sway's frame to the encoded
+one; picture checked upright with correct colours (decoded on the PC).
+Not yet measured from a browser on the same network.  Venus rounds the
+width up (1600 to 1664): the crop says 1600.  Venus does not repeat SPS and
+PPS before later keyframes; the server adds them.

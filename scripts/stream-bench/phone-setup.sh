@@ -11,13 +11,14 @@
 set -e
 here=$(dirname "$0")
 repo=$here/../..
-ssh="ssh -i $HOME/.ssh/pro1x-guix -o IdentitiesOnly=yes root@172.16.42.1"
+phone=${PRO1X_PHONE:-172.16.42.1}
+ssh="ssh -i $HOME/.ssh/pro1x-guix -o IdentitiesOnly=yes root@$phone"
 scp="scp -q -i $HOME/.ssh/pro1x-guix -o IdentitiesOnly=yes"
 $ssh 'mkdir -p /tmp/dev'
-$scp "$here/phone-clock.py" root@172.16.42.1:/tmp/phone-clock.py
-$scp "$here/phone-run-dev.sh" root@172.16.42.1:/tmp/dev/run.sh
-$scp "$here/phone-awake-watch.sh" root@172.16.42.1:/tmp/dev/awake-watch.sh
-$scp "$repo/device/sway/pro1x-stream-webrtc" root@172.16.42.1:/tmp/dev/stream.py
+$scp "$here/phone-clock.py" root@$phone:/tmp/phone-clock.py
+$scp "$here/phone-run-dev.sh" root@$phone:/tmp/dev/run.sh
+$scp "$here/phone-awake-watch.sh" root@$phone:/tmp/dev/awake-watch.sh
+$scp "$repo/device/sway/pro1x-stream-webrtc" root@$phone:/tmp/dev/stream.py
 $ssh 'set -e
 w=$(readlink -f /run/current-system/profile/bin/pro1x-camera-app)
 py=$(head -1 "$(grep -o "/gnu/store/[^\"]*real" "$w" | head -1)" | cut -c3-)

@@ -8,6 +8,7 @@
   #:use-module (gnu packages avahi)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gettext)
+  #:use-module (gnu packages gl)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages gstreamer)
@@ -24,7 +25,9 @@
   #:use-module (gnu packages tls)
   #:use-module (gnu packages video)
   #:use-module ((gnu packages window-management) #:select (wl-mirror))
+  #:use-module (gnu packages xdisorg)
   #:use-module (guix build-system copy)
+  #:use-module (guix build-system gnu)
   #:use-module (guix build-system meson)
   #:use-module (guix build-system pyproject)
   #:use-module (guix build-system python)
@@ -167,6 +170,41 @@ or a local file, to a Chromecast, and controls its playback.")
 Chromecast receivers.")
     (license license:gpl3+)))
 
+;; The screen to H.264 with no CPU copy (device/stream/pro1x-screencast.c):
+;; Sway's copy of the output, turned, scaled and converted to NV12 by the GPU
+;; in Venus's own buffers, encoded by Venus.  pro1x-stream-webrtc uses it
+;; when it is found.  State: run on the phone 2026-11-20 (4% of a core,
+;; 32-69 ms from Sway's frame to the encoded one).
+(define-public pro1x-screencast
+  (package
+    (name "pro1x-screencast")
+    (version "0.1")
+    (source (local-file (repository-file "device/stream") "pro1x-screencast"
+                        #:recursive? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:tests? #f
+           #:phases
+           #~(modify-phases %standard-phases
+               (delete 'configure)
+               (replace 'build
+                 (lambda _
+                   (setenv "CC" #$(cc-for-target))
+                   (invoke "sh" "build.sh")))
+               (replace 'install
+                 (lambda _
+                   (install-file "pro1x-screencast"
+                                 (string-append #$output "/bin")))))))
+    (native-inputs (list pkg-config wayland wayland-protocols wlr-protocols))
+    (inputs (list libdrm mesa wayland))
+    (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
+    (synopsis "Encode a Wayland output to H.264 without CPU copies")
+    (description "pro1x-screencast captures a wlroots output with
+wlr-screencopy into DMA-BUFs, has the GPU convert each frame to NV12 straight
+into the V4L2 encoder's own buffers, and writes the H.264 access units to its
+standard output, framed with their capture times.")
+    (license license:gpl3+)))
+
 ;; Stream's WebRTC method (device/sway/pro1x-stream-webrtc).  Its own package:
 ;; GStreamer's Python typelibs and plugins are found through its wrapper.
 (define-public pro1x-stream-webrtc
@@ -204,11 +242,12 @@ Chromecast receivers.")
                   ;; wl-mirror: the stream's own output on the panel too;
                   ;; openssl: its HTTPS certificate.
                   `("PATH" ":" suffix
-                    ,(in "/bin" '("pipewire" "wl-mirror" "openssl"))))))))))
+                    ,(in "/bin" '("pipewire" "wl-mirror" "openssl"
+                                  "pro1x-screencast"))))))))))
     (inputs
      (list glib gobject-introspection gst-plugins-bad gst-plugins-base
            gst-plugins-good gstreamer libnice pipewire python python-evdev
-           python-pygobject wl-mirror openssl))
+           python-pygobject wl-mirror openssl pro1x-screencast))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")
     (synopsis "Serve an H.264 stream to a browser by WebRTC")
     (description "This package serves a web page, and sends the H.264 video of
