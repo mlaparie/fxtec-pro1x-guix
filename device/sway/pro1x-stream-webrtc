@@ -638,14 +638,18 @@ async function connect() {
     store.set("settings", cfg);
     refresh();
   } catch (e) {}
-  status();
+  await status();
   const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
   const codec = P.get("codec") || keptCodec()
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
   if (cfg.direct && !(directOk() && codec === "h264")) { cfg.direct = false; showMode(); }
+  // A screen of its own still to make (Client, Multi-monitor): at this
+  // window's shape at once, not fitted by a second restart.
+  const fit = phone.waiting ? fitted(phone.long || 1280) : null;
   const asked = await fetch(withKey("/offer?codec=" + codec + "&mbps=" + cfg.rate
-                                    + (cfg.direct ? "&direct=1" : "")));
+                                    + (cfg.direct ? "&direct=1" : "")
+                                    + (fit ? "&w=" + fit[0] + "&h=" + fit[1] : "")));
   if (asked.status === 503) { setTimeout(reloadWhenUp, 1000); return; }
   // The phone asks its owner first (the stream menu's Approval).
   if (asked.status === 202) {
@@ -3086,7 +3090,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "screen": screen.mode if screen else "phone",
                                    "size": Handler.size.split("@")[0] if Handler.size else None,
                                    "long": capture_long(),
-                                   "locked": phone_locked()}).encode(),
+                                   "locked": phone_locked(),
+                                   "waiting": Handler.screen_waiting}).encode(),
                        "application/json")
         elif path == "/settings":
             try:
@@ -3112,9 +3117,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply(st.encode(), code=202 if st == "waiting" else 403)
                     return
             if Handler.screen_waiting and not screen and producer:
-                # The first viewer: the server again with its screen; the
-                # page retries on 503 until it is up.
+                # The first viewer: the server again with its screen, at the
+                # page's window's shape when it sends it (w, h), so that no
+                # second restart follows to fit it (each restart reloads the
+                # page); the page retries on 503 until it is up.
                 Handler.screen_waiting = None
+                try:
+                    width, height = int(query["w"][0]), int(query["h"][0])
+                    if 320 <= width <= 3840 and 320 <= height <= 3840:
+                        with open(Screen.SIZE, "w") as f:
+                            f.write(f"{width - width % 2}x{height - height % 2}\n")
+                except (KeyError, ValueError, IndexError, OSError):
+                    pass
                 os.environ["PRO1X_STREAM_SCREEN_NOW"] = "1"
                 self.reply(b"making its screen", code=503)
                 GLib.idle_add(lambda: reexec() and False)
