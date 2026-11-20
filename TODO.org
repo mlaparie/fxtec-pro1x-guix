@@ -229,6 +229,9 @@ h264_v4l2m2m, OBS) before calling it unique.
 *** TODO [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
 Unless the proximity sensor is covered.  It should stay dark until a double tap, the power
 button, Esc or the keyboard slide; a fingerprint should wait for a lit screen, not light it.
+2026-11-21 00:23: one idle blank logged (input devices, Sway output events): dark 2.5 min,
+woken by a key press only, no stray event.  The panel comes back through swayidle's resume
+(pro1x-idle), so any input event lights it.  Not reproduced; next try with the phone untouched.
 *** TODO [#A] Lock and suspend: once frozen on wake (author, 2026-11-20)
 gtklock frozen, the sleep LED still on, a hard reboot needed; a second try worked.
 *** WAIT [#B] Quick actions: notifications stay until the dock is opened (30f0d12)
