@@ -683,11 +683,16 @@ async function connect() {
   const codec = P.get("codec") || keptCodec()
     || (codecs.some(c => /h264/i.test(c.mimeType)) ? "h264" : "vp8");
   log({ev: "codecs", list: [...new Set(codecs.map(c => c.mimeType))], codec});
-  if (cfg.direct && !(directOk() && codec === "h264")) { cfg.direct = false; showMode(); }
+  // DIRECT's video comes by WebSocket and WebCodecs, not WebRTC: it needs
+  // no H.264 in the browser's WebRTC (Firefox has none without OpenH264,
+  // and lost DIRECT to VP8, 2026-11-20).  Its offer asks for H.264 all the
+  // same; such a browser declines the video part, sound and input stay.
+  if (cfg.direct && !directOk()) { cfg.direct = false; showMode(); }
   // A screen of its own still to make (Client, Multi-monitor): at this
   // window's shape at once, not fitted by a second restart.
   const fit = phone.waiting ? fitted(phone.long || 1280) : null;
-  const asked = await fetch(withKey("/offer?codec=" + codec + "&mbps=" + cfg.rate
+  const asked = await fetch(withKey("/offer?codec=" + (cfg.direct ? "h264" : codec)
+                                    + "&mbps=" + cfg.rate
                                     + (cfg.direct ? "&direct=1" : "")
                                     + (fit ? "&w=" + fit[0] + "&h=" + fit[1] : "")));
   if (asked.status === 503) { setTimeout(reloadWhenUp, 1000); return; }
