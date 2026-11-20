@@ -31,7 +31,8 @@
 # forced), hence the state in XDG_RUNTIME_DIR.
 #
 # The SIM line shows the lock state and asks for the PIN when the SIM is
-# PIN-locked.  The Notifications line opens a dock of mako's notifications
+# PIN-locked.  The Notifications line counts those not yet seen, shown in its
+# preview, and opens a dock of mako's notifications
 # (current ones, then history) with the text in a preview: Enter runs the
 # default action, Tab picks another, Del dismisses, Ctrl-X dismisses all,
 # PgUp/PgDn scroll the preview, Esc goes back.
@@ -1175,12 +1176,26 @@ overlay() {
 refresh_lines() {
     lines > "$cache.$$" && mv "$cache.$$" "$cache"
 }
+# Notifications not yet seen, on screen or in mako's history: those after
+# the last one when the dock was last open.  A pop-up that timed out stays
+# counted, with its preview on the root line, until the dock is opened or
+# all are cleared there (author, 2026-11-20: they went with the pop-up).
+notif_seen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-notif-seen"
+notif_ids() {
+    { makoctl list; makoctl history; } 2>/dev/null |
+        sed -n 's/^Notification \([0-9]*\):.*/\1/p' | sort -n
+}
+notif_count() {
+    notif_ids | awk -v s="$(cat "$notif_seen" 2>/dev/null || echo 0)" '$1 > s' | wc -l
+}
+notif_mark_seen() { notif_ids | tail -1 > "$notif_seen"; }
+
 # One line's value, as lines() computes it: after an action, only the
 # lines it touched are read again (author, 2026-11-20: a full refresh is
 # 1.7 s and dozens of commands).  Unknown key: nothing.
 line_value() {                  # line_value KEY
     case "$1" in
-        notif) makoctl list 2>/dev/null | grep -c '^Notification ' ;;
+        notif) notif_count ;;
         osk) dim "$(osk_state)" ;;
         apps) apps_list | cut -f2 | paste -sd, | sed 's/,/, /g' ;;
         torch) dim "$(state_of torch)" ;;
@@ -1327,7 +1342,7 @@ lines() {
     gsettings get org.sigxcpu.feedbackd profile 2>/dev/null | tr -d "'" > "$d/fb" &
     brightnessctl -m 2>/dev/null | cut -d, -f4 > "$d/br" &
     volume > "$d/vol" &
-    makoctl list 2>/dev/null | grep -c '^Notification ' > "$d/notif" &
+    notif_count > "$d/notif" &
     osk_state > "$d/osk" &
     layout_now > "$d/layout" &
     audio_now > "$d/audio" &
@@ -1739,6 +1754,7 @@ notif_dock() {
                 printf "change-preview-window(down,60%%,wrap)"
             fi
             test "$FZF_POS" -gt 1 || printf "+pos(2)"'
+    notif_mark_seen
     notif_lines |
         fzf --listen="${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock" \
             --prompt="notifications > " --layout=reverse --no-sort --cycle \
@@ -1757,6 +1773,8 @@ notif_dock() {
             --bind="del:execute-silent($self --notif-dismiss {1} {2})+reload($self --notif-lines)" \
             --bind="ctrl-x:execute-silent(makoctl dismiss -a)+reload($self --notif-lines)" \
             --bind='pgup:preview-page-up,pgdn:preview-page-down' >/dev/null
+    # Those that came while it was open were seen too.
+    notif_mark_seen
     rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock"
 }
 
@@ -1822,10 +1840,12 @@ case "${1:-}" in
         # no urgency line (an urgent one is marked !) and no actions (the
         # dock has them).  The full file: summary, "app · urgency", a blank
         # line, the body, maybe "Actions: …".
+        # Only the unseen ones, as the line counts them.
         full="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications"
-        sep=
+        sep= seen=$(cat "$notif_seen" 2>/dev/null || echo 0)
         sway-notifications list 2>/dev/null |
             while IFS="$(printf '\t')" read -r kind id urgency app summary time; do
+                [ "$id" -gt "$seen" ] || continue
                 [ -n "$sep" ] && echo; sep=1
                 mark=" "; [ "$kind" = new ] && mark="•"
                 [ "$urgency" = critical ] && mark="!"
