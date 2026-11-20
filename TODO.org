@@ -148,8 +148,10 @@ hotspot (as tesla-carplay does).  The author's setup for that is
 private (hook, certificate service).  On another device's hotspot
 the car reaches nothing on the phone (ERR_CONNECTION_REFUSED, no
 packet arrives), though the phone pings the car.
-*** WAIT [#C] Hotspot QR as an image
-*** WAIT [#B] 5 GHz hotspot
+*** DONE [#C] Hotspot QR as an image
+chafa sixel in the hotspot tool, text elsewhere (2026-11-20).
+*** DONE [#B] 5 GHz hotspot
+The author makes 5 GHz hotspots (2026-11-20); the menu no longer warns.
 Starts with nmcli on channels 149 and 36 (2026-11-18), with the
 =ATH_REG_*= options in the kernel.  While the phone is a Wi-Fi client
 the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
@@ -157,7 +159,9 @@ a user hint, and the client link drops when the hotspot starts.  The
 menu stopped checking beforehand (2ce4e2d); not deployed.
 *** TODO [#C] Hotspot while on a Wi-Fi network
 Whether the WCN3990 can run an access point and a client at once (iw list, "valid interface
-combinations"), so the hotspot need not drop the Wi-Fi in use.  Not yet looked at.
+combinations"), so the hotspot need not drop the Wi-Fi in use.  It can (2026-11-20):
+"#{ managed } <= 2, #{ AP, P2P-client, P2P-GO } <= 2, total <= 4, #channels <= 1": an AP on a
+second interface, on the client link's channel.  Not yet tried.
 *** TODO [#A] Tesla leaves the hotspot without internet
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
 had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
@@ -261,10 +265,14 @@ and start on a running phone.
 *** TODO [#B] Proximity (screen off in calls); light and gyroscope work (author, 2026-11-12)
 *** TODO [#C] Haptics bursts from the chip's memory (script ready, not run)
 *** TODO [#C] Notification LED through feedbackd
-*** TODO [#C] Video decoding on Venus (needs an SM6115 video-codec DT node)
+*** TODO [#C] Video decoding on Venus: works; enable it in players
+The node is there (/dev/video13 qcom-venus-decoder, 2026-11-20): GStreamer's v4l2h264dec
+decodes 1080p at 67 fps; mpv --hwdec=v4l2m2m-copy: 1.3 s of CPU for a clip software
+decodes in 4.1 s.  To do: hwdec in mpv by default (the owner's mpv.conf), browsers.
 ** Apps and later
 *** TODO [#C] GPS apps; fingerprint app beyond quick actions
-*** TODO [#C] Moonlight fork
+*** CANCELLED [#C] Moonlight fork
+Sunshine instead, in the owner's home config; Apollo's extras are Windows-only (2026-11-20).
 *** TODO [#C] Sign the channel (author's key)
 *** TODO [#C] Substitute server fed by CI, for users' updates
 *** TODO [#C] Upstreaming to Guix (author's review first): libqmi, ModemManager, phosh, phoc, feedbackd, callaudiod
