@@ -52,16 +52,22 @@ if [ "${1:-}" = bottom ]; then
     o=${2:-0}
     pro1x-osk toggle &
     # The axis that moves away from that edge: only once it is known.
-    out=$(timeout 1.5 evtest /dev/input/by-path/platform-i2c-touchscreen-event 2>/dev/null |
+    # Line by line (stdbuf): into a pipe evtest wrote 4 kB blocks, and the
+    # watcher saw nothing before its time ran out (author: it never closed).
+    out=$(timeout 1.5 stdbuf -oL evtest /dev/input/by-path/platform-i2c-touchscreen-event 2>/dev/null |
           awk -v o="$o" '
         /ABS_MT_POSITION_X\), value/ { x = $NF; if (o % 2) seen = 1 }
         /ABS_MT_POSITION_Y\), value/ { y = $NF; if (!(o % 2)) seen = 1 }
         /BTN_TOUCH\), value 0/ { if (gone && d <= 60) print "close"; exit }
         /SYN_REPORT/ && seen {
             d = (o == 1) ? x : (o == 2) ? y : (o == 3) ? 1080 - x : 2160 - y
+            if (d > max) max = d
             if (d >= 140) gone = 1
             if (gone && d <= 30) { print "close"; exit }
-        }')
+        }
+        END { if (!gone) print "no: went " max " px in" }')
+    # The last decision, for tuning.
+    echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
     if [ "$out" = close ]; then
         wait
         pro1x-osk toggle >/dev/null 2>&1 &
