@@ -66,12 +66,15 @@
         ;; The GPU loads its zap shader again after hibernation.
         ;; Bluetooth LE connections are made by a WCN3990 whose duplicates
         ;; filter hid the peer from them (the Tesla phone key).
+        ;; A hotspot on 5 GHz beside a 5 GHz Wi-Fi network: the country of
+        ;; the access point lifts no-IR (ath kept it for a card with an
+        ;; EEPROM country).
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
-          "bt-le-conn-nodup"))))
+          "bt-le-conn-nodup" "ath-country-ie-no-ir"))))
 
 (define-public linux-pro1x
   (package

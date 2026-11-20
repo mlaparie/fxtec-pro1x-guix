@@ -1,0 +1,40 @@
+ath: lift NO_IR from a country IE on cards programmed with a country
+
+A card whose EEPROM holds a country code (the Pro1X's WCN3990: 0x80fa,
+France) gets ath's custom world regulatory domain at registration, with
+NO_IR on every 5 GHz channel.  cfg80211 clears NO_IR from beacon hints
+only while world roaming, and a country IE ends that; ath's notifier
+ignores the country IE for such cards.  So while a station was
+associated, no AP could start on any 5 GHz channel, even the station's
+own: iw phy showed 5180, 5745 and 5765 MHz "no IR" with wlan0 on 149 and
+not 8 s after disconnecting (2026-11-20), and an AP beside it on 149
+never left config.  Apply the beaconing flags for a country IE on these
+cards too: NO_IR goes where the country's rules allow, radar
+frequencies excepted.
+
+Not upstream; the pro1x channel's.
+--- a/drivers/net/wireless/ath/regd.c
++++ b/drivers/net/wireless/ath/regd.c
+@@ -542,7 +542,21 @@
+ 			ath_reg_dyn_country(wiphy, reg, request);
+ 		break;
+ 	case NL80211_REGDOM_SET_BY_COUNTRY_IE:
+-		ath_reg_dyn_country(wiphy, reg, request);
++		/*
++		 * A card programmed with a country keeps its regulatory domain,
++		 * but its channels came from our custom world one, with NO_IR
++		 * on 5 GHz.  cfg80211 lifts that from beacon hints only while
++		 * world roaming, which a country IE ends: once associated, no
++		 * AP or GO could start on any 5 GHz channel, not even the
++		 * station's own.  Lift NO_IR where the country IE's rules
++		 * allow initiating radiation, as for world regulatory domains
++		 * (radar frequencies excepted).
++		 */
++		if (!ath_is_world_regd(reg))
++			ath_reg_apply_beaconing_flags(wiphy, reg,
++						      request->initiator);
++		else
++			ath_reg_dyn_country(wiphy, reg, request);
+ 		break;
+ 	}
+ }
