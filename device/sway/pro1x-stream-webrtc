@@ -1356,6 +1356,7 @@ class Screen:
     def __init__(self, mode, size):
         self.mode, self.mirror = mode, None
         width, height = size.split("@")[0].split("x")
+
         outputs = sway("-t", "get_outputs") or []
         names = {o["name"] for o in outputs}
         self.name = os.environ.pop("PRO1X_STREAM_OUTPUT", "")
@@ -1457,16 +1458,21 @@ class Screen:
             os.remove(self.FILE)
         except OSError:
             pass
+        # The workspace shown on the stream's screen as it ends, shown on
+        # the panel after: the stream may be where it was changed (author).
+        shown = [w["name"] for w in sway("-t", "get_workspaces") or []
+                 if w.get("output") == self.name and w.get("visible")]
         subprocess.run(["swaymsg", f"output {self.name} unplug"], capture_output=True, timeout=5)
         # The on-screen keyboard back to the panel, if moved here.
         subprocess.run(["swaymsg", "exec pro1x-osk home"], capture_output=True, timeout=5)
-        if self.mode == "client":
-            # Away from the mirror's workspace, which Sway then drops.
-            mine = [w["name"] for w in sway("-t", "get_workspaces") or []
-                    if w["name"] != "mirror"]
-            if mine:
-                subprocess.run(["swaymsg", "--", f'workspace "{mine[0]}"'],
-                               capture_output=True, timeout=5)
+        # That one if it outlived the screen, else another with windows,
+        # else 1: the panel stayed on the empty "mirror" (2026-11-20), which
+        # Sway then drops.
+        left = [w["name"] for w in sway("-t", "get_workspaces") or []
+                if w["name"] != "mirror"]
+        back = next((n for n in shown if n in left), left[0] if left else "")
+        subprocess.run(["swaymsg", "--", f'workspace "{back}"' if back else "workspace number 1"],
+                       capture_output=True, timeout=5)
 
 
 screen = None
