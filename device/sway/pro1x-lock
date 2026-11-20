@@ -149,6 +149,8 @@ case "${1:-}" in
             swaymsg output "$2" transform "$3" >/dev/null
             exit 0
         fi
+        # The password being typed, to the next gtklock (keep-typed module).
+        kill -USR2 "$old" 2>/dev/null && sleep 0.15
         swap_out "$old"
         swaymsg output "$2" transform "$3" >/dev/null
         shift 3
@@ -496,6 +498,10 @@ fi
 # match as long as this gtklock is up, and it reads the sensor only then.
 fingerprint=$(ls /run/current-system/profile/lib/gtklock/fingerprint-module.so 2>/dev/null)
 [ -S /run/pro1x-fpd.sock ] && [ -n "$fingerprint" ] && set -- -m "$fingerprint" "$@"
+
+# What was typed survives a new gtklock (--rotate): keep-typed module.
+keep=$(ls /run/current-system/profile/lib/gtklock/keep-typed-module.so 2>/dev/null)
+[ -n "$keep" ] && set -- -m "$keep" "$@"
 
 # When it was drawn, for pro1x-blank-led (no redraw within 30 s of one), and
 # for which orientation.

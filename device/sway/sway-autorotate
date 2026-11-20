@@ -135,25 +135,9 @@ fi
 rm -f "$fifo" "$events"; mkfifo "$fifo" "$events"
 sensor=                         # monitor-sensor's PID while held
 
-# Under the lock screen the sensor's turns wait until it is unlocked:
-# gtklock cannot be turned (pro1x-lock --rotate starts a new one), and the
-# password being typed went with the old one (TODO).  The slider still
-# turns it (the keyboard out, landscape).  The last orientation seen is
-# applied once gtklock is gone.
-pending="${XDG_RUNTIME_DIR:-/tmp}/pro1x-rotate-pending"
-rm -f "$pending"                # one left by an earlier daemon
-locked() { pgrep -u "$(id -u)" -x gtklock >/dev/null; }
 apply() {                       # apply <orientation>
     if slider_out; then
         set_transform 90
-    elif locked; then
-        new=$([ -f "$pending" ] && echo old || echo new)
-        echo "$1" > "$pending"
-        [ "$new" = new ] && (
-            while locked; do sleep 1; done
-            o=$(cat "$pending" 2>/dev/null); rm -f "$pending"
-            [ -n "$o" ] && apply "$o"
-        ) &
     else
         t=$(transform_for "$1")
         [ -n "$t" ] && set_transform "$t"

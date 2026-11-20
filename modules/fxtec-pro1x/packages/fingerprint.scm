@@ -204,16 +204,22 @@ QSEE, and serves them on a Unix socket; the same program is its client.")
                (delete 'configure)
                (replace 'build
                  (lambda _
-                   (invoke "sh" "-c"
-                           (string-append
-                            #$(cc-for-target) " -std=c11 -fPIC -shared -O2 -Wall"
-                            " -o fingerprint-module.so fingerprint.c"
-                            " $(pkg-config --cflags --libs gtk+-3.0"
-                            " gmodule-export-2.0 gio-unix-2.0)"))))
+                   ;; fingerprint: unlock with a finger; keep-typed: the
+                   ;; password being typed survives a new gtklock (a turn).
+                   (for-each
+                    (lambda (m)
+                      (invoke "sh" "-c"
+                              (string-append
+                               #$(cc-for-target) " -std=gnu11 -fPIC -shared -O2 -Wall"
+                               " -o " m "-module.so " m ".c"
+                               " $(pkg-config --cflags --libs gtk+-3.0"
+                               " gmodule-export-2.0 gio-unix-2.0)")))
+                    '("fingerprint" "keep-typed"))))
                (replace 'install
                  (lambda _
-                   (install-file "fingerprint-module.so"
-                                 (string-append #$output "/lib/gtklock")))))))
+                   (for-each (lambda (m)
+                               (install-file m (string-append #$output "/lib/gtklock")))
+                             '("fingerprint-module.so" "keep-typed-module.so")))))))
     (native-inputs (list pkg-config))
     (inputs (list gtk+))
     (home-page "https://git.sr.ht/~mlaparie/fxtec-pro1x-guix")

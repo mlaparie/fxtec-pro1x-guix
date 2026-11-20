@@ -190,8 +190,10 @@ Built; not deployed.
 *** WAIT [#B] Back line in every sublist; Wi-Fi networks sublist; portrait bar with the hotspot
 *** TODO [#B] gtklock loses the typed password when the screen turns
 Cause: gtklock dies when the panel turns under it ("Error 71"), so pro1x-lock --rotate starts a
-new one, empty.  Fix (2026-11-20, not yet tried): under the lock screen sway-autorotate holds
-the sensor's turns and applies the last one once unlocked; the slider still turns it.
+new one, empty.  Fix (2026-11-20, not yet tried): a gtklock module, keep-typed, saves the
+field's text on SIGUSR2 (to $XDG_RUNTIME_DIR, user-only, deleted at once by the next gtklock,
+which puts it back); pro1x-lock --rotate sends it before the swap.  The screen turns while
+locked as before (holding the turns was tried first, and reverted: the author preferred this).
 *** TODO [#C] Menu slides jump at the start (what is ruled out: History, Smaller things)
 *** TODO [#C] keyd segfaulted once (2026-11-09), cause unknown
 ** Boot, storage, release
