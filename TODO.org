@@ -245,7 +245,8 @@ pair (server-side ICE log), and why encoding the larger screen takes twice as lo
 *** TODO [#B] A port branch on wl-cast instead of its own stream tools
 Once wl-cast has what the port's stream does (author, 2026-11-21): a branch where a wl-cast
 package replaces pro1x-screencast, pro1x-stream-webrtc, pro1x-virtual-screen, pro1x-stream-cert
-and the DNS hooks, and pro1x-stream calls wl-cast-server.  The port then ships
+and the DNS hooks, and pro1x-stream calls wl-cast-server.  The package: a copy of the private
+channel's (mlaparie packages wl-cast), as for waydroid.scm.  The port then ships
 ~/.config/wl-cast/buttons (WIN, QA, APPS, OSK on pro1x-menu and pro1x-osk; OSK with "toggle
 stream" off the panel) and a hook: awake through Caffeine, wifi through pro1x-wifi-powersave,
 touch running lisgd on the virtual touchscreen with pro1x-gestures' swipes, screen-gone as
