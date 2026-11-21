@@ -270,7 +270,9 @@ Then in a port branch (dev-wl-cast):
    pro1x-launcher, pro1x-osk and pro1x-switcher (now wl-cast-output); xdg-desktop-portal-wlr's
    chooser_cmd and the sudoers line for the certificate (mobile.scm); state and log paths
    (~/.local/state/wl-cast: key, stream.json, stream.log; move the old ones once);
-   PRO1X_STREAM_* variables of the tests menu (WL_CAST_*); /var/lib/pro1x/stream-tls.
+   PRO1X_STREAM_* variables of the tests menu (WL_CAST_*); /var/lib/pro1x/stream-tls;
+   pro1x-status stream (the bar's STREAM block) reads pro1x-stream.pid and .to: wl-cast
+   writes wl-cast.pid, and needs to say whether the stream is interactive or read-only.
 9. Check on the phone that it works as before: Phone, Client and Multi-monitor screens,
    approval by tap and fingerprint, HTTPS name, Funnel, the read-only stream, the car
    automation, Moonlight's screen; new: the buttons file, three fingers, swipes.
