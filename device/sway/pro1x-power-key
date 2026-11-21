@@ -34,6 +34,14 @@ panel_streamed() {                    # as pro1x-call-watch's
 
 [ "${1:-}" = --undim ] && { undim; exit; }
 [ -f "$dimmed" ] && { undim; exit; }
+# wl-cast, tried beside pro1x-stream: the same through `wl-cast dim', which
+# toggles and lights the panel again when its stream ends.  It fails when
+# no wl-cast stream shows the panel, and the key blanks as usual then.
+if command -v wl-cast >/dev/null && wl-cast dim; then
+    [ -f "$rt/wl-cast.dimmed" ] &&
+        notify-send 'Screen dimmed, not blanked' 'A stream shows it: blanking would stop the picture.  Power key again to light it.'
+    exit 0
+fi
 # One app over the lock screen (pro1x-lock --app-unlock): the key ends that.
 [ -e "$rt/pro1x-locked-app" ] && pro1x-lock
 on=$(swaymsg -t get_outputs -r |
