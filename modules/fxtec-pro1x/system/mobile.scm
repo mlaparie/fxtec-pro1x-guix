@@ -1003,6 +1003,9 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Chinese, Japanese and Korean, which no other font here has.
      font-google-noto-sans-cjk
      grim slurp wl-clipboard brightnessctl playerctl
+     ;; xdg-open and friends, for scripts and apps that open files and
+     ;; links (author).
+     xdg-utils
      ;; Screen recording (author).
      wf-recorder
      ;; The quick actions' Stream line.
