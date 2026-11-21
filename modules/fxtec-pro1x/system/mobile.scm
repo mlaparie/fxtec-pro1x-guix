@@ -59,6 +59,7 @@
              (gnu packages video)
              (gnu packages window-management)
              (nongnu packages linux)
+             (gnu services avahi)           ; avahi-service-type
              (gnu services base)
              (gnu services dbus)
              (gnu services desktop)
@@ -918,6 +919,12 @@ Dracula palette, no kernel messages over the greeter.")
                (auto-enable? #t)
                (scan-interval-auto-connect #x0800)
                (scan-window-auto-connect #x0030)))
+
+     ;; mDNS: GNOME Network Displays finds Chromecasts and Miracast
+     ;; receivers on the network through it ("Failed to create avahi
+     ;; client: Daemon not running", 2026-11-22), as Moonlight finds
+     ;; Sunshine.  Wi-Fi Direct Miracast goes through NetworkManager.
+     (service avahi-service-type)
 
      ;; NetworkManager + wpa_supplicant (NM requires wireless-daemon)
      (service network-manager-service-type
