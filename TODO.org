@@ -242,6 +242,17 @@ the phone's Tailscale address), not UDP to 10.42.0.1.  Screen of its own 1600x12
 delay 180-490 ms (110-220 ms on the panel just before), 4-6 frames/s encoded, 0-5 shown,
 frame age up to 1.8 s, RTT 3-350 ms, audio buffer 0.9-1.7 s, 60-65 °C.  To find: why no UDP
 pair (server-side ICE log), and why encoding the larger screen takes twice as long.
+*** TODO [#B] A port branch on wl-cast instead of its own stream tools
+Once wl-cast has what the port's stream does (author, 2026-11-21): a branch where a wl-cast
+package replaces pro1x-screencast, pro1x-stream-webrtc, pro1x-virtual-screen, pro1x-stream-cert
+and the DNS hooks, and pro1x-stream calls wl-cast-server.  The port then ships
+~/.config/wl-cast/buttons (WIN, QA, APPS, OSK on pro1x-menu and pro1x-osk; OSK with "toggle
+stream" off the panel) and a hook: awake through Caffeine, wifi through pro1x-wifi-powersave,
+touch running lisgd on the virtual touchscreen with pro1x-gestures' swipes, screen-gone as
+pro1x-osk home.  Renamed Sway identifiers: 4660:22139:pro1x-remote-keyboard in desktop.conf
+becomes wl-cast-remote-keyboard; the state and log paths move to ~/.local/state/wl-cast.
+Check that everything works as before: Phone, Client and Multi-monitor screens, approval,
+HTTPS name, Funnel, the car example, swipes from the stream (new).
 *** TODO [#B] pro1x-screencast as its own project (author)
 Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a Guix package and
 CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
