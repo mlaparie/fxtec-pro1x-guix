@@ -243,17 +243,38 @@ delay 180-490 ms (110-220 ms on the panel just before), 4-6 frames/s encoded, 0-
 frame age up to 1.8 s, RTT 3-350 ms, audio buffer 0.9-1.7 s, 60-65 °C.  To find: why no UDP
 pair (server-side ICE log), and why encoding the larger screen takes twice as long.
 *** TODO [#B] A port branch on wl-cast instead of its own stream tools
-Once wl-cast has what the port's stream does (author, 2026-11-21): a branch where a wl-cast
-package replaces pro1x-screencast, pro1x-stream-webrtc, pro1x-virtual-screen, pro1x-stream-cert
-and the DNS hooks, and pro1x-stream calls wl-cast-server.  The package: a copy of the private
-channel's (mlaparie packages wl-cast), as for waydroid.scm.  The port then ships
-~/.config/wl-cast/buttons (WIN, QA, APPS, OSK on pro1x-menu and pro1x-osk; OSK with "toggle
-stream" off the panel) and a hook: awake through Caffeine, wifi through pro1x-wifi-powersave,
-touch running lisgd on the virtual touchscreen with pro1x-gestures' swipes, screen-gone as
-pro1x-osk home.  Renamed Sway identifiers: 4660:22139:pro1x-remote-keyboard in desktop.conf
-becomes wl-cast-remote-keyboard; the state and log paths move to ~/.local/state/wl-cast.
-Check that everything works as before: Phone, Client and Multi-monitor screens, approval,
-HTTPS name, Funnel, the car example, swipes from the stream (new).
+Plan (2026-11-21, author: the interactive stream on the generic wl-cast with the port's
+buttons, and the read-only stream with only what it needs).
+First in wl-cast:
+1. Config also from $XDG_CONFIG_DIRS (/etc/xdg/wl-cast/buttons, hook), so that the port ships
+   defaults and the owner's ~/.config/wl-cast overrides them.
+2. wl-cast start --view-only: the server without --interactive (no input devices, no
+   buttons), still the zero-copy capture: the read-only stream.
+3. The HTTPS settings file and TLS directory as options/env (WL_CAST_HTTPS, WL_CAST_TLS_DIR),
+   so the port can keep or move its paths.
+Then in a port branch (dev-wl-cast):
+4. (fxtec-pro1x packages wl-cast): a copy of the private channel's package; drop the
+   pro1x-screencast and pro1x-stream-webrtc packages, and pro1x-virtual-screen,
+   pro1x-stream-output, pro1x-stream-cert, pro1x-stream-dns-* from pro1x-sway-config.
+5. pro1x-stream (the menu) keeps its UI and calls wl-cast-server (Interactive: --interactive;
+   Browser read-only: --view-only path); MJPEG, VLC, Chromecast, Miracast and Moonlight stay
+   as they are.  Sunshine's prep-cmd uses wl-cast-screen.
+6. /etc/xdg/wl-cast/buttons: WIN, QA, APPS on pro1x-menu toggle; OSK on pro1x-osk (toggle,
+   or "toggle stream" when WL_CAST_OUTPUT is not the panel).
+7. /etc/xdg/wl-cast/hook (pro1x-wl-cast-hook): awake through Caffeine (sway-quick-actions
+   --act caffeine, as before), wifi through sudo pro1x-wifi-powersave, touch running lisgd on
+   the virtual touchscreen with pro1x-gestures' swipes (new: swipes from the stream),
+   screen-gone as pro1x-osk home.
+8. Renames to follow: Sway identifiers pro1x-remote-{touch,pointer,keyboard} in pro1x.conf
+   and desktop.conf (now wl-cast-remote-*); the runtime file pro1x-stream-output read by
+   pro1x-launcher, pro1x-osk and pro1x-switcher (now wl-cast-output); xdg-desktop-portal-wlr's
+   chooser_cmd and the sudoers line for the certificate (mobile.scm); state and log paths
+   (~/.local/state/wl-cast: key, stream.json, stream.log; move the old ones once);
+   PRO1X_STREAM_* variables of the tests menu (WL_CAST_*); /var/lib/pro1x/stream-tls.
+9. Check on the phone that it works as before: Phone, Client and Multi-monitor screens,
+   approval by tap and fingerprint, HTTPS name, Funnel, the read-only stream, the car
+   automation, Moonlight's screen; new: the buttons file, three fingers, swipes.
+
 *** TODO [#B] pro1x-screencast as its own project (author)
 Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a Guix package and
 CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
