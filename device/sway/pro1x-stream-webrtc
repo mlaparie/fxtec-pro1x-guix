@@ -1172,7 +1172,6 @@ showCapture();
 
 // Keys: the key's position when the browser gives it, else the text typed.
 k.addEventListener("keydown", e => {
-  if (logged++ < 40) log({ev: "keydown", key: e.key, code: e.code, keyCode: e.keyCode});
   if (e.code && e.code !== "Unidentified" && e.key !== "Process") {
     e.preventDefault();
     send({t: "key", code: e.code, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey});
@@ -2519,7 +2518,14 @@ CODES = {**{f"Key{c}": f"KEY_{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
          "OSLeft": "KEY_LEFTMETA", "OSRight": "KEY_RIGHTMETA",   # older Firefox
          "CapsLock": "KEY_CAPSLOCK", "Insert": "KEY_INSERT",
          "PrintScreen": "KEY_SYSRQ", "ContextMenu": "KEY_COMPOSE",
-         "IntlBackslash": "KEY_102ND"}
+         "IntlBackslash": "KEY_102ND",
+         # The keypad's digits as the main row's: they type digits whatever
+         # Num Lock says.  A Tesla's on-screen keyboard sends Numpad1..9 for
+         # its digits, and they were dropped (a lock password, 2026-11-21).
+         **{f"Numpad{d}": f"KEY_{d}" for d in "0123456789"},
+         "NumpadDecimal": "KEY_DOT", "NumpadEnter": "KEY_ENTER",
+         "NumpadAdd": "KEY_KPPLUS", "NumpadSubtract": "KEY_KPMINUS",
+         "NumpadMultiply": "KEY_KPASTERISK", "NumpadDivide": "KEY_KPSLASH"}
 # Typed text to keys on a US layout (the remote keyboard's, pro1x.conf).
 SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
 PLAIN = {"`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft",
@@ -3429,6 +3435,7 @@ class DirectViewer:
     the old."""
 
     UNSENT = 48 * 1024          # about 0.2 s at 2 Mbit/s
+    STALL = 5
 
     current = None
     GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -3438,6 +3445,7 @@ class DirectViewer:
         self.frames = queue.Queue(maxsize=12)
         self.seq = 0
         self.alive = True
+        self.since = None
 
     def send(self, data, key, enc_ms=0):
         if not self.alive:
@@ -3455,15 +3463,33 @@ class DirectViewer:
         """Whether the network has not caught up: a frame waiting, or TCP
         holding more than UNSENT bytes (TIOCOUTQ: not sent or not yet
         acknowledged)."""
-        if not self.frames.empty():
-            return True
-        try:
-            import fcntl
-            import termios
-            out = fcntl.ioctl(self.sock, termios.TIOCOUTQ, b"\0\0\0\0")
-            return struct.unpack("i", out)[0] > self.UNSENT
-        except OSError:
+        behind = not self.frames.empty()
+        if not behind:
+            try:
+                import fcntl
+                import termios
+                out = fcntl.ioctl(self.sock, termios.TIOCOUTQ, b"\0\0\0\0")
+                behind = struct.unpack("i", out)[0] > self.UNSENT
+            except OSError:
+                pass
+        # Behind for STALL seconds: the page is gone without closing (a car
+        # driven out of range, a reload).  It ends here, or it held every
+        # frame back until TCP gave up, 90 s later (2026-11-21).
+        now = time.monotonic()
+        if not behind:
+            self.since = None
+        elif self.since is None:
+            self.since = now
+        elif now - self.since > self.STALL:
+            log_line("direct: viewer not reading, dropped")
+            self.alive = False
+            try:
+                import socket
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             return False
+        return behind
 
     def run(self):
         """Writes the frames until the page goes (in its HTTP thread).
