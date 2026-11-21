@@ -23,6 +23,13 @@ TODO.md before 2026-11-11 is in git history.
   4 % CPU for capture and encoding.
 
 * Tasks
+** TODO [#B] Wi-Fi: 500 ms to the router on the home network's 2.4 GHz band
+On generation 226 (2026-11-21), wlan0 on the home network's 2.4 GHz band
+(-67 dBm): ping to the router 500 ms on average, 1 s at worst, with no stream;
+PC to router 7 ms.  Not power saving (off), not Bluetooth (scan off, then
+powered off: no change).  On its 5 GHz band (-92 dBm), 8 ms.  The phone's
+connection to it is now pinned to band a.  Not known yet: whether 2.4 GHz
+was this slow before generation 226 (ath country-IE patch), or elsewhere.
 ** Fingerprint
 *** DONE [#A] Fingerprint reader: enrol, unlock gtklock (2026-11-12)
 Works on generation 29 (author: "works very well").  Touches must cover the whole sensor;
