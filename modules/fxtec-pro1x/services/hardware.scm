@@ -560,6 +560,8 @@ esac
   ;; (author, 2026-10-31: a covered phone kept its screen on); away again,
   ;; touch comes back, and the panel too if it was on before.  During calls
   ;; pro1x-call-watch also lights the panel when the phone leaves the ear.
+  ;; Not while a stream shows the panel with Keep screen on (a notification
+  ;; says so once); only the panel goes off, so a stream's own screen goes on.
   (program-file
    "pro1x-pocket"
    #~(begin
@@ -597,14 +599,35 @@ esac
          (= 10 (status:exit-val
                 (system* #$(file-append evtest "/bin/evtest") "--query"
                          "/dev/input/pro1x-slider" "EV_SW" "SW_KEYPAD_SLIDE"))))
-       (define (panel-on?)              ;any Sway output powered on
+       (define (outputs-say? text)      ;in any Sway's get_outputs
          (any (lambda (sock)
                 (let* ((port (open-pipe* OPEN_READ swaymsg "-s" sock
                                          "-t" "get_outputs" "-r"))
-                       (text (get-string-all port)))
+                       (outputs (get-string-all port)))
                   (close-pipe port)
-                  (string-contains text "\"power\": true")))
+                  (string-contains outputs text)))
               (sway-sockets)))
+       (define (panel-on?)              ;any Sway output powered on
+         (outputs-say? "\"power\": true"))
+       (define (read-file file)
+         (false-if-exception
+          (string-trim-both (call-with-input-file file get-string-all))))
+       ;; The stream shows the panel itself, with Keep screen on (caffeine,
+       ;; which the stream turns on): near does not blank then, or the
+       ;; picture would stop (author, 2026-11-21).  A stream of a screen of
+       ;; its own (a HEADLESS output, the client screen) goes on in the dark,
+       ;; since only the panel is turned off.  Returns the stream's pid.
+       (define (panel-streamed)
+         (any (lambda (uid)
+                (let* ((rt (string-append "/run/user/" uid "/"))
+                       (pid (read-file (string-append rt "pro1x-stream.pid"))))
+                  (and pid
+                       (equal? "on" (read-file (string-append rt "pro1x-caffeine")))
+                       (false-if-exception (begin (kill (string->number pid) 0) #t))
+                       (not (outputs-say? "\"HEADLESS-"))
+                       pid)))
+              (or (scandir "/run/user" string->number) '())))
+       (define told "/run/pro1x-pocket-told") ;the stream already told
        (define (set-near! near?)
          (if near?
              ;; The flag holds this near's stamp: only the timer of the
@@ -625,13 +648,20 @@ esac
                  (when (equal? stamp
                                (false-if-exception
                                 (call-with-input-file flag get-string-all)))
-                   (when (panel-on?)
-                     (close-port (open-output-file blanked)))
-                   (sway! "input 1046:9286:Goodix_Capacitive_TouchScreen events disabled")
-                   ;; Blanking hides the Sway menus (pro1x-menu hide-all).
-                   (sway! "[app_id=\"^(quickactions|launcher|windowswitcher)$\"] move scratchpad")
-                   (sway! "[app_id=\"^powermenu$\"] kill")
-                   (sway! "output * power off"))
+                   (match (panel-streamed)
+                     (#f
+                      (when (panel-on?)
+                        (close-port (open-output-file blanked)))
+                      (sway! "input 1046:9286:Goodix_Capacitive_TouchScreen events disabled")
+                      ;; Blanking hides the Sway menus (pro1x-menu hide-all).
+                      (sway! "[app_id=\"^(quickactions|launcher|windowswitcher)$\"] move scratchpad")
+                      (sway! "[app_id=\"^powermenu$\"] kill")
+                      (sway! "output DSI-1 power off"))
+                     (pid                ;once per stream
+                      (unless (equal? pid (read-file told))
+                        (call-with-output-file told
+                          (lambda (port) (display pid port)))
+                        (sway! "exec notify-send 'Screen kept on' 'The proximity sensor does not blank it while the stream shows it.'")))))
                  (primitive-_exit 0)))
              (begin
                (false-if-exception (delete-file flag))
