@@ -31,6 +31,12 @@ Works on generation 29 (author: "works very well").  Touches must cover the whol
 Polling a lit lock screen costs about 15 % of one core (2.9 s of CPU in 20 s, measured
 2026-11-12).  With the interrupt, unlocking could work with the screen blanked too, while
 gtklock runs (author's wish).
+2026-11-21: GPIO 97 (gpiochip2 line 97, free for userspace) watched with gpiomon during the
+author's touches, unlocked and on the lit lock screen: no edge at all.  With detect_touch's
+polling the sensor never raises it.  Neither pro1x-fpd nor moWerk's daemon sends the TA's 0xDB
+(sleep / reverse_sleep): probably what arms it, after 0xE1 and 0xDA.  Next: read how the vendor
+HAL calls 0xDB (radare2 on the blobs, as for the rest of the protocol), add it to pro1x-fpd's
+probe, watch GPIO 97 again.
 *** TODO [#B] Recover a dead TA instance (restart the loader, then pro1x-fpd) by itself
 *** TODO [#C] Match rate (moWerk: about one touch in three)
 ** Waydroid
@@ -271,10 +277,11 @@ the fix (=btrfs-progs/pro1x=) 0, every file identical.  CI's mkfs now uses it wi
 43071407700 (b633813): every file read back through the kernel, rootfs 6341 MiB for
 9726 MiB of files.  Waiting: a flash when the author has time.  Drop
 =btrfs-progs/pro1x= once the pinned Guix has 7.1.
-*** WAIT [#B] Drop the ext4 support, the root-type check, the ext4 pin, the ext4 releases and tags
+*** DONE [#B] Drop the ext4 support, the root-type check, the ext4 pin (2026-11-21)
+The ext4-era releases and tags stay (author).
 Code done (the commit after this note): btrfs root only, no root-type check in the deploy, root
 resize btrfs only; the phone's config.scm had no ext4 pin.  The flash scripts keep reading an
-ext4 rootfs (a locally built image is ext4).  Left: which releases and tags to delete (author).
+ext4 rootfs (a locally built image is ext4).
 The phone runs btrfs since 2026-11-08; no one else installed the port (author).
 *** TODO [#B] Plain =flash.sh= with a btrfs root (=systems/minimal.scm= cannot be flashed)
 *** WAIT [#B] After the reflash: a reboot test, the new U-Boot entry

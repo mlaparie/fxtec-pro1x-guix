@@ -30,7 +30,8 @@ lock screen's identify lasts as long as gtklock, and pauses while the panel is o
 the sensor is read only on a lit lock screen, every 250 ms until a touch.  A read costs
 about 60 ms of CPU inside TrustZone (measured 2026-11-11: 2 s of CPU in 3 s of polling
 at 30 ms during an enrolment), so a lit lock screen keeps about a fifth of a core busy.  Open: the sensor
-interrupt (TLMM 97) instead of polling; the sensor's power stays on while the daemon runs;
+interrupt (TLMM 97) instead of polling (2026-11-21: no edge on GPIO 97 during touches while
+polling; the TA's 0xDB sleep, which neither daemon sends, is the next thing to try); the sensor's power stays on while the daemon runs;
 recovering a dead TA instance (moWerk saw one once: restart `qsee-app-loader-mafp`, then
 `pro1x-fpd`); the match rate (about one touch in three on his phone).
 
