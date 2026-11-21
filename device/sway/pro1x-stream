@@ -1100,8 +1100,8 @@ while :; do
     lines=$(
         if streaming; then printf 'stop\tStop stream\n'; fi
         printf '%s\t%s\n' \
-            interactive "Browser, interactive  screen, sound, touch and keys; full screen (approval recommended)" \
-            webrtc "Browser, read-only    screen and sound, no input; full screen or a window" \
+            interactive "Browser, interactive  lowest latency; screen, sound, touch and keys (approval recommended)" \
+            webrtc "Browser, read-only    lowest latency; screen and sound, no input" \
             mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
