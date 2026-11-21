@@ -1048,9 +1048,15 @@ try_catt() {
     err=$(catt -d "$name" cast "$what" 2>&1) || notice "Chromecast: ${err:-failed}"
 }
 
+# Network Displays captures through the portal, which hands over the
+# panel's buffer sideways (it is turned in software) and the turn apart,
+# which it ignores: it gets a screen of its own showing the panel upright
+# at 1920x1080 (pro1x-virtual-screen panel), removed when it closes.
 network_displays() {
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null 2>&1
-    swaymsg exec gnome-network-displays >/dev/null 2>&1
+    pro1x-virtual-screen start panel 1920x1080 >/dev/null ||
+        { notice "No screen for Miracast: $(pro1x-virtual-screen start panel 2>&1 | tail -1)"; return; }
+    swaymsg exec "sh -c 'gnome-network-displays; pro1x-virtual-screen stop'" >/dev/null 2>&1
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }

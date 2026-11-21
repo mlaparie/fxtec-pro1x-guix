@@ -6,6 +6,11 @@
 # else the panel.  No question asked: the stream opens the portal
 # unattended.
 #
+# pro1x-virtual-screen's panel mode (the panel upright, for Network
+# Displays) comes first while it exists.
+#
 # State: used on the phone (2026-11-19).
-name=$(cat "${XDG_RUNTIME_DIR:-/tmp}/pro1x-stream-output" 2>/dev/null)
+rt=${XDG_RUNTIME_DIR:-/tmp}
+name=$(awk '$2 == "panel" { print $1 }' "$rt/pro1x-virtual-screen" 2>/dev/null)
+[ -n "$name" ] || name=$(cat "$rt/pro1x-stream-output" 2>/dev/null)
 echo "Monitor: ${name:-DSI-1}"
