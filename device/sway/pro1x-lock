@@ -137,8 +137,14 @@ case "${1:-}" in
         fi
         exec "$0" --refresh ;;
     --refresh-if-turned)
+        # Also when the keyboard slid: its on-screen keyboard comes with the
+        # hardware one closed (below), and a slide in landscape left the
+        # orientation as it was, so the keys never came (author, 2026-11-21).
         if portrait_now; then o=portrait; else o=landscape; fi
-        [ "$(cat "$rt/pro1x-lock-orientation" 2>/dev/null)" = "$o" ] && exit 0
+        evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE 2>/dev/null
+        if [ $? -eq 10 ] || [ -z "$module" ]; then k=none; else k=$o; fi
+        [ "$(cat "$rt/pro1x-lock-orientation" 2>/dev/null)" = "$o" ] &&
+            [ "$(cat "$rt/pro1x-lock-osk" 2>/dev/null)" = "$k" ] && exit 0
         exec "$0" --refresh ;;
     --rotate)
         old=$(pgrep -u "$uid" -x gtklock)
