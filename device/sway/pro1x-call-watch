@@ -36,7 +36,8 @@ paused="$rt/pro1x-call-paused"
 panel_streamed() {
     [ ! -e "$paused" ] &&
         [ "$(cat "$rt/pro1x-caffeine" 2>/dev/null)" = on ] &&
-        [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
+        { { [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null; } ||
+          { [ -f "$rt/wl-cast.pid" ] && kill -0 "$(cat "$rt/wl-cast.pid")" 2>/dev/null; }; } &&
         ! swaymsg -t get_outputs -r | jq -e 'any(.[]; .name | startswith("HEADLESS-"))' >/dev/null
 }
 
@@ -44,6 +45,8 @@ panel_streamed() {
 # carry the call) and the phone's power (author, 2026-11-21).
 stream_pause() {                      # stream_pause USR1|USR2
     p=$(cat "$rt/pro1x-stream.pid" 2>/dev/null) && kill -"$1" "$p" 2>/dev/null
+    # wl-cast, tried beside pro1x-stream: the same signals (wl-cast pause).
+    p=$(cat "$rt/wl-cast.pid" 2>/dev/null) && kill -"$1" "$p" 2>/dev/null
 }
 
 near() {                              # near 1|0

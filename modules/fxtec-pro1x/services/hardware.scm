@@ -620,7 +620,9 @@ esac
        (define (panel-streamed)
          (any (lambda (uid)
                 (let* ((rt (string-append "/run/user/" uid "/"))
-                       (pid (read-file (string-append rt "pro1x-stream.pid"))))
+                       ;; wl-cast, tried beside pro1x-stream, likewise.
+                       (pid (or (read-file (string-append rt "pro1x-stream.pid"))
+                                (read-file (string-append rt "wl-cast.pid")))))
                   (and pid
                        ;; Paused for a call picked up (pro1x-call-watch).
                        (not (file-exists? (string-append rt "pro1x-call-paused")))

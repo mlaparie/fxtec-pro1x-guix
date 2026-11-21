@@ -53,6 +53,9 @@ case "${1:-}" in
                 interactive*) echo '{"text": "STREAM", "state": "Critical"}' ;;
                 *) echo '{"text": "STREAM", "state": "Warning"}' ;;
             esac
+        # wl-cast, tried beside it: always interactive.
+        elif [ -f "$rt/wl-cast.pid" ] && kill -0 "$(cat "$rt/wl-cast.pid")" 2>/dev/null; then
+            echo '{"text": "STREAM", "state": "Critical"}'
         else
             echo '{"text": ""}'
         fi ;;
