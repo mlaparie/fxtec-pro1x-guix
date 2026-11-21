@@ -27,12 +27,22 @@ flag="$rt/pro1x-call-unlocked"        # path of the call we unlocked for
 calls="$rt/pro1x-calls"               # paths of the calls in progress
 proxpid="$rt/pro1x-call-proximity.pid"
 
+# A stream showing the panel, with Keep screen on: the ear does not blank
+# it (pro1x-pocket does the same and tells it once).  Only the panel goes
+# off, so a stream's own screen goes on.
+panel_streamed() {
+    [ "$(cat "$rt/pro1x-caffeine" 2>/dev/null)" = on ] &&
+        [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
+        ! swaymsg -t get_outputs -r | jq -e 'any(.[]; .name | startswith("HEADLESS-"))' >/dev/null
+}
+
 near() {                              # near 1|0
     if [ "$1" = 1 ]; then
+        panel_streamed && return
         swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled' >/dev/null
-        swaymsg 'output * power off' >/dev/null
+        swaymsg 'output DSI-1 power off' >/dev/null
     else
-        swaymsg 'output * power on' >/dev/null
+        swaymsg 'output DSI-1 power on' >/dev/null
         swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
     fi
 }
