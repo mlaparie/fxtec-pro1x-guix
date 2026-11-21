@@ -1059,6 +1059,10 @@ Dracula palette, no kernel messages over the greeter.")
      ;; (~/.config/user-dirs.dirs, skeleton below): without either, "Could
      ;; not take picture" (2026-10-30).
      snapshot gst-plugins-bad xdg-user-dirs
+     ;; GStreamer's V4L2 decoders (v4l2h264dec, v4l2h265dec, v4l2vp9dec on
+     ;; Venus), which players and WebKit pick before software ones, and
+     ;; its common demuxers (mp4, matroska); it was not installed at all.
+     gst-plugins-good
      ;; Portals: libadwaita apps read dark/light from the Settings portal
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).

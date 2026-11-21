@@ -1887,6 +1887,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
+;;;   etc/xdg/mpv/mpv.conf               mpv decodes video on Venus (hwdec)
 ;;;   bin/pro1x-screenshot               screenshots (grim, slurp)
 ;;;   bin/pro1x-portrait-apps            portrait while Snapshot or Calls is focused
 ;;;   bin/pro1x-menu                     resident menus, toggled from the scratchpad
@@ -1940,6 +1941,7 @@ window opened by a sway key binding.")
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
           ("blank.conf" "share/pro1x-sway/")
+          ("mpv.conf" "etc/xdg/mpv/")
           ("desktop.conf" "share/pro1x-sway/")
           ("effects-swayfx.conf" "share/pro1x-sway/")
           ("foot-user.ini" "share/pro1x-sway/")
