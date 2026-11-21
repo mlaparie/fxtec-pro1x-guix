@@ -1939,6 +1939,7 @@ window opened by a sway key binding.")
      (list
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
+          ("blank.conf" "share/pro1x-sway/")
           ("desktop.conf" "share/pro1x-sway/")
           ("effects-swayfx.conf" "share/pro1x-sway/")
           ("foot-user.ini" "share/pro1x-sway/")
