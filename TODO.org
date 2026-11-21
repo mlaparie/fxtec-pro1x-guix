@@ -257,6 +257,12 @@ own project: find the encoder by capability instead of the first /dev/video that
 the output by option (DSI-1 default), ext-image-copy-capture beside wlr-screencopy, a plain
 H.264 output beside the PXSC framing, a Meson build.  Repository and name: the author's call.
 ** Sway session
+2026-11-21: started as wl-cast (author's name), ../wl-cast, commit 1e65621, not pushed:
+capture, server, virtual screen, certificate and DNS hooks renamed from the port's, the panel
+the first output or WL_CAST_PANEL, a wl-cast front end, a Makefile, the car example.  Capture
+builds on x86_64; on the phone the server served its page and wl-cast start/status/stop ran.
+Remotes: Codeberg (origin), GitHub, sr.ht.  The port still ships its own copies; switching
+it to a wl-cast package comes later.
 *** WAIT [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
 Unless the proximity sensor is covered.  It should stay dark until a double tap, the power
 button, Esc or the keyboard slide; a fingerprint should wait for a lit screen, not light it.
