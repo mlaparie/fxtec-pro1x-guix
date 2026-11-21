@@ -231,6 +231,16 @@ pair (server-side ICE log), and why encoding the larger screen takes twice as lo
 Zero-copy wlr-screencopy to V4L2 M2M (Venus) H.264: maybe its own repository, a Guix package and
 CI for other distributions.  Check alternatives first (gpu-screen-recorder, wf-recorder with
 h264_v4l2m2m, OBS) before calling it unique.
+Checked 2026-11-21: wl-screenrec is zero-copy too (wlr-screencopy or ext-image-copy-capture,
+DMA-BUF), but only into VA-API or Vulkan encoders; wf-recorder and OBS reach V4L2 M2M through
+FFmpeg's h264_v4l2m2m, which takes frames in memory (a CPU copy and conversion; inferred from
+FFmpeg's encoder, not measured); gpu-screen-recorder targets VA-API, NVENC and Vulkan (from
+memory, not checked).  jwinarske/dmabuf-codec handles Venus with DMA-BUFs but is a codec
+library, not a screen capture.  So a wlroots capture straight into a stateful V4L2 encoder
+looks rare: Qualcomm Venus phones (postmarketOS), the Raspberry Pi's bcm2835 encoder.  For its
+own project: find the encoder by capability instead of the first /dev/video that takes NV12,
+the output by option (DSI-1 default), ext-image-copy-capture beside wlr-screencopy, a plain
+H.264 output beside the PXSC framing, a Meson build.  Repository and name: the author's call.
 ** Sway session
 *** WAIT [#A] A blanked screen lights again a few seconds later (author, 2026-11-20)
 Unless the proximity sensor is covered.  It should stay dark until a double tap, the power
