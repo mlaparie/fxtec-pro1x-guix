@@ -1,0 +1,85 @@
+Miracast through a V4L2 hardware H.264 encoder (v4l2h264enc).
+
+GNOME Network Displays knows x264, openh264 and VA-API encoders only; on a
+phone SoC without VA-API (the Pro¹x's Venus) it encoded 1080p in software
+with x264, too slow for a smooth picture.  v4l2h264enc is tried first, in
+baseline, at a constant bit rate whose peak is the rate itself; its
+controls are set before the device opens, since Venus's firmware died when
+they changed on a running encoder.  For fxtec-pro1x-guix (AGPL-3.0-or-later);
+the program's own licence (GPL-3.0-or-later) applies to this change upstream.
+
+diff -ru a/src/wfd/wfd-media-factory.c b/src/wfd/wfd-media-factory.c
+--- a/src/wfd/wfd-media-factory.c	2026-11-22 00:57:08.319006788 +0100
++++ b/src/wfd/wfd-media-factory.c	2026-11-22 00:57:08.372942631 +0100
+@@ -7,6 +7,7 @@
+   [ELEMENT_X264] = "x264enc",
+   [ELEMENT_VAH264] = "vah264enc",
+   [ELEMENT_VAAPIH264] = "vaapih264enc",
++  [ELEMENT_V4L2H264] = "v4l2h264enc",
+   [ELEMENT_VIDEO_NONE] = NULL,
+ 
+   [ELEMENT_AAC_FDK] = "fdkaacenc",
+@@ -226,6 +227,15 @@
+ 
+       break;
+ 
++    case ELEMENT_V4L2H264:
++      /* Controls are set in wfd_configure_media_element, before the
++       * device opens: some firmwares (Venus) die when they change on a
++       * running encoder. */
++      encoder = gst_element_factory_make ("v4l2h264enc", "wfd-encoder");
++      encoder_elem = encoder;
++      success &= gst_bin_add (bin, encoder);
++      break;
++
+     case ELEMENT_VAAPIH264:
+       {
+         GstElement *vaapi_encoder;
+@@ -594,6 +604,24 @@
+                     NULL);
+       break;
+ 
++    case ELEMENT_V4L2H264:
++      {
++        g_autoptr(GstStructure) controls = NULL;
++
++        /* Constant bit rate, its peak the rate itself, and a keyframe
++         * every GOP.  Baseline (the codecfilter's caps). */
++        profile = WFD_H264_PROFILE_BASE;
++        controls = gst_structure_new ("controls",
++                                      "video_bitrate_mode", G_TYPE_INT, 1,
++                                      "video_bitrate", G_TYPE_INT, (gint) bitrate_kbit * 1000,
++                                      "video_peak_bitrate", G_TYPE_INT, (gint) bitrate_kbit * 1000,
++                                      "video_gop_size", G_TYPE_INT, (gint) gop_size,
++                                      "h264_i_frame_period", G_TYPE_INT, (gint) gop_size,
++                                      NULL);
++        g_object_set (encoder, "extra-controls", controls, NULL);
++        break;
++      }
++
+     case ELEMENT_X264:
+       if (codec->profile == WFD_H264_PROFILE_HIGH)
+         {
+diff -ru a/src/wfd/wfd-media-factory.h b/src/wfd/wfd-media-factory.h
+--- a/src/wfd/wfd-media-factory.h	2026-11-22 00:57:08.319006788 +0100
++++ b/src/wfd/wfd-media-factory.h	2026-11-22 00:57:08.339362689 +0100
+@@ -27,6 +27,7 @@
+   ELEMENT_X264,
+   ELEMENT_VAH264,
+   ELEMENT_VAAPIH264,
++  ELEMENT_V4L2H264,
+   ELEMENT_VIDEO_NONE,
+ 
+   ELEMENT_AAC_FDK,
+@@ -50,6 +51,11 @@
+ /* video encoder, audio encoder, muxer */
+ static const WfdMediaFactoryProfile wfd_media_factory_profiles[] = {
+   /* video + audio profiles */
++  /* A V4L2 hardware encoder (a phone's SoC) first: it leaves the CPU free. */
++  {PROFILE_BASE_H264,    ELEMENT_V4L2H264,   ELEMENT_AAC_FDK,    ELEMENT_MPEGTS},
++  {PROFILE_BASE_H264,    ELEMENT_V4L2H264,   ELEMENT_AAC_AVENC,  ELEMENT_MPEGTS},
++  {PROFILE_BASE_H264,    ELEMENT_V4L2H264,   ELEMENT_AAC_FAAC,   ELEMENT_MPEGTS},
++  {PROFILE_BASE_H264,    ELEMENT_V4L2H264,   ELEMENT_AUDIO_NONE, ELEMENT_MPEGTS},
+   {PROFILE_HIGH_H264,    ELEMENT_VAH264,     ELEMENT_AAC_FDK,    ELEMENT_MPEGTS},
+   {PROFILE_HIGH_H264,    ELEMENT_VAH264,     ELEMENT_AAC_AVENC,  ELEMENT_MPEGTS},
+   {PROFILE_HIGH_H264,    ELEMENT_VAH264,     ELEMENT_AAC_FAAC,   ELEMENT_MPEGTS},

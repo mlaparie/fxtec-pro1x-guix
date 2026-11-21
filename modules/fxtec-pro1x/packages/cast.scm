@@ -134,7 +134,14 @@ or a local file, to a Chromecast, and controls its playback.")
                            (version-major+minor version)
                            "/gnome-network-displays-" version ".tar.xz"))
        (sha256
-        (base32 "11gdj4bdgpdrvnsa858pxk8lg2wrx267p1784pvypir2r0dlmkhy"))))
+        (base32 "11gdj4bdgpdrvnsa858pxk8lg2wrx267p1784pvypir2r0dlmkhy"))
+       ;; Miracast on the phone's hardware encoder (Venus) instead of x264
+       ;; on the CPU, too slow for a smooth 1080p picture (author).
+       (patches
+        (list
+         (local-file
+          (repository-file "device/patches/gnome-network-displays-v4l2h264enc.patch")
+          "gnome-network-displays-v4l2h264enc.patch")))))
     (build-system meson-build-system)
     (arguments
      (list
