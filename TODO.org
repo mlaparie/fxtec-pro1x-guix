@@ -195,6 +195,16 @@ country's rules, radar channels excepted), built by CI run 44783494665; to deplo
 Keep Wi-Fi off at that start (20:39: on wlan0, mobile data shared) and the uplink network
 lost four times before (ssid-not-found, 20:29-20:38); the Tesla held a lease 20:40-21:38.
 Next: the author's test again with Keep Wi-Fi on; check NAT and DNS through ap0 with a device.
+2026-11-21, hotspot started with Keep Wi-Fi beside the 2.4 GHz home network (no client): ap0
+on channel 11, forwarding on, NetworkManager's masquerade for 10.42.0.0/24, a client's route
+leaves by wlan0: the port's side looks right.  But the hotspot's DNS answered the car's check
+names (connectivitycheck.gstatic.com, connman.vn.tesla.services...) with 10.42.0.1 while online:
+the author's tesla-stream (private) could not replace its hosts file (root-owned, mv asked for
+confirmation), its hosts.new stayed in dnsmasq's hostsdir, and dnsmasq keeps hostsdir names
+until it restarts anyway.  So with internet the car's Tesla names went to the phone: a likely
+cause of the car leaving.  Fixed now: the owner of /var/lib/tesla-offline (user).  Still in the
+script: hosts.new written outside the hostsdir, and the names cleared by restarting dnsmasq
+(or never set while online).
 *** WAIT [#A] Tesla leaves the hotspot without internet
 2026-11-20: on the hotspot with mobile data, the Tesla kept its lease (19:06-19:29, 20:40-21:38).
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
