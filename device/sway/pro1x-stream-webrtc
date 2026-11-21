@@ -148,7 +148,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 #info{position:fixed;left:6px;top:6px;font:14px monospace;color:#eee;
   background:rgba(0,0,0,.75);padding:8px;display:none;z-index:1}
 #info pre{margin:0;font:inherit}
-#lockmsg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
+#lockmsg,#callmsg{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);display:none;
   max-width:80%;padding:12px 16px;background:#000c;color:#fff;font:16px sans-serif;
   text-align:center;pointer-events:none;z-index:5}
 #note{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:none;
@@ -192,7 +192,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none
 <label>size    <select id="sz"><option>1920</option><option>1600</option>
 <option>1280</option><option>960</option></select> px, long side</label>
 <button id="sy">RESYNC</button></div>
-<div id="note"></div><div id="lockmsg">The phone is locked: the picture stays still until it is unlocked.<br>
+<div id="note"></div><div id="callmsg">A call is in progress on the phone: the stream is paused until it ends.</div><div id="lockmsg">The phone is locked: the picture stays still until it is unlocked.<br>
 Type its password and Enter (it goes to the lock screen), or use a finger on the phone.</div><div id="info"><div id="clock"></div><pre id="it"></pre><canvas id="tc" width="240" height="40"></canvas></div>
 <div id="gate"><div>The key shown on the phone</div>
 <input id="gk" autocapitalize="off" autocomplete="off" autocorrect="off"
@@ -811,7 +811,8 @@ async function status() {
   try {
     phone = await (await fetch(withKey("/status"))).json();
     if (!screenWanted) showScreen();
-    document.getElementById("lockmsg").style.display = phone.locked ? "block" : "none";
+    document.getElementById("lockmsg").style.display = phone.locked && !phone.call ? "block" : "none";
+    document.getElementById("callmsg").style.display = phone.call ? "block" : "none";
     autofit();
     // The phone's settings, unless one waits for APPLY here.
     if (phone.long && !pending.long && !pending.w && document.activeElement !== sz) sz.value = String(phone.long);
@@ -3014,7 +3015,7 @@ class Session:
                 encoder.get_static_pad("src").send_event(
                     GstVideo.video_event_new_upstream_force_key_unit(
                         Gst.CLOCK_TIME_NONE, True, 0))
-        log_line("paused by the viewer" if on else "playing again")
+        log_line("paused" if on else "playing again")
         return GLib.SOURCE_REMOVE
 
     def bitrate(self, mbps):
@@ -3239,6 +3240,19 @@ def restart_session():
 # screen's caffeine on (and reexec's predecessor, if it did).
 own_args = []
 caffeinated = [False]
+# A call picked up on the phone (pro1x-call-watch sends SIGUSR1, and SIGUSR2
+# when it ends): picture and sound paused, for privacy (the sound would
+# carry the call) and to leave the phone its power (author, 2026-11-21).
+in_call = [False]
+
+
+def call_pause(on):
+    in_call[0] = on
+    with session_lock:
+        current = session
+    if current:
+        current.pause(on)
+    return GLib.SOURCE_CONTINUE
 
 
 def reexec():
@@ -3416,6 +3430,8 @@ def new_session(command, codec, size, created, direct=False):
     with session_lock:
         session = Session(command, codec, size, Handler.mbps, direct)
         created["session"] = session
+        if in_call[0]:
+            session.pause(True)
     created["done"].set()
     return GLib.SOURCE_REMOVE
 
@@ -3646,6 +3662,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "size": Handler.size.split("@")[0] if Handler.size else None,
                                    "long": capture_long(),
                                    "locked": phone_locked(),
+                                   "call": in_call[0],
                                    "waiting": Handler.screen_waiting}).encode(),
                        "application/json")
         elif path == "/settings":
@@ -3968,6 +3985,8 @@ def main():
             except (OSError, RuntimeError, ImportError) as err:
                 log_line(f"the panel's touches stay on the panel: {err}")
         log_line("started")
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, call_pause, True)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, call_pause, False)
         try:
             caffeinated[0] = caffeine_on() or caffeinated[0]
         except (OSError, subprocess.TimeoutExpired):
@@ -4001,6 +4020,12 @@ def main():
         if screen:
             screen.stop()
         wifi_hold(False)
+        # The panel dimmed in place of blanked (pro1x-power-key) lit again.
+        try:
+            subprocess.run(["pro1x-power-key", "--undim"], timeout=10,
+                           stdin=subprocess.DEVNULL, capture_output=True)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
         if caffeinated[0]:
             try:
                 caffeine_off()

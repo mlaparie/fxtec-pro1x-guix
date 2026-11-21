@@ -622,6 +622,8 @@ esac
                 (let* ((rt (string-append "/run/user/" uid "/"))
                        (pid (read-file (string-append rt "pro1x-stream.pid"))))
                   (and pid
+                       ;; Paused for a call picked up (pro1x-call-watch).
+                       (not (file-exists? (string-append rt "pro1x-call-paused")))
                        (equal? "on" (read-file (string-append rt "pro1x-caffeine")))
                        (false-if-exception (begin (kill (string->number pid) 0) #t))
                        (not (outputs-say? "\"HEADLESS-"))

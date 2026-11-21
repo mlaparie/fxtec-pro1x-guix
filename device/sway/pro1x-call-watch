@@ -28,15 +28,26 @@ calls="$rt/pro1x-calls"               # paths of the calls in progress
 proxpid="$rt/pro1x-call-proximity.pid"
 
 # A stream showing the panel, with Keep screen on: the ear does not blank
-# it (pro1x-pocket does the same and tells it once).  Only the panel goes
-# off, so a stream's own screen goes on.
+# it while it rings (pro1x-pocket does the same and tells it once).  Once
+# the call is picked up the stream pauses (stream_pause), and the ear
+# blanks as usual.  Only the panel goes off, so a stream's own screen goes
+# on.
+paused="$rt/pro1x-call-paused"
 panel_streamed() {
-    [ "$(cat "$rt/pro1x-caffeine" 2>/dev/null)" = on ] &&
+    [ ! -e "$paused" ] &&
+        [ "$(cat "$rt/pro1x-caffeine" 2>/dev/null)" = on ] &&
         [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
         ! swaymsg -t get_outputs -r | jq -e 'any(.[]; .name | startswith("HEADLESS-"))' >/dev/null
 }
 
+# The stream paused while a call is picked up: privacy (its sound would
+# carry the call) and the phone's power (author, 2026-11-21).
+stream_pause() {                      # stream_pause USR1|USR2
+    p=$(cat "$rt/pro1x-stream.pid" 2>/dev/null) && kill -"$1" "$p" 2>/dev/null
+}
+
 near() {                              # near 1|0
+    echo "$1" > "$rt/pro1x-call-near"
     if [ "$1" = 1 ]; then
         panel_streamed && return
         swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled' >/dev/null
@@ -108,9 +119,23 @@ gdbus monitor --system --dest org.freedesktop.ModemManager1 2>/dev/null |
                     swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
                     pro1x-dim restore 2>/dev/null
                 fi ;;
+            *Call.StateChanged*)
+                # MMCallState 4: active, the call picked up.  Already at
+                # the ear: blank now that the stream no longer holds it.
+                case "$line" in
+                    *"StateChanged ("*", 4, "*)
+                        if [ ! -e "$paused" ]; then
+                            touch "$paused"
+                            stream_pause USR1
+                            [ "$(cat "$rt/pro1x-call-near" 2>/dev/null)" = 1 ] && near 1
+                        fi ;;
+                esac ;;
             *Modem.Voice.CallDeleted*)
                 grep -v -x -F "$call" "$calls" > "$calls.new"; mv "$calls.new" "$calls"
-                [ -s "$calls" ] || proximity_stop
+                if ! [ -s "$calls" ]; then
+                    proximity_stop
+                    [ -e "$paused" ] && rm -f "$paused" && stream_pause USR2
+                fi
                 if [ -f "$flag" ] && [ "$(cat "$flag")" = "$call" ]; then
                     rm -f "$flag"
                     swaymsg exec pro1x-lock >/dev/null

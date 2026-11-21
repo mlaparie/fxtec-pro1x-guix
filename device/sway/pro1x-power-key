@@ -7,7 +7,33 @@
 # again; the screen flashed and stayed dark (author, 2026-10-31).  Now it
 # decides from the panel's state, and leaves the panel on when pro1x-idle's
 # resume woke it for this very press (it stamps the time).
+#
+# While a stream shows the panel (with Keep screen on, which the stream
+# turns on), blanking would stop its picture: the key dims the panel to
+# black instead, with touch off and the keyboard held as when blanked, and
+# a notification says so; the key again, or the stream's end (--undim), lights it
+# at its brightness of before (author, 2026-11-21).
 rt="${XDG_RUNTIME_DIR:-/tmp}"
+dimmed="$rt/pro1x-stream-dimmed"      # the brightness to go back to
+
+undim() {
+    [ -f "$dimmed" ] || return 0
+    brightnessctl -q set "$(cat "$dimmed")"
+    rm -f "$dimmed"
+    swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
+    swaymsg -t get_binding_state -r | jq -e '.name == "pro1x-blanked"' >/dev/null &&
+        swaymsg mode default >/dev/null
+}
+
+panel_streamed() {                    # as pro1x-call-watch's
+    [ ! -e "$rt/pro1x-call-paused" ] &&
+        [ "$(cat "$rt/pro1x-caffeine" 2>/dev/null)" = on ] &&
+        [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null &&
+        ! swaymsg -t get_outputs -r | jq -e 'any(.[]; .name | startswith("HEADLESS-"))' >/dev/null
+}
+
+[ "${1:-}" = --undim ] && { undim; exit; }
+[ -f "$dimmed" ] && { undim; exit; }
 # One app over the lock screen (pro1x-lock --app-unlock): the key ends that.
 [ -e "$rt/pro1x-locked-app" ] && pro1x-lock
 on=$(swaymsg -t get_outputs -r |
@@ -16,6 +42,15 @@ if [ "$on" = true ]; then
     woke=$(cat "$rt/pro1x-woke" 2>/dev/null || echo 0)
     [ $(( $(date +%s%N) - woke )) -lt 800000000 ] && exit 0
     pro1x-menu hide-all               # blanking hides the menus
+    if panel_streamed; then
+        brightnessctl -m | cut -d, -f3 > "$dimmed"
+        brightnessctl -q set 0
+        swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled' >/dev/null
+        swaymsg -t get_binding_state -r | jq -e '.name == "default"' >/dev/null &&
+            swaymsg mode pro1x-blanked >/dev/null
+        notify-send 'Screen dimmed, not blanked' 'A stream shows it: blanking would stop the picture.  Power key again to light it.'
+        exit 0
+    fi
     # No touch while dark: the lock screen took taps with the screen off
     # (author, 2026-10-31).  pro1x-doubletap reads the touchscreen itself.
     # The panel's only: a stream's virtual touchscreen keeps working.
