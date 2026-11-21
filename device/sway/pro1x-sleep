@@ -96,7 +96,7 @@ sway() {
 }
 panel() {                        # panel on|off
     if [ "$1" = on ]; then
-        sway 'output * power on'; sway 'input type:touch events enabled'
+        sway 'output * power on'; sway 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled'
         # The power key that woke the phone must not blank it again
         # (pro1x-power-key skips a press just after a wake).
         for d in /run/user/*; do
@@ -105,7 +105,7 @@ panel() {                        # panel on|off
             chown "$(stat -c %U "$d")" "$d/pro1x-woke"
         done
     else
-        sway 'input type:touch events disabled'; sway 'output * power off'
+        sway 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled'; sway 'output * power off'
     fi
 }
 

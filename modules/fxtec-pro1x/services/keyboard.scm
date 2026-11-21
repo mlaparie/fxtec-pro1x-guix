@@ -138,7 +138,7 @@
                         "output * power on")
                ;; Touch is off while the panel is dark (pro1x-power-key).
                (system* #$(file-append sway "/bin/swaymsg")
-                        "input type:touch events enabled"))
+                        "input 1046:9286:Goodix_Capacitive_TouchScreen events enabled"))
              (or (scandir dir (lambda (f) (string-prefix? "sway-ipc." f)))
                  '())))
           (map (lambda (uid) (string-append "/run/user/" uid))

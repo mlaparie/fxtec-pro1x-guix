@@ -23,7 +23,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 
 # From a blank screen too (author, 2026-11-03: triple press did not wake it).
 swaymsg 'output * power on' >/dev/null
-swaymsg 'input type:touch events enabled' >/dev/null
+swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
 pro1x-dim restore 2>/dev/null
 
 focused() {                     # "CON_ID APP_ID" of the focused window
@@ -103,7 +103,7 @@ pro1x-lock --app-unlock || { kill -KILL "$pid" 2>/dev/null; exit 1; }
 [ -p /run/pro1x-pointer ] && echo release > /run/pro1x-pointer
 # Again after the unlock: without this no touch reached the app (2026-11-03).
 swaymsg 'output * power on' >/dev/null
-swaymsg 'input type:touch events enabled' >/dev/null
+swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
 pro1x-dim restore 2>/dev/null
 swaymsg "[con_id=$con] focus" >/dev/null
 sleep 0.5                       # the focus settles after the unlock

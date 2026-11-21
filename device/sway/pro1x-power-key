@@ -18,14 +18,15 @@ if [ "$on" = true ]; then
     pro1x-menu hide-all               # blanking hides the menus
     # No touch while dark: the lock screen took taps with the screen off
     # (author, 2026-10-31).  pro1x-doubletap reads the touchscreen itself.
-    swaymsg 'input type:touch events disabled' >/dev/null
+    # The panel's only: a stream's virtual touchscreen keeps working.
+    swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled' >/dev/null
     # Keys while dark go nowhere (blank.conf).
     swaymsg -t get_binding_state -r | jq -e '.name == "default"' >/dev/null &&
         swaymsg mode pro1x-blanked >/dev/null
     swaymsg 'output DSI-1 power off' >/dev/null
 else
     swaymsg 'output DSI-1 power on' >/dev/null
-    swaymsg 'input type:touch events enabled' >/dev/null
+    swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
     swaymsg -t get_binding_state -r | jq -e '.name == "pro1x-blanked"' >/dev/null &&
         swaymsg mode default >/dev/null
 fi

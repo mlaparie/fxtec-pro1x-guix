@@ -93,7 +93,7 @@ case "$choice" in
         swaymsg exec pro1x-lock >/dev/null
         sleep 1.5
         setsid -f sudo -n /run/current-system/profile/bin/pro1x-sleep suspend ;;
-    "Blank screen") swaymsg 'input type:touch events disabled' >/dev/null
+    "Blank screen") swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled' >/dev/null
                     swaymsg 'output * power off' >/dev/null ;;
     # Detached: after the resume it may restart the ADSP (about 20 s),
     # which closing this window must not cut short.

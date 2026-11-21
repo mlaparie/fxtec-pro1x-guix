@@ -88,8 +88,8 @@ if [ -n "$sway" ] && [ -n "$BLANK_AFTER" ]; then
     # was released before it, and the key blanked the panel again (a flash).
     # The keyboard is in the pro1x-blanked mode while dark (blank.conf), so
     # the key that wakes the panel does not reach the focused window.
-    set -- timeout "$BLANK_AFTER" 'pro1x-menu hide-all; swaymsg "input type:touch events disabled"; swaymsg -t get_binding_state -r | jq -e ".name == \"default\"" >/dev/null && swaymsg mode pro1x-blanked; swaymsg "output * power off"' \
-        resume 'date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"; swaymsg -t get_outputs -r | jq -e "any(.[]; .power == false)" >/dev/null && swaymsg "output * power on"; swaymsg "input type:touch events enabled"; swaymsg -t get_binding_state -r | jq -e ".name == \"pro1x-blanked\"" >/dev/null && swaymsg mode default' "$@"
+    set -- timeout "$BLANK_AFTER" 'pro1x-menu hide-all; swaymsg "input 1046:9286:Goodix_Capacitive_TouchScreen events disabled"; swaymsg -t get_binding_state -r | jq -e ".name == \"default\"" >/dev/null && swaymsg mode pro1x-blanked; swaymsg "output * power off"' \
+        resume 'date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/pro1x-woke"; swaymsg -t get_outputs -r | jq -e "any(.[]; .power == false)" >/dev/null && swaymsg "output * power on"; swaymsg "input 1046:9286:Goodix_Capacitive_TouchScreen events enabled"; swaymsg -t get_binding_state -r | jq -e ".name == \"pro1x-blanked\"" >/dev/null && swaymsg mode default' "$@"
 fi
 if [ -n "$DIM_AFTER" ]; then
     set -- timeout "$DIM_AFTER" 'pro1x-dim dim' resume 'pro1x-dim restore' "$@"

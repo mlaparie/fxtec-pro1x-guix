@@ -627,7 +627,7 @@ esac
                                 (call-with-input-file flag get-string-all)))
                    (when (panel-on?)
                      (close-port (open-output-file blanked)))
-                   (sway! "input type:touch events disabled")
+                   (sway! "input 1046:9286:Goodix_Capacitive_TouchScreen events disabled")
                    ;; Blanking hides the Sway menus (pro1x-menu hide-all).
                    (sway! "[app_id=\"^(quickactions|launcher|windowswitcher)$\"] move scratchpad")
                    (sway! "[app_id=\"^powermenu$\"] kill")
@@ -642,9 +642,9 @@ esac
                (cond ((file-exists? blanked)
                       (false-if-exception (delete-file blanked))
                       (sway! "output * power on")
-                      (sway! "input type:touch events enabled"))
+                      (sway! "input 1046:9286:Goodix_Capacitive_TouchScreen events enabled"))
                      ((panel-on?)
-                      (sway! "input type:touch events enabled"))))))
+                      (sway! "input 1046:9286:Goodix_Capacitive_TouchScreen events enabled"))))))
        (set-near! #f)
        ;; The sensor straight from the ADSP (ssccli), not through
        ;; iio-sensor-proxy: there changes came late, or not at all, and not

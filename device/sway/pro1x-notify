@@ -26,7 +26,7 @@ pidfile="$rt/pro1x-notify-wake.pid"
 if [ "${1:-}" = --wake-idle ]; then
     echo $$ > "$pidfile"
     exec swayidle timeout 1 true resume "pro1x-dim restore; kill $$" \
-         timeout "$WAKE_FOR" "swaymsg 'input type:touch events disabled'; swaymsg 'output * power off'; kill $$"
+         timeout "$WAKE_FOR" "swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events disabled'; swaymsg 'output * power off'; kill $$"
 fi
 
 id=${1:-}
@@ -63,7 +63,7 @@ if [ "$lit" = false ]; then
         echo 0 > "$bl/brightness"
     fi
     swaymsg 'output * power on' >/dev/null
-    swaymsg 'input type:touch events enabled' >/dev/null
+    swaymsg 'input 1046:9286:Goodix_Capacitive_TouchScreen events enabled' >/dev/null
     if [ -n "$bl" ]; then
         sleep 0.2
         echo $(( $(cat "$bl/max_brightness") * DIM_LEVEL / 200 )) > "$bl/brightness"
