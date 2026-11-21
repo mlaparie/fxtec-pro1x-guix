@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * fingerprint-unlock: a Phosh lock-screen plugin that unlocks with an
  * enrolled finger, through pro1x-fpd (device/fingerprint/pro1x-fpd).

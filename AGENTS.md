@@ -210,8 +210,9 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
   port, the kernel) before the author has read the final series.** The author's own
   repositories: commit and push when the author asks; push to both sr.ht and GitHub.
 - Rewrite history only before the first push. Once public, fix forward.
-- Licensing: this channel is GPL-3. Code and patches taken from another project keep their
-  origin and license stated in the file or commit. Check the license before importing.
+- Licensing: this channel is AGPL-3.0-or-later (GPL-3 until 2026-11-22). Code and patches
+  taken from another project keep their origin and license stated in the file or commit
+  (kernel patches GPL-2.0, libcamera patches LGPL, nyymi609's NixOS files with no licence). Check the license before importing.
 - Credit people by the name they publish under (handle), not a real name you happen to know.
 - Never mention the agent's private notes, corpora or tooling in upstream issues, PRs or commit
   messages; paste the evidence inline.

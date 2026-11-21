@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * pro1x-fprintd: fprintd's D-Bus interface (net.reactivated.Fprint) over
  * pro1x-fpd (../pro1x-fpd), so that fprintd clients, GNOME Settings' Users

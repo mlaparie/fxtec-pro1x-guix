@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * mafp-client: send one command to the Pro1X fingerprint trusted app (mafp)
  * through the QSEECOM TEE driver (kernel patch pro1x-qseecom-tee), and print

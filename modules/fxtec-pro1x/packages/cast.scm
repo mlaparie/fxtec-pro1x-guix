@@ -203,7 +203,7 @@ Chromecast receivers.")
 wlr-screencopy into DMA-BUFs, has the GPU convert each frame to NV12 straight
 into the V4L2 encoder's own buffers, and writes the H.264 access units to its
 standard output, framed with their capture times.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;; Stream's WebRTC method (device/sway/pro1x-stream-webrtc).  Its own package:
 ;; GStreamer's Python typelibs and plugins are found through its wrapper.
@@ -253,4 +253,4 @@ standard output, framed with their capture times.")
     (description "This package serves a web page, and sends the H.264 video of
 a command to the browser that opens it, by WebRTC.  With --interactive, the
 page's touches and keys are played on the device by virtual input devices.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))

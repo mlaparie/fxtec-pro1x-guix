@@ -150,7 +150,7 @@ Qualcomm QSEE on the F(x)tec Pro1X.")
     (description
      "A test tool: sends one command to the MicroArray fingerprint trusted
 application (mafp) through the Linux QSEECOM TEE driver and prints the reply.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; pro1x-fpd: the fingerprint daemon over the mafp TA, and its client
 ;;; (device/fingerprint/pro1x-fpd).  The TA protocol is moWerk's
@@ -184,7 +184,7 @@ application (mafp) through the Linux QSEECOM TEE driver and prints the reply.")
      "pro1x-fpd enrols, lists, removes and matches fingerprints on the
 F(x)tec Pro1X's sensor, through its stock trusted application in Qualcomm
 QSEE, and serves them on a Unix socket; the same program is its client.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; gtklock-fingerprint-module: unlocks gtklock with a finger, through
 ;;; pro1x-fpd (device/fingerprint/gtklock-fingerprint).
@@ -227,7 +227,7 @@ QSEE, and serves them on a Unix socket; the same program is its client.")
     (description
      "This gtklock module unlocks the screen when pro1x-fpd matches an
 enrolled finger; the password keeps working.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; pro1x-fprintd: fprintd's D-Bus interface over pro1x-fpd, for GNOME
 ;;; Settings' Users page (enrol, list, delete) and other fprintd clients.
@@ -270,4 +270,4 @@ enrolled finger; the password keeps working.")
      "pro1x-fprintd answers fprintd's D-Bus interface (net.reactivated.Fprint)
 with pro1x-fpd, so that GNOME Settings and other fprintd clients enrol, list
 and delete fingers on the Pro1X's sensor.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))

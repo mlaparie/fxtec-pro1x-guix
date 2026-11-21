@@ -284,7 +284,7 @@ sensor stack (linux-msm/hexagonrpc pull request 27).")
     (description
      "pro1x-dm-offset maps a block device from a byte offset to its end as a
 device-mapper linear target.  It is static, for an initrd without dmsetup.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; pro1x-xts-encrypt — host tool: offline AES-XTS-plain64 for FDE image creation
 ;;; Encrypts a disk image the same way dm-crypt does for a LUKS2 volume, without
@@ -516,7 +516,7 @@ the rear 48 MP mode, tap to focus, ISO, exposure
 compensation, the LED as flash or torch, a timer, digital zoom, and 720p
 videos on the hardware encoder, through libcamera's GStreamer source and
 the port's libcamera controls.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; cameractrl — V4L2 camera control GUI (focus, exposure)
@@ -1246,7 +1246,7 @@ completion and several layouts.")
      "pro1x-mms-fetch switches the mobile connection to the MMS APN while
 mmsd-tng downloads waiting MMS, then switches back: by itself, or after
 asking while roaming with roaming off or while the phone's hotspot runs.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; pro1x-doubletap — wake the panel with a double tap
@@ -1289,7 +1289,7 @@ asking while roaming with roaming off or while the phone's hotspot runs.")
     (description
      "pro1x-doubletap watches the touchscreen while the panel is off and
 sends a power-key press when it sees two quick taps close together.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; gtklock-virtkb-module — an on-screen keyboard inside gtklock
@@ -1676,7 +1676,7 @@ ignore-hw-keyboards=true
     (description
      "System-wide GSettings overrides for the Pro1X: volume above 100%, an
 on-screen keyboard despite the always-attached hardware keyboard.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; libadwaita-1.9 — for phosh-mobile-settings only
@@ -2251,7 +2251,7 @@ window opened by a sway key binding.")
 out, the device settings every sway session shares (pro1x.conf, for
 /etc/sway/config.d), an i3status-rust bar configuration, an fzf window
 switcher, and pro1x-idle and pro1x-dim, which dim the panel when idle.")
-    (license license:gpl3+)))
+    (license license:agpl3+)))
 
 (define-public sov-pro1x
   ;; Guix's sov without its test suite: mt_channel_test (a threading test

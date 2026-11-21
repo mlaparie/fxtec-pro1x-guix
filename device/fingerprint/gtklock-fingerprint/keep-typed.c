@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * gtklock-keep-typed: what was typed in the password field survives a new
  * gtklock.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /*
  * gtklock-fingerprint: a gtklock module that unlocks with an enrolled
  * finger, through pro1x-fpd (../pro1x-fpd).
