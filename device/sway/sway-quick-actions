@@ -182,13 +182,16 @@ case "${1:-}" in
     # pro1x-menu key drives it on the sublists' socket.
     --tool)
         export PRO1X_TOOL_SOCK="$rt/pro1x-quick-actions-ask.sock"
+        # Hiding quick actions aborts its lists one after another while this
+        # runs (pro1x-menu close-sub), back to the root.
+        echo $$ > "$rt/pro1x-quick-actions-sub.pid"
         # The system's, not this resident copy's own: it stays from login,
         # and a deploy's new tool would otherwise wait for the next one.
         case "$2" in
             tests) /run/current-system/profile/bin/pro1x-stream --tests ;;
             *) "/run/current-system/profile/bin/pro1x-$2" ;;
         esac
-        rm -f "$PRO1X_TOOL_SOCK"
+        rm -f "$PRO1X_TOOL_SOCK" "$rt/pro1x-quick-actions-sub.pid"
         exit ;;
     --resident)                 # Sway config, at login: start it hidden
         [ "$(qs_state)" = none ] && qs_start hidden
@@ -1835,11 +1838,13 @@ case "${1:-}" in
         pro1x-power-menu --menu && [ -n "${QS_RESIDENT:-}" ] && qs_hide
         exit 0 ;;
     --choose)
+        echo $$ > "$rt/pro1x-quick-actions-sub.pid"   # as --tool
         case "$2" in
             dicts) dict_choose ;;
             audio) audio_choose ;;
             *) choose "$2" ;;
         esac
+        rm -f "$rt/pro1x-quick-actions-sub.pid"
         exit ;;
     --dict-lines) dict_lines; exit ;;
     --dict-toggle) dict_toggle "$2"; exit ;;
