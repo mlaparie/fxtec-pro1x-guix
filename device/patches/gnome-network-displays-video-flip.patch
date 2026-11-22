@@ -4,7 +4,7 @@ On wlroots compositors that turn a screen in software (a phone in
 landscape), the screen-cast portal hands over the buffer as stored,
 portrait, with the turn apart as metadata, which Network Displays
 ignores: the TV showed the picture sideways and squeezed.  ND_VIDEO_FLIP
-names a videoflip video-direction (counterclockwise, clockwise,
+names a videoflip method (counterclockwise, clockwise,
 rotate-180) to put after the portal's source; the caller knows the
 screen's turn.  For fxtec-pro1x-guix (AGPL-3.0-or-later); the program's
 own licence (GPL-3.0-or-later) applies to this change upstream.
@@ -17,7 +17,7 @@ own licence (GPL-3.0-or-later) applies to this change upstream.
    else
 -    gst_element_link_many (src, dst, NULL);
 +    {
-+      /* ND_VIDEO_FLIP: a videoflip video-direction (counterclockwise...)
++      /* ND_VIDEO_FLIP: a videoflip method (counterclockwise...)
 +       * for a screen the compositor turns in software, whose buffer the
 +       * portal hands over as stored, its turn apart (wlroots on a phone:
 +       * the picture came sideways and squeezed). */
@@ -28,7 +28,7 @@ own licence (GPL-3.0-or-later) applies to this change upstream.
 +        turn = gst_element_factory_make ("videoflip", "nd-video-flip");
 +      if (turn)
 +        {
-+          gst_util_set_object_arg (G_OBJECT (turn), "video-direction", flip);
++          gst_util_set_object_arg (G_OBJECT (turn), "method", flip);
 +          gst_bin_add (bin, turn);
 +          gst_element_link_many (src, turn, dst, NULL);
 +        }

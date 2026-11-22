@@ -1063,10 +1063,10 @@ network_displays() {
 
 # Network Displays aborts at start now and then, in libpulse ("Assertion
 # 'c->callback' failed", about one start in two, 2026-11-22, the
-# unpatched build too): started again, three times at most, while it
+# unpatched build too): started again, eight times at most, while it
 # dies within its first 5 s.
 [ "${1:-}" = --network-displays ] && {
-    for _ in 1 2 3; do
+    for _ in 1 2 3 4 5 6 7 8; do
         t0=$(date +%s)
         ND_VIDEO_FLIP=${2:-} gnome-network-displays && exit 0
         [ $(( $(date +%s) - t0 )) -lt 5 ] || exit 0
