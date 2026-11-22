@@ -1,39 +1,93 @@
-Miracast: turn the screen-cast picture (ND_VIDEO_FLIP).
+Miracast and Chromecast: turn the screen-cast picture, on the GPU.
 
 On wlroots compositors that turn a screen in software (a phone in
 landscape), the screen-cast portal hands over the buffer as stored,
 portrait, with the turn apart as metadata, which Network Displays
 ignores: the TV showed the picture sideways and squeezed.  ND_VIDEO_FLIP
-names a videoflip method (counterclockwise, clockwise,
-rotate-180) to put after the portal's source; the caller knows the
-screen's turn.  For fxtec-pro1x-guix (AGPL-3.0-or-later); the program's
-own licence (GPL-3.0-or-later) applies to this change upstream.
+names a videoflip method (counterclockwise, clockwise, rotate-180) and
+ND_VIDEO_SIZE the size to send; the caller knows the screen's turn.  The
+turn, the scaling and the conversion to NV12 (for a hardware encoder)
+run on the GPU: on the Pro¹x's CPU they held the stream to about 3
+frames a second.  Without GL elements, a CPU videoflip.  For
+fxtec-pro1x-guix (AGPL-3.0-or-later); the program's own licence
+(GPL-3.0-or-later) applies to this change upstream.
 
 --- a/src/app/nd-window.c	2026-11-22 00:57:08.316295826 +0100
-+++ b/src/app/nd-window.c	2026-11-22 01:25:40.935417440 +0100
-@@ -190,7 +190,25 @@
++++ b/src/app/nd-window.c	2026-11-22 02:07:32.580312560 +0100
+@@ -16,6 +16,7 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <stdio.h>
+ #include <glib/gi18n.h>
+ #include <gst/base/base.h>
+ #include <gst/gst.h>
+@@ -190,7 +191,68 @@
        gst_element_link_many (src, filter, dst, NULL);
      }
    else
 -    gst_element_link_many (src, dst, NULL);
 +    {
-+      /* ND_VIDEO_FLIP: a videoflip method (counterclockwise...)
-+       * for a screen the compositor turns in software, whose buffer the
-+       * portal hands over as stored, its turn apart (wlroots on a phone:
-+       * the picture came sideways and squeezed). */
++      /* ND_VIDEO_FLIP: a videoflip method (counterclockwise...) for a
++       * screen the compositor turns in software, whose buffer the portal
++       * hands over as stored, its turn apart (wlroots on a phone: the
++       * picture came sideways and squeezed).  ND_VIDEO_SIZE (WxH): the
++       * size to send, the turned screen's shape.  On the GPU (turn, scale,
++       * then NV12 for a hardware encoder): on a phone's CPU the same took
++       * 0.2 s a frame at 2160x1080, ten times the GPU path's CPU time. */
 +      const gchar *flip = g_getenv ("ND_VIDEO_FLIP");
-+      GstElement *turn = NULL;
++      const gchar *size = g_getenv ("ND_VIDEO_SIZE");
++      gint width = 0, height = 0;
++      GstElement *up, *rgba, *turn, *scale, *scaled, *tonv12, *nv12, *down;
 +
-+      if (flip && *flip)
-+        turn = gst_element_factory_make ("videoflip", "nd-video-flip");
-+      if (turn)
++      if (size)
++        sscanf (size, "%dx%d", &width, &height);
++      up = gst_element_factory_make ("glupload", NULL);
++      rgba = gst_element_factory_make ("glcolorconvert", NULL);
++      turn = gst_element_factory_make ("glvideoflip", NULL);
++      scale = gst_element_factory_make ("glcolorscale", NULL);
++      scaled = gst_element_factory_make ("capsfilter", NULL);
++      tonv12 = gst_element_factory_make ("glcolorconvert", NULL);
++      nv12 = gst_element_factory_make ("capsfilter", NULL);
++      down = gst_element_factory_make ("gldownload", NULL);
++
++      if (flip && *flip && width > 0 && height > 0 &&
++          up && rgba && turn && scale && scaled && tonv12 && nv12 && down)
 +        {
++          GstCaps *c;
++
 +          gst_util_set_object_arg (G_OBJECT (turn), "method", flip);
-+          gst_bin_add (bin, turn);
-+          gst_element_link_many (src, turn, dst, NULL);
++          c = gst_caps_from_string ("video/x-raw(memory:GLMemory)");
++          gst_caps_set_simple (c, "width", G_TYPE_INT, width,
++                               "height", G_TYPE_INT, height, NULL);
++          g_object_set (scaled, "caps", c, NULL);
++          gst_caps_unref (c);
++          c = gst_caps_from_string ("video/x-raw(memory:GLMemory),format=NV12");
++          g_object_set (nv12, "caps", c, NULL);
++          gst_caps_unref (c);
++          gst_bin_add_many (bin, up, rgba, turn, scale, scaled, tonv12, nv12, down, NULL);
++          gst_element_link_many (src, up, rgba, turn, scale, scaled, tonv12, nv12, down, dst, NULL);
 +        }
 +      else
-+        gst_element_link_many (src, dst, NULL);
++        {
++          GstElement *cpu_turn = NULL;
++
++          GstElement *unused[] = { up, rgba, turn, scale, scaled, tonv12, nv12, down };
++
++          for (guint i = 0; i < G_N_ELEMENTS (unused); i++)
++            if (unused[i])
++              gst_object_unref (gst_object_ref_sink (unused[i]));
++          if (flip && *flip)
++            cpu_turn = gst_element_factory_make ("videoflip", "nd-video-flip");
++          if (cpu_turn)
++            {
++              gst_util_set_object_arg (G_OBJECT (cpu_turn), "method", flip);
++              gst_bin_add (bin, cpu_turn);
++              gst_element_link_many (src, cpu_turn, dst, NULL);
++            }
++          else
++            gst_element_link_many (src, dst, NULL);
++        }
 +    }
  
    res = gst_element_factory_make ("intervideosrc", "screencastsrc");
