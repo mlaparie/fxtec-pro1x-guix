@@ -69,7 +69,7 @@ keymap from droidian-devices/linux-android-fxtec-pro1 PR #2:
   Super+f, Super+space        fullscreen, floating
   Super+h, Super+v            split vertically, horizontally
   Super+e, Super+w, Super+r   split layout, tabs, resize mode
-  Super+o, Shift+Super+o      window opacity up, down
+  Super+o, Ctrl+Shift+Super+o window opacity up, down
   Ctrl+Super+o                a new workspace, named in a prompt
   Super+i, Super+b            on-screen keyboard, bar
   Ctrl+Super+l, both volume keys   lock
