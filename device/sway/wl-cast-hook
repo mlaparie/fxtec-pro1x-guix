@@ -1,0 +1,43 @@
+#!/bin/sh
+# wl-cast's hook on the Pro¹x (etc/xdg/wl-cast/hook; a user's own
+# ~/.config/wl-cast/hook replaces it), see wl-cast's examples/hook:
+#
+#   awake         Keep screen on (quick actions' caffeine) while streaming
+#   wifi          Wi-Fi power saving off while streaming (pro1x-wifi-powersave)
+#   touch         the panel's edge swipes, the Super gesture and the
+#                 two-finger close on the viewer's touches (lisgd)
+#   screen-gone   the on-screen keyboard back on the panel
+#   screen        the page's DIM button: the power key (pro1x-power-key)
+#
+# State: awake, wifi, touch (without the two-finger gestures) and
+# screen-gone used from ~/.config on the phone (2026-11-21/22); the rest
+# untested.
+caffeine="${XDG_RUNTIME_DIR:-/tmp}/pro1x-caffeine"
+case "$1" in
+    awake)
+        on=$(cat "$caffeine" 2>/dev/null)
+        if [ "$2" = on ]; then
+            [ "$on" = on ] && exit 2       # already: nothing to undo
+            sway-quick-actions --act caffeine
+        else
+            [ "$on" = on ] && sway-quick-actions --act caffeine
+        fi
+        exit 0 ;;
+    wifi)
+        sudo -n /run/current-system/profile/bin/pro1x-wifi-powersave "$2" ;;
+    touch)
+        # The viewer's touches, 0-65535 on both axes as the picture shows.
+        exec lisgd -d "$2" -w 65535 -h 65535 -o 0 -T 4800 -s 2 -r 30 -m 1200 \
+            -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
+            -g "1,DU,B,*,P,pro1x-osk toggle stream &" \
+            -g "1,RL,R,*,P,pro1x-gestures menu launcher &" \
+            -g "1,LR,L,*,P,pro1x-gestures menu windowswitcher &" \
+            -g "2,LR,L,*,P,pro1x-super start &" \
+            -g "2,RL,R,*,P,pro1x-super start &" \
+            -g "2,UD,B,*,R,swaymsg kill >/dev/null &" ;;
+    screen-gone)
+        swaymsg exec "pro1x-osk home" >/dev/null ;;
+    screen)
+        exec pro1x-power-key ;;
+    *) exit 1 ;;
+esac

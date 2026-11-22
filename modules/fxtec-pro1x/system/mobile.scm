@@ -27,6 +27,7 @@
              (guix gexp)
              (fxtec-pro1x packages audio)   ; libcallaudio/pro1x
              (fxtec-pro1x packages cast)
+             (fxtec-pro1x packages wl-cast)
              (fxtec-pro1x packages bootloader)
              (gnu packages bash)
              (gnu packages fonts)
@@ -1019,6 +1020,9 @@ Dracula palette, no kernel messages over the greeter.")
      wf-recorder
      ;; The quick actions' Stream line.
      catt gnome-network-displays pro1x-stream-webrtc
+     ;; wl-cast, tried in quick actions' streams beside pro1x-stream's
+     ;; browser streams (its buttons and hook: pro1x-sway-config).
+     wl-cast
      ;; File manager (author): Nautilus, adaptive (libadwaita), fits the
      ;; phone in portrait.
      nautilus

@@ -1888,6 +1888,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-super                    Super held from the touchscreen (wtype)
 ;;;   share/pro1x-sway/super.conf        its Sway mode (/etc/sway/pro1x.d/)
 ;;;   bin/pro1x-workspace                a workspace named in a prompt (s-C-o)
+;;;   etc/xdg/wl-cast/{buttons,hook}     wl-cast's buttons and hook on the Pro¹x
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
@@ -1946,6 +1947,8 @@ window opened by a sway key binding.")
       #~'(("config" "share/pro1x-sway/")
           ("blank.conf" "share/pro1x-sway/")
           ("super.conf" "share/pro1x-sway/")
+          ("wl-cast-buttons" "etc/xdg/wl-cast/buttons")
+          ("wl-cast-hook" "etc/xdg/wl-cast/hook")
           ("mpv.conf" "etc/xdg/mpv/")
           ("desktop.conf" "share/pro1x-sway/")
           ("effects-swayfx.conf" "share/pro1x-sway/")
@@ -2222,6 +2225,7 @@ window opened by a sway key binding.")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "evtest" "gawk" "grep" "jq" "lisgd"))))))
+                (chmod (string-append #$output "/etc/xdg/wl-cast/hook") #o755)
                 (let ((super (string-append #$output "/bin/pro1x-super")))
                   (chmod super #o755)
                   ;; swaymsg, gdbus and fbcli: system profile; pro1x-osk: $output.
