@@ -249,6 +249,10 @@ the phone's Tailscale address), not UDP to 10.42.0.1.  Screen of its own 1600x12
 delay 180-490 ms (110-220 ms on the panel just before), 4-6 frames/s encoded, 0-5 shown,
 frame age up to 1.8 s, RTT 3-350 ms, audio buffer 0.9-1.7 s, 60-65 °C.  To find: why no UDP
 pair (server-side ICE log), and why encoding the larger screen takes twice as long.
+*** TODO [#C] wl-cast README: DIRECT mode's figures (author, 2026-11-22)
+Measure near the router (5 GHz): INFO's latency to drawn and its parts,
+fps, skipped frames, CPU; add a DIRECT column or rows to the Performance
+table.  The frame age is right only since a5b53f2 (clock offset).
 *** TODO [#B] A port branch on wl-cast instead of its own stream tools
 Plan (2026-11-21, author: the interactive stream on the generic wl-cast with the port's
 buttons, and the read-only stream with only what it needs).
