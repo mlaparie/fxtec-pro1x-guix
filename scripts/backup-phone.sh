@@ -25,8 +25,10 @@
 #                              in the home), the default; "all", also the
 #                              Android image (/var/lib/waydroid, about 2 GB,
 #                              not its download cache); "none", neither
+#   ~/.mail                    asked (PRO1X_MAIL answers yes or no; no by
+#                              default): mail can be synced again
 # PRO1X_EXCLUDE leaves more of the home out: paths relative to it, separated by
-# spaces (PRO1X_EXCLUDE=.mail: mail that can be synced again from the PC).
+# spaces.
 # Not saved: /etc/shadow (passwords: set them again with passwd), the store
 # (the system comes back with a deploy), generations.
 #
@@ -54,7 +56,8 @@
 # new key) needs a separate known_hosts entry, or `ssh-keygen -R HOST` first.
 #
 # Environment: PRO1X_USER (default user), PRO1X_LOGIN (default root),
-# PRO1X_FORCE, PRO1X_EXCLUDE, PRO1X_WAYDROID (data, all or none).
+# PRO1X_FORCE, PRO1X_EXCLUDE, PRO1X_WAYDROID (data, all or none), PRO1X_MAIL
+# (yes or no).
 #
 # State: the same commands, by hand, backed up and restored the author's
 # phone across the first encrypted flash (2026-11-05).  The script's backup
@@ -118,7 +121,17 @@ case "$cmd" in
                 *) die "PRO1X_WAYDROID: data, all or none, not $waydroid" ;;
             esac
         fi
+        # Mail: often the largest part, and a mail client can sync it again.
+        mail="${PRO1X_MAIL:-}"
+        if [[ -z "$mail" ]] && phone "[ -d /home/$user/.mail ]"; then
+            size=$(phone "du -sh /home/$user/.mail | cut -f1")
+            read -r -p "Save the mail in ~/.mail too ($size)? [y/N] " mail
+        fi
         excludes=
+        case "$mail" in
+            [yY]*) ;;
+            *) excludes+=" --exclude=home/$user/.mail" ;;
+        esac
         for e in ${PRO1X_EXCLUDE:-}; do excludes+=" --exclude=home/$user/${e#/}"; done
         if [[ "$waydroid" == all ]]; then
             paths+=(var/lib/waydroid)
