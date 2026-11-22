@@ -341,6 +341,10 @@ stop_stream() {
     # Moonlight's screen of its own (pro1x-virtual-screen), after Sunshine.
     stop_screen=$([ -f "$rt/pro1x-virtual-screen" ] && echo 1)
     funnel_stop
+    # wl-cast's own stop: its sound output, dim, Funnel and idle back too.
+    case "$(cut -d' ' -f1 "$kind_file" 2>/dev/null)" in
+        wlcast-*) wl-cast stop ;;
+    esac
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
     rm -f "$pid_file" "$to_file" "$kind_file"
     [ -n "${stop_screen:-}" ] && pro1x-virtual-screen stop
@@ -350,7 +354,7 @@ stop_stream() {
 running_links() {
     read -r kind arg < "$kind_file" 2>/dev/null || return
     case "$kind" in
-        interactive|webrtc) show_links "$(streaming_note "$arg")" "${arg:+?k=$arg}" ;;
+        interactive|webrtc|wlcast-*) show_links "$(streaming_note "$arg")" "${arg:+?k=$arg}" ;;
         mjpeg) simple_links ;;
         moonlight) moonlight_links ;;
         test[123]) test_links "${kind#test}" "$arg" ;;
@@ -1053,6 +1057,31 @@ try_catt() {
 # ignores: the TV got it sideways and squeezed (author, 2026-11-22).  Our
 # patch turns it back on the GPU (ND_VIDEO_FLIP), for the panel's turn when
 # it starts, to the panel's shape in 1920x1080 (ND_VIDEO_SIZE).
+# wl-cast (codeberg.org/mlaparie/wl-cast), tried here beside the browser
+# streams above before it replaces them (author, 2026-11-22): the same
+# settings (key, approval, visibility, screen mode, rate), the screen
+# dimmed rather than blanked by the power key (-d) with the panel's touch
+# off (-T), and the port's buttons, gestures and hook (etc/xdg/wl-cast).
+# Its pid in pid_file, so that the bar, pocket mode, the call watcher and
+# this menu see it as a stream.  view: watching only (-n).
+send_wlcast() {                 # send_wlcast interactive|view
+    mode=$1
+    k=
+    key_on && k=$(current_key)
+    stop_stream
+    set -- -o DSI-1 -k "$k" -A "$(approve)" -v "$(visibility)" -s "$(screen)" -f "$(fps)" -d -T
+    [ "$mode" = view ] && set -- "$@" -n
+    if ! out=$(wl-cast start "$@" 2>&1); then
+        notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
+        return 1
+    fi
+    cp "$rt/wl-cast.pid" "$pid_file"
+    echo "wlcast-$mode $k" > "$kind_file"
+    echo "wl-cast $mode, $(printf '%s\n' "$out" | head -n 1 | cut -f1)" > "$to_file"
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
+    leave_menu
+}
+
 network_displays() {
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null 2>&1
     t=$(swaymsg -t get_outputs -r | jq -r '.[] | select(.name == "DSI-1") | .transform')
@@ -1118,6 +1147,8 @@ while :; do
         printf '%s\t%s\n' \
             interactive "Browser, interactive  lowest latency; screen, sound, touch and keys (approval recommended)" \
             webrtc "Browser, read-only    lowest latency; screen and sound, no input" \
+            wlcast-interactive "wl-cast, interactive  (test) as Browser, interactive, by wl-cast" \
+            wlcast-view "wl-cast, view only    (test) as Browser, read-only, by wl-cast" \
             mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
@@ -1142,6 +1173,8 @@ while :; do
         moonlight) send_moonlight ;;
         webrtc) send_webrtc ;;
         interactive) send_interactive ;;
+        wlcast-interactive) send_wlcast interactive ;;
+        wlcast-view) send_wlcast view ;;
         settings) settings_menu ;;
         catt) try_catt ;;
         miracast) network_displays; break ;;
