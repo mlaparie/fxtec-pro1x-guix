@@ -30,3 +30,9 @@ CONFIG_ATH_REG_DYNAMIC_USER_CERT_TESTING=y
 # device tree; built in, to record from the start.
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y
+# USB display adapters with free drivers, for an external screen: the SoC
+# has no DisplayPort (rag-notes display, 2026-11-22).  GUD: a Raspberry Pi
+# Zero or Pico with the GUD gadget firmware as a USB-to-HDMI adapter; UDL:
+# old DisplayLink USB 2.0 adapters (DL-1x5).  Modules, loaded on plug-in.
+CONFIG_DRM_GUD=m
+CONFIG_DRM_UDL=m
