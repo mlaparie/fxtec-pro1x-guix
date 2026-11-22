@@ -33,6 +33,14 @@ case "${1:-}" in
         now=$(date +%s%N)
         [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 1000000000 ] && exit 0
         echo "$now" > "$stamp"
+        # The first finger in may have opened its menu before the second
+        # one moved (lisgd counts the fingers down at that moment): closed
+        # again (author, 2026-11-22).
+        for m in launcher windowswitcher; do
+            ms=$rt/pro1x-gesture-$m
+            [ $(( now - $(cat "$ms" 2>/dev/null || echo 0) )) -lt 1500000000 ] &&
+                { rm -f "$ms"; pro1x-menu toggle "$m" >/dev/null 2>&1 & }
+        done
         if [ "$(mode)" = super ]; then
             swaymsg mode default >/dev/null; osk_restore; exit 0
         fi
