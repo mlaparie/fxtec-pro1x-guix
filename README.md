@@ -45,7 +45,6 @@ GPS                              Working    Satellite app; not yet passed to And
 Video encoding (Venus)           Working    hardware H.264 for screen streaming
 Video decoding (Venus)           Working    H.264, HEVC, VP9 in mpv and Showtime
 Screen streaming, casting        Working    browser (with touch and keys), Miracast, Chromecast, VLC
-External display (USB-C)         No         the SoC has no DisplayPort; USB display adapters planned
 NFC                              Untested
 Full-disk encryption             Working    LUKS2, passphrase at boot
 ```
