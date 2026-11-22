@@ -1,5 +1,42 @@
 # Release notes
 
+## Unreleased (dev-next, since 0.5.0)
+
+Being tested on the phone; the next release will sum it up.
+
+### New
+
+- Browser streams in quick actions' Stream: the screen with sound, touch
+  and keys in a car's or a PC's browser (interactive) or to watch
+  (read-only); screen modes host, client and multi-monitor; DIRECT mode
+  (WebCodecs); approval by tap or fingerprint; HTTPS with a real
+  certificate and a public link through Tailscale Funnel; the hotspot
+  beside Wi-Fi (ap0) and a 5 GHz hotspot.  While streamed, the panel is
+  dimmed rather than blanked, and a call pauses the stream.
+- wl-cast, the browser stream as a project of its own, in the Stream menu
+  as a test, with the port's buttons, gestures and hook.
+- Miracast and Chromecast mirroring (GNOME Network Displays), on the
+  hardware encoder, the picture turned and scaled on the GPU.
+- Hardware video decoding (Venus: H.264, HEVC, VP9) in mpv, and Showtime as
+  the light player for films.
+- The camera app (pro1x-camera-app): settings overlay, tags, timer, zoom,
+  flash modes, night mode, videos with sound.
+- Sway: Super held from the touchscreen (both edges swiped in), named
+  workspaces (Ctrl+Super+o), two fingers down out the bottom to close a
+  window; the lock screen's keyboard follows a slide.
+- Waydroid: Bluetooth LE and GPS for Android, shared folders, memory and
+  CPU limits, untiled rendering per app.
+- Hibernation work (swap file, DSP restarts, LED pattern): off in this
+  branch until the session survives it.
+- Kernel: GUD and UDL USB display drivers (for USB display adapters).
+- `backup-phone.sh` asks whether to save `~/.mail`.
+
+### Changed
+
+- Licence: AGPL-3.0-or-later (GPL-3.0-or-later until 2026-11-22).
+- The root is btrfs only.
+- Opacity down is Shift+Super+o (Ctrl+Super+o names a workspace).
+
 ## 0.5.0 — 2026-11-12
 
 Fingerprint unlock in Sway and Phosh, Android apps with Waydroid, and

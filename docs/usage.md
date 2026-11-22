@@ -102,6 +102,10 @@ Times and levels are options in `config.scm` ([configure.md](configure.md)).
 
 ## Sway's menus
 
+With the keyboard slid in, swipe in from both edges at once for Super:
+the next key on the on-screen keyboard acts as Super+key (Esc, the same
+swipe, or 5 s cancel).
+
 Quick actions (top swipe, Super+q), the launcher (right swipe, Super+m),
 the window switcher (left swipe, Super+Tab) and the power menu (power key
 held) are lists: type to filter, arrows to move, Enter to choose, Esc to

@@ -1,14 +1,24 @@
-# Interactive stream: the Pro¹x's screen in a browser, with input (plan)
+# Interactive stream: the Pro¹x's screen in a browser, with input
 
-State (2026-11-18): a first version, for M0 and a first M3: Stream menu >
-Interactive streams the whole screen by hardware WebRTC
-(`pro1x-stream-webrtc --interactive`) to a page that sends touches and keys
-back over a data channel, played by virtual input devices; the page can
-draw on a canvas, shows and logs what the browser reports
-(`~/.local/state/pro1x/interactive-stream.log`).  Tested on the phone
-without a browser: the devices appear, the offer carries the data channel,
-the log works, Stop ends it.  Not yet seen in a browser; no sound; the
-mirrored screen, not yet a headless output.
+State (2026-11-22): in use, from a car's browser and from PCs and phones.
+Stream menu > Browser, interactive (and read-only): the screen by hardware
+H.264 (wl-cast-capture) over WebRTC, with sound; touches, keys and the
+page's buttons back to virtual input devices; VIDEO, CANVAS or DIRECT
+(WebCodecs) on the page; screen modes host, client (a screen of the
+viewer's window size) and multi-monitor; approval by tap or fingerprint;
+HTTPS with a real certificate (pro1x-stream-cert) and a public link through
+Tailscale Funnel.  While the panel is streamed, the power key dims it rather
+than blanking it and the proximity sensor leaves it on, and a picked-up call
+pauses the
+stream.  On a good 5 GHz link, about 60-70 ms from the panel to the browser
+(measured with wl-cast's same capture, 2026-11-21).
+
+wl-cast (codeberg.org/mlaparie/wl-cast) is the same stream as a project of
+its own, with AV SYNC, INFO curves, a view-only mode, the stream's sound on
+an output of its own (Stream viewer, in quick actions' Audio outputs) and
+more; it is in the Stream menu as "wl-cast (test)" until it replaces
+pro1x-stream's browser streams.  The plan below is the original one
+(2026-11-17), kept for its reasoning.
 
 ## Goal
 

@@ -58,7 +58,14 @@ suspend, deep sleep, charging (it goes above the charge limit).
 ## Sway on the phone
 
 - Edge swipes: top, quick actions; bottom, on-screen keyboard; right,
-  app launcher; left, window switcher.  Same swipe again closes.
+  app launcher; left, window switcher.  Same swipe again closes.  Up from
+  the bottom and back out, or two fingers down out the bottom edge, closes
+  the focused window.
+- Super held from the touchscreen (keyboard slid in): both edges swiped in
+  at once, then a key on the on-screen keyboard acts as Super+key, so the
+  Super bindings work without the keyboard.  Being tested.
+- Named workspaces: Ctrl+Super+o asks a name; the window switcher lists them
+  while they hold a window.
 - Quick actions (Super+q): toggles with Left/Right, battery, network
   details (2G/3G/4G), mobile data modes and roaming, SIM PIN entry,
   notifications with a preview, camera, lock, charge limit, word completion,
@@ -110,6 +117,19 @@ suspend, deep sleep, charging (it goes above the charge limit).
 - Volume and brightness keys show a bar for a second (grey when muted).
 - Screenshots: Fn+Alt+P (region: with Ctrl); camera button opens
   Snapshot, or takes a picture in it.
+- Videos decoded by the phone's hardware (Venus: H.264, HEVC, VP9): mpv
+  (system settings with `profile=fast`, which leaves the GPU room), and
+  Showtime, which hands the decoder's frames straight to the screen (about
+  2 % of the CPU for 1080p30).
+- Streams and casting (quick actions' Stream): the screen in a browser,
+  interactive (touch, keys, sound; for a car or a PC) or read-only, over
+  Wi-Fi, the hotspot, USB or Tailscale (Funnel for a public link); Miracast
+  and Chromecast mirroring (GNOME Network Displays, on the hardware encoder);
+  a video sent to a Chromecast (catt); VLC; Moonlight.  While a browser
+  stream shows the panel, the power key dims it rather than blanking it
+  and the proximity sensor leaves it on (a blank screen is not captured),
+  and a picked-up call pauses the stream.  wl-cast, the browser stream as a project of its
+  own, is being tried beside it ([interactive-stream.md](interactive-stream.md)).
 - SwayFX: blur behind the 90 % opaque foot (Iosevka); foot server for
   fast menus and terminals.
 - The port's Sway, bar and foot settings follow updates; your own files
@@ -117,8 +137,8 @@ suspend, deep sleep, charging (it goes above the charge limit).
 
 ## Not yet
 
-Mute in calls, outgoing VoLTE calls, a GPS app, video decoding,
-headphones, NFC.  Details: [README](../README.md#what-works),
+Mute in calls, outgoing VoLTE calls, headphones, NFC, an external screen
+over USB-C (no DisplayPort in the SoC; USB display adapters are planned).  Details: [README](../README.md#what-works),
 [TODO.org](../TODO.org).
 
 ## How it is run

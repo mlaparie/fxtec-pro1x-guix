@@ -12,7 +12,7 @@ where the kernel patches, firmware and flash approach come from.
 
 ## What works
 
-As observed on the phone (2026-11-14, Linux 7.3).  The sessions, menus and
+As observed on the phone (2026-11-22, Linux 7.3).  The sessions, menus and
 phone comforts: [features.md](docs/features.md).
 
 ```
@@ -43,7 +43,9 @@ Android apps (Waydroid)          Working    with or without Google Play
 Suspend                          Working    calls and SMS wake it
 GPS                              Working    Satellite app; not yet passed to Android apps
 Video encoding (Venus)           Working    hardware H.264 for screen streaming
-Video decoding (Venus)           Untested
+Video decoding (Venus)           Working    H.264, HEVC, VP9 in mpv and Showtime
+Screen streaming, casting        Working    browser (with touch and keys), Miracast, Chromecast, VLC
+External display (USB-C)         No         the SoC has no DisplayPort; USB display adapters planned
 NFC                              Untested
 Full-disk encryption             Working    LUKS2, passphrase at boot
 ```
@@ -86,6 +88,13 @@ afterwards: [update.md](docs/update.md).
 Source on sr.ht (`~mlaparie/fxtec-pro1x-guix`), mirrored on
 [GitHub](https://github.com/mlaparie/fxtec-pro1x-guix), where CI builds the
 images.
+
+## Licence
+
+GNU AGPL-3.0-or-later ([LICENSE](LICENSE)); GPL-3.0-or-later until
+2026-11-22.  Code and patches taken from other projects keep their own
+licence, stated in the file or the commit (kernel patches GPL-2.0, libcamera
+patches LGPL).
 
 ## Credits
 
