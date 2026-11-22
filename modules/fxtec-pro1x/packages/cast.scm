@@ -141,7 +141,12 @@ or a local file, to a Chromecast, and controls its playback.")
         (list
          (local-file
           (repository-file "device/patches/gnome-network-displays-v4l2h264enc.patch")
-          "gnome-network-displays-v4l2h264enc.patch")))))
+          "gnome-network-displays-v4l2h264enc.patch")
+         ;; The picture turned as the screen is (ND_VIDEO_FLIP, set by the
+         ;; stream menu): the portal hands the panel over sideways.
+         (local-file
+          (repository-file "device/patches/gnome-network-displays-video-flip.patch")
+          "gnome-network-displays-video-flip.patch")))))
     (build-system meson-build-system)
     (arguments
      (list

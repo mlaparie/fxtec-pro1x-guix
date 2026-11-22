@@ -1048,9 +1048,17 @@ try_catt() {
     err=$(catt -d "$name" cast "$what" 2>&1) || notice "Chromecast: ${err:-failed}"
 }
 
+# The portal hands Network Displays the panel's buffer as stored, sideways
+# when the panel is turned (in software), and the turn apart, which it
+# ignores: the TV got it sideways and squeezed (author, 2026-11-22).  Our
+# patch turns it back (ND_VIDEO_FLIP), for the panel's turn when it starts.
 network_displays() {
     swaymsg '[app_id="^quickactions$"] move scratchpad' >/dev/null 2>&1
-    swaymsg exec gnome-network-displays >/dev/null 2>&1
+    t=$(swaymsg -t get_outputs -r | jq -r '.[] | select(.name == "DSI-1") | .transform')
+    case "$t" in
+        90) flip=counterclockwise ;; 270) flip=clockwise ;; 180) flip=rotate-180 ;; *) flip= ;;
+    esac
+    swaymsg exec "env ND_VIDEO_FLIP=$flip gnome-network-displays" >/dev/null 2>&1
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
