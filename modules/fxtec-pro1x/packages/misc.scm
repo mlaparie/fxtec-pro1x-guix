@@ -1614,6 +1614,7 @@ devices, and NVIDIA ones when the vendor's library is installed.")
                      "On-screen keyboard  s-i      or bottom swipe\n"
                      "Open terminal       s-<ret>\n"
                      "Close window        s-<backspace> or bottom in-out\n"
+                     "Super held          both sides swipe in, then a key\n"
                      "Help                C-s-h\n"
                      "Power menu          power key (long press)\n"
                      "Touchpad            s-t      or camera button (hold)\n"
@@ -1884,6 +1885,8 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
 ;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
+;;;   bin/pro1x-super                    Super held from the touchscreen (wtype)
+;;;   share/pro1x-sway/super.conf        its Sway mode (/etc/sway/pro1x.d/)
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
@@ -1934,13 +1937,14 @@ window opened by a sway key binding.")
     (inputs (list bash certbot chafa coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
                   mobile-broadband-provider-info qrencode sed slurp swayidle
-                  openssl tzdata wl-clipboard wl-mirror
+                  openssl tzdata wl-clipboard wl-mirror wtype
                   (list glib "bin")))
     (arguments
      (list
       #:install-plan
       #~'(("config" "share/pro1x-sway/")
           ("blank.conf" "share/pro1x-sway/")
+          ("super.conf" "share/pro1x-sway/")
           ("mpv.conf" "etc/xdg/mpv/")
           ("desktop.conf" "share/pro1x-sway/")
           ("effects-swayfx.conf" "share/pro1x-sway/")
@@ -1965,6 +1969,7 @@ window opened by a sway key binding.")
           ("pro1x-mako" "bin/")
           ("pro1x-notify" "bin/")
           ("pro1x-gestures" "bin/")
+          ("pro1x-super" "bin/")
           ("pro1x-term" "bin/")
           ("pro1x-call-watch" "bin/")
           ("pro1x-status" "bin/")
@@ -2215,6 +2220,15 @@ window opened by a sway key binding.")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
                               '("coreutils" "evtest" "gawk" "grep" "jq" "lisgd"))))))
+                (let ((super (string-append #$output "/bin/pro1x-super")))
+                  (chmod super #o755)
+                  ;; swaymsg, gdbus and fbcli: system profile; pro1x-osk: $output.
+                  (wrap-program super
+                    `("PATH" ":" prefix
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "grep" "jq" "sed" "wtype"))))))
                 (let ((notify (string-append #$output "/bin/pro1x-notify")))
                   (chmod notify #o755)
                   ;; swaymsg comes from the system profile.

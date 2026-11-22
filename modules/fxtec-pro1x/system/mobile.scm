@@ -747,6 +747,8 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
           ,(file-append pro1x-sway-config "/share/pro1x-sway/desktop.conf"))
         `("sway/pro1x.d/blank.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/blank.conf"))
+        `("sway/pro1x.d/super.conf"
+          ,(file-append pro1x-sway-config "/share/pro1x-sway/super.conf"))
         `("sway/pro1x-effects/swayfx.conf"
           ,(file-append pro1x-sway-config "/share/pro1x-sway/effects-swayfx.conf"))))
 

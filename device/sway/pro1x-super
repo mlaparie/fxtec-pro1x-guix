@@ -1,0 +1,62 @@
+#!/bin/sh
+# pro1x-super — Super held, from the touchscreen: the next key typed (on the
+# on-screen keyboard) acts as Super+key.
+#
+#   pro1x-super start       Sway's "super" mode, the on-screen keyboard shown;
+#                           again (or Escape, or 5 s without a key) leaves it
+#   pro1x-super key COMBO   from the mode's bindings (super.conf): COMBO sent
+#                           again with Super added (wtype), the keyboard hidden
+#                           if start showed it
+#   pro1x-super leave       the keyboard hidden again (Escape in the mode)
+#
+# The keys go through wtype as a second keyboard, so Sway runs the user's own
+# Super bindings, whatever they are; nothing here lists them.  Started by
+# both edges swiped in at once (pro1x-gestures).
+#
+# State: wtype's Super+3 switched the workspace on the phone (2026-11-22);
+# the mode and the gesture are untested.
+rt=${XDG_RUNTIME_DIR:-/tmp}
+shown=$rt/pro1x-super-osk           # start showed the keyboard
+
+mode() { swaymsg -t get_binding_state -r 2>/dev/null | jq -r '.name'; }
+osk_visible() {
+    gdbus call --session --dest sm.puri.OSK0 --object-path /sm/puri/OSK0 \
+        --method org.freedesktop.DBus.Properties.Get sm.puri.OSK0 Visible \
+        2>/dev/null | grep -q true
+}
+osk_restore() { [ -f "$shown" ] && { rm -f "$shown"; osk_visible && pro1x-osk toggle; }; }
+
+case "${1:-}" in
+    start)
+        # Both edges' swipes start it: once per 1 s.
+        stamp=$rt/pro1x-super-started
+        now=$(date +%s%N)
+        [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 1000000000 ] && exit 0
+        echo "$now" > "$stamp"
+        if [ "$(mode)" = super ]; then
+            swaymsg mode default >/dev/null; osk_restore; exit 0
+        fi
+        swaymsg mode super >/dev/null
+        { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
+        osk_visible || { touch "$shown"; pro1x-osk toggle; }
+        # No key within 5 s: back to normal.
+        sleep 5
+        [ "$(cat "$stamp" 2>/dev/null)" = "$now" ] && [ "$(mode)" = super ] &&
+            { swaymsg mode default >/dev/null; osk_restore; }
+        exit 0 ;;
+    key)
+        set -- $(echo "$2" | tr + ' ')
+        args="-M logo"
+        while [ $# -gt 1 ]; do
+            case "$1" in Shift) args="$args -M shift" ;; Ctrl) args="$args -M ctrl" ;;
+                         Mod1) args="$args -M alt" ;; esac
+            shift
+        done
+        # The releases: wtype leaves a modifier pressed otherwise.
+        rel=$(echo "$args" | sed 's/-M/-m/g')
+        # shellcheck disable=SC2086
+        wtype $args -k "$1" $rel
+        osk_restore ;;
+    leave) osk_restore ;;           # Escape in the mode
+    *) echo "usage: pro1x-super start|key COMBO|leave" >&2; exit 1 ;;
+esac
