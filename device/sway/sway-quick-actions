@@ -851,9 +851,23 @@ audio_combined_id() {           # wpctl lists it under Filters, not Sinks
         awk '/ pro1x_combined +\[Audio\/Sink\]/ && match($0, /[0-9]+\./) {
                  print substr($0, RSTART, RLENGTH - 1); exit }'
 }
+# A stream (wl-cast) adds "Stream viewer", what its viewer hears, and plays
+# on it and the host's output at once through its own combined output
+# until it ends; the host's output is in $XDG_RUNTIME_DIR/stream-audio.
+# Stream viewer alone: sound for the viewer only; the host's alone: the
+# viewer hears nothing (author, 2026-11-22).
+stream_audio="${XDG_RUNTIME_DIR:-/tmp}/stream-audio"
+audio_id_of() {                 # the sink ID of a node.name
+    for id in $(audio_outputs | cut -f1); do
+        [ "$(audio_name "$id")" = "$1" ] && { echo "$id"; return; }
+    done
+}
 audio_ticked() {                # IDs, one per line
     if audio_combined_on; then
         sed -n 2p "$combined" | tr ' ' '\n' | grep .
+    elif [ -s "$stream_audio" ] && [ "$(audio_name @DEFAULT_AUDIO_SINK@)" = wl_cast_both ]; then
+        audio_id_of "$(sed -n 2p "$stream_audio")"
+        audio_id_of wl_cast_viewer
     else
         audio_sinks | awk -F'\t' '$3 == "*" { print $1; exit }'
     fi
