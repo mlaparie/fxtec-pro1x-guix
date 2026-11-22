@@ -69,6 +69,7 @@ if [ "${1:-}" = bottom ]; then
           awk -v o="$o" '
         /ABS_MT_POSITION_X\), value/ { x = $NF; if (o % 2) seen = 1 }
         /ABS_MT_POSITION_Y\), value/ { y = $NF; if (!(o % 2)) seen = 1 }
+        /ABS_MT_SLOT\), value [1-9]/ { print "two"; c = 1; exit }
         /BTN_TOUCH\), value 0/ { if (gone && d <= 150) { print "close"; c = 1 }; exit }
         /SYN_REPORT/ && seen {
             d = (o == 1) ? x : (o == 2) ? y : (o == 3) ? 1080 - x : 2160 - y
@@ -81,7 +82,13 @@ if [ "${1:-}" = bottom ]; then
     echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
     # The keyboard only once it is known not to be a close (author: it
     # showed or hid, then the window closed): on lift, or after 1.5 s.
-    if [ "$out" = close ]; then
+    # A second finger, or Super just started: part of the Super gesture
+    # (both edges), not the keyboard (author, 2026-11-22).
+    super="${XDG_RUNTIME_DIR:-/tmp}/pro1x-super-started"
+    if [ "$out" = two ] ||
+       [ $(( $(date +%s%N) - $(cat "$super" 2>/dev/null || echo 0) )) -lt 1500000000 ]; then
+        :
+    elif [ "$out" = close ]; then
         swaymsg kill >/dev/null 2>&1
         { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
     else
