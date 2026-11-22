@@ -146,7 +146,12 @@ or a local file, to a Chromecast, and controls its playback.")
          ;; stream menu): the portal hands the panel over sideways.
          (local-file
           (repository-file "device/patches/gnome-network-displays-video-flip.patch")
-          "gnome-network-displays-video-flip.patch")))))
+          "gnome-network-displays-video-flip.patch")
+         ;; Its PulseAudio context made without the threaded loop's lock:
+         ;; it aborted in libpulse at most starts.
+         (local-file
+          (repository-file "device/patches/gnome-network-displays-pulse-lock.patch")
+          "gnome-network-displays-pulse-lock.patch")))))
     (build-system meson-build-system)
     (arguments
      (list

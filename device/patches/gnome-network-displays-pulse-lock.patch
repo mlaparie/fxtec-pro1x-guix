@@ -1,0 +1,39 @@
+PulseAudio: make and connect the context under the threaded loop's lock.
+
+nd_pulseaudio_async_initable_init_async starts the threaded main loop, then
+creates and connects the context from the calling thread without its lock.
+The connection can then complete in the loop's thread before the socket
+client's callback is set, and libpulse aborts: "Assertion 'c->callback'
+failed at pulsecore/socket-client.c:126" (once also "c->defer_event ==
+e"), at most starts on a Pro¹x (aarch64, pipewire-pulse).  The calls are
+now made under pa_threaded_mainloop_lock.  For fxtec-pro1x-guix
+(AGPL-3.0-or-later); the program's own licence (GPL-3.0-or-later) applies
+to this change upstream.
+
+--- a/src/nd-pulseaudio.c	2026-11-22 00:57:08.317179021 +0100
++++ b/src/nd-pulseaudio.c	2026-11-22 02:19:49.747650781 +0100
+@@ -310,6 +310,12 @@
+   pa_threaded_mainloop_start (self->mainloop);
+   self->mainloop_api = pa_threaded_mainloop_get_api (self->mainloop);
+ 
++  /* The loop's thread runs from here: the context is made and connected
++   * under its lock, as libpulse wants.  Without it the connection could
++   * complete in that thread before its callback was set ("Assertion
++   * 'c->callback' failed" in socket-client.c, one start in two). */
++  pa_threaded_mainloop_lock (self->mainloop);
++
+   proplist = pa_proplist_new ();
+   g_autofree gchar *app_name = g_strdup_printf ("GNOME Network Displays PulseAudio Client for %s", self->name);
+   g_autofree gchar *app_id = g_strdup_printf ("org.gnome.NetworkDisplays.PulseAudio_%.8s", self->uuid);
+@@ -339,9 +345,11 @@
+                                    pa_strerror (pa_context_errno (self->context)));
+         }
+       g_clear_object (&self->init_task);
++      pa_threaded_mainloop_unlock (self->mainloop);
+       return;
+     }
+ 
++  pa_threaded_mainloop_unlock (self->mainloop);
+   /* Wait for us to be connected. */
+ }
+ 
