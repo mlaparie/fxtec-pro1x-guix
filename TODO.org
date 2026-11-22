@@ -419,6 +419,13 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
+*** WAIT [#C] A later port of this channel to the Pro1 (QX1000, MSM8998) (author, 2026-11-22)
+Base: github.com/sampavlovic/qx1000-linux-mainline (Linux 7.3.3, a commit per fix, UEFI and
+systemd-boot instead of U-Boot).  What it shares with ours and what not: rag-notes hardware
+kernel/wifi/display entries of 2026-11-22.
+*** TODO [#C] Panel: does sleep in from unprepare reach it?
+The Pro1's port moved it into disable because it timed out on MSM8998; ours drops the error.
+Log accum_err in boe_bf060y8m_aj0_off() once (rag-notes display, 2026-11-22).
 *** TODO [#A] Hibernation: saved and restored, the session does not survive (2026-11-19)
 Off in this branch: no power menu line, no low-battery hibernation.  The work and its status:
 branch dev-hibernate, docs/hibernation.md.  Next is kernel work: what hangs after an ADSP stop

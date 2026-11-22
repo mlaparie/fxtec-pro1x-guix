@@ -99,6 +99,14 @@
     "confidence": "confirmed",
     "date": "2026-11-01",
     "source": "qcom_stats and cpuidle sysfs on the phone; moWerk (message to the author); github.com/haltia-de/device-lenovo-tb-j606l pull/12"
+   },
+   {
+    "title": "qx1000-linux-mainline: Linux 7.3.3 for the Pro1 (QX1000, MSM8998), a sibling of this phone",
+    "general": "A mainline tree for a sibling device (same maker, same slider keyboard and panel, an older SoC) shares fixes for the common parts: panel, QRTR, keyboard, Wi-Fi chip family. Read its per-commit patches before solving those here, and keep its SoC-specific work (CPR, DisplayPort, PMI8998) for a port to that device.",
+    "instance": "github.com/sampavlovic/qx1000-linux-mainline (Sam Pavlovic, with Giuseppe Maggio, AngeloGioacchino Del Regno, Teguh Sobirin, moWerk), read 2026-11-22 at 08894aac2: about 70 commits on Linux 7.3.3, one fix each, and qx1000/ with a build script and a systemd/Debian-style rootfs overlay (ALSA UCM for sdm845 Fxtec-Pro1, keyd and xkb layout, modprobe, udev, Wi-Fi board file and MAC helpers). Boots through a UEFI firmware on slot b (Silicium) and systemd-boot from boot_a, not U-Boot. Their README: panel, GPU, touch, keyboard, Wi-Fi, USB2 device mode, DisplayPort over USB-C (one orientation), battery, sensors, speakers (quiet) and CPU scaling work. Already here: the QRTR HELLO fix (their 7fbe67314 = our 0029, moWerk's) and moWerk's panel patches (our 0023, 0030). Different: the Pro1 keyboard is a GPIO matrix (gpio_fastmatrix, aw9523 pinctrl fix), ours the pro1x-aw9523-kbd driver. Licence: the kernel tree is GPL-2.0; the qx1000/ overlay states none, so ask before reusing those files. Relevant when this port is extended to the QX1000 (author, 2026-11-22).",
+    "confidence": "reported",
+    "date": "2026-11-22",
+    "source": "https://github.com/sampavlovic/qx1000-linux-mainline, commits 08894aac2, 7fbe67314, e214f9357, efb886478; qx1000/README.md"
    }
   ],
   "modem": [
@@ -227,6 +235,14 @@
     "confidence": "confirmed (iw phy, NM log, chan.c read); why NO_IR while associated: not traced",
     "date": "2026-11-20",
     "source": "/tmp/reg-test.log, /var/log/messages on the phone; linux-7.3 net/wireless/chan.c cfg80211_ir_permissive_chan"
+   },
+   {
+    "title": "WCN3990 firmware WLAN.HL.1.0 crashes on pairwise key deletion and on TXBF after vdev down; HL.3.2.4 (Pro¹x) does not need the fixes",
+    "general": "ath10k's WCN3990 workarounds depend on the firmware branch: check the fw_build_id line before carrying a sibling device's ath10k patch.",
+    "instance": "qx1000-linux-mainline 9b42f680d (pairwise keys replaced by junk instead of deleted) and 4c23c8c73 (no TXBF recalc in bss_disassoc) for MSM8998's HL.1.0, where every disconnect crashed the firmware. The Pro¹x runs WLAN.HL.3.2.4-00982 (fw_build_timestamp 2021-12-02) and /var/log/messages had no ath10k firmware crash on 2026-11-22; not carried here.",
+    "confidence": "confirmed",
+    "date": "2026-11-22",
+    "source": "phone /var/log/messages (ath10k_snoc qmi fw_build_id), qx1000-linux-mainline 9b42f680d, 4c23c8c73"
    }
   ],
   "display": [
@@ -261,6 +277,14 @@
     "confidence": "confirmed",
     "date": "2026-10-30",
     "source": "author 2026-10-30; commits 6d57e7f, ad7bc0f"
+   },
+   {
+    "title": "BOE BF060Y8M-AJ0: sleep in sent from unprepare may never reach the panel",
+    "general": "In a panel driver, DCS commands sent after the DSI host stopped video can fail; a void off() helper that drops accum_err hides it. Send them from disable while video still runs.",
+    "instance": "The Pro1 has the same panel. On MSM8998 sleep in from unprepare timed out (wait for video done timed out, -ETIMEDOUT); qx1000-linux-mainline 8398dad56 sends it from disable, after display off, on top of moWerk's patch (our 0023). Here 0023 still sends sleep in from unprepare, through boe_bf060y8m_aj0_off(), which ignores the error: no timeout lines in /var/log/messages, but a failure would be silent. The regulators go off right after, so the effect is probably small. To confirm: log accum_err in off() once.",
+    "confidence": "inferred",
+    "date": "2026-11-22",
+    "source": "device/kernel/patches-7.3/0023-drm-panel-boe-bf060y8m-aj0-send-display-off-while-vi.patch; qx1000-linux-mainline 8398dad56"
    }
   ],
   "video": [

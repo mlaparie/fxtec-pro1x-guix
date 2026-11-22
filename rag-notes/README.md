@@ -30,6 +30,10 @@ lesson must stay true if the phone changes.
   `SailfishOS/`. `devices.json` is SailfishOS's feature state, not ours.
 - **The NixOS port** (nyymi609/fxtec-pro1x-nixos): the working hardware reference.
   Clone it to `/tmp/fxtec-pro1x-nixos`.
+- **qx1000-linux-mainline** (sampavlovic, kernel tree GPL-2.0): Linux 7.3 for the
+  Pro1 (QX1000, MSM8998), the Pro¹x's predecessor with the same panel and slider
+  keyboard. Shared parts (panel, QRTR, Wi-Fi chip family) and the base for a later
+  QX1000 port of this channel. Clone it to `/tmp/qx1000-linux-mainline`.
 
 When an entry here relies on one of them, it says so with confidence `reported`
 and names the source.
