@@ -1,0 +1,21 @@
+#!/bin/sh
+# pro1x-workspace — a workspace of one's own name (Super+Ctrl+o)
+#
+#   pro1x-workspace new     a small prompt for the name, then that workspace
+#
+# Sway removes a workspace once it is empty and not shown, so a named one
+# lasts as long as it holds a window; the window switcher lists the named
+# ones beside 1-0 while they exist (pro1x-switcher).
+#
+# State: written 2026-11-22, untested.
+case "${1:-}" in
+    new)
+        exec pro1x-term --app-id=pro1x-workspace -e "$0" ask ;;
+    ask)
+        printf 'New workspace name: '
+        read -r name || exit 0
+        name=$(printf '%s' "$name" | sed 's/^ *//; s/ *$//; s/"//g')
+        [ -n "$name" ] || exit 0
+        swaymsg "workspace \"$name\"" >/dev/null ;;
+    *) echo "usage: pro1x-workspace new" >&2; exit 1 ;;
+esac

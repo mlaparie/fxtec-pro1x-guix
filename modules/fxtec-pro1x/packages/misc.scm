@@ -1887,6 +1887,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
 ;;;   bin/pro1x-super                    Super held from the touchscreen (wtype)
 ;;;   share/pro1x-sway/super.conf        its Sway mode (/etc/sway/pro1x.d/)
+;;;   bin/pro1x-workspace                a workspace named in a prompt (s-C-o)
 ;;;   bin/pro1x-term                     footclient, or foot without the server
 ;;;   bin/pro1x-call-watch               unlock for an incoming call, relock after
 ;;;   bin/pro1x-status                   status texts for the i3status-rust bar
@@ -1970,6 +1971,7 @@ window opened by a sway key binding.")
           ("pro1x-notify" "bin/")
           ("pro1x-gestures" "bin/")
           ("pro1x-super" "bin/")
+          ("pro1x-workspace" "bin/")
           ("pro1x-term" "bin/")
           ("pro1x-call-watch" "bin/")
           ("pro1x-status" "bin/")

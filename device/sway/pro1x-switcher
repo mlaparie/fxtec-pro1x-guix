@@ -4,7 +4,8 @@
 #   pro1x-switcher           the fzf list (in its foot window, from pro1x-menu)
 #   pro1x-switcher --list    one line per window: con_id, app, title
 #
-# Lists Sway overview (sov, in yellow), the windows, then workspaces 1-10
+# Lists Sway overview (sov, in yellow), the windows, then the named
+# workspaces (pro1x-workspace) while they exist, and workspaces 1-10
 # (author).  On a window, Enter and
 # Ctrl-o (a short power press) ask Back / Focus / Close / Move to
 # workspace / Tile / Tab / Stack / Toggle fullscreen, floating, sticky
@@ -51,7 +52,7 @@ on_stream() {
     [ -n "$stream_out" ] &&
         [ "$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.focused) | .output')" = "$stream_out" ]
 }
-ws_arg() { case "$1" in [0-9]*) echo "number $1" ;; *) echo "$1" ;; esac; }
+ws_arg() { case "$1" in [0-9]*) echo "number $1" ;; *) echo "\"$1\"" ;; esac; }
 go_window() {
     if on_stream; then
         here=$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.focused) | .name')
@@ -109,11 +110,15 @@ if [ "${1:-}" = --ask ]; then
                  "Toggle fullscreen" "Toggle floating" "Toggle sticky")
     case "$choice" in
         "Move to workspace…")
-            ws=$(pick "move to" "← back" 1 2 3 4 5 6 7 8 9 0)
+            named=$(swaymsg -t get_workspaces -r |
+                        jq -r '.[] | select(.num == -1 and .name != "stream") | .name')
+            ws=$(IFS='
+'; pick "move to" "← back" 1 2 3 4 5 6 7 8 9 0 $named)
             [ "$ws" = 0 ] && ws=10
             case "$ws" in
-                [0-9]*) swaymsg "[con_id=$2] move container to workspace number $ws" >/dev/null
-                        sleep 0.2 ;;    # the list reloads after this: let Sway settle
+                ""|"← back") ;;
+                *) swaymsg "[con_id=$2] move container to workspace $(ws_arg "$ws")" >/dev/null
+                   sleep 0.2 ;;    # the list reloads after this: let Sway settle
             esac ;;
         Tile) swaymsg "[con_id=$2] floating disable, layout splith" >/dev/null ;;
         Tab) swaymsg "[con_id=$2] floating disable, layout tabbed" >/dev/null ;;
@@ -154,6 +159,9 @@ if [ "${1:-}" = --list ]; then
                   then (.[0] | windows | length) as $k
                        | "ws:stream\t\u001b[34mstream ::\t\($k) window\(if $k == 1 then "" else "s" end) (the viewer'"'"'s screen)\u001b[0m"
                   else empty end),
+               ([$ws[] | select(.num == -1 and .name != "stream")][]
+                | (windows | length) as $k
+                | "ws:\(.name)\t\u001b[34m\(.name) ::\t\($k) window\(if $k == 1 then "" else "s" end)\u001b[0m"),
                (range(1; 11) as $n
                 | ([$ws[] | select(.num == $n)] | .[0]) as $w
                 | "ws:\($n)\t\u001b[34m\(if $n == 10 then 0 else $n end) ::\t\(if $w then ($w | windows | length) as $k | "\($k) window\(if $k == 1 then "" else "s" end)" else "empty" end)\u001b[0m")'
