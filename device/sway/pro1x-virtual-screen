@@ -13,13 +13,7 @@
 #   client: the whole phone at the viewer's size: every workspace moves to
 #           it, the panel shows it (wl-mirror) and the focus is kept on it;
 #   multi:  a second monitor: the workspace "virtual" on it, the panel keeps
-#           its own;
-#   panel:  the panel upright at the viewer's size, through wl-mirror, the
-#           panel used as usual: for a host that captures through the
-#           screen-cast portal and ignores its turn (GNOME Network Displays,
-#           the stream menu's Miracast: the TV got the panel sideways and
-#           squeezed, author 2026-11-22).  pro1x-stream-output, the
-#           portal's chooser, hands this screen over while it exists.
+#           its own.
 # As the interactive stream's Client and Multi-monitor screens
 # (pro1x-stream-webrtc, class Screen).  For Sunshine's apps, size sets the
 # viewer's resolution before a session (prep-cmd, with
@@ -55,7 +49,7 @@ size() {                        # size NAME WxH [FPS]
 case "${1:-}" in
     start)
         mode=${2:-client}
-        case "$mode" in client|multi|panel) ;; *) echo "pro1x-virtual-screen: client, multi or panel" >&2; exit 2 ;; esac
+        case "$mode" in client|multi) ;; *) echo "pro1x-virtual-screen: client or multi" >&2; exit 2 ;; esac
         if read_state && outputs | grep -qx "$name"; then echo "$name"; exit 0; fi
         before=$(outputs)
         # The panel's workspace now, shown again at stop.
@@ -87,15 +81,6 @@ case "${1:-}" in
                     sleep 2
                 done' _ "$state" "$name" </dev/null >/dev/null 2>&1 &
             guard=$!
-        elif [ "$mode" = panel ]; then
-            sw 'no_focus [app_id="^at.yrlf.wl_mirror$"]'
-            sw "workspace cast output $name"
-            sw "focus output $name"
-            sw "workspace cast"
-            setsid wl-mirror --fullscreen-output "$name" "$panel" </dev/null >/dev/null 2>&1 &
-            mirror=$!
-            sleep 1
-            sw "focus output $panel"
         else
             sw "workspace virtual output $name"
             sw "focus output $name"
@@ -119,7 +104,7 @@ case "${1:-}" in
                     jq -r --arg n "$name" '.[] | select(.output == $n and .visible) | .name' | head -1)
         sw "output $name unplug"
         sw "exec pro1x-osk home"
-        left=$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.name != "mirror" and .name != "cast") | .name')
+        left=$(swaymsg -t get_workspaces -r | jq -r '.[] | select(.name != "mirror") | .name')
         if [ -n "$shown" ] && printf '%s\n' "$left" | grep -qxF "$shown"; then
             sw "workspace \"$shown\""
         elif [ "$was" != - ] && printf '%s\n' "$left" | grep -qxF "$was"; then
