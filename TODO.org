@@ -428,6 +428,13 @@ Not possible: SM6115 has no DisplayPort controller and a USB-only PHY (rag-notes
 2026-11-22).  Plan if wanted: CONFIG_DRM_GUD (and CONFIG_DRM_UDL) in the kernel config, a
 Raspberry Pi Zero 2 W or Pico with the GUD gadget firmware as a USB-to-HDMI adapter, then
 Sway on the second DRM device (hotplug untested).  Needs the author to want and buy one.
+Cheaper still (author asked for software, 2026-11-22): a plain USB-to-HDMI dongle with a free
+out-of-tree DRM driver.  MacroSilicon MS912x (USB 2 534d:6021, USB 3 345f:9132; driver
+github.com/rhgndf/ms912x, GPL-2.0) or Fresco FL2000DX (github.com/klogg/fl2000_drm; reported
+not to build on kernels >= 6.11).  Plan: package ms912x as a linux-module for linux-pro1x
+(7.3), check its USB ID on the dongle with lsusb, try OTG power (pmi632_vbus) and Sway's
+second DRM device.  The port's USB-C has SuperSpeed lanes (usb_qmpphy in the device tree), so
+a USB 3 dongle can use them: inferred, not measured.
 *** WAIT [#C] A later port of this channel to the Pro1 (QX1000, MSM8998) (author, 2026-11-22)
 Base: github.com/sampavlovic/qx1000-linux-mainline (Linux 7.3.3, a commit per fix, UEFI and
 systemd-boot instead of U-Boot).  What it shares with ours and what not: rag-notes hardware
