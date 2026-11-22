@@ -359,7 +359,7 @@ running_links() {
         moonlight) moonlight_links ;;
         test[123]) test_links "${kind#test}" "$arg" ;;
         udp) printf '%s\t%-10s %s\n' "udp://@:$udp_port" vlc "udp://@:$udp_port" |
-                 show_urls "Sending to $arg: in VLC there, open the URL above." >/dev/null ;;
+                 show_urls "Sending to $arg: in VLC there, open the URL above." | grep -q . ;;
     esac
 }
 running_kind() { streaming && cut -d' ' -f1 "$kind_file" 2>/dev/null; }
@@ -620,8 +620,11 @@ streaming_note() {              # streaming_note [KEY]
     echo "Quick actions can be closed (Super+q or Esc);"
     echo "the stream keeps running."
 }
+# The links screens are true only when a link was picked (Enter): then
+# quick actions go away; back, Left or Esc come back to the stream list
+# (author, 2026-11-23: back left quick actions).
 show_links() {                  # show_links HEADER [SUFFIX]
-    links "${2:-}" | show_urls "$1" >/dev/null
+    links "${2:-}" | show_urls "$1" | grep -q .
 }
 # Lines of "URL<tab>shown" from stdin, the highlighted one's QR code beside
 # them; the URL picked with Enter on stdout, nothing for Esc or Left.
@@ -685,7 +688,7 @@ Then Enter starts sending to $ip; Esc goes back.")
 simple_links() {
     networks | while read -r a dev; do
         printf 'http://%s:%s/\t%-10s http://%s:%s/\n' "$a" "$http_port" "$(net_name "$a" "$dev")" "$a" "$http_port"
-    done | show_urls "$(streaming_note)" >/dev/null
+    done | show_urls "$(streaming_note)" | grep -q .
 }
 
 # TESTS: numbered ways for a car on a hotspot the phone does not run to
@@ -761,7 +764,7 @@ test_links() {                  # test_links N KEY
         3) name=$(https_setting STREAM_DOMAIN)
            printf 'https://%s:%s/?k=%s\t%-10s https://%s:%s/  (IPv6 by name)\n' \
                   "$name" "$tls_port" "$k" "$name" "$name" "$tls_port" ;;
-    esac | show_urls "Test $1, key ${k:-none}: open the link in the car, wait a minute, touch the screen, then Stop stream.  Logged for later." >/dev/null
+    esac | show_urls "Test $1, key ${k:-none}: open the link in the car, wait a minute, touch the screen, then Stop stream.  Logged for later." | grep -q .
 }
 
 # Test 4: Bluetooth logs only (pro1x-bt-log, as root through sudo): the
@@ -816,8 +819,7 @@ run_test() {                    # run_test N
     k=$(key_on && current_key)
     echo "test$n ${k:-}" > "$kind_file"
     echo "$(date '+%F %T') test $n: stream started (key ${k:-none})" >> "$tests_log"
-    test_links "$n" "$k"
-    leave_menu
+    test_links "$n" "$k" && leave_menu
 }
 
 tests_menu() {
@@ -843,7 +845,7 @@ moonlight_links() {
 ' \
             "$a" "$sunshine_port" "$(net_name "$a" "$dev")" "$a" "$a" "$sunshine_port"
     done | show_urls "Moonlight: add this host by its address, then type the PIN Moonlight shows on the PIN page (Sunshine's login).
-Software encoding: the phone gets hot.  Stop stream ends it." >/dev/null
+Software encoding: the phone gets hot.  Stop stream ends it." | grep -q .
 }
 
 # Sunshine's app that sizes the screen to the viewer's before its session
@@ -897,8 +899,7 @@ send_moonlight() {
                    notice "Sunshine did not start: $(tail -n 3 "$rt/sunshine.log")"; return; }
     keep_awake "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" moonlight
-    moonlight_links
-    leave_menu
+    moonlight_links && leave_menu
 }
 
 # ffmpeg serves one viewer at a time, and stops when that one leaves: the loop
@@ -925,9 +926,7 @@ send_mjpeg() {
     url="http://$ip:$http_port/"
     echo "simple, $url" > "$to_file"
     echo mjpeg > "$kind_file"
-    simple_links
-    go_to_source
-    leave_menu
+    simple_links && { go_to_source; leave_menu; }
 }
 
 # The capture starts when a viewer connects, and stops when it leaves.  The
@@ -970,9 +969,7 @@ send_webrtc() {
     keep_awake "$(cat "$pid_file")"
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" webrtc
-    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
-    go_to_source
-    leave_menu
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}" && { go_to_source; leave_menu; }
 }
 
 # No address to stream on: none at all, or no hotspot with Visibility on
@@ -1038,8 +1035,7 @@ send_interactive() {
     funnel_start "$(cat "$pid_file")"
     run_hook started "$(cat "$pid_file")" interactive
     [ -n "${quiet:-}" ] && return
-    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
-    leave_menu
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}" && leave_menu
 }
 
 try_catt() {
@@ -1078,8 +1074,7 @@ send_wlcast() {                 # send_wlcast interactive|view
     cp "$rt/wl-cast.pid" "$pid_file"
     echo "wlcast-$mode $k" > "$kind_file"
     echo "wl-cast $mode, $(printf '%s\n' "$out" | head -n 1 | cut -f1)" > "$to_file"
-    show_links "$(streaming_note "$k")" "${k:+?k=$k}"
-    leave_menu
+    show_links "$(streaming_note "$k")" "${k:+?k=$k}" && leave_menu
 }
 
 network_displays() {
@@ -1161,7 +1156,7 @@ while :; do
     # The running stream's own line: its links, not a restart.
     [ -n "$choice" ] && [ "$choice" = "$(running_kind)" ] && choice=links
     case "$choice" in
-        links) running_links; leave_menu ;;
+        links) running_links && leave_menu ;;
         stop) stop_stream ;;
         # The phone's encoder up to 1920 pixels, software above.
         udp) if [ "$(limited "$(out_size)" 1921)" -le 1920 ]; then
