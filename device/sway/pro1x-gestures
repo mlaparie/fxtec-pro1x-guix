@@ -5,6 +5,7 @@
 #   swipe up from the bottom edge     on-screen keyboard, shown or hidden
 #   ... and back out the bottom edge  close the focused window (as s-BackSpace)
 #     without lifting the finger
+#   two fingers down out the bottom edge   close the focused window too
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
 #   swipe in from the left edge       window switcher (sway-window-switcher)
 #   (Sway Overview moved to the window switcher, author 2026-11-02)
@@ -123,11 +124,15 @@ start() {                       # start <transform>
     # Every swipe acts once the finger has gone 80 px (pressed, P), not
     # on release: the keyboard (author, 2026-11-02), and the menus with a
     # buzz (menu, above; author, 2026-11-02).
+    # Two fingers down out the bottom edge close the focused window, on
+    # release (author, 2026-11-22): lisgd's edge is where the swipe starts
+    # or ends, so ending in the bottom band is enough.
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
         -g "1,DU,B,*,P,pro1x-gestures bottom $o &" \
         -g "1,RL,R,*,P,pro1x-gestures menu launcher &" \
         -g "1,LR,L,*,P,pro1x-gestures menu windowswitcher &" \
+        -g "2,UD,B,*,R,swaymsg kill >/dev/null; { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
 }
