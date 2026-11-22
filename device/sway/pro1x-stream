@@ -1058,7 +1058,20 @@ network_displays() {
     case "$t" in
         90) flip=counterclockwise ;; 270) flip=clockwise ;; 180) flip=rotate-180 ;; *) flip= ;;
     esac
-    swaymsg exec "env ND_VIDEO_FLIP=$flip gnome-network-displays" >/dev/null 2>&1
+    swaymsg exec "pro1x-stream --network-displays $flip" >/dev/null 2>&1
+}
+
+# Network Displays aborts at start now and then, in libpulse ("Assertion
+# 'c->callback' failed", about one start in two, 2026-11-22, the
+# unpatched build too): started again, three times at most, while it
+# dies within its first 5 s.
+[ "${1:-}" = --network-displays ] && {
+    for _ in 1 2 3; do
+        t0=$(date +%s)
+        ND_VIDEO_FLIP=${2:-} gnome-network-displays && exit 0
+        [ $(( $(date +%s) - t0 )) -lt 5 ] || exit 0
+    done
+    exit 1
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
