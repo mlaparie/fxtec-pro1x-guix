@@ -1147,8 +1147,8 @@ while :; do
         printf '%s\t%s\n' \
             interactive "Browser, interactive  lowest latency; screen, sound, touch and keys (approval recommended)" \
             webrtc "Browser, read-only    lowest latency; screen and sound, no input" \
-            wlcast-interactive "wl-cast, interactive  (test) lowest latency; screen, sound, touch and keys (approval recommended)" \
-            wlcast-view "wl-cast, read-only    (test) lowest latency; screen and sound, no input" \
+            wlcast-interactive "wl-cast, interactive  (test) in a browser, lowest latency; screen, sound, touch and keys (approval recommended)" \
+            wlcast-view "wl-cast, read-only    (test) in a browser, lowest latency; screen and sound, no input" \
             mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
