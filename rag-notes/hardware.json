@@ -285,6 +285,14 @@
     "confidence": "inferred",
     "date": "2026-11-22",
     "source": "device/kernel/patches-7.3/0023-drm-panel-boe-bf060y8m-aj0-send-display-off-while-vi.patch; qx1000-linux-mainline 8398dad56"
+   },
+   {
+    "title": "No DisplayPort over USB-C on SM6115: the SoC has no DP controller and a USB-only QMP PHY",
+    "general": "DP Alt Mode needs three things in the SoC: a DisplayPort controller in the display subsystem, a USB/DP combo PHY, and a Type-C controller that enters the mode. Check the DPU catalog's interface list and the QMP PHY's compatible before planning it; a sibling device having DP (MSM8998 in the Pro1) says nothing about another SoC.",
+    "instance": "Linux 7.3 dpu_6_3_sm6115.h lists one interface, INTF_1, type INTF_DSI (the panel); sm6115.dtsi has mdss_dsi0 only and usb_qmpphy is qcom,sm6115-qmp-usb3-phy (USB 3 only, no DP lanes). Snapdragon 662 is not sold with DP output either. So no kernel hack can add it. Options for an external screen over the port instead: a USB display adapter with a free driver (CONFIG_DRM_GUD: a Raspberry Pi Zero or Pico running the GUD gadget firmware as a USB-to-HDMI adapter, compressed frames over USB; CONFIG_DRM_UDL: old DisplayLink DL-1x5 USB 2.0 adapters). Both are off in config.aarch64. DisplayLink DL-3xxx/6xxx need the nonfree evdi userspace, not for this port. Wireless: Miracast/Chromecast (Network Displays) and wl-cast already work.",
+    "confidence": "confirmed",
+    "date": "2026-11-22",
+    "source": "linux-7.3 drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_6_3_sm6115.h, arch/arm64/boot/dts/qcom/sm6115.dtsi (usb_qmpphy, mdss); device/kernel/config.aarch64"
    }
   ],
   "video": [

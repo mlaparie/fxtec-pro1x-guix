@@ -423,6 +423,11 @@ The AWB fix alone (7ebae537) conflicts with 0006/0010 in swstats_cpu.cpp.
 *** TODO [#B] libcamera: VBLANK follows the exposure (steps 2-3 of the plan in History)
 *** TODO [#C] Night button; our own Qt camera app with moWerk's camerabin patches
 ** Sensors and hardware
+*** WAIT [#C] External screen over USB-C (author asked for DP Alt Mode, 2026-11-22)
+Not possible: SM6115 has no DisplayPort controller and a USB-only PHY (rag-notes display,
+2026-11-22).  Plan if wanted: CONFIG_DRM_GUD (and CONFIG_DRM_UDL) in the kernel config, a
+Raspberry Pi Zero 2 W or Pico with the GUD gadget firmware as a USB-to-HDMI adapter, then
+Sway on the second DRM device (hotplug untested).  Needs the author to want and buy one.
 *** WAIT [#C] A later port of this channel to the Pro1 (QX1000, MSM8998) (author, 2026-11-22)
 Base: github.com/sampavlovic/qx1000-linux-mainline (Linux 7.3.3, a commit per fix, UEFI and
 systemd-boot instead of U-Boot).  What it shares with ours and what not: rag-notes hardware
