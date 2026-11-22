@@ -1070,6 +1070,11 @@ Dracula palette, no kernel messages over the greeter.")
      ;; Venus), which players and WebKit pick before software ones, and
      ;; its common demuxers (mp4, matroska); it was not installed at all.
      gst-plugins-good
+     ;; Video player for films: GStreamer hands Venus's frames to GTK,
+     ;; which gives them to Sway as they are; mpv copies and redraws each
+     ;; one on the GPU.  1080p30: about 2 % CPU against 65 % for mpv, and
+     ;; GPU room left for a screen cast (2026-11-22).
+     showtime
      ;; Portals: libadwaita apps read dark/light from the Settings portal
      ;; (gtk backend per Phosh's portals.conf); without them GNOME
      ;; Settings' dark mode changed nothing (2026-10-30).
