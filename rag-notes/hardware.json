@@ -642,11 +642,19 @@
    },
    {
     "title": "nxp-nci: unbinding the driver hangs in nci_unregister_device when the chip stops answering I2C",
-    "general": "Removing nxp-nci_i2c (an unbind through sysfs) sends a last NCI command. If the chip does not ACK it (I2C send error -6), the request times out, and the removal then waits forever in D state, inside nci_unregister_device. The device stays half removed: i2c-dev reports the address busy, and only a reboot clears it. A normal reboot may block on the same device lock, so sync and reboot with sysrq. To talk to the chip from user space, keep the driver from loading at boot (module_blacklist) instead of unbinding it.",
+    "general": "Removing nxp-nci_i2c (an unbind through sysfs, or rmmod) hangs in D state inside nci_unregister_device. The cause is in the driver: nxp_nci_remove switches the chip to cold mode (enable pin low) before nci_unregister_device, which still sends a command to the powered-off chip. The I2C send fails (-6), the request times out, and the removal then waits forever. The device stays half removed: i2c-dev reports the address busy, and only a reboot clears it. A normal reboot may block on the same device lock, so sync and reboot with sysrq. To talk to the chip from user space, keep the driver from loading with module_blacklist=nxp_nci_i2c on the kernel command line. A file in /etc/modprobe.d is not enough: on Guix, udev's libkmod reads /run/modprobe.d (emptied at boot), not /etc/modprobe.d.",
     "instance": "Pro¹x, kernel of generation 259 (7.3.0 with the NFC patches): it hung twice, once with neard stopped and once with neard running (the adapter powered). dmesg: \"NFC: Error -6 on I2C send\", then \"__nci_request: wait_for_completion_interruptible_timeout failed 0\".",
     "confidence": "confirmed",
     "date": "2026-11-23",
-    "source": "/proc/PID/stack of the hung unbind on the phone; dmesg"
+    "source": "/proc/PID/stack of the hung unbind on the phone; dmesg; drivers/nfc/nxp-nci/core.c (nxp_nci_remove) in linux 7.3"
+   },
+   {
+    "title": "PN557 on the Pro¹x keeps Android's NXP settings in its own memory, and still finds no tag when polled by hand",
+    "general": "NXP controllers keep the proprietary settings the Android HAL sends (clock selection, TVDD power, RF field notifications) across power cycles. Before sending them from Linux, read them with CORE_GET_CONFIG (extended IDs A0 xx) after CORE_RESET (keep configuration) and CORE_INIT. Polling by hand over i2c-dev, with no kernel driver, tells the chip and antenna apart from the kernel and neard. The chip NACKs the first I2C write after an idle period while it wakes from standby, so retry each write once.",
+    "instance": "Generation 260 (module_blacklist=nxp_nci_i2c), VEN set by gpioset. CORE_RESET NTF: NCI 2.0, hardware 0x41, firmware 12.01.16. Values held: A0 02=01, A0 03=08, A0 04=01, A0 0E=31 01 01 31 00 00 00 01 00 10 0C (the same bytes as Android's NXP_EXT_TVDD_CFG_1), A0 62=00 (as NXP_CORE_RF_FIELD), A0 11=CD 67 22 FF, A0 12=02, A0 5E=01, A0 85=50 08 08 3C, A0 40..43=01 06 0F 03. A0 0D answered status 09. 2F 02 00 (proprietary extensions) answered 00 00 01 5E 64. RF_DISCOVER for poll A, B, F and V was accepted (status 00). Over 50 s with a card on the back, the chip sent nothing: no tag, no PLL-unlock or TX-LDO error. GPIO 86 (CLKREQ) stayed low throughout (sampled every 10 ms). A listen-mode discovery (A, B, F) with another phone reading at the back sent nothing either, though no listen routing was set. Neither the NixOS port, the SailfishOS port nor sailfish-rag has anything on NFC (2026-11-23). Other mainline Qualcomm phones with PN553 (sdm845 OnePlus, SHIFT6mq, Nothing Phone 1) name no clock in their nfc@28 node.",
+    "confidence": "confirmed",
+    "date": "2026-11-23",
+    "source": "/root/nfcgetcfg.sh, /root/nfcrawpoll.sh, /root/nfcrawlisten.sh and their logs on the phone; vendor_a /etc/libnfc-nxp.conf; arch/arm64/boot/dts/qcom in linux 7.3"
    }
   ]
  }
