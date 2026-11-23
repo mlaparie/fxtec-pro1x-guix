@@ -1,0 +1,620 @@
+#!/usr/bin/env bash
+# pro1x-nfc — NFC wallet: read, save and replay your own access badges.
+#
+# Opened by Right on the NFC line of sway-quick-actions, inside its window.
+# The main list shows saved badges and a scan entry.  Scan reads a badge held
+# to the phone, shows its type and UID, and saves it.  A saved badge can be
+# replayed in listen mode (the phone answers with the badge's UID when held to
+# a reader), renamed or deleted.
+#
+# Replay is possible only for simple UID-checked 13.56 MHz badges (ISO 14443-A
+# with a 4- or 7-byte UID).  The script tells the user when a badge cannot be
+# replayed and why: encrypted challenge (DESFire, Mifare Classic with keys),
+# different frequency (125 kHz), or unsupported protocol.  Detection of
+# payment cards is a best-effort NDEF content check only: contactless EMV
+# cards mostly carry no NDEF records at all, so this will usually miss them,
+# not refuse them; do not rely on it for that.
+#
+# Needs: the kernel with nxp-nci (pro1x-nfc.patch), neard running, nfctool.
+# Replay needs NCI 2.0 LA_NFCID1 support from the NXP firmware — untested.
+#
+# Wiring into sway-quick-actions: nfc is currently only in the plain on/off
+# toggle case (shared with caffeine|torch|airplane|osk) in right:transform.
+# To open this tool on Right, move nfc from that case into the tool case
+# (shared with hotspot|timezone|stream|tests|automations|fingerprint|waydroid,
+# which runs "$self" --tool {1}) in right:transform only; leave it in
+# enter:transform's toggle case so Enter still toggles the radio.  step()'s
+# +/- cases are for physical volume-key repeats, unrelated to this.
+#
+# State: written 2026-11-23, untested (needs the CI kernel with nxp-nci).
+
+set -u
+
+case "${FZF_DEFAULT_OPTS:-}" in
+    *--with-shell=*) ;;
+    *) export FZF_DEFAULT_OPTS="${FZF_DEFAULT_OPTS:+$FZF_DEFAULT_OPTS }--with-shell='sh -c'" ;;
+esac
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
+wallet="$HOME/.config/pro1x/nfc-wallet"
+
+trap 'rm -f "$rt/pro1x-tool.done"; poll_stop' EXIT
+
+clear_screen() { printf '\033[H\033[2J\033[3J'; }
+pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+dim() { printf '\033[2m%s\033[0m' "$*"; }
+
+menu() {
+    fzf --listen="$sock" --bind='left:abort' --bind='right:accept' \
+        --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        --layout=reverse-list --no-info --cycle --margin=1,2 \
+        --color=16,gutter:-1 --bind='load:pos(2)' | cut -f1
+}
+
+ask_name() {
+    local name
+    read -r -e -p "Name: " -i "$1" name
+    printf '%s' "${name:-$1}" | tr -d '\t\n'
+}
+
+slugify() {
+    local s
+    s=$(printf '%s' "$*" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
+    printf '%s' "${s:-badge}"
+}
+
+# --- NFC presence -----------------------------------------------------------
+
+nfc_dev() {
+    local d
+    for d in /sys/class/nfc/nfc*; do
+        [ -e "$d" ] && { basename "$d"; return 0; }
+    done
+    return 1
+}
+
+nfc_check() {
+    if ! nfc_dev >/dev/null; then
+        echo "No NFC device.  The kernel may need nxp-nci (modprobe nfc_nxp_nci_i2c)."
+        return 1
+    fi
+    if rfkill list nfc 2>/dev/null | grep -q "Soft blocked: yes"; then
+        echo "NFC is off.  Turn it on in quick actions first."
+        return 1
+    fi
+    return 0
+}
+
+# --- neard D-Bus helpers -----------------------------------------------------
+# neard exposes adapters and tags on the system bus.
+# org.neard.Adapter → StartPollLoop / StopPollLoop
+# org.neard.Tag     → Type, Protocol; no UID property (see read_tag_props).
+# gdbus (from glib) rather than dbus-send; it still needs to be installed.
+
+NEARD=org.neard
+
+neard_running() {
+    gdbus introspect --system --dest=$NEARD --object-path / >/dev/null 2>&1
+}
+
+# One check before any neard call: says exactly what is missing.
+neard_check() {
+    if ! command -v gdbus >/dev/null 2>&1; then
+        echo "gdbus is missing (glib); neard needs it."
+        return 1
+    fi
+    if ! neard_running; then
+        echo "neard is not running (sudo herd start neard)."
+        return 1
+    fi
+    return 0
+}
+
+adapter_path() {
+    # The first adapter, usually /org/neard/nfc0.  Matched without the
+    # quotes gdbus prints around it: avoids depending on whether it adds
+    # an "objectpath" type prefix before them.
+    gdbus call --system --dest=$NEARD --object-path / \
+        --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
+        grep -o "/org/neard/nfc[0-9]*'" | head -1 | tr -d "'"
+}
+
+poll_start() {
+    local adapter
+    adapter=$(adapter_path) || return 1
+    # Mode Initiator finds tags; Dual also listens but we start with read.
+    gdbus call --system --dest=$NEARD --object-path "$adapter" \
+        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1
+}
+
+poll_stop() {
+    local adapter
+    adapter=$(adapter_path) 2>/dev/null || return 0
+    gdbus call --system --dest=$NEARD --object-path "$adapter" \
+        --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
+}
+
+# Wait for a tag to appear (neard creates /org/neard/nfc0/tag0).
+# Returns the tag's object path, or fails after a timeout.
+#
+# This polls GetManagedObjects every 0.5 s rather than waiting on neard's
+# InterfacesAdded signal, to keep this simple.  A badge tapped and pulled
+# away inside one 0.5 s window can be missed; hold it steady until "Badge
+# found" prints.
+wait_for_tag() {
+    local timeout=${1:-15} elapsed=0 tag
+    while [ "$elapsed" -lt "$((timeout * 2))" ]; do
+        tag=$(gdbus call --system --dest=$NEARD --object-path / \
+            --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
+            grep -o "/org/neard/nfc[0-9]*/tag[0-9]*" | head -1)
+        [ -n "$tag" ] && { printf '%s' "$tag"; return 0; }
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+        printf '\r\033[K  %s s…' "$((elapsed / 2))"
+    done
+    return 1
+}
+
+# prop_val PROPS NAME: pull one string property out of a GetAll dump
+# ("'NAME': <'value'>", GVariant text form).
+prop_val() {
+    printf '%s' "$1" | sed -n "s/.*'$2': <'\\([^']*\\)'>.*/\\1/p" | head -1
+}
+
+# Read all properties of a tag object.  Sets global variables:
+# TAG_TYPE, TAG_PROTOCOL, TAG_UID, TAG_ATQA, TAG_SAK, TAG_NDEF_RAW
+# Returns 1 if the tag's properties could not be read (it may already have
+# been pulled away; neard's object vanishes with it).
+read_tag_props() {
+    local tag_path="$1" props dev
+    props=$(gdbus call --system --dest=$NEARD --object-path "$tag_path" \
+        --method org.freedesktop.DBus.Properties.GetAll org.neard.Tag 2>&1) || {
+        TAG_READ_ERR="$props"
+        return 1
+    }
+
+    TAG_TYPE=$(prop_val "$props" Type)
+    TAG_PROTOCOL=$(prop_val "$props" Protocol)
+
+    # neard's Tag interface has no UID property at all; nfctool is the only
+    # source of it here, with sysfs as a last resort on some NXP drivers.
+    TAG_UID=""
+    TAG_ATQA=""
+    TAG_SAK=""
+    dev=$(nfc_dev) || dev=""
+    if [ -n "$dev" ] && command -v nfctool >/dev/null 2>&1; then
+        local nft
+        nft=$(nfctool -d "$dev" -l 2>/dev/null)
+        TAG_UID=$(printf '%s' "$nft" | grep -i 'UID\|NFCID' | head -1 |
+                  sed 's/.*: *//; s/ //g' | tr '[:lower:]' '[:upper:]')
+        TAG_ATQA=$(printf '%s' "$nft" | grep -i 'ATQA' | head -1 | sed 's/.*: *//; s/ //g')
+        TAG_SAK=$(printf '%s' "$nft" | grep -i 'SAK' | head -1 | sed 's/.*: *//; s/ //g')
+    fi
+    if [ -z "$TAG_UID" ] && [ -n "$dev" ] && [ -f "/sys/class/nfc/$dev/device/uid" ]; then
+        TAG_UID=$(tr '[:lower:]' '[:upper:]' < "/sys/class/nfc/$dev/device/uid")
+    fi
+    # Normalise: upper case, no 0x prefix (classify_badge matches on this).
+    TAG_SAK=$(printf '%s' "$TAG_SAK" | tr '[:lower:]' '[:upper:]' | sed 's/^0X//')
+    TAG_ATQA=$(printf '%s' "$TAG_ATQA" | tr '[:lower:]' '[:upper:]' | sed 's/^0X//')
+
+    # NDEF records: list record sub-objects.
+    TAG_NDEF_RAW=""
+    local records rec
+    records=$(gdbus call --system --dest=$NEARD --object-path / \
+        --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
+        grep -o "${tag_path}/record[0-9]*")
+    for rec in $records; do
+        TAG_NDEF_RAW="${TAG_NDEF_RAW}$(gdbus call --system --dest=$NEARD --object-path "$rec" \
+            --method org.freedesktop.DBus.Properties.GetAll org.neard.Record 2>/dev/null)
+"
+    done
+}
+
+# --- badge feasibility ------------------------------------------------------
+
+# Classify a scanned badge: can it be replayed on this chip?
+# Sets BADGE_CAN_REPLAY (yes/no/maybe) and BADGE_REPLAY_NOTE.
+classify_badge() {
+    local type="${TAG_TYPE:-}" proto="${TAG_PROTOCOL:-}" uid="${TAG_UID:-}"
+    local uid_len=0
+    # Count colons (AA:BB:CC form); if there are none, count hex pairs.
+    if printf '%s' "$uid" | grep -q ':'; then
+        uid_len=$(printf '%s' "$uid" | tr -cd ':' | wc -c)
+        uid_len=$((uid_len + 1))
+    elif [ -n "$uid" ]; then
+        uid_len=$(( ${#uid} / 2 ))
+    fi
+
+    BADGE_CAN_REPLAY=no
+    BADGE_REPLAY_NOTE=""
+
+    # Payment cards: refuse.
+    if printf '%s' "$TAG_NDEF_RAW" | grep -qi 'payment\|emv\|visa\|mastercard\|amex'; then
+        BADGE_CAN_REPLAY=no
+        BADGE_REPLAY_NOTE="Payment card detected.  Not saved."
+        return 1  # signal: do not save
+    fi
+
+    case "$proto" in
+        NFC-A|"ISO-DEP/A"|"")
+            # ISO 14443-A.  4 or 7-byte UIDs can be set via LA_NFCID1.
+            if [ "$uid_len" -eq 4 ] || [ "$uid_len" -eq 7 ]; then
+                BADGE_CAN_REPLAY=yes
+                BADGE_REPLAY_NOTE="UID-only replay (${uid_len}-byte NFCID1).  Works if the reader checks only the UID."
+            elif [ "$uid_len" -eq 10 ]; then
+                BADGE_CAN_REPLAY=no
+                BADGE_REPLAY_NOTE="10-byte UID (random, per ISO 14443-3): replay not possible."
+            else
+                BADGE_CAN_REPLAY=maybe
+                BADGE_REPLAY_NOTE="Unusual UID length (${uid_len} bytes); replay uncertain."
+            fi
+            # DESFire or Mifare Classic with keys: reader does a crypto check.
+            # SAK is already a hex byte (e.g. "08", "20"); matched directly,
+            # no 0x prefix (stripped in read_tag_props), case-insensitively.
+            case "$TAG_SAK" in
+                20|28)
+                    # SAK 0x20 (DESFire/JCOP) or 0x28 (DESFire + ISO 14443-4).
+                    BADGE_CAN_REPLAY=maybe
+                    BADGE_REPLAY_NOTE="DESFire or smart card (SAK $TAG_SAK): the UID can be set, but the reader likely does a crypto check too." ;;
+                8|08|18)
+                    # SAK 0x08 or 0x18: Mifare Classic (crypto1).
+                    BADGE_CAN_REPLAY=maybe
+                    BADGE_REPLAY_NOTE="Mifare Classic (SAK $TAG_SAK): the UID can be set.  Readers that do only UID checks will accept it; those that read encrypted sectors will not." ;;
+            esac
+            ;;
+        NFC-B|"ISO-DEP/B")
+            BADGE_CAN_REPLAY=maybe
+            BADGE_REPLAY_NOTE="ISO 14443-B: LB_NFCID0 support on this firmware is unknown."
+            ;;
+        NFC-V)
+            BADGE_CAN_REPLAY=no
+            BADGE_REPLAY_NOTE="ISO 15693 (NFC-V): different modulation, listen mode will not match."
+            ;;
+        NFC-F)
+            BADGE_CAN_REPLAY=no
+            BADGE_REPLAY_NOTE="FeliCa (NFC-F): different protocol, replay not supported by NCI on this chip."
+            ;;
+        *)
+            BADGE_CAN_REPLAY=no
+            BADGE_REPLAY_NOTE="Unknown protocol ($proto): cannot determine replay support."
+            ;;
+    esac
+    return 0
+}
+
+# --- wallet files ------------------------------------------------------------
+
+badge_file() { printf '%s/%s.nfc' "$wallet" "$(slugify "$1")"; }
+
+# unique_badge_file NAME: badge_file NAME, suffixed -2, -3… if that name's
+# file is already taken (two badges with the same or same-slug name).
+unique_badge_file() {
+    local name="$1" file n=2
+    file=$(badge_file "$name")
+    while [ -e "$file" ]; do
+        file=$(badge_file "${name}-${n}")
+        n=$((n + 1))
+    done
+    printf '%s' "$file"
+}
+
+save_badge() {
+    local name="$1" file
+    file=$(unique_badge_file "$name")
+    mkdir -p "$wallet"
+    cat > "$file" <<EOF
+# NFC badge saved by pro1x-nfc
+name=$name
+uid=$TAG_UID
+type=${TAG_TYPE:-unknown}
+protocol=${TAG_PROTOCOL:-unknown}
+atqa=${TAG_ATQA:-}
+sak=${TAG_SAK:-}
+replay=${BADGE_CAN_REPLAY:-no}
+replay_note=${BADGE_REPLAY_NOTE:-}
+saved=$(date -Iseconds)
+EOF
+    printf '%s' "$file"
+}
+
+load_badge() {
+    local file="$1"
+    B_NAME=$(sed -n 's/^name=//p' "$file")
+    # A badge file without a name= line (hand-edited, truncated write).
+    [ -z "$B_NAME" ] && B_NAME=$(basename "$file" .nfc)
+    B_UID=$(sed -n 's/^uid=//p' "$file")
+    B_TYPE=$(sed -n 's/^type=//p' "$file")
+    B_PROTOCOL=$(sed -n 's/^protocol=//p' "$file")
+    B_ATQA=$(sed -n 's/^atqa=//p' "$file")
+    B_SAK=$(sed -n 's/^sak=//p' "$file")
+    B_REPLAY=$(sed -n 's/^replay=//p' "$file")
+    B_REPLAY_NOTE=$(sed -n 's/^replay_note=//p' "$file")
+    B_SAVED=$(sed -n 's/^saved=//p' "$file")
+}
+
+list_badges() {
+    local f
+    for f in "$wallet"/*.nfc; do
+        [ -f "$f" ] || continue
+        local name uid replay
+        name=$(sed -n 's/^name=//p' "$f")
+        [ -z "$name" ] && name=$(basename "$f" .nfc)
+        uid=$(sed -n 's/^uid=//p' "$f")
+        replay=$(sed -n 's/^replay=//p' "$f")
+        local icon="✗"
+        case "$replay" in
+            yes) icon="✓" ;;
+            maybe) icon="?" ;;
+        esac
+        printf '%s\t%s  %s  [%s]\n' "$f" "$name" "$(dim "$uid")" "$icon"
+    done
+}
+
+# --- scan --------------------------------------------------------------------
+
+scan_badge() {
+    clear_screen
+    local err
+    err=$(nfc_check) || { echo "$err"; pause; return; }
+    err=$(neard_check) || { echo "$err"; pause; return; }
+
+    echo "Hold a badge to the back of the phone…"
+    echo "(Ctrl+C or wait 15 s to cancel.)"
+    echo
+    poll_start || { echo "Could not start NFC polling."; pause; return; }
+
+    local tag_path
+    if ! tag_path=$(wait_for_tag 15); then
+        printf '\r\033[KNo badge found.\n'
+        poll_stop
+        pause
+        return
+    fi
+    printf '\r\033[KBadge found.\n\n'
+
+    if ! read_tag_props "$tag_path"; then
+        poll_stop
+        echo "Could not read the badge; it may have been pulled away too soon."
+        echo "  $TAG_READ_ERR"
+        pause
+        return
+    fi
+    poll_stop
+
+    echo "  Type:     ${TAG_TYPE:-unknown}"
+    echo "  Protocol: ${TAG_PROTOCOL:-unknown}"
+    echo "  UID:      ${TAG_UID:-(not read)}"
+    [ -n "$TAG_ATQA" ] && echo "  ATQA:     $TAG_ATQA"
+    [ -n "$TAG_SAK" ]  && echo "  SAK:      $TAG_SAK"
+    echo
+
+    if ! classify_badge; then
+        # Payment card: refuse.
+        echo "  ⚠ $BADGE_REPLAY_NOTE"
+        echo
+        pause
+        return
+    fi
+
+    case "$BADGE_CAN_REPLAY" in
+        yes)   echo "  ✓ Replay: likely ($BADGE_REPLAY_NOTE)" ;;
+        maybe) echo "  ? Replay: uncertain ($BADGE_REPLAY_NOTE)" ;;
+        no)    echo "  ✗ Replay: not possible ($BADGE_REPLAY_NOTE)" ;;
+    esac
+    echo
+
+    if [ -z "$TAG_UID" ]; then
+        echo "No UID was read; the badge cannot be saved."
+        pause
+        return
+    fi
+
+    printf 'Save this badge? [Y/n] '
+    local yn
+    read -rsn1 yn
+    echo
+    case "$yn" in
+        n|N) return ;;
+    esac
+
+    local name
+    name=$(ask_name "badge $(date +%H%M)")
+    local file
+    file=$(save_badge "$name")
+    printf 'Saved to %s.\n' "$file"
+    pause
+}
+
+# --- replay ------------------------------------------------------------------
+
+replay_badge() {
+    local file="$1"
+    load_badge "$file"
+
+    clear_screen
+    echo "Replay: $B_NAME"
+    echo "  UID: $B_UID"
+    echo
+
+    case "$B_REPLAY" in
+        no)
+            echo "This badge cannot be replayed."
+            [ -n "$B_REPLAY_NOTE" ] && echo "  $B_REPLAY_NOTE"
+            pause
+            return ;;
+        maybe)
+            echo "⚠ Replay is uncertain for this badge:"
+            echo "  $B_REPLAY_NOTE"
+            echo
+            printf 'Try anyway? [y/N] '
+            local yn
+            read -rsn1 yn
+            echo
+            case "$yn" in y|Y) ;; *) return ;; esac
+            ;;
+        yes)
+            echo "This badge uses UID-only access."
+            [ -n "$B_REPLAY_NOTE" ] && echo "  $B_REPLAY_NOTE"
+            echo ;;
+    esac
+
+    echo "⚠ Replay uses NCI 2.0 LA_NFCID1 — this is untested on this firmware."
+    echo "  If it does not work, the chip or firmware may not support it."
+    echo
+
+    local err
+    err=$(nfc_check) || { echo "$err"; pause; return; }
+    err=$(neard_check) || { echo "$err"; pause; return; }
+
+    # Set LA_NFCID1 (the NCI listen-mode UID config parameter, ID 0x10) and
+    # enter listen mode.  neard exposes no API for this.  The two attempts
+    # below are guesses, not confirmed mechanisms: nfctool's --set-param
+    # flag and the sysfs node are not documented or seen working anywhere;
+    # setting LA_NFCID1 properly needs a raw NCI CORE_SET_CONFIG command,
+    # which would mean talking to /dev/nfcX directly or a vendor debugfs
+    # node, neither tried here.  Expect this to simply fail cleanly below.
+
+    local dev
+    dev=$(nfc_dev) || { echo "No NFC device."; pause; return; }
+
+    # Format the UID as the chip expects (bytes, no separators).
+    local uid_hex
+    uid_hex=$(printf '%s' "$B_UID" | tr -d ':' | tr '[:lower:]' '[:upper:]')
+
+    # Try the kernel's NFC_CMD_SET_PARAMS via nfctool or the sysfs path.
+    local ok=false
+
+    # Attempt 1: sysfs (some NXP drivers expose a listen_uid parameter).
+    if [ -w "/sys/class/nfc/$dev/device/listen_uid" ]; then
+        echo "$uid_hex" > "/sys/class/nfc/$dev/device/listen_uid" 2>/dev/null && ok=true
+    fi
+
+    # Attempt 2: nfctool with listen-mode parameters (depends on kernel support).
+    if ! $ok && command -v nfctool >/dev/null 2>&1; then
+        nfctool -d "$dev" --set-param la_nfcid1="$uid_hex" 2>/dev/null && ok=true
+    fi
+
+    if ! $ok; then
+        echo "Could not set the listen-mode UID."
+        echo "The kernel or firmware may not expose LA_NFCID1 yet."
+        echo "This feature needs testing with the new nxp-nci kernel."
+        pause
+        return
+    fi
+
+    echo "UID set to $B_UID.  Starting listen mode…"
+    echo "Hold the phone to the reader.  Ctrl+C to stop."
+    echo
+
+    # Start a Dual poll loop (initiator + target/listen).
+    local adapter
+    adapter=$(adapter_path)
+    if [ -n "$adapter" ]; then
+        gdbus call --system --dest=$NEARD --object-path "$adapter" \
+            --method org.neard.Adapter.StartPollLoop Dual >/dev/null 2>&1
+        # Block until the user presses a key or Ctrl+C.
+        read -rsn1
+        gdbus call --system --dest=$NEARD --object-path "$adapter" \
+            --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
+    else
+        echo "No NFC adapter found."
+    fi
+    pause
+}
+
+# --- badge submenu -----------------------------------------------------------
+
+# The badge submenu loops on itself: Details then Replay, or Replay again
+# after a rename, stay in this badge instead of bouncing to the main list.
+badge_menu() {
+    local file="$1" choice newname newfile yn
+
+    while :; do
+        load_badge "$file"
+
+        local replay_label
+        case "$B_REPLAY" in
+            yes)   replay_label="📡 Replay  $(dim "✓ $B_REPLAY_NOTE")" ;;
+            maybe) replay_label="📡 Replay  $(dim "? $B_REPLAY_NOTE")" ;;
+            no)    replay_label="📡 Replay  $(dim "✗ cannot")" ;;
+        esac
+
+        choice=$(printf '%s\t%s\n' \
+            back "← back" \
+            details "ℹ Details" \
+            replay "$replay_label" \
+            rename "✏ Rename" \
+            delete "🗑 Delete" | menu "$B_NAME")
+
+        case "$choice" in
+            ""|back) return ;;
+            details)
+                clear_screen
+                echo "$B_NAME"
+                echo "  UID:      $B_UID"
+                echo "  Type:     $B_TYPE"
+                echo "  Protocol: $B_PROTOCOL"
+                [ -n "$B_ATQA" ] && echo "  ATQA:     $B_ATQA"
+                [ -n "$B_SAK" ]  && echo "  SAK:      $B_SAK"
+                echo "  Saved:    $B_SAVED"
+                echo
+                case "$B_REPLAY" in
+                    yes)   echo "  ✓ Replay: $B_REPLAY_NOTE" ;;
+                    maybe) echo "  ? Replay: $B_REPLAY_NOTE" ;;
+                    no)    echo "  ✗ Replay: $B_REPLAY_NOTE" ;;
+                esac
+                pause ;;
+            replay)
+                replay_badge "$file" ;;
+            rename)
+                clear_screen
+                newname=$(ask_name "$B_NAME")
+                if [ "$newname" != "$B_NAME" ] && [ -n "$newname" ]; then
+                    # Escape sed's replacement-side specials (/, &, \) so a
+                    # name holding any of them does not corrupt the file.
+                    local esc_newname
+                    esc_newname=$(printf '%s' "$newname" | sed 's/[&/\]/\\&/g')
+                    sed -i "s/^name=.*/name=$esc_newname/" "$file"
+                    newfile=$(badge_file "$newname")
+                    if [ "$newfile" != "$file" ]; then
+                        [ -e "$newfile" ] && newfile=$(unique_badge_file "$newname")
+                        mv "$file" "$newfile"
+                        file="$newfile"
+                    fi
+                fi ;;
+            delete)
+                clear_screen
+                printf 'Delete %s? [y/N] ' "$B_NAME"
+                read -rsn1 yn
+                echo
+                case "$yn" in
+                    y|Y) rm -f "$file"; echo "Deleted."; pause; return ;;
+                esac ;;
+        esac
+    done
+}
+
+# --- main loop ---------------------------------------------------------------
+
+mkdir -p "$wallet"
+
+while :; do
+    badges=$(list_badges)
+    choice=$({
+        printf 'back\t← back\n'
+        printf 'scan\t📡 Scan a badge\n'
+        [ -n "$badges" ] && printf '%s\n' "$badges"
+    } | menu "NFC wallet")
+
+    case "$choice" in
+        ""|back) break ;;
+        scan) scan_badge ;;
+        *)
+            if [ -f "$choice" ]; then
+                badge_menu "$choice"
+            fi ;;
+    esac
+done
+
+: > "$rt/pro1x-tool.done"

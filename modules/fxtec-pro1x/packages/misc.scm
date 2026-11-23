@@ -1909,6 +1909,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-stream                   send the screen to another device
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
+;;;   bin/pro1x-nfc                      NFC wallet: read, save, replay badges
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
 ;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
 ;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
@@ -1994,6 +1995,7 @@ window opened by a sway key binding.")
           ("pro1x-wifi-powersave" "bin/")
           ("pro1x-timezone" "bin/")
           ("pro1x-timezone-admin" "bin/")
+          ("pro1x-nfc" "bin/")
           ("pro1x-fingerprint" "bin/")
           ("pro1x-waydroid" "bin/")
           ("pro1x-waydroid-admin" "bin/")

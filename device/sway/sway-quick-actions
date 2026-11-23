@@ -1934,8 +1934,8 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
                 esac" \
         --bind="right:transform:case {1} in
                   bright|volume) echo \"reload($self --step-cached {1} +)\" ;;
-                  caffeine|torch|airplane|osk|nfc) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
-                  hotspot|timezone|stream|tests|automations|fingerprint|waydroid) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
+                  caffeine|torch|airplane|osk) echo \"execute-silent($self --act {1})+reload($self --cached)\" ;;
+                  hotspot|timezone|stream|tests|automations|fingerprint|waydroid|nfc) echo \"execute($self --tool {1})+reload-sync($self --refreshed {1})\" ;;
                   wwan|operator|feedback|cpu|orient|charge|wifi|bluetooth|location|rotation|layout|audio|dicts|apps|touchpad) echo \"$sync_begin+execute($self --choose {1})+reload-sync($self --refreshed {1})+$sync_end\" ;;
                   sim) echo \"$sync_begin+execute($self --choose sim)+reload($self --lines)+$sync_end\" ;;
                   notif) echo \"$sync_begin+execute($self --notif)+reload($self --lines)+$sync_end\" ;;
