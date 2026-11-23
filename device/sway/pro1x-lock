@@ -539,7 +539,15 @@ supervise() {
     wait $!
     rc=$?
     case $rc in
-        0) rm -f "$rt/pro1x-lock.pid"; exit 0 ;;   # unlocked
+        # Unlocked.  The keys of the blanked panel's mode do nothing
+        # while locked, so a wake that missed leaving it (swayidle's
+        # resume racing its own blanking) showed only now: the phone
+        # unlocked with a dead keyboard (author, 2026-11-23).
+        0) rm -f "$rt/pro1x-lock.pid"
+           swaymsg -t get_binding_state -r | jq -e '.name == "pro1x-blanked"' >/dev/null &&
+               swaymsg -t get_outputs -r | jq -e 'any(.[]; .name == "DSI-1" and .power)' >/dev/null &&
+               swaymsg mode default >/dev/null
+           exit 0 ;;
         137) exit 0 ;;              # a redraw: its new gtklock takes over
     esac
     [ $(( $(date +%s) - started )) -lt 30 ] || tries=0
