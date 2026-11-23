@@ -52,7 +52,16 @@
   (package
     (name "waydroid-host-stack")
     (version (git-version "0.1.0" "0" waydroid-host-stack-commit))
-    (source waydroid-host-stack-source)
+    ;; An LE link shared by several guest clients is dropped only when the
+    ;; last one goes (the Tesla phone key's link went 2 s after a reuse).
+    (source
+     (origin
+       (inherit waydroid-host-stack-source)
+       (patches
+        (list
+         (local-file
+          (repository-file "device/patches/waydroid-host-stack-shared-link-owners.patch")
+          "waydroid-host-stack-shared-link-owners.patch")))))
     (build-system cargo-build-system)
     (arguments
      (list

@@ -1,0 +1,127 @@
+waydroid-host-stack: an LE link can have several owners.
+
+A guest connect whose requester had gone could finish after another guest
+client reused the link (BlueZ reports it connected, then ServicesResolved
+comes later); its ownership then replaced the reuser's, and cleaning up its
+dead socket dropped the link 2 s into the reuser's GATT discovery.  Seen on
+the Pro1x with a Tesla's phone key, 2026-11-20: "LE device already connected
+- reuse", then "guest client gone: dropped its LE link".  The link is now
+dropped only when its last owner goes.  Tests: cargo test (service::), new
+shared_link_dropped_only_by_its_last_owner.  Ours (fxtec-pro1x-guix,
+2026-11-23), on d9a316e (MIT).
+
+diff --git a/host/src/service.rs b/host/src/service.rs
+index b4ec227..0c32eba 100644
+--- a/host/src/service.rs
++++ b/host/src/service.rs
+@@ -1,5 +1,5 @@
+ //! Request dispatch: protocol ops → BlueZ + policy.
+ 
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
+ use std::sync::Arc;
+ use std::time::Duration;
+@@ -34,9 +34,13 @@ pub struct BridgeService {
+     /// so the HAL can inject an HCI Disconnection Complete like a controller.
+     link_watch: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
+-    /// LE links opened by ConnectLe, keyed by device_id (upper case) -> the
+-    /// IPC client that owns it. When that client goes away without a
+-    /// Disconnect (guest HAL cancelled a pending connect mid-attempt, HAL
+-    /// crash), the host link is dropped instead of dangling.
+-    owned_links: Mutex<HashMap<String, u64>>,
++    /// LE links opened or reused by ConnectLe, keyed by device_id (upper
++    /// case) -> the IPC clients that use it. When the last of them goes
++    /// away without a Disconnect (guest HAL cancelled a pending connect
++    /// mid-attempt, HAL crash), the host link is dropped instead of
++    /// dangling.  Several owners: a connect whose requester had already
++    /// gone could finish after another client reused the link, take it
++    /// over, and drop it when its dead socket was cleaned up, 2 s into the
++    /// other client's GATT discovery (Pro1x and a Tesla, 2026-11-20).
++    owned_links: Mutex<HashMap<String, HashSet<u64>>>,
+     host_version: String,
+ }
+@@ -120,9 +124,24 @@ pub(crate) fn link_lost_event(device_id: &str) -> Envelope {
+ }
+ 
++/// The clients owning a link: one, or several sharing it.
++pub(crate) trait Owners {
++    fn has(&self, client: u64) -> bool;
++}
++impl Owners for u64 {
++    fn has(&self, client: u64) -> bool {
++        *self == client
++    }
++}
++impl Owners for HashSet<u64> {
++    fn has(&self, client: u64) -> bool {
++        self.contains(&client)
++    }
++}
++
+ /// Links owned by `client` (pure helper — unit tested).
+-pub(crate) fn links_owned_by(owned: &HashMap<String, u64>, client: u64) -> Vec<String> {
++pub(crate) fn links_owned_by<O: Owners>(owned: &HashMap<String, O>, client: u64) -> Vec<String> {
+     let mut v: Vec<String> = owned
+         .iter()
+-        .filter(|(_, c)| **c == client)
++        .filter(|(_, c)| c.has(client))
+         .map(|(d, _)| d.clone())
+         .collect();
+@@ -131,4 +150,20 @@ pub(crate) fn links_owned_by(owned: &HashMap<String, u64>, client: u64) -> Vec<S
+ }
+ 
++/// `client` gives up its links: those it was the last owner of, to drop
++/// (pure helper — unit tested).
++pub(crate) fn release_owner(owned: &mut HashMap<String, HashSet<u64>>, client: u64) -> Vec<String> {
++    let mut last = Vec::new();
++    for dev in links_owned_by(owned, client) {
++        if let Some(set) = owned.get_mut(&dev) {
++            set.remove(&client);
++            if set.is_empty() {
++                owned.remove(&dev);
++                last.push(dev);
++            }
++        }
++    }
++    last
++}
++
+ impl BridgeService {
+     pub fn new(bluez: BlueZ, scan: Arc<ScanPolicy>, host_version: String) -> Self {
+@@ -188,5 +223,5 @@ impl BridgeService {
+             RequestKind::ConnectLe => {
+                 if let Some(dev) = resp.as_ref().and_then(connect_le_device_id) {
+-                    self.owned_links.lock().await.insert(dev, client);
++                    self.owned_links.lock().await.entry(dev).or_default().insert(client);
+                 }
+             }
+@@ -202,12 +237,5 @@ impl BridgeService {
+     /// longer drive them). Best effort, never fails the bridge.
+     pub async fn release_client_links(&self, client: u64) {
+-        let devs = {
+-            let mut owned = self.owned_links.lock().await;
+-            let devs = links_owned_by(&owned, client);
+-            for d in &devs {
+-                owned.remove(d);
+-            }
+-            devs
+-        };
++        let devs = release_owner(&mut *self.owned_links.lock().await, client);
+         for dev in devs {
+             {
+@@ -933,4 +961,15 @@ mod tests {
+     }
+ 
++    #[test]
++    fn shared_link_dropped_only_by_its_last_owner() {
++        let mut m: HashMap<String, HashSet<u64>> = HashMap::new();
++        // Client 1 opened it, client 2 reused it.
++        m.entry("dev-car".to_string()).or_default().insert(1);
++        m.entry("dev-car".to_string()).or_default().insert(2);
++        assert!(release_owner(&mut m, 1).is_empty());
++        assert_eq!(release_owner(&mut m, 2), vec!["dev-car".to_string()]);
++        assert!(m.is_empty());
++    }
++
+     #[test]
+     fn link_lost_event_is_disconnected() {
