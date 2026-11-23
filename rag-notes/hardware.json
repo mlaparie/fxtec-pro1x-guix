@@ -633,12 +633,20 @@
     "source": "c469f7d; vendor_a /etc/libnfc-nxp.conf; /root/nfcpoll.sh on the phone"
    },
    {
-    "title": "PN557 on the Pro¹x: the stock configuration asks for the PMIC's 19.2 MHz clock, through a pulled-up CLKREQ",
-    "general": "NXP controllers set to take their clock from the PLL (NXP_SYS_CLK_SRC_SEL=0x01) need a reference clock while the RF field is on. They request it on CLKREQ. Without it they answer NCI but find no tag. Mainline nxp-nci enables no clock, so a board that needs one has to name it, and pull the request pin as the vendor tree does.",
-    "instance": "Stock: NXP_SYS_CLK_SRC_SEL=0x01, NXP_SYS_CLK_FREQ_SEL=0x02 (19.2 MHz), pull-up on GPIO 86 and 70 in the vendor pin configuration; on mainline GPIO 86 was pulled down and RF_CLK1_PIN and RF_CLK2_PIN had count 0. pro1x-nfc-clock.patch enables both from the driver and pulls GPIO 86 up. That the missing clock causes the empty polls is inferred, to be confirmed with the CI kernel. If it is not the cause, the next suspects are the stock TVDD settings (NXP_EXT_TVDD_CFG) and the RF blocks in libnfc-nxp_RF.conf, which mainline never sends.",
-    "confidence": "inferred",
+    "title": "PN557 on the Pro¹x: the 19.2 MHz clock and a pulled-up CLKREQ are not enough to find a tag",
+    "general": "NXP controllers set to take their clock from the PLL (NXP_SYS_CLK_SRC_SEL=0x01) take a reference clock, which they request on CLKREQ. Mainline nxp-nci enables no clock, so a board that needs one has to name it. On this phone, naming the clock did not make the chip see tags.",
+    "instance": "Stock: NXP_SYS_CLK_SRC_SEL=0x01, NXP_SYS_CLK_FREQ_SEL=0x02 (19.2 MHz), pull-up on GPIO 86 and 70 in the vendor pin configuration. Mainline had GPIO 86 pulled down, and RF_CLK1_PIN and RF_CLK2_PIN at count 0. pro1x-nfc-clock.patch (generation 259) enables both clocks for nfc@28 (count 1) and pulls GPIO 86 up. Even so, a 40 s poll with a card on the back found nothing: RF mode stayed None, there were 3 interrupts during the poll, and GPIO 86 read low, so the chip never asked for the clock. Previously (same day) the missing clock was inferred to be the cause; it is not, at least not alone. Next suspects: the stock TVDD settings (NXP_EXT_TVDD_CFG_1, A0 0E), NXP_ACT_PROP_EXTN (2F 02 00) and the RF blocks in libnfc-nxp_RF.conf, none of which mainline sends.",
+    "confidence": "confirmed",
     "date": "2026-11-23",
     "source": "8e93817; vendor_a /etc/libnfc-nxp.conf and libnfc-nxp_RF.conf; /sys/kernel/debug/clk/clk_summary on the phone"
+   },
+   {
+    "title": "nxp-nci: unbinding the driver hangs in nci_unregister_device when the chip stops answering I2C",
+    "general": "Removing nxp-nci_i2c (an unbind through sysfs) sends a last NCI command. If the chip does not ACK it (I2C send error -6), the request times out, and the removal then waits forever in D state, inside nci_unregister_device. The device stays half removed: i2c-dev reports the address busy, and only a reboot clears it. A normal reboot may block on the same device lock, so sync and reboot with sysrq. To talk to the chip from user space, keep the driver from loading at boot (module_blacklist) instead of unbinding it.",
+    "instance": "Pro¹x, kernel of generation 259 (7.3.0 with the NFC patches): it hung twice, once with neard stopped and once with neard running (the adapter powered). dmesg: \"NFC: Error -6 on I2C send\", then \"__nci_request: wait_for_completion_interruptible_timeout failed 0\".",
+    "confidence": "confirmed",
+    "date": "2026-11-23",
+    "source": "/proc/PID/stack of the hung unbind on the phone; dmesg"
    }
   ]
  }
