@@ -37,7 +37,23 @@ wallet="$HOME/.config/pro1x/nfc-wallet"
 trap 'rm -f "$rt/pro1x-tool.done"; poll_stop' EXIT
 
 clear_screen() { printf '\033[H\033[2J\033[3J'; }
-pause() { printf '\nPress any key to go back.\n'; read -rsn1; }
+# The screens' questions are small fzf lists under the text, on the tool's
+# socket, so that the volume and power keys answer them as in the other
+# lists (pro1x-menu key; author, 2026-11-23); touch and the keyboard too.
+pick() {                        # pick LINE... : the chosen line's first field
+    printf '%s\n' "$@" |
+        fzf --listen="$sock" --bind='left:abort' --bind='right:accept' \
+            --delimiter='\t' --with-nth=2 --ansi --height=~6 --layout=reverse-list \
+            --no-info --cycle --margin=0,2 --color=16,gutter:-1 --prompt='' |
+        cut -f1
+}
+pause() { echo; pick "back	← back" >/dev/null; }
+# yes_no QUESTION DEFAULT(yes|no): exit 0 on yes.
+yes_no() {
+    echo; echo "$1"
+    if [ "$2" = yes ]; then [ "$(pick "yes	yes" "no	no")" = yes ]
+    else [ "$(pick "no	no" "yes	yes")" = yes ]; fi
+}
 dim() { printf '\033[2m%s\033[0m' "$*"; }
 
 menu() {
@@ -355,7 +371,7 @@ scan_badge() {
     err=$(neard_check) || { echo "$err"; pause; return; }
 
     echo "Hold a badge to the back of the phone…"
-    echo "(Ctrl+C or wait 15 s to cancel.)"
+    echo "(Wait 15 s to cancel.)"
     echo
     poll_start || { echo "Could not start NFC polling."; pause; return; }
 
@@ -405,13 +421,7 @@ scan_badge() {
         return
     fi
 
-    printf 'Save this badge? [Y/n] '
-    local yn
-    read -rsn1 yn
-    echo
-    case "$yn" in
-        n|N) return ;;
-    esac
+    yes_no "Save this badge?" yes || return
 
     local name
     name=$(ask_name "badge $(date +%H%M)")
@@ -442,11 +452,7 @@ replay_badge() {
             echo "⚠ Replay is uncertain for this badge:"
             echo "  $B_REPLAY_NOTE"
             echo
-            printf 'Try anyway? [y/N] '
-            local yn
-            read -rsn1 yn
-            echo
-            case "$yn" in y|Y) ;; *) return ;; esac
+            yes_no "Try anyway?" no || return
             ;;
         yes)
             echo "This badge uses UID-only access."
@@ -499,7 +505,7 @@ replay_badge() {
     fi
 
     echo "UID set to $B_UID.  Starting listen mode…"
-    echo "Hold the phone to the reader.  Ctrl+C to stop."
+    echo "Hold the phone to the reader."
     echo
 
     # Start a Dual poll loop (initiator + target/listen).
@@ -508,8 +514,8 @@ replay_badge() {
     if [ -n "$adapter" ]; then
         gdbus call --system --dest=$NEARD --object-path "$adapter" \
             --method org.neard.Adapter.StartPollLoop Dual >/dev/null 2>&1
-        # Block until the user presses a key or Ctrl+C.
-        read -rsn1
+        # Until the line is chosen.
+        pick "stop	■ Stop replaying" >/dev/null
         gdbus call --system --dest=$NEARD --object-path "$adapter" \
             --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
     else
@@ -580,12 +586,9 @@ badge_menu() {
                 fi ;;
             delete)
                 clear_screen
-                printf 'Delete %s? [y/N] ' "$B_NAME"
-                read -rsn1 yn
-                echo
-                case "$yn" in
-                    y|Y) rm -f "$file"; echo "Deleted."; pause; return ;;
-                esac ;;
+                if yes_no "Delete $B_NAME?" no; then
+                    rm -f "$file"; echo "Deleted."; pause; return
+                fi ;;
         esac
     done
 }
