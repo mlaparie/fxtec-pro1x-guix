@@ -1,0 +1,35 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] arm64: dts: qcom: sm6115-pro1x: add the NFC controller
+
+The Pro1X has an NXP NCI controller on I2C1 at 0x28.  The vendor tree
+(LineageOS android_kernel_fxtec_sm6115, bengal-idp.dtsi, nq@28) wires its
+interrupt to GPIO 70, its enable to GPIO 69 and its firmware download pin
+to GPIO 31.  Probed by hand on the phone: a CORE_RESET_CMD at 0x28 is
+answered by an NCI 2.0 CORE_RESET_NTF from manufacturer 0x04 (NXP),
+hardware 0x41, firmware 01.16.  Its clock request line (GPIO 86) is not
+used by nxp-nci.
+
+Ours (fxtec-pro1x-guix, 2026-11-23).
+
+---
+diff --git a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+index 58d4db6..ba5e228 100644
+--- a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
++++ b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+@@ -351,6 +351,16 @@
+ 		#gpio-cells = <2>;
+ 	};
+ 
++	nfc@28 {
++		/* NXP NCI 2.0 controller (hardware 0x41); pins as the vendor tree's nq@28 */
++		compatible = "nxp,nxp-nci-i2c";
++		reg = <0x28>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <70 IRQ_TYPE_EDGE_RISING>;
++		enable-gpios = <&tlmm 69 GPIO_ACTIVE_HIGH>;
++		firmware-gpios = <&tlmm 31 GPIO_ACTIVE_HIGH>;
++	};
++
+ 	haptics: haptics@58 {
+ 		compatible = "awinic,aw86224";
+ 		reg = <0x58>;

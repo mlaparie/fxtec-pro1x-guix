@@ -69,12 +69,13 @@
         ;; A hotspot on 5 GHz beside a 5 GHz Wi-Fi network: the country of
         ;; the access point lifts no-IR (ath kept it for a card with an
         ;; EEPROM country).
+        ;; The NFC controller (NXP, NCI 2.0) on I2C1, for nxp-nci.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
-          "bt-le-conn-nodup" "ath-country-ie-no-ir"))))
+          "bt-le-conn-nodup" "ath-country-ie-no-ir" "nfc"))))
 
 (define-public linux-pro1x
   (package
