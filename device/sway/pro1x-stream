@@ -1038,14 +1038,62 @@ send_interactive() {
     show_links "$(streaming_note "$k")" "${k:+?k=$k}" && leave_menu
 }
 
+# Chromecast: the client plays it itself (catt).  What it plays (author,
+# 2026-11-23): this screen and its sound live, as wl-cast's HLS (some
+# seconds behind: for videos, not for typing); a file picked in nnn; or
+# a URL.  A file is served by catt itself while it
+# plays, so catt runs on in the background (its errors in $rt/catt.log).
 try_catt() {
-    # The list fills as the scan finds them.
-    name=$(catt scan 2>/dev/null | awk -F' - ' 'NF >= 2 { print $2 "\t" $2; fflush() }' |
-               pick "chromecast" --header="Chromecasts on this network (looking…)")
-    [ -n "$name" ] || return
-    what=$(ask "video URL or file" "For $name; Enter sends it, Esc goes back.")
-    [ -n "$what" ] || return
-    err=$(catt -d "$name" cast "$what" 2>&1) || notice "Chromecast: ${err:-failed}"
+    # The list fills as the scan finds them; picked: ADDRESS|NAME.
+    cc=$(catt scan 2>/dev/null | awk -F' - ' 'NF >= 2 { print $1 "|" $2 "\t" $2; fflush() }' |
+             pick "chromecast" --header="Chromecasts on this network (looking…)")
+    [ -n "$cc" ] || return
+    cc_ip=${cc%%|*} name=${cc#*|}
+    while :; do
+        what=$(printf '%s\t%s\n' \
+                   wlcast "wl-cast     this screen and its sound, live (HLS, some seconds behind)" \
+                   file "Video file  picked in nnn, from Videos" \
+                   url "URL         typed" | pick "$name")
+        case "$what" in
+            wlcast) catt_wlcast "$cc_ip" "$name" && return ;;
+            # nnn as the picker (author): Enter on a file picks it, q goes back.
+            file) f=$(cd "$HOME/Videos" 2>/dev/null || cd; nnn -p - | head -n 1)
+                  [ -n "$f" ] || continue
+                  setsid catt -d "$name" cast "$f" >"$rt/catt.log" 2>&1 </dev/null &
+                  return ;;
+            url) u=$(ask "video URL" "For $name; Enter sends it, Esc goes back.")
+                 [ -n "$u" ] || continue
+                 err=$(catt -d "$name" cast "$u" 2>&1) || notice "Chromecast: ${err:-failed}"
+                 return ;;
+            *) return ;;
+        esac
+    done
+}
+
+# The wl-cast stream to the Chromecast at ADDRESS: the running one, else a
+# view-only one started for it (no approval: the Chromecast was picked
+# here, on the phone), its HLS link on the phone's address towards it.
+catt_wlcast() {                 # catt_wlcast ADDRESS NAME
+    case "$(running_kind)" in
+        wlcast-*) ;;
+        *) k=
+           key_on && k=$(current_key)
+           stop_stream
+           if ! out=$(wl-cast start -o DSI-1 -k "$k" -A off -v "$(visibility)" \
+                          -s "$(screen)" -f "$(fps)" -d -T -n 2>&1); then
+               notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
+               return 1
+           fi
+           cp "$rt/wl-cast.pid" "$pid_file"
+           echo "wlcast-view $k" > "$kind_file"
+           echo "wl-cast to $2" > "$to_file" ;;
+    esac
+    src=$(ip -4 route get "$1" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+    url=$(grep "^http://$src:" "$rt/wl-cast.links" 2>/dev/null | head -n 1 | cut -f1)
+    [ -n "$url" ] || { notice "wl-cast has no link on $src (visibility $(visibility))."; return 1; }
+    url=$(printf '%s' "$url" | sed 's|/?|/live.m3u8?|; s|/$|/live.m3u8|')
+    err=$(catt -d "$2" cast "$url" 2>&1) || { notice "Chromecast: ${err:-failed}"; return 1; }
+    leave_menu
 }
 
 # The portal hands Network Displays the panel's buffer as stored, sideways
@@ -1147,7 +1195,7 @@ while :; do
             mjpeg "Browser, simple       no sound, any browser; heavy on bandwidth" \
             udp "VLC                   ${to:+to $to; }needs VLC on the client" \
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
-            catt "Chromecast            sends a video URL or file; the client plays it itself" \
+            catt "Chromecast            this screen (wl-cast), a file or a URL; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
             settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
             # The running stream's line: "active: show links" (author).
