@@ -68,10 +68,17 @@ on BlueZ, which keeps the adapter (BLE GATT only, phone-key apps reported workin
 document).  Needs the same-build Bluetooth.apk and libbluetooth_jni.so from a LineageOS 20
 arm64 ROM in the overlay (the JNI patched for BOOTTIME), the HAL built with the Android NDK,
 the daemon with cargo, and its systemd units as Shepherd services.  Not started.
-*** TODO [#B] NFC: validate on the phone
-Listed "Untested" in the README: never checked on this port (kernel driver, nfc0, a tag
-read with neard or libnfc).  waydroid-host-stack forwards host tags to Android (file,
-broadcast), so it depends on this.
+*** TODO [#B] NFC: validate on the phone, then a quick-actions NFC sublist
+2026-11-23: the controller answers on I2C1 at 0x28 (i2c-tools by hand): NCI 2.0, NXP,
+hardware 0x41, firmware 01.16; enable (GPIO 69) already high at boot.  Wiring from the
+vendor tree (LineageOS android_kernel_fxtec_sm6115, bengal-idp.dtsi nq@28).  Device-tree
+node in pro1x-nfc.patch (c469f7d), CI build pending; then nfc0, and a tag read (neard).
+Wanted by the author: a QA NFC sublist to read and analyse badges, save them, and emulate
+them later (one phone for several badges).  Feasible only for 13.56 MHz badges whose reader
+checks the ID: NCI 2.0's LA_NFCID1 may give a fixed ID in listen mode (untested on this
+firmware), from user space over I2C with nxp-nci unloaded.  Not 125 kHz badges, nor
+encrypted ones (DESFire, iCLASS SE, banks).
+waydroid-host-stack forwards host tags to Android (file, broadcast), so it depends on this.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
