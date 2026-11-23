@@ -18,13 +18,8 @@
 # Needs: the kernel with nxp-nci (pro1x-nfc.patch), neard running, nfctool.
 # Replay needs NCI 2.0 LA_NFCID1 support from the NXP firmware — untested.
 #
-# Wiring into sway-quick-actions: nfc is currently only in the plain on/off
-# toggle case (shared with caffeine|torch|airplane|osk) in right:transform.
-# To open this tool on Right, move nfc from that case into the tool case
-# (shared with hotspot|timezone|stream|tests|automations|fingerprint|waydroid,
-# which runs "$self" --tool {1}) in right:transform only; leave it in
-# enter:transform's toggle case so Enter still toggles the radio.  step()'s
-# +/- cases are for physical volume-key repeats, unrelated to this.
+# Opened by Enter or Right on the NFC line of sway-quick-actions (Left there
+# turns the radio on or off); a line of the wallet does too.
 #
 # State: written 2026-11-23, untested (needs the CI kernel with nxp-nci).
 
@@ -47,7 +42,7 @@ dim() { printf '\033[2m%s\033[0m' "$*"; }
 
 menu() {
     fzf --listen="$sock" --bind='left:abort' --bind='right:accept' \
-        --delimiter='\t' --with-nth=2 --prompt="$1 > " \
+        --delimiter='\t' --with-nth=2 --ansi --prompt="$1 > " \
         --layout=reverse-list --no-info --cycle --margin=1,2 \
         --color=16,gutter:-1 --bind='load:pos(2)' | cut -f1
 }
@@ -604,12 +599,23 @@ while :; do
     choice=$({
         printf 'back\t← back\n'
         printf 'scan\t📡 Scan a badge\n'
+        if rfkill list nfc 2>/dev/null | grep -q "Soft blocked: yes"; then
+            printf 'radio\tNFC  %s\n' "$(dim off)"
+        else
+            printf 'radio\tNFC  %s\n' "$(dim on)"
+        fi
         [ -n "$badges" ] && printf '%s\n' "$badges"
     } | menu "NFC wallet")
 
     case "$choice" in
         ""|back) break ;;
         scan) scan_badge ;;
+        radio)
+            if rfkill list nfc 2>/dev/null | grep -q "Soft blocked: yes"; then
+                rfkill unblock nfc
+            else
+                rfkill block nfc
+            fi ;;
         *)
             if [ -f "$choice" ]; then
                 badge_menu "$choice"
