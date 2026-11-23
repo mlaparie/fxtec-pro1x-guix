@@ -11,11 +11,12 @@ device="My car"
 address=10.42.0.1               # NetworkManager's address on the hotspot
 
 mac_of() {
-    bluetoothctl devices | while read -r _ mac name; do
+    timeout 5 bluetoothctl devices | while read -r _ mac name; do
         [ "$name" = "$device" ] && echo "$mac"
     done
 }
-connected() { bluetoothctl info "$1" 2>/dev/null | grep -q 'Connected: yes'; }
+# bluetoothctl can hang (once for 30 min, 2026-11-23): never more than 5 s.
+connected() { timeout 5 bluetoothctl info "$1" 2>/dev/null | grep -q 'Connected: yes'; }
 hotspot_on() { [ "$(nmcli -g GENERAL.STATE connection show pro1x-hotspot 2>/dev/null)" = activated ]; }
 
 start() {
