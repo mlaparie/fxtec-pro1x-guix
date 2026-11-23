@@ -1070,24 +1070,37 @@ try_catt() {
     done
 }
 
-# The wl-cast stream to the Chromecast at ADDRESS: the running one, else a
-# view-only one started for it (no approval: the Chromecast was picked
-# here, on the phone), its HLS link on the phone's address towards it.
+# The wl-cast stream to the Chromecast at ADDRESS, view only, at a quality
+# of its own over the settings' size, rate and bit rate (author,
+# 2026-11-23: High heated the phone; 2 s segments stalled): a stream of
+# its own, started again for it, with no approval (the Chromecast was
+# picked here, on the phone); its HLS link on the phone's address towards
+# the Chromecast.  The last quality is kept.
+cast_quality_file=${XDG_STATE_HOME:-$HOME/.local/state}/pro1x/cast-quality
 catt_wlcast() {                 # catt_wlcast ADDRESS NAME
-    case "$(running_kind)" in
-        wlcast-*) ;;
-        *) k=
-           key_on && k=$(current_key)
-           stop_stream
-           if ! out=$(wl-cast start -o DSI-1 -k "$k" -A off -v "$(visibility)" \
-                          -s "$(screen)" -f "$(fps)" -d -T -n 2>&1); then
-               notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
-               return 1
-           fi
-           cp "$rt/wl-cast.pid" "$pid_file"
-           echo "wlcast-view $k" > "$kind_file"
-           echo "wl-cast to $2" > "$to_file" ;;
+    cur=$(cat "$cast_quality_file" 2>/dev/null || echo medium)
+    q=$(printf '%s\t%s\n' \
+            low "Low     1280 px, 24 fps, 2 Mbit/s; cooler, for weak Wi-Fi" \
+            medium "Medium  1600 px, 30 fps, 4 Mbit/s" \
+            high "High    1920 px, 30 fps, 6 Mbit/s; the phone gets hot" |
+        awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }' |
+        pick "quality" --header="For $2: this screen and its sound, some seconds behind.")
+    case "$q" in
+        low) set -- "$@" 1280 24 2 ;; medium) set -- "$@" 1600 30 4 ;;
+        high) set -- "$@" 1920 30 6 ;; *) return 1 ;;
     esac
+    mkdir -p "${cast_quality_file%/*}"; echo "$q" > "$cast_quality_file"
+    k=
+    key_on && k=$(current_key)
+    stop_stream
+    if ! out=$(wl-cast start -o DSI-1 -k "$k" -A off -v "$(visibility)" -s host \
+                   -l "$3" -f "$4" -b "$5" -d -T -n 2>&1); then
+        notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
+        return 1
+    fi
+    cp "$rt/wl-cast.pid" "$pid_file"
+    echo "wlcast-view $k" > "$kind_file"
+    echo "wl-cast to $2" > "$to_file"
     src=$(ip -4 route get "$1" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
     url=$(grep "^http://$src:" "$rt/wl-cast.links" 2>/dev/null | head -n 1 | cut -f1)
     [ -n "$url" ] || { notice "wl-cast has no link on $src (visibility $(visibility))."; return 1; }
@@ -1114,6 +1127,7 @@ send_wlcast() {                 # send_wlcast interactive|view
     key_on && k=$(current_key)
     stop_stream
     set -- -o DSI-1 -k "$k" -A "$(approve)" -v "$(visibility)" -s "$(screen)" -f "$(fps)" -d -T
+    [ "$(out_size)" = native ] || set -- "$@" -l "$(out_size)"
     [ "$mode" = view ] && set -- "$@" -n
     if ! out=$(wl-cast start "$@" 2>&1); then
         notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
@@ -1197,7 +1211,7 @@ while :; do
             moonlight "Moonlight             Sunshine host for Moonlight's apps; software, hot" \
             catt "Chromecast            this screen (wl-cast), a file or a URL; the client plays it itself" \
             miracast "Miracast              mirrors to a Miracast or Chromecast display" \
-            settings "SETTINGS              screen mode, rate, size, key, approval, visibility, HTTPS" |
+            settings "SETTINGS              screen mode, rate, size, key…; not Chromecast or Miracast quality" |
             # The running stream's line: "active: show links" (author).
             awk -F'\t' -v k="$(running_kind)" '$1 == k { print $1 "\t" substr($2, 1, 22) "active: show links"; next } { print }')
     choice=$(printf '%s\n' "$lines" | pick "stream")
