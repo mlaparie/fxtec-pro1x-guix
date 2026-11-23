@@ -164,6 +164,25 @@ jobs:
               && echo "git clone: OK" || echo "git clone FAILED (exit $?)"
           fi
 
+      # ── Newer Android image for the Waydroid Bluetooth overlay ──────────
+      # waydroid-bt.scm pins one LineageOS 20 GSI by name and hash; a new
+      # one needs a new pin (and the same Android build as Waydroid's
+      # image), so a newer upload only warns.  Once pinned, the cache misses
+      # and the next run downloads it.
+      - name: Check for a newer LineageOS 20 GSI
+        continue-on-error: true
+        run: |
+          pinned=$(grep -o 'lineage-20\.0-[0-9]*-UNOFFICIAL-arm64_bvN\.img\.gz' \
+                     modules/fxtec-pro1x/packages/waydroid-bt.scm)
+          latest=$(curl -fsS -m 30 \
+                     'https://sourceforge.net/projects/andyyan-gsi/rss?path=/lineage-20-td' \
+                   | grep -o 'lineage-20\.0-[0-9]*-UNOFFICIAL-arm64_bvN\.img\.gz' \
+                   | sort -u | tail -1)
+          echo "pinned: $pinned; latest: ${latest:-unknown}"
+          if [ -n "$latest" ] && [ "$latest" != "$pinned" ]; then
+            echo "::warning::newer LineageOS 20 GSI: $latest (pinned $pinned)"
+          fi
+
       # ── Guix for channels-ci.scm ─────────────────────────────────────────
       # The first time-machine call of a run builds the pinned Guix, and its
       # glib-2.86.5 graft fails ("permission denied" on glib's

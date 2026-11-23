@@ -35,7 +35,12 @@ case $cmd in
          "of which > 8 KiB: $(sudo find -L /var/log/guix -type f -size +8k | wc -l)"
     sudo find -L /var/log/guix -type f | sed -n 1,3p   # not head: pipefail
     # Logs under 8 KiB come from trivial builders (config files, profiles).
-    sudo find -L /var/log/guix/drvs -name '*.drv.gz' -size +8k | while read -r log; do
+    # Kept all the same: the Waydroid Bluetooth overlay, whose few MB are
+    # taken from a 1 GB Android image that each run would download again
+    # (65 min from a slow mirror, run 45155316904).
+    { sudo find -L /var/log/guix/drvs -name '*.drv.gz' -size +8k
+      sudo find -L /var/log/guix/drvs -name '*-waydroid-bt-overlay-*.drv.gz'
+    } | sort -u | while read -r log; do
       rel=${log#/var/log/guix/drvs/}
       drv=/gnu/store/${rel%%/*}${rel#*/}
       drv=${drv%.gz}
