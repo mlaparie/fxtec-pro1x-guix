@@ -70,12 +70,14 @@
         ;; the access point lifts no-IR (ath kept it for a card with an
         ;; EEPROM country).
         ;; The NFC controller (NXP, NCI 2.0) on I2C1, for nxp-nci.
+        ;; Its 19.2 MHz clock: nxp-nci enables the board's clocks, and
+        ;; the clock request line is pulled up.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
-          "bt-le-conn-nodup" "ath-country-ie-no-ir" "nfc"))))
+          "bt-le-conn-nodup" "ath-country-ie-no-ir" "nfc" "nfc-clock"))))
 
 (define-public linux-pro1x
   (package
