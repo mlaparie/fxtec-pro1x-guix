@@ -219,6 +219,22 @@
         "confidence": "confirmed",
         "date": "2026-11-04",
         "source": "9ed5ee8; phone"
+      },
+      {
+        "title": "neard is not in Guix; upstream installs no main.conf, and its D-Bus policy admits only at_console",
+        "general": "To use NFC through neard on Guix, package it (git.kernel.org, autotools, it needs autoconf-archive), and give it a main.conf with DefaultPowered = true, because the upstream defaults leave the adapter off. Open its bus policy to a group, because Shepherd sessions are never at_console. Extend dbus-root-service-type with the package, or its policy is not loaded.",
+        "instance": "modules/fxtec-pro1x/packages/nfc.scm (neard 0.20 with nfctool, ConstantPoll = false), started from boot by the hardware service (services/hardware.scm).",
+        "confidence": "confirmed",
+        "date": "2026-11-23",
+        "source": "66990d6; GetManagedObjects as user on the phone: nfc0 Powered true"
+      },
+      {
+        "title": "A package in the system profile that propagates another version of a library refuses the deploy",
+        "general": "A propagated input clashes with the same library already in the system profile (here libssc propagates libqmi 1.36), and guix refuses the deploy. If only one program needs the package, do not put it in the profile: write its store path into the configuration of the program that runs it.",
+        "instance": "The camera service writes SSCCLI=<store path> into /etc/pro1x/camera.conf, and the camera app reads it.",
+        "confidence": "handover",
+        "date": "2026-11-17",
+        "source": "bb37c7b"
       }
     ],
     "ci": [
@@ -253,6 +269,14 @@
         "confidence": "inferred",
         "date": "2026-10-28",
         "source": "GitHub Actions run 40702633350 log; .github/workflows/build.yml"
+      },
+      {
+        "title": "CI's Guix installer download fails when codeberg.org's name does not resolve; pin its address",
+        "general": "The Guix installer and channel come from codeberg.org. During a DNS outage the address still answers, so the workflow pins it in /etc/hosts when the name does not resolve.",
+        "instance": "Run 44282796481: 'Could not resolve host: codeberg.org'.",
+        "confidence": "handover",
+        "date": "2026-11-18",
+        "source": "3d7aab2"
       }
     ],
     "deployment": [
@@ -595,6 +619,30 @@
         "confidence": "confirmed for the camera path",
         "date": "2026-11-04",
         "source": "device/sway/pro1x-open, device/sway/pro1x-lock, device/camera/pro1x-camera-app"
+      },
+      {
+        "title": "Commands in a Guix system script may be missing from the system profile: getent is",
+        "general": "glibc's getent is not in Guix's system profile. A script run from a service or with sudo that calls it gets an empty answer, not an error. Read /etc/passwd, or wrap the script with the tools it needs on its PATH. The session's PATH can lack tools too: gdbus was missing for pro1x-nfc.",
+        "instance": "pro1x-stream-cert found an empty home, looked for /.config, and removed the certificate as 'not set' (2026-11-19). pro1x-nfc is now wrapped with coreutils, fzf, glib and sed (3490442).",
+        "confidence": "handover",
+        "date": "2026-11-19",
+        "source": "6ce7eb2, 3490442"
+      },
+      {
+        "title": "swayidle does not wait for its commands: a resume can run before the timeout command has finished",
+        "general": "swayidle starts a timeout command and its resume command without waiting for either to finish. If a wake comes right after a timeout, a resume that leaves a Sway mode can run before the timeout has entered it, and the mode then stays, with its key bindings, after unlock. Check again after a delay, or have the unlock itself leave the mode when the panel is on.",
+        "instance": "pro1x-idle's pro1x-blanked mode: the phone unlocked with the keyboard dead (author, 2026-11-23). The resume checks again 1 s later, and pro1x-lock leaves the mode on unlock when DSI-1 is powered. Not yet tested on the phone.",
+        "confidence": "inferred",
+        "date": "2026-11-23",
+        "source": "813a9d5"
+      },
+      {
+        "title": "Bind mounts for an Android container belong inside its mount namespace, not under its data directory",
+        "general": "A host folder mounted under the container's data directory gets deleted along with that data, by any tool. Mount the share in a root-only place on the host. After each container start, attach it inside the container's mount namespace: open_tree on the host side, then setns and move_mount on the container side. Android's storage service sees it there all the same.",
+        "instance": "Waydroid shares: /run/pro1x-waydroid-share, attached at /data/media/0/TARGET by pro1x-nsbind; tested by hand with a test folder.",
+        "confidence": "handover",
+        "date": "2026-11-17",
+        "source": "30c4bcb"
       }
     ]
   }

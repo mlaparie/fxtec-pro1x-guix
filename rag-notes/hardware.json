@@ -107,6 +107,38 @@
     "confidence": "reported",
     "date": "2026-11-22",
     "source": "https://github.com/sampavlovic/qx1000-linux-mainline, commits 08894aac2, 7fbe67314, e214f9357, efb886478; qx1000/README.md"
+   },
+   {
+    "title": "Hibernation with the swap inside an offset LUKS container: the loop device's freezable workqueue hangs the image write; dm-linear does not",
+    "general": "Kernel threads stay frozen while the hibernation image is written (hibernation_snapshot thaws them only on error). A block device served by a freezable worker, such as the loop driver (WQ_FREEZABLE), never completes the write, and the machine hangs at the first page. A device-mapper linear target remaps requests in place, without a thread, and keeps no second page cache of the disk.",
+    "instance": "Pro¹x, LUKS2 at an offset inside userdata, swap file inside it. Previously on /dev/loop0 (losetup -o): hung at the first image write (2026-11-18). Replaced by /dev/mapper/pro1x-part made with DM ioctls by pro1x-dm-offset in the initrd (no udev, no dmsetup).",
+    "confidence": "handover",
+    "date": "2026-11-18",
+    "source": "0cc4983; see the storage_and_fde entry on losetup -o, which this replaces"
+   },
+   {
+    "title": "Hibernation on SM6115: the SMP2P sleep-state driver's interrupts abort the freeze",
+    "general": "The remote processors' sleep-state interrupts (qcom smp2p sleep state, raised by the ADSP's sensor traffic) are hard wakeups, so every hibernation aborts while the kernel threads freeze. Make the driver raise no wakeups during hibernation, or unload it first.",
+    "instance": "Pro¹x, kernel patch of 7246bfa; before it, pro1x-sleep unloaded the driver (rmmod).",
+    "confidence": "handover",
+    "date": "2026-11-18",
+    "source": "7246bfa, 1cd7ee4 (TODO: the cause was the sleep-state driver alone)"
+   },
+   {
+    "title": "Hibernation: Wi-Fi, Bluetooth and the PMIC temperature alarm do not survive the power-off; unload them before the image",
+    "general": "After a hibernation power-off, drivers whose firmware lives in a DSP restore against firmware that is gone. Here the restore waited 46 s for it, the PMIC temperature alarm's interrupt fired without end, and user space stalled before the DSPs were restarted. Unload them before writing the image, and load them again after the DSPs are up.",
+    "instance": "Pro¹x, ath10k_snoc, the Bluetooth driver (hci_uart / btqca), spmi temp-alarm and its ADC users; unloaded and reloaded by pro1x-sleep. The unload and reload were tested without hibernation. Hibernation is offered no more (c5d2aa5): the session does not survive the DSPs' reset.",
+    "confidence": "handover",
+    "date": "2026-11-19",
+    "source": "134fb7b, e927c8a, c5d2aa5"
+   },
+   {
+    "title": "An Android container with CAP_BLOCK_SUSPEND blocks the host's sleep through EPOLLWAKEUP timers",
+    "general": "The kernel honours EPOLLWAKEUP only for a process holding CAP_BLOCK_SUSPEND. An Android container that keeps this capability turns system_server's alarms into host wakeup sources, and every suspend or hibernation aborts at 'Freezing remaining freezable tasks aborted', with [timerfd] wakeup sources active. Drop block_suspend from the container's kept capabilities.",
+    "instance": "Pro¹x, Waydroid's lxc.cap.keep; removed at boot by pro1x-waydroid-props and after waydroid init or upgrade by pro1x-waydroid-admin.",
+    "confidence": "handover",
+    "date": "2026-11-18",
+    "source": "fda4378"
    }
   ],
   "modem": [
@@ -343,6 +375,30 @@
     "confidence": "confirmed",
     "date": "2026-11-20",
     "source": "scripts/stream-bench (phone-clock.py, stream-bench.py), PRO1X_STREAM_BENCH=1 in device/sway/pro1x-stream-webrtc; measured 2026-11-20 03:40-04:50; scripts/stream-bench/stream-bench.jsonl"
+   },
+   {
+    "title": "Venus (AR50 Lite) H.264 encoder: variable bitrate overshoots 4-7 times; constant bitrate about 2.5 times",
+    "general": "Do not trust the encoder's rate control to hold the asked bitrate on a live stream. Measure what it sends, and set the bitrate when the encoder starts, not while it runs.",
+    "instance": "Pro¹x, 1600x800, 20 fps, 2 Mbit/s asked: VBR sent 8-15 Mbit/s, the Wi-Fi backed up (1.7 s round trip, frames 2-10 s old); at 79 °C the heat limit held the encoder at 15 fps.",
+    "confidence": "handover",
+    "date": "2026-11-20",
+    "source": "27dbdce, 71f47dd"
+   },
+   {
+    "title": "Screen to Venus with no CPU copy: wlr-screencopy into GPU buffers, rendered into the encoder's V4L2 buffers exported as DMA-BUFs",
+    "general": "On this GPU, GStreamer's GL DMA-BUF export does not work, and the portal path's frames were 400 ms old before the encoder and cost over a core in copies. A small helper does it instead. The compositor copies the output into its GPU buffers. The GPU turns, scales and converts to NV12 straight into the encoder's input buffers (V4L2 EXPBUF, rendered as R8 and GR88 images). The encoder writes H.264 to stdout. This is how scrcpy works on Android.",
+    "instance": "Pro¹x, pro1x-screencast: about 4% of a core, 32 ms median from Sway's frame to the encoded one at 20 fps. Sizes are rounded to multiples of 16, because a 1280x666 stream made the encoder pad 6 rows and a line flickered at the top edge (the cause is inferred).",
+    "confidence": "handover",
+    "date": "2026-11-20",
+    "source": "4384d64, 7039ae6"
+   },
+   {
+    "title": "Venus decoding with no GPU pass: GStreamer to GTK's DMA-BUF texture to Sway",
+    "general": "A player that hands the decoder's DMA-BUFs to the compositor as they are, without drawing them on the GPU, plays 1080p for almost nothing. mpv's GPU output on the same clip costs most of a core.",
+    "instance": "Pro¹x, a 1080p30 H.264 clip: Showtime about 2% CPU and a 582 MHz GPU average, mpv 65% and 944 MHz. Venus decodes H.264, HEVC and VP9.",
+    "confidence": "handover",
+    "date": "2026-11-22",
+    "source": "c03ae96; README table"
    }
   ],
   "keyboard": [
@@ -411,6 +467,14 @@
     "confidence": "confirmed (mixer value, patch's defines)",
     "date": "2026-11-04",
     "source": "amixer contents; device/kernel/patches-7.3/0004-pro1x-q6voice.patch"
+   },
+   {
+    "title": "Headphones stay 'availability unknown' unless the UCM device names its JackControl",
+    "general": "The codec's plug detection can already report the card's 'Headphone Jack' control while PipeWire keeps the speaker. Without JackControl in the UCM Headphones device, the port's availability is unknown, so priority alone decides. Name the jack, and give headphones a higher priority than the speaker.",
+    "instance": "Pro¹x HiFi verb: JackControl \"Headphone Jack\", priority 300 against the speaker's 200. Left out of the Voice Call verb, because a profile switch during a call needs the voice PCM restarted. alsaucm reads it on the phone; not yet tested with headphones plugged in.",
+    "confidence": "handover",
+    "date": "2026-11-23",
+    "source": "8c0c831"
    }
   ],
   "sensors": [
@@ -505,6 +569,14 @@
     "confidence": "confirmed for the file and driver source; the feel is inferred",
     "date": "2026-11-03",
     "source": "github.com/TheMuppets/proprietary_vendor_fxtec_pro1x; github.com/LineageOS/android_kernel_fxtec_sm6115"
+   },
+   {
+    "title": "PMI632 LPG with ledtrig-pattern: hw_pattern is refused (EINVAL) until repeat is written",
+    "general": "On activation, ledtrig-pattern shows repeat as -1 but keeps its count at 0. The LPG's hardware pattern accepts only -1 or 1, so every hw_pattern write fails until -1 is written to repeat.",
+    "instance": "Pro¹x notification LED, pro1x-sleep's hibernation pattern: refused 4 times without the repeat write, accepted with it.",
+    "confidence": "handover",
+    "date": "2026-11-18",
+    "source": "48574bb"
    }
   ],
   "fingerprint": [
@@ -531,6 +603,42 @@
     "confidence": "confirmed",
     "date": "2026-11-06",
     "source": "vendor drivers/misc/qseecom.c (qseecom_parse_dt, __qseecom_get_fw_data, __qseecom_alloc_coherent_buf) and bengal.dtsi of LineageOS android_kernel_fxtec_sm6115; stock firmware archive listing and rawprogram*.xml (author, 2026-11-06); phone dmesg and partition reads 2026-11-06"
+   }
+  ],
+  "bluetooth": [
+   {
+    "title": "WCN3990: with the LE duplicates filter on, an advertiser seen once is never reported again, so a pending LE connection never starts",
+    "general": "The kernel's passive scan for a pending LE connection waits for an advertising report before it sends LE Create Connection. With the controller's duplicates filter on, a device reported once before is filtered out, and the connection attempt times out. Scan without the duplicates filter while an LE connection is pending.",
+    "instance": "Pro¹x with a car's key beacon: reported once, then not once in 7 attempts over 25 s (btmon, 2026-11-19). Kernel patch of 3e00354, plus CONFIG_BT_DEBUGFS to read the accept and resolving lists.",
+    "confidence": "handover",
+    "date": "2026-11-19",
+    "source": "3e00354"
+   },
+   {
+    "title": "bluetoothctl can hang without end; give every scripted call a timeout",
+    "general": "A non-interactive 'bluetoothctl info' or 'devices' can block for a long time while bluetoothd is busy. A script that polls with it in a loop, under a lock, is held together with its lock. Wrap every call in timeout.",
+    "instance": "Pro¹x, the car automation: 'bluetoothctl info' hung from 10:15 to past 10:45, and its flock kept the moved automation from starting. Now 'timeout 5'.",
+    "confidence": "confirmed",
+    "date": "2026-11-23",
+    "source": "86ce701; ps on the phone (the two hung bluetoothctl processes)"
+   }
+  ],
+  "nfc": [
+   {
+    "title": "Pro¹x NFC: NXP PN557 (NCI 2.0) on I2C1 at 0x28, driven by mainline nxp-nci",
+    "general": "Read the vendor device tree and the stock libnfc-nxp.conf for the chip, the bus and the GPIOs. With i2c-tools, a CORE_RESET written by hand proves the chip answers before any driver is written.",
+    "instance": "Interrupt GPIO 70, enable (VEN) 69, firmware 31, CLKREQ 86. CORE_RESET answered NCI 2.0, NXP, hardware 0x41, firmware 01.16. The vendor configuration names NXP_FW_NAME libpn557_fw.so and NXP_NFC_CHIP 0x09. With the kernel of c469f7d and neard, the adapter shows as nfc0 and powers on, but a 40 s poll found no card that an Android phone reads (RF mode stays None).",
+    "confidence": "confirmed",
+    "date": "2026-11-23",
+    "source": "c469f7d; vendor_a /etc/libnfc-nxp.conf; /root/nfcpoll.sh on the phone"
+   },
+   {
+    "title": "PN557 on the Pro¹x: the stock configuration asks for the PMIC's 19.2 MHz clock, through a pulled-up CLKREQ",
+    "general": "NXP controllers set to take their clock from the PLL (NXP_SYS_CLK_SRC_SEL=0x01) need a reference clock while the RF field is on. They request it on CLKREQ. Without it they answer NCI but find no tag. Mainline nxp-nci enables no clock, so a board that needs one has to name it, and pull the request pin as the vendor tree does.",
+    "instance": "Stock: NXP_SYS_CLK_SRC_SEL=0x01, NXP_SYS_CLK_FREQ_SEL=0x02 (19.2 MHz), pull-up on GPIO 86 and 70 in the vendor pin configuration; on mainline GPIO 86 was pulled down and RF_CLK1_PIN and RF_CLK2_PIN had count 0. pro1x-nfc-clock.patch enables both from the driver and pulls GPIO 86 up. That the missing clock causes the empty polls is inferred, to be confirmed with the CI kernel. If it is not the cause, the next suspects are the stock TVDD settings (NXP_EXT_TVDD_CFG) and the RF blocks in libnfc-nxp_RF.conf, which mainline never sends.",
+    "confidence": "inferred",
+    "date": "2026-11-23",
+    "source": "8e93817; vendor_a /etc/libnfc-nxp.conf and libnfc-nxp_RF.conf; /sys/kernel/debug/clk/clk_summary on the phone"
    }
   ]
  }
