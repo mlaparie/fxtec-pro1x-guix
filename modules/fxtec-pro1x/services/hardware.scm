@@ -34,6 +34,8 @@
 ;;;   • blank and lock after idle (blank-after, lock-after): GSettings defaults
 ;;;     for Phosh (idle-delay, lock-delay; a value set in GNOME Settings
 ;;;     wins) and /etc/pro1x/dim.conf for Sway (pro1x-idle --sway, swaylock);
+;;;   • NFC: neard from boot, on the system bus for pro1x-nfc (the NFC
+;;;     wallet), and nfctool; the radio itself stays as rfkill leaves it;
 ;;;   • notification LED colours (notification-leds): a feedbackd device
 ;;;     theme, share/feedbackd/themes/fxtec,pro1x.json in the system profile,
 ;;;     which feedbackd loads for its default theme on this phone.
@@ -62,6 +64,8 @@
   #:use-module (fxtec-pro1x files)
   #:use-module (fxtec-pro1x packages misc)  ; pro1x-doubletap
   #:use-module (fxtec-pro1x packages sensors) ; monitor-sensor
+  #:use-module (fxtec-pro1x packages nfc)   ; neard
+  #:use-module (gnu services dbus)          ; dbus-root-service-type
   #:use-module (gnu packages linux)         ; kmod
   #:use-module (gnu services)
   #:use-module ((ice-9 regex) #:select (regexp-quote))
@@ -870,6 +874,21 @@ esac
     (stop #~(make-kill-destructor))
     (respawn? #t))))
 
+(define (pro1x-neard-shepherd-service config)
+  ;; neard for the NFC wallet (pro1x-nfc), from boot (author, 2026-11-23:
+  ;; it said "neard is not running").  It finds the adapter whenever
+  ;; nxp-nci binds; with no NFC device it waits.
+  (list
+   (shepherd-service
+    (provision '(neard))
+    (requirement '(dbus-system))
+    (documentation "Run neard, the NFC daemon.")
+    (start #~(make-forkexec-constructor
+              (list #$(file-append neard "/libexec/nfc/neard") "-n")
+              #:log-file "/var/log/neard.log"))
+    (stop #~(make-kill-destructor))
+    (respawn? #t))))
+
 (define (pro1x-pocket-shepherd-service config)
   (if (pro1x-hardware-double-tap-wake? config)
       (list
@@ -1317,12 +1336,15 @@ under the file names stevia looks for.")
                                  pro1x-feedbackd-led-rules))))
      ;; /etc/pro1x/dim.conf, /etc/pro1x/charge.conf
      (service-extension etc-service-type pro1x-hardware-etc)
-     ;; Phosh's blank and lock delays; notification LED colours
+     ;; Phosh's blank and lock delays; notification LED colours; nfctool
      (service-extension profile-service-type
                         (lambda (config)
                           (cons* (pro1x-idle-gsettings config)
                                  (pro1x-keyboard-dictionaries config)
+                                 neard
                                  (pro1x-feedbackd-theme config))))
+     ;; neard's D-Bus policy (org.neard)
+     (service-extension dbus-root-service-type (const (list neard)))
      ;; feedbackd group (vibration motor)
      (service-extension account-service-type
                         pro1x-hardware-account-groups)
@@ -1330,6 +1352,7 @@ under the file names stevia looks for.")
      (service-extension shepherd-root-service-type
                         (lambda (config)
                           (append (pro1x-clock-shepherd-service config)
+                                  (pro1x-neard-shepherd-service config)
                                   (pro1x-swap-shepherd-service config)
                                   (pro1x-doubletap-shepherd-service config)
                                   (pro1x-pocket-shepherd-service config)
