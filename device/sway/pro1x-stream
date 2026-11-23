@@ -3,8 +3,8 @@
 # network: the Pro¹x's hotspot, or a Wi-Fi network both are on.  Opened by Enter
 # or Right on the Stream line of sway-quick-actions, inside its window, or from
 # Hotspot > Connected devices with --to ADDRESS (VLC then sends there).
-# --interactive ADDRESS and --stop start and stop the interactive stream
-# without the menu.
+# --interactive ADDRESS, --wlcast and --stop start and stop the interactive
+# stream (the browser one, or wl-cast's) without the menu.
 #
 # Networks that keep their clients apart, as in many hotels, block all of this;
 # the hotspot gets around that.  wf-recorder copies an area of the display, so
@@ -1130,12 +1130,14 @@ send_wlcast() {                 # send_wlcast interactive|view
     [ "$(out_size)" = native ] || set -- "$@" -l "$(out_size)"
     [ "$mode" = view ] && set -- "$@" -n
     if ! out=$(wl-cast start "$@" 2>&1); then
+        [ -n "${quiet:-}" ] && { printf '%s\n' "$out" | tail -n 1 >&2; return 1; }
         notice "wl-cast did not start: $(printf '%s' "$out" | tail -n 1)"
         return 1
     fi
     cp "$rt/wl-cast.pid" "$pid_file"
     echo "wlcast-$mode $k" > "$kind_file"
     echo "wl-cast $mode, $(printf '%s\n' "$out" | head -n 1 | cut -f1)" > "$to_file"
+    [ -n "${quiet:-}" ] && return 0
     show_links "$(streaming_note "$k")" "${k:+?k=$k}" && leave_menu
 }
 
@@ -1165,6 +1167,8 @@ network_displays() {
 [ "${1:-}" = --info ] && { info "${2:-}" "${3:-}"; exit; }
 # For scripts: start the interactive stream on ADDRESS without the menu, or stop.
 [ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
+# The same with wl-cast, interactive, on the stream settings' networks.
+[ "${1:-}" = --wlcast ] && { quiet=1 send_wlcast interactive; exit; }
 [ "${1:-}" = --stop ] && { stop_stream; exit; }
 # The tests list alone: quick actions' Tests line (author: at its root).
 [ "${1:-}" = --tests ] && { tests_menu; exit; }
