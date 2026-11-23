@@ -269,6 +269,14 @@
     "source": "/tmp/reg-test.log, /var/log/messages on the phone; linux-7.3 net/wireless/chan.c cfg80211_ir_permissive_chan"
    },
    {
+    "title": "WCN3990 (ath10k): with no IR lifted, an access point starts beside a 5 GHz client but carries no data, and the firmware's beacon then wedges",
+    "general": "Lifting NO_IR lets an AP start on the 5 GHz channel the client link uses, and devices see it and get a DHCP lease, but data through it fails: the client cannot ping the AP and keeps reassociating. After the client link drops the firmware fails to flush its queues and to load the AP's beacon template, and the AP vanishes while the stack still reports it up. The same AP alone on that channel works. So a 5 GHz AP+STA on this firmware is not usable yet; 2.4 GHz AP+STA is the working case.",
+    "instance": "Pro1x, kernel 7.3 with pro1x-ath-country-ie-no-ir, generation 259. wlan0 on a third-party 5 GHz hotspot (channel 36, 80 MHz), ap0 AP on 36 (20 MHz): 5180 MHz not 'no IR', NAT and forwarding in place, uplink answers 204. Laptop: lease 10.42.0.192, -73 dBm, 25 frames sent to it with 8 failed, reassociation every 30-60 s, no ping either way. wlan0 disconnected: 'failed to flush transmit queue' twice, then 'received bcn tmpl tx status on vdev 2: 2' at the AP's restart; AP invisible about a minute, then seen. ap0 alone on 36: laptop pings the phone and the internet over mobile data (2026-11-24).",
+    "confidence": "confirmed (iw station dump, dmesg, the author's laptop); why data fails beside the client: not traced",
+    "date": "2026-11-24",
+    "source": "dmesg and /var/log/messages on the phone; /root/hotspot-watch.log (local)"
+   },
+   {
     "title": "WCN3990 firmware WLAN.HL.1.0 crashes on pairwise key deletion and on TXBF after vdev down; HL.3.2.4 (Pro¹x) does not need the fixes",
     "general": "ath10k's WCN3990 workarounds depend on the firmware branch: check the fw_build_id line before carrying a sibling device's ath10k patch.",
     "instance": "qx1000-linux-mainline 9b42f680d (pairwise keys replaced by junk instead of deleted) and 4c23c8c73 (no TXBF recalc in bss_disassoc) for MSM8998's HL.1.0, where every disconnect crashed the firmware. The Pro¹x runs WLAN.HL.3.2.4-00982 (fw_build_timestamp 2021-12-02) and /var/log/messages had no ath10k firmware crash on 2026-11-22; not carried here.",
