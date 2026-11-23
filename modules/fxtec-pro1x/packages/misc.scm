@@ -2129,6 +2129,15 @@ window opened by a sway key binding.")
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
                             '("coreutils" "evtest" "jq" "procps" "sed")))))
+                ;; gdbus, for neard (the session's PATH has none; nfctool
+                ;; and rfkill come from the system profile).
+                (let ((nfc (string-append #$output "/bin/pro1x-nfc")))
+                  (chmod nfc #o755)
+                  (wrap-program nfc
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "fzf" "glib" "sed")))))
                 (let ((qs (string-append #$output "/bin/sway-quick-actions")))
                   (chmod qs #o755)
                   (wrap-program qs
