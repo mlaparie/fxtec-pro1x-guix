@@ -1,0 +1,57 @@
+#!/bin/sh
+# pro1x-nfc-feedback — what the NFC radio does, on the notification LED and
+# the vibration motor: feedbackd events of the port's theme (nfc-*, in
+# services/hardware.scm), so that a test or a badge read shows on the phone
+# itself (author, 2026-11-24).
+#
+#   polling [SECS]     blue blink while the phone polls (it sends a field),
+#                      until stop or SECS (default 60)
+#   listening [SECS]   purple blink while it listens (answers as a card)
+#   detected           yellow and a short buzz: a tag or reader in the field
+#   read               green and a firmer buzz: its ID or records read
+#   stop               the polling or listening light off
+#
+# The lights play in every feedbackd profile, the buzzes in quiet and full.
+# Run as root (tests over SSH), it runs itself again as the session's user,
+# on feedbackd's session bus.  pro1x-nfc calls it; so can test scripts.
+#
+# State: written 2026-11-24, not yet run.
+
+set -u
+
+# As root: again as feedbackd's user, on its bus.
+if [ "$(id -u)" = 0 ]; then
+    p=$(pgrep -x feedbackd | head -n 1)
+    [ -n "$p" ] || exit 0
+    user=$(stat -c %U "/proc/$p")
+    uid=$(stat -c %u "/proc/$p")
+    bus=$(tr '\0' '\n' < "/proc/$p/environ" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
+    exec su -s /bin/sh "$user" -c "PATH='$PATH:/run/current-system/profile/bin' \
+XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS='$bus' '$0' $*"
+fi
+
+rt="${XDG_RUNTIME_DIR:-/tmp}"
+held="$rt/pro1x-nfc-feedback.pid"       # the sleep that keeps a light on
+
+# fbcli ends the feedback when its input ends: a sleep feeds it.  Killing
+# the sleep (stop) ends it early.
+play() {                                # play EVENT SECS [hold]
+    if [ "${3:-}" = hold ]; then
+        { sleep "$2" & echo $! > "$held"; wait; } | fbcli -E "$1" -t "$2" >/dev/null 2>&1 &
+    else
+        { sleep "$2" | fbcli -E "$1" -t "$2"; } >/dev/null 2>&1 &
+    fi
+}
+stop() {
+    [ -f "$held" ] && kill "$(cat "$held")" 2>/dev/null
+    rm -f "$held"
+}
+
+case "${1:-}" in
+    polling) stop; play nfc-polling "${2:-60}" hold ;;
+    listening) stop; play nfc-listening "${2:-60}" hold ;;
+    detected) stop; play nfc-detected 2 ;;
+    read) stop; play nfc-read 3 ;;
+    stop) stop ;;
+    *) sed -n '2,14s/^# \{0,1\}//p' "$0" >&2; exit 2 ;;
+esac

@@ -16,6 +16,8 @@
 # not refuse them; do not rely on it for that.
 #
 # Needs: the kernel with nxp-nci (pro1x-nfc.patch), neard running, nfctool.
+# The LED and the motor show polling, a badge found and a badge read
+# (pro1x-nfc-feedback).
 # Replay needs NCI 2.0 LA_NFCID1 support from the NXP firmware — untested.
 #
 # Opened by Enter or Right on the NFC line of sway-quick-actions (Left there
@@ -131,16 +133,21 @@ adapter_path() {
         grep -o "/org/neard/nfc[0-9]*'" | head -1 | tr -d "'"
 }
 
+# The radio's state on the LED and the motor (pro1x-nfc-feedback).
+feedback() { pro1x-nfc-feedback "$@" >/dev/null 2>&1 || true; }
+
 poll_start() {
     local adapter
     adapter=$(adapter_path) || return 1
     # Mode Initiator finds tags; Dual also listens but we start with read.
     gdbus call --system --dest=$NEARD --object-path "$adapter" \
-        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1
+        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1 || return 1
+    feedback polling 20
 }
 
 poll_stop() {
     local adapter
+    feedback stop
     adapter=$(adapter_path) 2>/dev/null || return 0
     gdbus call --system --dest=$NEARD --object-path "$adapter" \
         --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
@@ -383,6 +390,7 @@ scan_badge() {
         return
     fi
     printf '\r\033[KBadge found.\n\n'
+    feedback detected
 
     if ! read_tag_props "$tag_path"; then
         poll_stop
@@ -392,6 +400,7 @@ scan_badge() {
         return
     fi
     poll_stop
+    [ -n "$TAG_UID" ] && feedback read
 
     echo "  Type:     ${TAG_TYPE:-unknown}"
     echo "  Protocol: ${TAG_PROTOCOL:-unknown}"
@@ -514,8 +523,10 @@ replay_badge() {
     if [ -n "$adapter" ]; then
         gdbus call --system --dest=$NEARD --object-path "$adapter" \
             --method org.neard.Adapter.StartPollLoop Dual >/dev/null 2>&1
+        feedback listening 3600
         # Until the line is chosen.
         pick "stop	■ Stop replaying" >/dev/null
+        feedback stop
         gdbus call --system --dest=$NEARD --object-path "$adapter" \
             --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
     else

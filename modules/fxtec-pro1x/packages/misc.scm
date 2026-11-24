@@ -1910,6 +1910,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-timezone                 timezone: pick, detect, automatic
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
 ;;;   bin/pro1x-nfc                      NFC wallet: read, save, replay badges
+;;;   bin/pro1x-nfc-feedback             NFC on the LED and the motor (feedbackd)
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
 ;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
 ;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
@@ -1996,6 +1997,7 @@ window opened by a sway key binding.")
           ("pro1x-timezone" "bin/")
           ("pro1x-timezone-admin" "bin/")
           ("pro1x-nfc" "bin/")
+          ("pro1x-nfc-feedback" "bin/")
           ("pro1x-fingerprint" "bin/")
           ("pro1x-waydroid" "bin/")
           ("pro1x-waydroid-admin" "bin/")
@@ -2138,6 +2140,14 @@ window opened by a sway key binding.")
                       ,(map (lambda (p)
                               (string-append (assoc-ref inputs p) "/bin"))
                             '("coreutils" "fzf" "glib" "sed")))))
+                ;; fbcli comes from the system profile.
+                (let ((fb (string-append #$output "/bin/pro1x-nfc-feedback")))
+                  (chmod fb #o755)
+                  (wrap-program fb
+                    `("PATH" ":" prefix
+                      ,(map (lambda (p)
+                              (string-append (assoc-ref inputs p) "/bin"))
+                            '("coreutils" "procps" "sed")))))
                 (let ((qs (string-append #$output "/bin/sway-quick-actions")))
                   (chmod qs #o755)
                   (wrap-program qs

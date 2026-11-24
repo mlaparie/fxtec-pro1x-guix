@@ -359,7 +359,20 @@ white, #RRGGBB or #f")
   ;; and full.  The menu swipes and the power key's hold play button-pressed
   ;; too (fbcli, pro1x-gestures and pro1x-power-button).  The lock screen's
   ;; fingerprint (gtklock-fingerprint): one 60 ms buzz for a match, two for
-  ;; a finger not recognised (author, 2026-11-18).
+  ;; a finger not recognised (author, 2026-11-18).  NFC (pro1x-nfc-feedback,
+  ;; author, 2026-11-24): blue blinking while the phone polls, purple while
+  ;; it listens, yellow and a 35 ms buzz for a tag detected, green and a
+  ;; 150 ms buzz for one read.
+  (define nfc-leds
+    (map (match-lambda
+           ((event colour period)
+            (format #f "        { \"event-name\": ~s, \"type\": \"Led\",
+          \"color\": ~s, \"frequency\": ~a }"
+                    event colour period)))
+         '(("nfc-polling" "#0000ff" 2000)
+           ("nfc-listening" "#8000ff" 1000)
+           ("nfc-detected" "#ffa000" 4000)
+           ("nfc-read" "#00ff00" 1000))))
   (define (entry spec)
     (match spec
       ((event colour . rest)
@@ -377,7 +390,7 @@ blue, white or #RRGGBB")
   (string-append
    "{\n  \"name\": \"fxtec,pro1x\",\n  \"parent-name\": \"default\",\n"
    "  \"profiles\": [\n    { \"name\": \"silent\",\n      \"feedbacks\": [\n"
-   (string-join (map entry leds) ",\n")
+   (string-join (append (map entry leds) nfc-leds) ",\n")
    "\n      ]\n    }"
    ",\n    { \"name\": \"quiet\",\n      \"feedbacks\": [
         { \"event-name\": \"phone-incoming-call\", \"type\": \"VibraPeriodic\",
@@ -390,7 +403,11 @@ blue, white or #RRGGBB")
         { \"event-name\": \"fingerprint-match\", \"type\": \"VibraPattern\",
           \"magnitudes\": [1.0], \"durations\": [60] },
         { \"event-name\": \"fingerprint-nomatch\", \"type\": \"VibraPattern\",
-          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [60, 90, 60] }"
+          \"magnitudes\": [1.0, 0.0, 1.0], \"durations\": [60, 90, 60] },
+        { \"event-name\": \"nfc-detected\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0], \"durations\": [35] },
+        { \"event-name\": \"nfc-read\", \"type\": \"VibraPattern\",
+          \"magnitudes\": [1.0], \"durations\": [150] }"
    (if haptics?
        ",
         { \"event-name\": \"key-pressed\", \"type\": \"VibraPattern\",
