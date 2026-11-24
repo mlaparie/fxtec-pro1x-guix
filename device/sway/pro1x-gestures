@@ -1,7 +1,7 @@
 #!/bin/sh
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
-#   swipe down from the top edge      quick actions (sway-quick-actions)
+#   swipe down from the top edge      a buzz; lifted: quick actions
 #   swipe up from the bottom edge     a buzz at 120 px; lifted then: on-screen
 #                                     keyboard, shown or hidden (pro1x-edge-swipe,
 #                                     as the side swipes and Super)
@@ -88,7 +88,6 @@ start() {                       # start <transform>
     # (Super), are pro1x-edge-swipe's: each buzzes, then acts on the lift
     # (author, 2026-11-25: Super opened the keyboard or a menu).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
-        -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
         -g "2,UD,B,*,R,swaymsg kill >/dev/null; { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
