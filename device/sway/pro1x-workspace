@@ -1,5 +1,5 @@
 #!/bin/sh
-# pro1x-workspace — a workspace of one's own name (Super+Ctrl+o)
+# pro1x-workspace — a workspace of one's own name (Super+o)
 #
 #   pro1x-workspace new     a small prompt for the name, then that workspace
 #
