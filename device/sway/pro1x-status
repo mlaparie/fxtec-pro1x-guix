@@ -46,12 +46,14 @@ case "${1:-}" in
             echo "$(gen "$tech") ${sig}%" ;;
     stream)                     # JSON: STREAM while pro1x-stream sends the screen
         # Red while a viewer may also control the phone (the interactive
-        # stream), yellow while it only watches; nothing otherwise.
+        # streams, the browser one and wl-cast's), yellow while it only
+        # watches; PAUSED once tapped (pro1x-stream --pause); nothing otherwise.
         rt=${XDG_RUNTIME_DIR:-/tmp}
         if [ -f "$rt/pro1x-stream.pid" ] && kill -0 "$(cat "$rt/pro1x-stream.pid")" 2>/dev/null; then
-            case "$(cat "$rt/pro1x-stream.to" 2>/dev/null)" in
-                interactive*) echo '{"text": "STREAM", "state": "Critical"}' ;;
-                *) echo '{"text": "STREAM", "state": "Warning"}' ;;
+            t=STREAM; [ -f "$rt/pro1x-stream.paused" ] && t=PAUSED
+            case "$(cut -d' ' -f1 "$rt/pro1x-stream.kind" 2>/dev/null)" in
+                interactive|wlcast-interactive) echo "{\"text\": \"$t\", \"state\": \"Critical\"}" ;;
+                *) echo "{\"text\": \"$t\", \"state\": \"Warning\"}" ;;
             esac
         # wl-cast, tried beside it: always interactive.
         elif [ -f "$rt/wl-cast.pid" ] && kill -0 "$(cat "$rt/wl-cast.pid")" 2>/dev/null; then

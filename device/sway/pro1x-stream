@@ -4,7 +4,8 @@
 # or Right on the Stream line of sway-quick-actions, inside its window, or from
 # Hotspot > Connected devices with --to ADDRESS (VLC then sends there).
 # --interactive ADDRESS, --wlcast and --stop start and stop the interactive
-# stream (the browser one, or wl-cast's) without the menu.
+# stream (the browser one, or wl-cast's) without the menu; --pause pauses the
+# running one, or plays it again (the status bar's STREAM).
 #
 # Networks that keep their clients apart, as in many hotels, block all of this;
 # the hotspot gets around that.  wf-recorder copies an area of the display, so
@@ -47,6 +48,7 @@ rt="${XDG_RUNTIME_DIR:-/tmp}"
 sock="${PRO1X_TOOL_SOCK:-$rt/pro1x-tool.sock}"
 pid_file="$rt/pro1x-stream.pid"
 to_file="$rt/pro1x-stream.to"           # what the menus show
+paused_file="$rt/pro1x-stream.paused"   # paused from the status bar
 kind_file="$rt/pro1x-stream.kind"       # the running stream: KIND [KEY | ADDRESS]
 fps_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-fps"
 size_file="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x-stream-size"
@@ -346,7 +348,7 @@ stop_stream() {
         wlcast-*) wl-cast stop ;;
     esac
     streaming && kill -TERM -- "-$(cat "$pid_file")" 2>/dev/null
-    rm -f "$pid_file" "$to_file" "$kind_file"
+    rm -f "$pid_file" "$to_file" "$kind_file" "$paused_file"
     [ -n "${stop_screen:-}" ] && pro1x-virtual-screen stop
 }
 
@@ -1170,6 +1172,14 @@ network_displays() {
 # The same with wl-cast, interactive, on the stream settings' networks.
 [ "${1:-}" = --wlcast ] && { quiet=1 send_wlcast interactive; exit; }
 [ "${1:-}" = --stop ] && { stop_stream; exit; }
+# STREAM tapped in the status bar: the stream paused, or on again, by the
+# signals a call sends it (pro1x-call-watch).
+if [ "${1:-}" = --pause ]; then
+    streaming || exit 0
+    if [ -f "$paused_file" ]; then kill -USR2 "$(cat "$pid_file")" && rm -f "$paused_file"
+    else kill -USR1 "$(cat "$pid_file")" && touch "$paused_file"; fi
+    exit
+fi
 # The tests list alone: quick actions' Tests line (author: at its root).
 [ "${1:-}" = --tests ] && { tests_menu; exit; }
 # From Hotspot > Connected devices: this menu, VLC sending to that device.

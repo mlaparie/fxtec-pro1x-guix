@@ -73,7 +73,7 @@ inactive_format = ""
 missing_format = ""
 
 # STREAM while the screen is sent (pro1x-stream): red while the viewer may
-# also control the phone.
+# also control the phone.  Tapped: paused (PAUSED), and again: on.
 [[block]]
 block = "custom"
 shell = "sh"
@@ -82,6 +82,10 @@ json = true
 interval = 2
 hide_when_empty = true
 format = " $text "
+[[block.click]]
+button = "left"
+cmd = "pro1x-stream --pause"
+update = true
 
 # The hotspot, in green, while it is on.
 [[block]]
