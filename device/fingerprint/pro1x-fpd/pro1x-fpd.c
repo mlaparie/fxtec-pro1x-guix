@@ -415,10 +415,16 @@ static int ta_start(void)
 	}
 	if (keymaster_key(init + 8, &klen))
 		return -1;
-	if (open_session("mafp", &session)) {
-		logf_("no mafp session (qsee-app-loader-mafp running?): %s",
-		      strerror(errno));
-		return -1;
+	/* qsee-app-loader-mafp loads the app some time after it starts: at
+	 * boot the session can be missing for a moment (2026-11-24, the
+	 * daemon gave up and the lock screen had no fingerprint).  Up to 30 s. */
+	for (int i = 0; open_session("mafp", &session); i++) {
+		if (i == 60) {
+			logf_("no mafp session (qsee-app-loader-mafp running?): %s",
+			      strerror(errno));
+			return -1;
+		}
+		usleep(500000);
 	}
 	memcpy(init, &MA_DRV_VERSION, 4);
 	memcpy(init + 4, &klen, 4);
