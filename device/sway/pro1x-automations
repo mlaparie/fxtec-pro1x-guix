@@ -144,7 +144,7 @@ while :; do
             --header='Enter: on/off   C-e: edit' \
             --expect=ctrl-e \
             --preview="$0 --preview {1}" --preview-window=right,50%,wrap,border-left \
-            --bind='focus:transform:case {1} in back|+add) echo hide-preview ;; *) echo show-preview ;; esac')
+            --bind='focus:transform:case {1} in back|+add) echo hide-preview ;; *) echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),wrap,border-left)+show-preview" ;; esac')
     key=$(printf '%s\n' "$choice" | sed -n 1p)
     pick=$(printf '%s\n' "$choice" | sed -n 2p | cut -f1)
     at=$(( $(scripts | grep -nxF -- "$pick" | cut -d: -f1) + 1 ))

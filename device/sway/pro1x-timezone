@@ -77,7 +77,7 @@ while :; do
             --layout=reverse-list --no-info --cycle --margin=1,2 \
             --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' \
             --preview="$0 --rules" --preview-window=hidden,right,50%,wrap,border-left \
-            --bind='focus:transform:[ {1} = rules ] && echo show-preview || echo hide-preview' |
+            --bind='focus:transform:[ {1} = rules ] && echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),wrap,border-left)+show-preview" || echo hide-preview' |
         cut -f1)
     case "$choice" in
         pick) pick_zone ;;

@@ -325,7 +325,8 @@ choose_one() {                  # choose_one PROMPT WHAT CURRENT
         fzf --listen="$sock" --delimiter='\t' --with-nth=2 --prompt="$1 > " \
             --layout=reverse-list --no-info --cycle --margin=1,2 \
             --color=16,gutter:-1 --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' \
-            --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left |
+            --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left \
+            --bind='start,resize:transform:echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),wrap,border-left)"' |
         cut -f1 | sed '/^back$/d'
 }
 info() {                        # info WHAT KEY
@@ -443,9 +444,9 @@ ensure || { echo "Could not create the hotspot connection."; pause; exit 1; }
 # The QR code beside the list in landscape, below it in portrait.
 qr_pane='[ {1} = qr ] || { echo hide-preview; exit; }
          if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
-             echo "change-preview-window(right,60%)+show-preview"
+             echo "change-preview-window(right,$((FZF_COLUMNS * 60 / 100 + 3)),border-left)+show-preview"
          else
-             echo "change-preview-window(down,60%)+show-preview"
+             echo "change-preview-window(down,60%,border-top)+show-preview"
          fi'
 
 while :; do

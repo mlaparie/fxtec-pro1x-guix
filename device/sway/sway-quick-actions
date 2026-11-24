@@ -719,7 +719,7 @@ choose() {
     pvcmd=: pvfocus=hide-preview
     if [ "$line" = wifi ]; then
         pvcmd="$self --choice-info $line {1}"
-        pvfocus='transform:[ {1} = powersave ] && echo show-preview || echo hide-preview'
+        pvfocus='transform:[ {1} = powersave ] && echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),wrap,border-left)+show-preview" || echo hide-preview'
     fi
     # "back" first (author: back to the main menu); the cursor starts on
     # the current choice.
@@ -1775,9 +1775,9 @@ notif_dock() {
     # The preview right in landscape, below in portrait (author), as the
     # main list's; it follows a rotation.
     layout='if test "$FZF_COLUMNS" -gt $((FZF_LINES * 2)); then
-                printf "change-preview-window(right,45%%,wrap)"
+                printf "change-preview-window(right,%d,wrap,border-left)" $((FZF_COLUMNS * 45 / 100 + 3))
             else
-                printf "change-preview-window(down,60%%,wrap)"
+                printf "change-preview-window(down,60%%,wrap,border-top)"
             fi
             test "$FZF_POS" -gt 1 || printf "+pos(2)"'
     notif_mark_seen
@@ -1787,7 +1787,7 @@ notif_dock() {
             --delimiter='\t' --with-nth=3 \
             --header='Enter open · Tab action · Del dismiss · ^X all · PgUp/PgDn scroll · Esc back' \
             --preview="$self --notif-preview {1} {2}" \
-            --preview-window=down,60%,wrap \
+            --preview-window=down,60%,wrap,border-top \
             --bind="load:transform~$layout~+$sync_end" \
             --bind="resize:transform:$layout" \
             --bind="esc,left:$sync_begin+abort" \
@@ -1913,9 +1913,9 @@ set --
 # scroll went on after the finger stopped (author, 2026-11-06).
 preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
          if [ "$FZF_COLUMNS" -gt $((FZF_LINES * 2)) ]; then
-             echo "change-preview-window(right,45%,wrap)+show-preview"
+             echo "change-preview-window(right,$((FZF_COLUMNS * 45 / 100 + 3)),wrap,border-left)+show-preview"
          else
-             echo "change-preview-window(down,50%,wrap)+show-preview"
+             echo "change-preview-window(down,50%,wrap,border-top)+show-preview"
          fi'
 { refresh_lines; overlay < "$cache"; } |
     # Same layout and colours as the launcher and window switcher: list
@@ -1923,7 +1923,7 @@ preview='[ {1} = notif ] && [ {3} != 0 ] || { echo hide-preview; exit; }
     # in landscape, below in portrait (under 70 columns; author).
     fzf "$@" --prompt="quick actions > " --no-sort --track --id-nth=1 --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1,fg+:0 \
         --with-nth=2.. --header-lines=1 \
-        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap' \
+        --ansi --preview="$self --notif-summary" --preview-window='hidden,right,45%,wrap,border-left' \
         --bind="shift-up:preview-up,shift-down:preview-down,ctrl-up:preview-page-up,ctrl-down:preview-page-down" \
         --bind="focus:bg-cancel+bg-transform:$preview" \
         --bind="load:transform:$preview" \

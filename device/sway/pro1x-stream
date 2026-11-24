@@ -473,7 +473,8 @@ pick() {                        # pick PROMPT [FZF-OPTION...]
 }
 # A list whose preview explains the highlighted line (info WHAT KEY).
 pick_info() {                   # pick_info PROMPT WHAT
-    pick "$1" --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left
+    pick "$1" --preview="$0 --info $2 {1}" --preview-window=right,50%,wrap,border-left \
+         --bind='start,resize:transform:echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),wrap,border-left)"'
 }
 
 # What can be sent: every window, with its Sway id and the area it covers.
@@ -636,7 +637,9 @@ show_urls() {                   # show_urls HEADER
         --bind='load:pos(2)' \
         --header="$1" --layout=reverse-list --no-info --cycle --margin=1,2 \
         --color=16,gutter:-1 --preview="$0 --qr {1}" --bind='left:abort' --bind='right:accept' \
-        --preview-window=right,50%,border-left | cut -f1 | sed '/^back$/d'
+        --preview-window=right,50%,border-left \
+        --bind='start,resize:transform:echo "change-preview-window(right,$((FZF_COLUMNS / 2 + 3)),border-left)"' |
+        cut -f1 | sed '/^back$/d'
 }
 
 # The devices seen on the local networks: hotspot clients by name.
