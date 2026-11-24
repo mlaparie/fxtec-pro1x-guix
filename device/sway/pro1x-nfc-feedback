@@ -13,15 +13,16 @@
 #
 # The lights play in every feedbackd profile, the buzzes in quiet and full.
 # Run as root (tests over SSH), it runs itself again as the session's user,
-# on feedbackd's session bus.  pro1x-nfc calls it; so can test scripts.
+# on Sway's session bus.  pro1x-nfc calls it; so can test scripts.
 #
 # State: written 2026-11-24, not yet run.
 
 set -u
 
-# As root: again as feedbackd's user, on its bus.
+# As root: again as the session's user, on its bus (Sway's: feedbackd
+# starts on it when called, after a restart for instance).
 if [ "$(id -u)" = 0 ]; then
-    p=$(pgrep -x feedbackd | head -n 1)
+    p=$(pgrep -x sway | head -n 1)
     [ -n "$p" ] || exit 0
     user=$(stat -c %U "/proc/$p")
     uid=$(stat -c %u "/proc/$p")
@@ -31,16 +32,15 @@ XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS='$bus' '$0' $*"
 fi
 
 rt="${XDG_RUNTIME_DIR:-/tmp}"
-held="$rt/pro1x-nfc-feedback.pid"       # the sleep that keeps a light on
+held="$rt/pro1x-nfc-feedback.pid"       # the sleep that keeps the last event on
 
 # fbcli ends the feedback when its input ends: a sleep feeds it.  Killing
-# the sleep (stop) ends it early.
-play() {                                # play EVENT SECS [hold]
-    if [ "${3:-}" = hold ]; then
-        { sleep "$2" & echo $! > "$held"; wait; } | fbcli -E "$1" -t "$2" >/dev/null 2>&1 &
-    else
-        { sleep "$2" | fbcli -E "$1" -t "$2"; } >/dev/null 2>&1 &
-    fi
+# the sleep (stop) ends it early, so that each event ends the one before
+# (a read right after a detected one stayed lit for about 30 s, 2026-11-24);
+# timeout, should fbcli wait on anyway.
+play() {                                # play EVENT SECS
+    { sleep "$2" & echo $! > "$held"; wait; } |
+        timeout $(($2 + 5)) fbcli -E "$1" -t "$2" >/dev/null 2>&1 &
 }
 stop() {
     [ -f "$held" ] && kill "$(cat "$held")" 2>/dev/null
@@ -48,8 +48,8 @@ stop() {
 }
 
 case "${1:-}" in
-    polling) stop; play nfc-polling "${2:-60}" hold ;;
-    listening) stop; play nfc-listening "${2:-60}" hold ;;
+    polling) stop; play nfc-polling "${2:-60}" ;;
+    listening) stop; play nfc-listening "${2:-60}" ;;
     detected) stop; play nfc-detected 2 ;;
     read) stop; play nfc-read 3 ;;
     stop) stop ;;
