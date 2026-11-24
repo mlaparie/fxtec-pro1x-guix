@@ -1,25 +1,38 @@
 #!/usr/bin/env python3
-# pro1x-edge-swipe — the swipe up from the bottom edge, followed as it goes
+# pro1x-edge-swipe — swipes in from the bottom and side edges, followed as
+# they go, each marked by a buzz before it acts
 #
 #   pro1x-edge-swipe O     O: the panel's orientation, as lisgd's -o
 #
-# A finger down within 100 px of the bottom edge (as the screen is turned)
-# and gone 120 px in: a buzz, at once.  Lifted after it: the on-screen
-# keyboard shown or hidden.  Back within 70 px of the edge after it (or
-# lifted within 90 px, sliding off the panel): the focused window closed,
-# as Super+BackSpace, with a second buzz.  Held still, nothing until it is
-# lifted (author, 2026-11-24).  Lifted before the buzz, a second finger, or
-# held over 10 s: nothing.
+# A finger down within 100 px of an edge (as the screen is turned) starts a
+# swipe from that edge; in a corner, the edge it moves away from.
 #
-# It replaces lisgd's bottom swipe and the evtest watcher pro1x-gestures
-# started for each one, whose buzz came late: an evtest and an fbcli were
-# started for every swipe (author, 2026-11-24).  This one stays running,
-# reads the touchscreen without taking it, and drives the motor itself
-# (the aw86224's force feedback, as feedbackd does).  pro1x-gestures starts
-# it beside lisgd and again when the screen turns.  Decisions go to
+#   bottom   gone 120 px in: a buzz.  Lifted after it: the on-screen
+#            keyboard shown or hidden.  Back within 70 px of the edge after
+#            it (or lifted within 90 px, sliding off the panel): the focused
+#            window closed, as Super+BackSpace, with a second buzz.
+#   left     gone 100 px in: a buzz; lifted after it: the window switcher.
+#   right    gone 100 px in: a buzz; lifted after it: the app launcher.
+#   both     a second finger from the other side edge while the first is
+#            down, both 100 px in: two buzzes and Super held for the next
+#            key (pro1x-super); no menu on the lift.
+#
+# Held still, nothing until the lift.  Lifted before the buzz, a second
+# finger anywhere else, or held over 10 s: nothing.  Every swipe acts on
+# the lift, after its buzz, so that a swipe that turns into another (the
+# keyboard or a close, a menu or Super) never does the first one too
+# (author, 2026-11-24: the late buzz from lisgd's evtest watcher, and
+# Super opening the keyboard or a menu).
+#
+# It stays running, reads the touchscreen without taking it, and drives
+# the motor itself (the aw86224's force feedback, as feedbackd does).
+# pro1x-gestures starts it beside lisgd (the swipe down from the top, the
+# two-finger close) and again when the screen turns.  Decisions go to
 # $XDG_RUNTIME_DIR/pro1x-gesture-bottom.log, for tuning.
 #
-# State: written 2026-11-24, not yet run.
+# State: the bottom swipe, the keyboard and the close confirmed by the
+# author 2026-11-25; the side swipes and Super written 2026-11-25, not yet
+# run.
 
 import os
 import subprocess
@@ -30,16 +43,23 @@ from evdev import InputDevice, ecodes, ff, list_devices
 
 TOUCH = "/dev/input/by-path/platform-i2c-touchscreen-event"
 W, H = 1080, 2160               # the panel, portrait, as the touchscreen
-BAND, BUZZ, BACK, LIFT_BACK, TIME = 100, 120, 70, 90, 10
+BAND, TIME, DECIDE = 100, 10, 30
+BUZZ = {"bottom": 120, "left": 100, "right": 100}
+BACK, LIFT_BACK = 70, 90        # the close, from the bottom
 LOG = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"),
                    "pro1x-gesture-bottom.log")
+MENU = {"left": "windowswitcher", "right": "launcher"}
 
 o = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+EDGES = ("bottom", "left", "top", "right")
 
 
-def dist(x, y):
-    """From the bottom edge as the screen is turned (lisgd's -o)."""
-    return {0: H - y, 1: x, 2: y, 3: W - x}[o]
+def dists(x, y):
+    """The distance to each screen edge.  Turned by O, the screen's edges
+    are the panel's, in the same order, moved round: O 1 puts the panel's
+    left edge at the bottom of the screen (lisgd's -o)."""
+    native = (H - y, x, y, W - x)             # bottom, left, top, right
+    return {e: native[(i + o) % 4] for i, e in enumerate(EDGES)}
 
 
 def motor():
@@ -81,11 +101,73 @@ def run(*cmd):
                      stderr=subprocess.DEVNULL)
 
 
+class Finger:
+    def __init__(self, slot, x, y):
+        self.slot = slot
+        self.start = dists(x, y)
+        # The edges it began near; one of them once it moves.
+        self.near = [e for e in ("bottom", "left", "right")
+                     if self.start[e] <= BAND]
+        self.edge = self.near[0] if len(self.near) == 1 else None
+        self.buzzed = False
+        self.max = 0
+
+    def update(self, x, y):
+        d = dists(x, y)
+        if self.edge is None:
+            moved = {e: d[e] - self.start[e] for e in self.near}
+            best = max(moved, key=moved.get)
+            if moved[best] >= DECIDE:
+                self.edge = best
+        if self.edge is None:
+            return None
+        self.max = max(self.max, d[self.edge])
+        return d[self.edge]
+
+
 touch = InputDevice(TOUCH)
 slot, active = 0, set()         # the current slot, the slots with a finger
 pos = {}                        # slot: [x, y]
-swipe = None                    # the followed finger: slot, start, buzzed, max
 new = set()                     # slots that came down since the last report
+first = second = None           # the fingers followed
+began = 0.0
+superheld = False
+
+
+def reset():
+    global first, second, superheld
+    first = second = None
+    superheld = False
+
+
+def lifted(s):
+    global first, second
+    if first is None:
+        return
+    if second is not None:
+        # Super: done once both are lifted; lifted before both were in,
+        # nothing.
+        if not superheld:
+            log("no: Super not reached")
+            reset()
+        elif not (active & {first.slot, second.slot}):
+            reset()
+        return
+    if s != first.slot:
+        return
+    f = first
+    d = f.update(*pos[s])
+    if f.edge is None or not f.buzzed:
+        log(f"no: {f.edge or 'no edge'}, lifted at {f.max} px")
+    elif f.edge == "bottom":
+        if d is not None and d <= LIFT_BACK:
+            run("swaymsg", "kill"); buzz(60); log("close")
+        else:
+            run("pro1x-osk", "toggle"); log("keyboard")
+    else:
+        run("pro1x-menu", "toggle", MENU[f.edge]); log(MENU[f.edge])
+    reset()
+
 
 for ev in touch.read_loop():
     if ev.type == ecodes.EV_ABS:
@@ -98,39 +180,55 @@ for ev in touch.read_loop():
                 pos.setdefault(slot, [0, 0])
             else:
                 active.discard(slot)
-                if swipe and swipe["slot"] == slot:
-                    d = dist(*pos[slot])
-                    if not swipe["buzzed"]:
-                        log(f"no: lifted at {swipe['max']} px")
-                    elif d <= LIFT_BACK:
-                        run("swaymsg", "kill"); buzz(60); log("close")
-                    else:
-                        run("pro1x-osk", "toggle"); log("keyboard")
-                    swipe = None
+                lifted(slot)
         elif ev.code == ecodes.ABS_MT_POSITION_X:
             pos.setdefault(slot, [0, 0])[0] = ev.value
         elif ev.code == ecodes.ABS_MT_POSITION_Y:
             pos.setdefault(slot, [0, 0])[1] = ev.value
     elif ev.type == ecodes.EV_SYN and ev.code == ecodes.SYN_REPORT:
-        # A finger down alone in the bottom band starts a swipe; a second
-        # finger ends it (the two-finger close and the Super gesture).
         for s in new:
-            if swipe is None and active == {s} and dist(*pos[s]) <= BAND:
-                swipe = {"slot": s, "start": time.monotonic(),
-                         "buzzed": False, "max": 0}
-            elif swipe and s != swipe["slot"]:
-                log("no: a second finger"); swipe = None
+            if first is None and active == {s}:
+                f = Finger(s, *pos[s])
+                if f.near:
+                    first, began = f, time.monotonic()
+            elif first is not None and second is None and s != first.slot:
+                # Super: the second finger from the other side edge.
+                f = Finger(s, *pos[s])
+                other = {"left": "right", "right": "left"}
+                want = [other[e] for e in first.near if e in other]
+                if len(active) == 2 and any(e in f.near for e in want):
+                    f.near = [e for e in f.near if e in want]
+                    f.edge = f.near[0]
+                    first.near = [e for e in first.near if e in other]
+                    first.edge = first.near[0]
+                    second = f
+                else:
+                    log("no: a second finger"); reset()
+            elif first is not None:
+                log("no: a third finger"); reset()
         new.clear()
-        if swipe is None:
+        if first is None:
             continue
-        if time.monotonic() - swipe["start"] > TIME:
-            log(f"no: held past {TIME} s"); swipe = None
+        if time.monotonic() - began > TIME:
+            log(f"no: held past {TIME} s"); reset()
             continue
-        d = dist(*pos[swipe["slot"]])
-        swipe["max"] = max(swipe["max"], d)
-        if not swipe["buzzed"] and d >= BUZZ:
-            swipe["buzzed"] = True
+        if second is not None:
+            if superheld:
+                continue
+            d1 = first.update(*pos[first.slot])
+            d2 = second.update(*pos[second.slot])
+            if d1 is not None and d2 is not None and \
+               d1 >= BUZZ[first.edge] and d2 >= BUZZ[second.edge]:
+                superheld = True
+                buzz(35); time.sleep(0.08); buzz(35)
+                run("pro1x-super", "start"); log("super")
+            continue
+        d = first.update(*pos[first.slot])
+        if d is None:
+            continue
+        if not first.buzzed and d >= BUZZ[first.edge]:
+            first.buzzed = True
             buzz(35)
-        elif swipe["buzzed"] and d <= BACK:
+        elif first.buzzed and first.edge == "bottom" and d <= BACK:
             run("swaymsg", "kill"); buzz(60); log("close")
-            swipe = None
+            reset()

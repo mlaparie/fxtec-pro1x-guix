@@ -3,13 +3,15 @@
 #
 #   swipe down from the top edge      quick actions (sway-quick-actions)
 #   swipe up from the bottom edge     a buzz at 120 px; lifted then: on-screen
-#                                     keyboard, shown or hidden (pro1x-edge-swipe)
+#                                     keyboard, shown or hidden (pro1x-edge-swipe,
+#                                     as the side swipes and Super)
 #   ... and back to the bottom edge   close the focused window (as s-BackSpace)
 #     after the buzz, without lifting  with a second buzz
 #   two fingers down out the bottom edge   close the focused window too
-#   both edges swiped in at once      Super held for the next key (pro1x-super)
-#   swipe in from the right edge      app launcher (sway-launcher-desktop)
-#   swipe in from the left edge       window switcher (sway-window-switcher)
+#   both edges swiped in at once      two buzzes, Super held for the next key
+#                                     (pro1x-super)
+#   swipe in from the right edge      a buzz; lifted: app launcher
+#   swipe in from the left edge       a buzz; lifted: window switcher
 #   (Sway Overview moved to the window switcher, author 2026-11-02)
 #
 # The same swipe again closes what it opened (pro1x-gestures toggle APP-ID
@@ -82,20 +84,16 @@ start() {                       # start <transform>
     # Two fingers down out the bottom edge close the focused window, on
     # release (author, 2026-11-22): lisgd's edge is where the swipe starts
     # or ends, so ending in the bottom band is enough.
-    # Both edges in at once: two fingers down, each moving in from its own
-    # edge, so lisgd matches each as a two-finger swipe; pro1x-super starts
-    # once for both (author, 2026-11-22).
+    # The swipes in from the bottom and the sides, and both sides at once
+    # (Super), are pro1x-edge-swipe's: each buzzes, then acts on the lift
+    # (author, 2026-11-25: Super opened the keyboard or a menu).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
-        -g "1,RL,R,*,P,pro1x-gestures menu launcher &" \
-        -g "1,LR,L,*,P,pro1x-gestures menu windowswitcher &" \
-        -g "2,LR,L,*,P,pro1x-super start &" \
-        -g "2,RL,R,*,P,pro1x-super start &" \
         -g "2,UD,B,*,R,swaymsg kill >/dev/null; { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
-    # The swipe up from the bottom edge, followed as it goes: its own
-    # program, with a buzz at once (pro1x-edge-swipe).
+    # The swipes in from the bottom and the sides, followed as they go
+    # (pro1x-edge-swipe).
     pro1x-edge-swipe "$o" >/dev/null 2>&1 &
     edge_pid=$!
 }
