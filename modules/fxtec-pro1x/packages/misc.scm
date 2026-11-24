@@ -2265,13 +2265,14 @@ window opened by a sway key binding.")
                 (chmod (string-append #$output "/etc/xdg/wl-cast/hook") #o755)
                 (let ((super (string-append #$output "/bin/pro1x-super")))
                   (chmod super #o755)
-                  ;; swaymsg, gdbus and fbcli: system profile; pro1x-osk: $output.
+                  ;; swaymsg, gdbus and fbcli: system profile; pro1x-osk: $output;
+                  ;; evtest: the keyboard slider.
                   (wrap-program super
                     `("PATH" ":" prefix
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "grep" "jq" "sed" "wtype"))))))
+                              '("coreutils" "evtest" "grep" "jq" "sed" "wtype"))))))
                 (let ((notify (string-append #$output "/bin/pro1x-notify")))
                   (chmod notify #o755)
                   ;; swaymsg comes from the system profile.

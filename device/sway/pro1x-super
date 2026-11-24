@@ -46,7 +46,11 @@ case "${1:-}" in
         fi
         swaymsg mode super >/dev/null
         { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
-        osk_visible || { touch "$shown"; pro1x-osk toggle; }
+        # The on-screen keyboard only with the hardware one slid in
+        # (author, 2026-11-25: Super opened it with the keyboard out).
+        # evtest --query exits with 10 while the switch is set.
+        evtest --query /dev/input/pro1x-slider EV_SW SW_KEYPAD_SLIDE 2>/dev/null
+        [ $? = 10 ] || osk_visible || { touch "$shown"; pro1x-osk toggle; }
         # No key within 5 s: back to normal.
         sleep 5
         [ "$(cat "$stamp" 2>/dev/null)" = "$now" ] && [ "$(mode)" = super ] &&
