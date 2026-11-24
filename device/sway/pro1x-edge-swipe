@@ -78,6 +78,9 @@ def buzz(ms):
     if hap is None:
         return
     try:
+        # Full strength each time: another user of the motor may have
+        # lowered its gain.
+        hap.write(ecodes.EV_FF, ecodes.FF_GAIN, 0xffff)
         if ms not in effects:
             effects[ms] = hap.upload_effect(ff.Effect(
                 ecodes.FF_RUMBLE, -1, 0, ff.Trigger(0, 0), ff.Replay(ms, 0),
