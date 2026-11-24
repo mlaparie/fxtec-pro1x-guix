@@ -1699,31 +1699,33 @@ step() {                        # Right (+) and Left (-)
 notif_lines() {
     printf 'back\t-\t← back\n'
     sway-notifications list 2>/dev/null |
-        awk -F'\t' '{ printf "%s\t%s\t%s %s  %s%s: %s\n", $1, $2,
+        awk -F'\t' '{ app = ($4 == "notify-send" ? "" : $4 ": ")   # no app given
+                      printf "%s\t%s\t%s %s  %s%s%s\n", $1, $2,
                       ($1 == "new" ? "•" : " "), $6,
-                      ($3 == "critical" ? "urgent " : ""), $4, $5 }'
+                      ($3 == "critical" ? "urgent " : ""), app, $5 }'
 }
 
 # A notification in the dock's preview, easy to read (author, 2026-11-25):
 # the app in cyan (and "urgent" in red), the summary and the body in white,
 # folded to the pane's width less 4 (at most 60) with the body's own line
-# breaks kept, and the actions in yellow.  The file: summary, "app ·
-# urgency", a blank line, the body, maybe "Actions: …".
+# breaks kept, and the actions in yellow, if it has any.  The file:
+# summary, "app · urgency", a blank line, the body, maybe "Actions: …".
 notif_preview() {               # notif_preview <kind> <id>
     f="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications/$1-$2"
     [ -s "$f" ] || exit 0
     w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
     [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
-    meta=$(sed -n 2p "$f")
+    # notify-send names itself when the sender gives no app: no name then.
+    meta=$(sed -n 2p "$f"); app=${meta% · *}
+    [ "$app" = notify-send ] && app=
     case "$meta" in
-        *critical) printf '\033[1;36m%s\033[0m  \033[31murgent\033[0m\n\n' "${meta% · *}" ;;
-        *) printf '\033[1;36m%s\033[0m\n\n' "${meta% · *}" ;;
+        *critical) printf '\033[1;36m%s\033[0m%s\033[31murgent\033[0m\n\n' "$app" "${app:+  }" ;;
+        *) [ -n "$app" ] && printf '\033[1;36m%s\033[0m\n\n' "$app" ;;
     esac
     { sed -n 1p "$f"; awk 'NR > 3 && !/^Actions: /' "$f"; } | fold -s -w "$w" |
         sed 's/^/\x1b[97m/; s/$/\x1b[0m/'
-    if [ "$1" = old ]; then
-        printf '\n\033[2mAn earlier one: its buttons no longer work.\033[0m\n' | fold -s -w "$w"
-    elif a=$(grep '^Actions: ' "$f"); then
+    # Its actions, while it still has them (an old one has none).
+    if [ "$1" != old ] && a=$(grep '^Actions: ' "$f"); then
         printf '\n\033[33m%s\033[0m\n' "$a" | fold -s -w "$w"
     fi
 }
@@ -1910,6 +1912,7 @@ case "${1:-}" in
                 [ -n "$sep" ] && echo; sep=1
                 mark=" "; [ "$kind" = new ] && mark="•"
                 [ "$urgency" = critical ] && mark="!"
+                [ "$app" = notify-send ] && app=     # no app given
                 printf '%s \033[2m%s\033[0m \033[1;36m%s\033[0m\n' "$mark" "$time" "$app"
                 { printf '%s\n' "$summary"
                   [ -s "$full/$kind-$id" ] &&
