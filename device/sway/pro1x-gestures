@@ -2,8 +2,8 @@
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
 #   swipe down from the top edge      quick actions (sway-quick-actions)
-#   swipe up from the bottom edge     a buzz at 160 px; lifted then: on-screen
-#                                     keyboard, shown or hidden
+#   swipe up from the bottom edge     a buzz at 120 px; lifted then: on-screen
+#                                     keyboard, shown or hidden (pro1x-edge-swipe)
 #   ... and back to the bottom edge   close the focused window (as s-BackSpace)
 #     after the buzz, without lifting  with a second buzz
 #   two fingers down out the bottom edge   close the focused window too
@@ -45,63 +45,6 @@ if [ "${1:-}" = menu ]; then
     exec pro1x-menu toggle "$2"
 fi
 
-# bottom O: the swipe up from the bottom edge (lisgd, at 80 px, the finger
-# still down; O its orientation, as lisgd's -o): the finger followed until
-# it lifts or for 2.5 s.  At 160 px in, a buzz: the swipe counts from
-# there (author, 2026-11-24: the keyboard came too easily, and the close
-# was hard to make).  Lifted after the buzz: the on-screen keyboard shown
-# or hidden.  Back within 110 px of the edge after it: the focused window
-# closed, as Super+BackSpace, with a second buzz.  Lifted before it, or
-# held past the time: nothing.
-# lisgd sees only straight swipes, hence this watcher.  The distance from
-# the edge in the touchscreen's own (portrait) coordinates, as lisgd turns
-# its edges: o 0 bottom (2160 - y), 1 left (x), 2 top (y), 3 right (1080 - x).
-if [ "${1:-}" = bottom ]; then
-    o=${2:-0}
-    # Once per swipe: lisgd fires again as the finger goes on, which
-    # toggled the keyboard back and started watchers that saw only the end.
-    stamp="${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom"
-    now=$(date +%s%N)
-    [ $(( now - $(cat "$stamp" 2>/dev/null || echo 0) )) -lt 800000000 ] && exit 0
-    echo "$now" > "$stamp"
-    # The axis that moves away from that edge: only once it is known.
-    # Line by line (stdbuf): into a pipe evtest wrote 4 kB blocks, and the
-    # watcher saw nothing before its time ran out (author: it never closed).
-    out=$(timeout 2.5 stdbuf -oL evtest /dev/input/by-path/platform-i2c-touchscreen-event 2>/dev/null |
-          awk -v o="$o" '
-        /ABS_MT_POSITION_X\), value/ { x = $NF; if (o % 2) seen = 1 }
-        /ABS_MT_POSITION_Y\), value/ { y = $NF; if (!(o % 2)) seen = 1 }
-        /ABS_MT_SLOT\), value [1-9]/ { print "two"; c = 1; exit }
-        /BTN_TOUCH\), value 0/ { if (gone) { print "lift"; c = 1 }; exit }
-        /SYN_REPORT/ && seen {
-            d = (o == 1) ? x : (o == 2) ? y : (o == 3) ? 1080 - x : 2160 - y
-            # lisgd fires 80 px in from its 100 px band; evtest starts a little
-            # later (a quick flick): over 400 px at the first report, the
-            # swipe began elsewhere.
-            if (!first++ && d > 400) { print "far"; c = 1; exit }
-            if (d > max) max = d
-            if (d >= 160 && !gone) {
-                gone = 1
-                system("{ sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &")
-            }
-            if (gone && d <= 110) { print "close"; c = 1; exit }
-        }
-        END { if (c) exit; if (!gone) print "no: went " max " px in"; else print "no: came back to " d " px" }')
-    # The last decision, for tuning.
-    echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
-    # The keyboard only on a lift after the buzz, once it is known not to
-    # be a close (author: it showed or hid, then the window closed).  A
-    # second finger, or a finger that did not come from the bottom edge
-    # (the Super gesture, both edges in): nothing.
-    if [ "$out" = close ]; then
-        swaymsg kill >/dev/null 2>&1
-        { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
-    elif [ "$out" = lift ]; then
-        pro1x-osk toggle >/dev/null 2>&1 &
-    fi
-    exit 0
-fi
-
 # toggle APP-ID COMMAND...: close that window if it is open, else run.
 if [ "${1:-}" = toggle ]; then
     app=$2; shift 2
@@ -123,23 +66,19 @@ transform() {
         jq -r --arg o "$output" '.[] | select(.name == $o) | .transform'
 }
 
-lisgd_pid=
+lisgd_pid= edge_pid=
 start() {                       # start <transform>
     case "$1" in
         90) o=1 ;; 180) o=2 ;; 270) o=3 ;; *) o=0 ;;
     esac
     # The panel is 1080x2160 (portrait); edges are measured in it.
-    # The keyboard swipe acts as soon as it is 125 px long, the finger
-    # still down (P; author: stevia was slow to come); the touch stays with
-    # the window it began on, so lifting types nothing.  The others act on
-    # release.  More permissive than lisgd's defaults (author, 2026-11-02:
+    # More permissive than lisgd's defaults (author, 2026-11-02:
     # the two-finger swipe was hard to make; there every finger must go
     # the same way, the last one lifted must touch the edge band, all
     # within the timeout): 100 px edge bands (-s 2), 30 degrees off
     # straight (-r 30), 1.2 s (-m 1200).
     # Every swipe acts once the finger has gone 80 px (pressed, P), not
-    # on release: the keyboard (author, 2026-11-02), and the menus with a
-    # buzz (menu, above; author, 2026-11-02).
+    # on release: the menus with a buzz (menu, above; author, 2026-11-02).
     # Two fingers down out the bottom edge close the focused window, on
     # release (author, 2026-11-22): lisgd's edge is where the swipe starts
     # or ends, so ending in the bottom band is enough.
@@ -148,7 +87,6 @@ start() {                       # start <transform>
     # once for both (author, 2026-11-22).
     lisgd -d "$dev" -w 1080 -h 2160 -o "$o" -T 80 -s 2 -r 30 -m 1200 \
         -g "1,UD,T,*,P,pro1x-gestures menu quickactions &" \
-        -g "1,DU,B,*,P,pro1x-gestures bottom $o &" \
         -g "1,RL,R,*,P,pro1x-gestures menu launcher &" \
         -g "1,LR,L,*,P,pro1x-gestures menu windowswitcher &" \
         -g "2,LR,L,*,P,pro1x-super start &" \
@@ -156,9 +94,16 @@ start() {                       # start <transform>
         -g "2,UD,B,*,R,swaymsg kill >/dev/null; { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &" \
         >/dev/null 2>&1 &
     lisgd_pid=$!
+    # The swipe up from the bottom edge, followed as it goes: its own
+    # program, with a buzz at once (pro1x-edge-swipe).
+    pro1x-edge-swipe "$o" >/dev/null 2>&1 &
+    edge_pid=$!
 }
 
-stop() { [ -n "$lisgd_pid" ] && kill "$lisgd_pid" 2>/dev/null; lisgd_pid=; }
+stop() {
+    [ -n "$lisgd_pid" ] && kill "$lisgd_pid" 2>/dev/null; lisgd_pid=
+    [ -n "$edge_pid" ] && kill "$edge_pid" 2>/dev/null; edge_pid=
+}
 
 trap 'stop; rm -f "$events"' EXIT
 trap 'exit 0' INT TERM HUP

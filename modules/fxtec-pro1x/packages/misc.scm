@@ -1885,6 +1885,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-mako                     mako, logging notification arrivals
 ;;;   bin/pro1x-notify                   on a notification: log, wake, relock
 ;;;   bin/pro1x-gestures                 edge swipes on the touchscreen (lisgd)
+;;;   bin/pro1x-edge-swipe               the swipe up from the bottom edge, with a buzz
 ;;;   bin/pro1x-super                    Super held from the touchscreen (wtype)
 ;;;   share/pro1x-sway/super.conf        its Sway mode (/etc/sway/pro1x.d/)
 ;;;   bin/pro1x-workspace                a workspace named in a prompt (s-C-o)
@@ -1940,6 +1941,7 @@ window opened by a sway key binding.")
     (build-system copy-build-system)
     (inputs (list bash certbot chafa coreutils curl evtest ffmpeg font-dejavu foot fzf gawk grep
                   grim guile-3.0 imagemagick iw jq libnotify lisgd nftables procps
+                  python python-evdev
                   mobile-broadband-provider-info qrencode sed slurp swayidle
                   openssl tzdata wl-clipboard wl-mirror wtype
                   (list glib "bin")))
@@ -1975,6 +1977,7 @@ window opened by a sway key binding.")
           ("pro1x-mako" "bin/")
           ("pro1x-notify" "bin/")
           ("pro1x-gestures" "bin/")
+          ("pro1x-edge-swipe" "bin/")
           ("pro1x-super" "bin/")
           ("pro1x-workspace" "bin/")
           ("pro1x-term" "bin/")
@@ -2238,14 +2241,27 @@ window opened by a sway key binding.")
                       (,(string-append (assoc-ref inputs "foot") "/bin")))))
                 (let ((g (string-append #$output "/bin/pro1x-gestures")))
                   (chmod g #o755)
-                  ;; swaymsg, foot and the menus: system profile and $output;
-                  ;; evtest and gawk: the close gesture's watcher.
+                  ;; swaymsg, foot and the menus: system profile and $output.
                   (wrap-program g
                     `("PATH" ":" prefix
                       (,(string-append #$output "/bin")
                        ,@(map (lambda (p)
                                 (string-append (assoc-ref inputs p) "/bin"))
-                              '("coreutils" "evtest" "gawk" "grep" "jq" "lisgd"))))))
+                              '("coreutils" "grep" "jq" "lisgd"))))))
+                ;; python-evdev for the touchscreen and the motor; swaymsg
+                ;; and pro1x-osk from the system profile.
+                (let ((e (string-append #$output "/bin/pro1x-edge-swipe")))
+                  (chmod e #o755)
+                  (substitute* e
+                    (("^#!/usr/bin/env python3")
+                     (string-append "#!" (search-input-file inputs "/bin/python3"))))
+                  (wrap-program e
+                    `("GUIX_PYTHONPATH" ":" prefix
+                      (,(string-append (assoc-ref inputs "python-evdev")
+                                       "/lib/python"
+                                       #$(version-major+minor
+                                          (package-version python))
+                                       "/site-packages")))))
                 (chmod (string-append #$output "/etc/xdg/wl-cast/hook") #o755)
                 (let ((super (string-append #$output "/bin/pro1x-super")))
                   (chmod super #o755)
