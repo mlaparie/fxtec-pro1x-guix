@@ -2,9 +2,10 @@
 # pro1x-gestures — touchscreen edge swipes in Sway (lisgd)
 #
 #   swipe down from the top edge      quick actions (sway-quick-actions)
-#   swipe up from the bottom edge     on-screen keyboard, shown or hidden
-#   ... and back out the bottom edge  close the focused window (as s-BackSpace)
-#     without lifting the finger
+#   swipe up from the bottom edge     a buzz at 160 px; lifted then: on-screen
+#                                     keyboard, shown or hidden
+#   ... and back to the bottom edge   close the focused window (as s-BackSpace)
+#     after the buzz, without lifting  with a second buzz
 #   two fingers down out the bottom edge   close the focused window too
 #   both edges swiped in at once      Super held for the next key (pro1x-super)
 #   swipe in from the right edge      app launcher (sway-launcher-desktop)
@@ -46,11 +47,12 @@ fi
 
 # bottom O: the swipe up from the bottom edge (lisgd, at 80 px, the finger
 # still down; O its orientation, as lisgd's -o): the finger followed until
-# it lifts or for 1.5 s.  Gone 140 px in and back within 90 px of that edge
-# (or lifted within 150 px, sliding off the panel; 30 and 60 were too
-# strict, author 2026-11-20): the focused window closed, as
-# Super+BackSpace, with a buzz (author, 2026-11-20); else the on-screen
-# keyboard shown or hidden, on lift.
+# it lifts or for 2.5 s.  At 160 px in, a buzz: the swipe counts from
+# there (author, 2026-11-24: the keyboard came too easily, and the close
+# was hard to make).  Lifted after the buzz: the on-screen keyboard shown
+# or hidden.  Back within 110 px of the edge after it: the focused window
+# closed, as Super+BackSpace, with a second buzz.  Lifted before it, or
+# held past the time: nothing.
 # lisgd sees only straight swipes, hence this watcher.  The distance from
 # the edge in the touchscreen's own (portrait) coordinates, as lisgd turns
 # its edges: o 0 bottom (2160 - y), 1 left (x), 2 top (y), 3 right (1080 - x).
@@ -65,12 +67,12 @@ if [ "${1:-}" = bottom ]; then
     # The axis that moves away from that edge: only once it is known.
     # Line by line (stdbuf): into a pipe evtest wrote 4 kB blocks, and the
     # watcher saw nothing before its time ran out (author: it never closed).
-    out=$(timeout 1.5 stdbuf -oL evtest /dev/input/by-path/platform-i2c-touchscreen-event 2>/dev/null |
+    out=$(timeout 2.5 stdbuf -oL evtest /dev/input/by-path/platform-i2c-touchscreen-event 2>/dev/null |
           awk -v o="$o" '
         /ABS_MT_POSITION_X\), value/ { x = $NF; if (o % 2) seen = 1 }
         /ABS_MT_POSITION_Y\), value/ { y = $NF; if (!(o % 2)) seen = 1 }
         /ABS_MT_SLOT\), value [1-9]/ { print "two"; c = 1; exit }
-        /BTN_TOUCH\), value 0/ { if (gone && d <= 150) { print "close"; c = 1 }; exit }
+        /BTN_TOUCH\), value 0/ { if (gone) { print "lift"; c = 1 }; exit }
         /SYN_REPORT/ && seen {
             d = (o == 1) ? x : (o == 2) ? y : (o == 3) ? 1080 - x : 2160 - y
             # lisgd fires 80 px in from its 100 px band; evtest starts a little
@@ -78,23 +80,23 @@ if [ "${1:-}" = bottom ]; then
             # swipe began elsewhere.
             if (!first++ && d > 400) { print "far"; c = 1; exit }
             if (d > max) max = d
-            if (d >= 140) gone = 1
-            if (gone && d <= 90) { print "close"; c = 1; exit }
+            if (d >= 160 && !gone) {
+                gone = 1
+                system("{ sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &")
+            }
+            if (gone && d <= 110) { print "close"; c = 1; exit }
         }
         END { if (c) exit; if (!gone) print "no: went " max " px in"; else print "no: came back to " d " px" }')
     # The last decision, for tuning.
     echo "$(date +%T) o=$o ${out:-no: lifted or timed out}" >> "${XDG_RUNTIME_DIR:-/tmp}/pro1x-gesture-bottom.log"
-    # The keyboard only once it is known not to be a close (author: it
-    # showed or hid, then the window closed): on lift, or after 1.5 s.
-    # A second finger, or a finger that did not come from the bottom edge
-    # (the Super gesture, both edges in): not the keyboard; no delay after
-    # Super, which is followed by typing (author, 2026-11-22).
-    if [ "$out" = two ] || [ "$out" = far ]; then
-        :
-    elif [ "$out" = close ]; then
+    # The keyboard only on a lift after the buzz, once it is known not to
+    # be a close (author: it showed or hid, then the window closed).  A
+    # second finger, or a finger that did not come from the bottom edge
+    # (the Super gesture, both edges in): nothing.
+    if [ "$out" = close ]; then
         swaymsg kill >/dev/null 2>&1
         { sleep 1 | fbcli -E button-pressed; } >/dev/null 2>&1 &
-    else
+    elif [ "$out" = lift ]; then
         pro1x-osk toggle >/dev/null 2>&1 &
     fi
     exit 0
