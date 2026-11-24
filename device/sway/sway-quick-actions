@@ -167,6 +167,9 @@ qs_show() {
     [ -e "$rt/pro1x-locked-app" ] && return    # one app over the lock screen
     case "$(qs_state)" in
         hidden)
+            # A query left from a hide that missed it, cleared first.
+            curl -sf -m 1 --unix-socket "$sock" -X POST http://localhost \
+                 -d "clear-query+first" >/dev/null 2>&1
             # pro1x-menu's geometry, for the current orientation.
             swaymsg "[app_id=\"^quickactions\$\"] scratchpad show, $(pro1x-menu geometry quickactions)" >/dev/null
             # After the slide-in (a refresh takes 1.7 s of CPU here,

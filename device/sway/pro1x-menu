@@ -146,11 +146,21 @@ slide_in() {
     exec 9<&-
 }
 
+# The typed query cleared, for next time (author, 2026-11-25: it stayed
+# in quick actions).  Repeated in the background: a menu busy in an
+# execute or a reload drops a request that waits through it.
+clear_query() {
+    ( for _ in 1 2 3 4 5 6; do
+          curl -sf -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
+               -d "clear-query+first" >/dev/null 2>&1 && break
+          sleep 0.5
+      done ) &
+}
+
 hide_menu() {
     rm -f "$rt/pro1x-menu-shown"
     close_sub "$1"
-    curl -s -m 2 --unix-socket "$(sock_of "$1")" -X POST http://localhost \
-         -d "clear-query+first" >/dev/null 2>&1 &
+    clear_query "$1"
     swaymsg "[app_id=\"^$1\$\"] move scratchpad" >/dev/null 2>&1
 }
 
@@ -319,6 +329,9 @@ case "$cmd" in
         for m in quickactions launcher windowswitcher powermenu; do
             [ "$m" = "$id" ] || hide_menu "$m"
         done
+        # A query left from a hide that missed it, cleared before it shows.
+        curl -sf -m 1 --unix-socket "$(sock_of "$id")" -X POST http://localhost \
+             -d "clear-query+first" >/dev/null 2>&1
         # Extra windows of this menu (from before the check in start) go.
         set -- $(windows "$id")
         first=${1:-}
