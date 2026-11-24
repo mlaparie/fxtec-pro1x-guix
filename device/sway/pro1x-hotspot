@@ -7,9 +7,9 @@
 #
 # It is a NetworkManager connection in shared mode.  It runs on wlan0 and
 # shares mobile data, dropping a Wi-Fi network in use.  With Keep Wi-Fi on,
-# beside a network, it runs on a second interface, ap0, on its own band and
-# on a channel other than the network's, and shares that network (place,
-# below).
+# it runs on a second interface, ap0, so that wlan0 can join networks: beside
+# one, on its own band and a channel other than the network's, sharing that
+# network; with none, sharing mobile data until one is joined (place, below).
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
 # A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
@@ -192,24 +192,34 @@ away() {
 }
 
 place() {
-    f=; [ "$(keep_wifi)" = yes ] && f=$(client_freq)
-    if [ -n "$f" ]; then
+    # With Keep Wi-Fi, always on ap0, even with no network joined yet: on
+    # wlan0 the hotspot would keep the phone off any network until it stops
+    # (author, 2026-11-24: none could be joined while it ran).  Beside a
+    # network, on a channel of its own; with none, on its own channel.
+    ap=; [ "$(keep_wifi)" = yes ] && ap=yes
+    if [ -n "$ap" ]; then
+        f=$(client_freq)
         [ -f "$saved_band" ] ||
             echo "$(band) $(nmcli -e no -g 802-11-wireless.channel connection show "$con")" > "$saved_band"
         read -r b ch < "$saved_band"
-        ch=$(away "$b" "$ch" "$f")
+        [ -n "$f" ] && ch=$(away "$b" "$ch" "$f")
         if [ "$b" = a ]; then af=$((5000 + 5 * ch)); else af=$((2407 + 5 * ch)); fi
-        if [ "$ch" != 0 ] && no_ir "$af"; then
-            notify-send Hotspot \
-                "No hotspot may start on channel $ch beside this network: it is dropped, and mobile data shared"
-            f=
+        if [ "${ch:-0}" != 0 ] && no_ir "$af"; then
+            if [ -n "$f" ]; then
+                notify-send Hotspot \
+                    "No hotspot may start on channel $ch beside this network: it is dropped, and mobile data shared"
+            else
+                notify-send Hotspot \
+                    "No hotspot may start on channel $ch beside Wi-Fi: Wi-Fi is left out, and mobile data shared"
+            fi
+            ap=
         fi
     fi
-    if [ -n "$f" ]; then
+    if [ -n "$ap" ]; then
         $admin ap-up || return 1
         iface=ap0
         nmcli connection modify "$con" connection.interface-name ap0 \
-              802-11-wireless.band "$b" 802-11-wireless.channel "$ch" \
+              802-11-wireless.band "$b" 802-11-wireless.channel "${ch:-0}" \
               802-11-wireless.cloned-mac-address "$(cat /sys/class/net/ap0/address)"
     else
         iface=wlan0
@@ -329,7 +339,7 @@ info() {                        # info WHAT KEY
         keep:yes)
             echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot keeps its band, on a channel away from the network's: the radio shares its time between the two, so both are slower."
             echo
-            echo "Without a network, mobile data." ;;
+            echo "Without a network, mobile data, and Wi-Fi stays free to join one meanwhile." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) echo "The name is not broadcast: a device joins by typing it (or by the QR code).  It hides little: the name still travels when devices connect." ;;
         idle:0) echo "The hotspot stays on until turned off." ;;
