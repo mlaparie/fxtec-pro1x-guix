@@ -1704,9 +1704,21 @@ notif_lines() {
                       ($3 == "critical" ? "urgent " : ""), $4, $5 }'
 }
 
+# A notification in the dock's preview, easy to read (author, 2026-11-25):
+# its summary in bold, "app · urgency" dimmed, then the body folded to the
+# pane's width less 4 (at most 60), its own line breaks kept, and the
+# actions dimmed.  The file: summary, "app · urgency", a blank line, the
+# body, maybe "Actions: …".
 notif_preview() {               # notif_preview <kind> <id>
-    cat "${XDG_RUNTIME_DIR:-/tmp}/sway-notifications/$1-$2" 2>/dev/null
-    [ "$1" = old ] && printf '\n(history: no actions)\n'
+    f="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications/$1-$2"
+    [ -s "$f" ] || exit 0
+    w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+    [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
+    printf '\033[1m%s\033[0m\n' "$(sed -n 1p "$f")" | fold -s -w "$w"
+    printf '\033[2m%s\033[0m\n\n' "$(sed -n 2p "$f")"
+    awk 'NR > 3 && !/^Actions: /' "$f" | fold -s -w "$w"
+    a=$(grep '^Actions: ' "$f") && printf '\n\033[2m%s\033[0m\n' "$a" | fold -s -w "$w"
+    [ "$1" = old ] && printf '\n\033[2m(history: no actions)\033[0m\n'
 }
 
 # The command of the app a notification names (author, 2026-11-02:
@@ -1871,25 +1883,32 @@ case "${1:-}" in
     --notif-summary)            # preview of the Notifications line
         # Their full text (author, 2026-11-02; never on the lock screen,
         # which shows counts only): sway-notifications list writes it.
-        # Compact (author, 2026-11-06): "• 14:05 App: summary", then the body
-        # without its empty lines, a blank line only between notifications;
+        # Compact (author, 2026-11-06): "• 14:05 App", the summary and the
+        # body under it without its empty lines, a blank line only between
+        # notifications;
         # no urgency line (an urgent one is marked !) and no actions (the
         # dock has them).  The full file: summary, "app · urgency", a blank
         # line, the body, maybe "Actions: …".
         # Only the unseen ones, as the line counts them.
+        # Easier to read (author, 2026-11-25): the time dimmed, the app in
+        # bold, the body folded under it to the pane's width less 4 (at
+        # most 60).
         full="${XDG_RUNTIME_DIR:-/tmp}/sway-notifications"
         sep= seen=$(cat "$notif_seen" 2>/dev/null || echo 0)
+        w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+        [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
         sway-notifications list 2>/dev/null |
             while IFS="$(printf '\t')" read -r kind id urgency app summary time; do
                 [ "$id" -gt "$seen" ] || continue
                 [ -n "$sep" ] && echo; sep=1
                 mark=" "; [ "$kind" = new ] && mark="•"
                 [ "$urgency" = critical ] && mark="!"
-                printf '%s %s %s: %s\n' "$mark" "$time" "$app" "$summary"
+                printf '%s \033[2m%s\033[0m \033[1m%s\033[0m\n' "$mark" "$time" "$app"
+                printf '%s\n' "$summary" | fold -s -w $((w - 2)) | sed 's/^/  /'
                 [ -s "$full/$kind-$id" ] &&
                     awk -v s="$summary" 'NR > 3 && !/^Actions: / && NF && $0 != s {
-                                             sub(/^[ \t]+/, ""); print "  " $0 }' \
-                        "$full/$kind-$id"
+                                             sub(/^[ \t]+/, ""); print }' \
+                        "$full/$kind-$id" | fold -s -w $((w - 2)) | sed 's/^/  /'
             done
         exit ;;
     --notif-preview) notif_preview "$2" "$3"; exit ;;
