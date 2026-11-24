@@ -86,6 +86,10 @@ checks the ID: NCI 2.0's LA_NFCID1 may give a fixed ID in listen mode (untested 
 firmware), from user space over I2C with nxp-nci unloaded.  Not 125 kHz badges, nor
 encrypted ones (DESFire, iCLASS SE, banks).
 waydroid-host-stack forwards host tags to Android (file, broadcast), so it depends on this.
+2026-11-24: the chip senses a Flipper's field (RF_FIELD_INFO) but its transmitter draws no
+current in NXP's antenna self-test: no field sent; supply (VUP) or antenna contact suspected.
+Generation 262 boots with module_blacklist=nxp_nci_i2c for these tests (the phone's
+config.scm, backup config.scm.bak-20261124-nfctest): put it back when done.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
