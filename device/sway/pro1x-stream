@@ -1169,7 +1169,14 @@ network_displays() {
 }
 
 [ "${1:-}" = --qr ] && { qr_preview "${2:-}"; exit; }
-[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}"; exit; }
+# Fixed help in a preview, reflowed narrower than the pane, so that it
+# reads as a column rather than wrapped at its edge (author, 2026-11-25).
+narrow() {
+    w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+    [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
+    fmt -w "$w"
+}
+[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}" | narrow; exit; }
 # For scripts: start the interactive stream on ADDRESS without the menu, or stop.
 [ "${1:-}" = --interactive ] && { addr=${2:-} quiet=1 send_interactive; exit; }
 # The same with wl-cast, interactive, on the stream settings' networks.

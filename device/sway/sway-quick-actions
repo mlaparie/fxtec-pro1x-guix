@@ -1804,6 +1804,14 @@ notif_dock() {
     rm -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-quick-actions-notif.sock"
 }
 
+# Fixed help in a preview, reflowed narrower than the pane, so that it
+# reads as a column rather than wrapped at its edge (author, 2026-11-25).
+narrow() {
+    w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+    [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
+    fmt -w "$w"
+}
+
 case "${1:-}" in
     --lines) refresh_lines; overlay < "$cache"; exit ;;
     --line) line_value "$2"; echo; exit ;;   # one line's value (checks)
@@ -1856,7 +1864,7 @@ case "${1:-}" in
     --audio-toggle) audio_toggle "$2"; exit ;;
     --audio-only) audio_apply "$2"; exit ;;
     --step) step "$2" "$3" >/dev/null 2>&1; exit ;;
-    --choice-info) choice_info "$2" "$3"; exit ;;
+    --choice-info) choice_info "$2" "$3" | narrow; exit ;;
     --sim) sim_unlock; exit ;;
     --notif) notif_dock; exit ;;
     --notif-lines) notif_lines; exit ;;

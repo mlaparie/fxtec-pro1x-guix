@@ -389,7 +389,14 @@ pick_idle() {
     echo "$m" > "$idle_file"
 }
 # For the previews of choose_one.
-[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}"; exit; }
+# Fixed help in a preview, reflowed narrower than the pane, so that it
+# reads as a column rather than wrapped at its edge (author, 2026-11-25).
+narrow() {
+    w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+    [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
+    fmt -w "$w"
+}
+[ "${1:-}" = --info ] && { info "${2:-}" "${3:-}" | narrow; exit; }
 
 # One line per device, connected or banned: MAC, tab, what is shown.
 client_lines() {

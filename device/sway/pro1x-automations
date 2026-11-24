@@ -73,6 +73,14 @@ state() {
     fi
 }
 
+# Fixed help in a preview, reflowed narrower than the pane, so that it
+# reads as a column rather than wrapped at its edge (author, 2026-11-25).
+narrow() {
+    w=$(( ${FZF_PREVIEW_COLUMNS:-64} - 4 ))
+    [ "$w" -gt 60 ] && w=60; [ "$w" -lt 20 ] && w=20
+    fmt -w "$w"
+}
+
 case "${1:-}" in
     --start)
         for s in $(scripts); do enabled "$s" && start "$s"; done
@@ -84,7 +92,7 @@ case "${1:-}" in
         exit ;;
     --preview)                  # the script's opening comment, then its log
         [ -f "$dir/$2" ] || exit
-        sed -n '2,/^[^#]/{/^#/p}' "$dir/$2" | sed 's/^# \{0,1\}//'
+        sed -n '2,/^[^#]/{/^#/p}' "$dir/$2" | sed 's/^# \{0,1\}//' | narrow
         printf '\n── log ──\n'
         tail -n 30 "$logs/$2.log" 2>/dev/null
         exit ;;
