@@ -7,18 +7,20 @@
 #
 # It is a NetworkManager connection in shared mode.  It runs on wlan0 and
 # shares mobile data, dropping a Wi-Fi network in use.  With Keep Wi-Fi on,
-# beside a 2.4 GHz network, it runs on a second interface, ap0, on that
-# network's channel, and shares that network (place, below).
+# beside a network, it runs on a second interface, ap0, on its own band and
+# on a channel other than the network's, and shares that network (place,
+# below).
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
 # A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
 # Wi-Fi client, the access point's country beacon closes every 5 GHz channel
 # ("no IR"), so the band can only be checked once the client link is dropped.
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
-# run on the phone.  Beside a Wi-Fi network: ap0 an access point on the
-# network's channel with wlan0 still connected (2026-11-20).  A network on
-# 5 GHz cannot have one beside it ("no IR" on all 5 GHz channels while a
-# client): it is dropped as before.
+# run on the phone.  Beside a Wi-Fi network: ap0 on 5 GHz channel 36 beside
+# a 5 GHz network on channel 112 gave a laptop that network's internet
+# (2026-11-24).  On the network's own channel 36 it carried no data (once,
+# not retried); ap0 on 2.4 GHz channel 6 beside that network worked two
+# minutes, then frames to the laptop failed (cause not found).
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -31,7 +33,7 @@ con=pro1x-hotspot
 # The hotspot's interface: wlan0, or ap0 beside a Wi-Fi network (start).
 iface=wlan0
 [ -e /sys/class/net/ap0 ] && iface=ap0
-saved_band="$rt/pro1x-hotspot-band"     # the owner's band and channel, kept
+saved_band="$rt/pro1x-hotspot-band"     # the owner's channel, kept while on ap0
 banned=/var/lib/pro1x-hotspot/banned
 statedir="${XDG_STATE_HOME:-$HOME/.local/state}/pro1x"
 idle_file="$statedir/hotspot-idle"      # minutes without a device, 0 for never
@@ -48,7 +50,7 @@ band() { nmcli -e no -g 802-11-wireless.band connection show "$con"; }
 hidden() { nmcli -e no -g 802-11-wireless.hidden connection show "$con"; }
 idle_minutes() { cat "$idle_file" 2>/dev/null || echo 0; }
 keep_wifi() { cat "$keep_file" 2>/dev/null || echo no; }
-# The band chosen in Band, while ap0 has the Wi-Fi network's.
+# The band chosen in Band; ap0 keeps it, on another channel maybe.
 own_band() { if [ -f "$saved_band" ]; then cut -d' ' -f1 "$saved_band"; else band; fi; }
 ghz() { if [ "$1" = a ]; then echo 5 GHz; else echo 2.4 GHz; fi; }
 stations() { iw dev "$iface" station dump 2>/dev/null | grep -c '^Station'; }
@@ -75,8 +77,7 @@ menu_lines() {
         toggle "Hotspot:    $s" \
         name "Name:       $(ssid)" \
         password "Password:   $(psk)" \
-        band "Band:       $(ghz "$(own_band)")$(on_ap0 && [ "$(band)" != "$(own_band)" ] &&
-                                 echo " ($(ghz "$(band)") now, the Wi-Fi's)")" \
+        band "Band:       $(ghz "$(own_band)")" \
         keep "Keep Wi-Fi: $(keep_line)" \
         hidden "Hidden:     $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
         idle "Auto-off:   $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
@@ -159,32 +160,54 @@ client_freq() {
 }
 
 # Beside a Wi-Fi network (wlan0 connected), the hotspot is a second
-# interface, ap0, on that network's channel: the WCN3990 allows an access
-# point and a client together on one channel ("#{ managed } <= 2, #{ AP }
-# <= 2, #channels <= 1").  So the Wi-Fi stays up, e.g. a phone's 5G hotspot
-# as the uplink, and the car on the Pro1x's own (author, 2026-11-20).  ap0
-# needs an address of its own: wlan0's (already a random local one) made
-# both fail ("Name not unique on network").  Otherwise wlan0 itself, on the
-# owner's band and channel.
-# A channel the radio may not start an access point on ("no IR"): every
-# 5 GHz one while wlan0 is a client (channel 149, author, 2026-11-20).
-no_ir() { iw phy 2>/dev/null | grep " $1 MHz " | grep -q "no IR"; }
+# interface, ap0: the WCN3990 allows an access point beside a client, on
+# the same channel or on two ("#{ managed } <= 2, #{ AP } <= 1, #channels
+# <= 2").  So the Wi-Fi stays up, e.g. a phone's 5G hotspot as the uplink,
+# and the car on the Pro1x's own (author, 2026-11-20).  On the network's
+# own channel the access point carried no data on 5 GHz, and no access
+# point may start on a radar channel (52-144), so ap0 takes another channel
+# on the hotspot's own band, away from the network's 80 MHz block.  The
+# radio shares its time between the two: a laptop's pings through it took
+# 250-1100 ms, the phone's own about 65 ms (2026-11-24).  ap0 needs an
+# address of its own: wlan0's (already a random local one) made both fail
+# ("Name not unique on network").  Otherwise wlan0 itself, on the owner's
+# band and channel.
+# A channel the radio may not start an access point on.
+no_ir() { iw phy 2>/dev/null | grep " $1 MHz " | grep -q -e "no IR" -e "radar detection"; }
+
+# away BAND CHANNEL FREQ: the hotspot's channel on BAND, CHANNEL if it is
+# clear of the network on FREQ (MHz), else another one.
+away() {
+    if [ "$1" = a ]; then
+        # 36-64 share 80 MHz blocks with a network there: 149 instead.
+        if [ "$3" -ge 5170 ] && [ "$3" -le 5330 ]; then echo 149; else echo 36; fi
+    elif [ "$3" -lt 3000 ]; then
+        n=$(( ($3 - 2407) / 5 ))
+        if [ "${2:-0}" != 0 ] && [ $(( $2 > n ? $2 - n : n - $2 )) -ge 5 ]; then echo "$2"
+        elif [ "$n" -ge 6 ]; then echo 1
+        else echo 11; fi
+    else
+        echo "${2:-0}"
+    fi
+}
 
 place() {
     f=; [ "$(keep_wifi)" = yes ] && f=$(client_freq)
-    if [ -n "$f" ] && no_ir "$f"; then
-        notify-send Hotspot \
-            "The Wi-Fi network is on 5 GHz, where no hotspot can run beside it: it is dropped, and mobile data shared (a 2.4 GHz network stays up)"
-        f=
+    if [ -n "$f" ]; then
+        [ -f "$saved_band" ] ||
+            echo "$(band) $(nmcli -e no -g 802-11-wireless.channel connection show "$con")" > "$saved_band"
+        read -r b ch < "$saved_band"
+        ch=$(away "$b" "$ch" "$f")
+        if [ "$b" = a ]; then af=$((5000 + 5 * ch)); else af=$((2407 + 5 * ch)); fi
+        if [ "$ch" != 0 ] && no_ir "$af"; then
+            notify-send Hotspot \
+                "No hotspot may start on channel $ch beside this network: it is dropped, and mobile data shared"
+            f=
+        fi
     fi
     if [ -n "$f" ]; then
         $admin ap-up || return 1
         iface=ap0
-        if [ "$f" = 2484 ]; then b=bg ch=14
-        elif [ "$f" -lt 3000 ]; then b=bg ch=$(( (f - 2407) / 5 ))
-        else b=a ch=$(( (f - 5000) / 5 )); fi
-        [ -f "$saved_band" ] ||
-            echo "$(band) $(nmcli -e no -g 802-11-wireless.channel connection show "$con")" > "$saved_band"
         nmcli connection modify "$con" connection.interface-name ap0 \
               802-11-wireless.band "$b" 802-11-wireless.channel "$ch" \
               802-11-wireless.cloned-mac-address "$(cat /sys/class/net/ap0/address)"
@@ -301,12 +324,12 @@ info() {                        # info WHAT KEY
         band:a)
             echo "5 GHz: faster and less crowded, shorter reach; some older devices (and some cars) lack it.  Channel 36."
             echo
-            echo "Beside a Wi-Fi network the hotspot takes that network's band and channel instead (one channel for both)." ;;
+            echo "Beside a Wi-Fi network on channels 36-64 the hotspot takes channel 149 (less power allowed there)." ;;
         keep:no) echo "Starting the hotspot drops the Wi-Fi network in use; devices get the mobile data." ;;
         keep:yes)
-            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The radio has one channel for both: the hotspot takes that network's, whatever Band says."
+            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot keeps its band, on a channel away from the network's: the radio shares its time between the two, so both are slower."
             echo
-            echo "A 5 GHz network cannot have one beside it: it is dropped, and the mobile data shared, as when off.  Without a network, mobile data." ;;
+            echo "Without a network, mobile data." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) echo "The name is not broadcast: a device joins by typing it (or by the QR code).  It hides little: the name still travels when devices connect." ;;
         idle:0) echo "The hotspot stays on until turned off." ;;
@@ -323,10 +346,11 @@ pick_band() {
         bg) ch= ;;
         *) return ;;
     esac
-    # On ap0 the connection has the Wi-Fi network's band: the choice is
-    # kept for the next start on wlan0.
+    # On ap0 the connection may have another channel: the choice is kept
+    # for the next start, which places it again.
     if [ -f "$saved_band" ]; then
         echo "$b $ch" > "$saved_band"
+        restart_if_active
     else
         nmcli connection modify "$con" 802-11-wireless.band "$b" \
               802-11-wireless.channel "$ch" && restart_if_active

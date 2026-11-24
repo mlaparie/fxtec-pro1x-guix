@@ -231,12 +231,18 @@ Wi-Fi, so it set the names while online.  Its stuck mv also held the script's lo
 20:51 the day before.  Script fixed (the hotspot's interface found from 10.42.0.1, hosts
 written in place), restarted; old copy in /root/tesla-stream.2026-11-21.bak.  Next: the
 author's retest in the car with Keep Wi-Fi on.
-2026-11-24 (author's laptop), generation 259 with the no-IR patch: beside a 5 GHz network (a
-third-party hotspot, channel 36) ap0 starts on 36 and the laptop gets a lease, but no data
-passes (no ping to 10.42.0.1, reassociation every 30-60 s, tx failures).  Dropping wlan0 wedged
-the beacon for about a minute (ath10k "bcn tmpl tx status"); ap0 alone on 36 then worked, with
-internet over mobile data.  5 GHz beside 5 GHz is not usable yet (rag-notes, wifi); 2.4 GHz
-beside a network still untested with a device.
+2026-11-24 (author's laptop), generation 259 with the no-IR patch: on the network's own 5 GHz
+channel (a third-party hotspot, 36) the laptop got a lease but no data (tried once, before a
+reboot cleared a wedged firmware).  On another channel it works: GNU on 36 beside the home
+network on 112 (a radar channel, where no hotspot may start) gave the laptop internet through
+the home network, but slowly (pings 245-1135 ms; the radio alternates between the channels).
+pro1x-hotspot now puts ap0 on its own band, away from the network's channel (36, or 149 beside
+36-64; on 2.4 GHz five channels away).  Not yet deployed or run by the script itself.
+Missing:
+- the same 5 GHz channel on fresh firmware (beside a network on 36-48): faster if it works;
+- GNU on 2.4 GHz beside a 5 GHz network: worked two minutes, then frames to the laptop failed;
+- 2.4 GHz beside a 2.4 GHz network, with a device;
+- the home Livebox's 5 GHz on 36-48 (author's choice) would allow the same channel there.
 *** WAIT [#A] Tesla leaves the hotspot without internet
 2026-11-20: on the hotspot with mobile data, the Tesla kept its lease (19:06-19:29, 20:40-21:38).
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
