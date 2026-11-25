@@ -109,6 +109,12 @@ The author wants calls fixed before the release (2026-11-05), asked again 2026-1
 to the author's other phone are allowed (number not in the repo).  2026-11-20: 81voltd and
 pro1x-volte-watch run, the IMS bearer comes back after restarts; IMSA answers InvalidOperation.
 Not started past that.
+2026-11-25: the author allows timed test calls to their number (not in the repo); the delay
+before ringing is the symptom, so no answer is needed.  On 3G now (IMSA InvalidOperation, as
+expected off LTE).  Ready: a script that logs the IMS bearer and IMSA state, then the call's
+state and access technology every 0.5 s with ModemManager at debug level, hanging up 3 s
+after it rings.  Run once the phone has been on 4G for 3 minutes; then compare with IMS
+deregistered, and look at where the 22-26 s go (IMS attempt timing out, then CS fallback).
 *** WAIT [#A] Mute button in calls has no effect
 pro1x-voice-call follows Calls' mute (the Voice Call source) with the codec-to-DSP capture
 route since 8545724 (2026-10-30); this entry came over from older notes on 2026-11-11, with
