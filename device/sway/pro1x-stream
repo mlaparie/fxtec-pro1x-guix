@@ -148,6 +148,10 @@ wan_missing() {
 # The preview of a choice: what it means, and what it still needs.
 info() {                        # info WHAT KEY
     case "$1:$2" in
+        codec:h264)
+            echo "H.264: every browser plays it, over WebRTC (VIDEO, CANVAS) and in DIRECT." ;;
+        codec:hevc)
+            echo "HEVC: a better picture for the same bit rate, and the phone's encoder does it as easily.  Only where the browser plays it: over WebRTC in recent Chromium on hardware that decodes it, in DIRECT where WebCodecs does.  Elsewhere the page falls back to H.264 by itself." ;;
         visibility:hotspot)
             echo "Only devices on the phone's own hotspot reach the streams."
             echo
@@ -430,6 +434,24 @@ new_key() {
 
 # A lower rate is what lightens the load: copying the screen costs more than
 # encoding it.
+# wl-cast's codec, kept in its settings (the page's SET has it too); a
+# running stream starts again with it at the page's next connection.
+wl_settings="${XDG_STATE_HOME:-$HOME/.local/state}/wl-cast/stream.json"
+wl_codec() { jq -r '.codec // "h264"' "$wl_settings" 2>/dev/null || echo h264; }
+codec_label() { [ "$(wl_codec)" = hevc ] && echo HEVC || echo H.264; }
+pick_codec() {
+    c=$(printf 'h264	H.264
+hevc	HEVC
+' |
+        awk -F'\t' -v cur="$(wl_codec)" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }' |
+        pick_info "codec (wl-cast)" codec)
+    [ -n "$c" ] || return
+    mkdir -p "$(dirname "$wl_settings")"
+    { [ -s "$wl_settings" ] && cat "$wl_settings" || echo '{}'; } |
+        jq -c --arg c "$c" '.codec = $c' > "$wl_settings.new" &&
+        mv "$wl_settings.new" "$wl_settings"
+}
+
 pick_fps() {
     rate=$(printf '%s\n' 30 20 15 10 |
         awk -v cur="$(fps)" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $1 " fps" }' |
@@ -1202,6 +1224,7 @@ settings_menu() {
         lines=$(printf '%s\t%s\n' \
             screen "Screen mode          $(screen_label)" \
             fps "Capture rate         $(fps) fps, lower saves CPU" \
+            codec "Codec                $(codec_label) (wl-cast)" \
             size "Output size          $(out_size), long side" \
             approve "Connection approval  $(approve)" \
             visibility "Visibility           $(visibility)" \
@@ -1211,6 +1234,7 @@ settings_menu() {
         case "$(printf '%s\n' "$lines" | pick "settings")" in
             screen) pick_screen ;;
             fps) pick_fps ;;
+            codec) pick_codec ;;
             size) pick_size ;;
             key) pick_key ;;
             approve) pick_approve ;;
