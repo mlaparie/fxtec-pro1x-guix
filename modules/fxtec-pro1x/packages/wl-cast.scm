@@ -41,7 +41,7 @@
   #:use-module (guix utils))
 
 (define-public wl-cast
-  (let ((commit "113f8949b6eadd34ed8d6df481f8bb57de5621bb")
+  (let ((commit "4f057c0f8107fc1d7aa6fe83d15d478a2961a56b")
         (revision "0"))
     (package
       (name "wl-cast")
@@ -54,7 +54,7 @@
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
-          (base32 "191vyql1s8giy56pvw4d36mjv1zl5x8wyx79gbf8v6yw36wki174"))))
+          (base32 "14rijwl4267q1gm6hyb6ri3n37x7xb8f9sa90kqjaxvmnaya9f9d"))))
       (build-system gnu-build-system)
       (arguments
        (list
