@@ -69,12 +69,13 @@
         ;; A hotspot on 5 GHz beside a 5 GHz Wi-Fi network: the country of
         ;; the access point lifts no-IR (ath kept it for a card with an
         ;; EEPROM country).
+        ;; NFC: an NXP NCI node on i2c1 at 0x28, GPIOs from the stock DTBO.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
-          "bt-le-conn-nodup" "ath-country-ie-no-ir"))))
+          "bt-le-conn-nodup" "ath-country-ie-no-ir" "nfc"))))
 
 (define-public linux-pro1x
   (package
