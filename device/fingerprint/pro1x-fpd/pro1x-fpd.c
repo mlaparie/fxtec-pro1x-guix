@@ -81,10 +81,12 @@
  * The sensor's interrupt (TLMM 97) would avoid it; not tried yet.
  */
 #define IDLE_POLL_MS 250
+#define FAST_POLL_MS POLL_MS    /* right after a miss, until the idle timeout */
+#define FAST_POLL_S 3           /* fast polling for this long after a miss */
 #define ENROLL_TIMEOUT 90       /* s without a finger before enrol gives up */
 #define LIFT_TIMEOUT 5          /* s for the finger to leave */
 #define LIFT_STEADY_MS 300      /* no touch that long: lifted (wait_lift) */
-#define RETRY_PAUSE_MS 400      /* then this before the next try */
+#define RETRY_PAUSE_MS 100      /* then this before the next try */
 
 enum {
 	CMD_INIT = 0xc8,                /* [drv version][key len][key] */
@@ -788,15 +790,16 @@ static void do_identify(void)
 		say("error the sensor did not answer");
 		return;
 	}
-	for (;;) {
+	for (double fast_until = 0;;) {
 		uint8_t in[0x60] = { 0 };
 		uint32_t ts;
-		int got = 0, t;
+		int got = 0, t, ms;
 
 		while (!panel_on())
 			if (!still_wanted(1000))
 				return;
-		t = wait_touch(0, 1, 2, IDLE_POLL_MS);
+		ms = (fast_until && now() < fast_until) ? FAST_POLL_MS : IDLE_POLL_MS;
+		t = wait_touch(0, 1, 2, ms);
 		if (t < 0) {
 			say("error the sensor did not answer");
 			return;
@@ -828,6 +831,7 @@ static void do_identify(void)
 		retry++;
 		if (wait_lift() <= 0 || client < 0)
 			return;
+		fast_until = now() + FAST_POLL_S;
 	}
 }
 
