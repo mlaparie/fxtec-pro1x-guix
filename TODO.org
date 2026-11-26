@@ -51,11 +51,15 @@ on BlueZ, which keeps the adapter (BLE GATT only, phone-key apps reported workin
 document).  Needs the same-build Bluetooth.apk and libbluetooth_jni.so from a LineageOS 20
 arm64 ROM in the overlay (the JNI patched for BOOTTIME), the HAL built with the Android NDK,
 the daemon with cargo, and its systemd units as Shepherd services.  Not started.
-*** DONE [#B] NFC: validate on the phone
-nfc0 at i2c 1-0028 (NXP NCI), modules nfc/nci/nxp_nci loaded, neard running, nfctool poll
-starts (2026-11-26).  TVDD power works with defaults (no extra config).  rfkill shows nfc0
-unblocked.  Tag read not yet tested (needs a tag).  waydroid-host-stack forwards host tags
-to Android (file, broadcast), so it depends on this.
+*** TODO [#B] NFC: needs a DTS patch with the board's GPIO wiring
+The NXP NCI chip is at i2c-1 address 0x28 (confirmed with manual new_device, 2026-11-26).
+The nxp-nci-i2c driver probes but fails: "Failed to get EN gpio" — the mainline DTS has no
+NFC node.  No mainline port (NixOS, postmarketOS, SailfishOS) has NFC working on this phone.
+Needed: a DTS node under i2c@4a84000 with enable-gpios, firmware-gpios and the interrupt GPIO,
+all board-specific.  Template: the SDM845 patches (pn553/pn557) merged for Pixel 3, OnePlus 6
+and SHIFT 6mq.  GPIO numbers must come from the stock kernel DTS (private GitLab repo
+nickel-oern/android_kernel_qx1050) or from extracting the DTB out of the stock boot.img.
+waydroid-host-stack forwards host tags to Android (file, broadcast), so it depends on this.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
