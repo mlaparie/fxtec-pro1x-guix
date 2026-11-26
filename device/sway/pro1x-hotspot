@@ -11,14 +11,14 @@
 # network's channel, and shares that network (place, below).
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
-# A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
-# Wi-Fi client, the access point's country beacon closes every 5 GHz channel
-# ("no IR"), so the band can only be checked once the client link is dropped.
+# A 5 GHz hotspot starts (channel 149, 2026-11-18).  With the ath country-IE
+# patch and an EEPROM country (FR), non-DFS 5 GHz channels (36–48, 149–165)
+# lose "no IR" and an AP can run beside a client on the same channel (SCC).
+# DFS channels (52–144) still have "no IR": the hotspot drops the Wi-Fi
+# there and uses wlan0 on the owner's band.
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
-# run on the phone.  Beside a Wi-Fi network: ap0 an access point on the
-# network's channel with wlan0 still connected (2026-11-20).  A network on
-# 5 GHz cannot have one beside it ("no IR" on all 5 GHz channels while a
-# client): it is dropped as before.
+# run on the phone.  Beside a Wi-Fi network: ap0 as an access point on the
+# network's channel with wlan0 still connected (SCC, 2026-11-26).
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -75,8 +75,8 @@ menu_lines() {
         toggle "Hotspot:    $s" \
         name "Name:       $(ssid)" \
         password "Password:   $(psk)" \
-        band "Band:       $(ghz "$(own_band)")$(on_ap0 && [ "$(band)" != "$(own_band)" ] &&
-                                 echo " ($(ghz "$(band)") now, the Wi-Fi's)")" \
+        band "Band:       $(ghz "$(own_band)")$(on_ap0 &&
+                                 echo " ($(ghz "$(band)") now, SCC with the Wi-Fi)")" \
         keep "Keep Wi-Fi: $(keep_line)" \
         hidden "Hidden:     $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
         idle "Auto-off:   $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
@@ -159,22 +159,20 @@ client_freq() {
 }
 
 # Beside a Wi-Fi network (wlan0 connected), the hotspot is a second
-# interface, ap0, on that network's channel: the WCN3990 allows an access
-# point and a client together on one channel ("#{ managed } <= 2, #{ AP }
-# <= 2, #channels <= 1").  So the Wi-Fi stays up, e.g. a phone's 5G hotspot
-# as the uplink, and the car on the Pro1x's own (author, 2026-11-20).  ap0
-# needs an address of its own: wlan0's (already a random local one) made
-# both fail ("Name not unique on network").  Otherwise wlan0 itself, on the
-# owner's band and channel.
-# A channel the radio may not start an access point on ("no IR"): every
-# 5 GHz one while wlan0 is a client (channel 149, author, 2026-11-20).
+# interface, ap0, on that network's channel (SCC, same-channel concurrency):
+# the WCN3990 has one radio, so two channels (MCC) halves the throughput
+# to ~3 Mbps.  SCC on a non-DFS channel keeps the Wi-Fi link up and gives
+# the hotspot about a third of the station-only speed — enough for a car.
+# DFS channels (52–144) have "no IR" in regulatory: the firmware will not
+# start an AP there on a secondary interface.  In that case the Wi-Fi is
+# dropped and the hotspot uses wlan0 on the owner's band.
 no_ir() { iw phy 2>/dev/null | grep " $1 MHz " | grep -q "no IR"; }
 
 place() {
     f=; [ "$(keep_wifi)" = yes ] && f=$(client_freq)
     if [ -n "$f" ] && no_ir "$f"; then
         notify-send Hotspot \
-            "The Wi-Fi network is on 5 GHz, where no hotspot can run beside it: it is dropped, and mobile data shared (a 2.4 GHz network stays up)"
+            "The Wi-Fi is on a DFS channel where no hotspot can run beside it: it is dropped, and mobile data shared instead"
         f=
     fi
     if [ -n "$f" ]; then
@@ -301,12 +299,12 @@ info() {                        # info WHAT KEY
         band:a)
             echo "5 GHz: faster and less crowded, shorter reach; some older devices (and some cars) lack it.  Channel 36."
             echo
-            echo "Beside a Wi-Fi network the hotspot takes that network's band and channel instead (one channel for both)." ;;
+            echo "Beside a Wi-Fi network the hotspot takes that network's band and channel (SCC: one radio, one channel for both).  On a DFS channel (52–144, like most home routers on auto) no hotspot can run beside it: the Wi-Fi is dropped instead." ;;
         keep:no) echo "Starting the hotspot drops the Wi-Fi network in use; devices get the mobile data." ;;
         keep:yes)
-            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The radio has one channel for both: the hotspot takes that network's, whatever Band says."
+            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  One radio, one channel: the hotspot takes the network's (SCC), about a third of its speed."
             echo
-            echo "A 5 GHz network cannot have one beside it: it is dropped, and the mobile data shared, as when off.  Without a network, mobile data." ;;
+            echo "A network on a DFS channel (52–144) cannot have one beside it: it is dropped, and mobile data shared.  Without a network, mobile data." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;
         hidden:yes) echo "The name is not broadcast: a device joins by typing it (or by the QR code).  It hides little: the name still travels when devices connect." ;;
         idle:0) echo "The hotspot stays on until turned off." ;;
