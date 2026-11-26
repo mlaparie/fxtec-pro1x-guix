@@ -1131,7 +1131,7 @@ charge_set() {                  # charge_set off|LIMIT
 }
 
 wifi_info() {                   # " · 75% SSID" for the connected network
-    nmcli -g ACTIVE,SIGNAL,SSID device wifi list --rescan no 2>/dev/null |
+    nmcli -g ACTIVE,SIGNAL,SSID device wifi list ifname wlan0 --rescan no 2>/dev/null |
         awk '/^yes:/ { sig = $0; sub(/^yes:/, "", sig); sub(/:.*/, "", sig)
                        ssid = $0; sub(/^yes:[^:]*:/, "", ssid)
                        gsub(/\\:/, ":", ssid)
@@ -1204,7 +1204,9 @@ line_value() {                  # line_value KEY
         bluetooth) dim "$(blocked bluetooth)" ;;
         wifi) w=$(onoff "$(nmcli radio wifi)")
               printf '%s%s' "$(dim "$w")" "$([ "$w" = on ] && wifi_info)" ;;
-        hotspot) dim "$(hotspot_state)" ;;
+        hotspot) h=$(hotspot_ssid)
+                 if [ -n "$h" ]; then printf '%s · %s' "$(dim on)" "$h"
+                 else dim off; fi ;;
         wwan) kv=$(modem_kv)
               m="$(dim "$(onoff "$(nmcli radio wwan)")")$(mobile_info "$kv")"
               f=$(mobile_flash) && m="→ $f"
@@ -1377,7 +1379,7 @@ lines() {
         "stream      Stream                     $(stream_state)" \
         "bluetooth   Bluetooth                  $(dim "$bt")" \
         "wifi        Wi-Fi                      $(dim "$wifi")$( [ "$wifi" = on ] && cat "$d/wifiinfo")" \
-        "hotspot     Hotspot                    $(dim "$(hotspot_state)")" \
+        "hotspot     Hotspot                    $(h=$(hotspot_ssid); if [ -n "$h" ]; then printf '%s · %s' "$(dim on)" "$h"; else dim off; fi)" \
         "wwan        Mobile data                $mobile" \
         "airplane    Airplane mode              $(dim "$plane")" \
         "location    Location                   $(dim "$(location_now)")" \
@@ -1402,9 +1404,11 @@ lines() {
 
 airplane_now() { cat "$airplane_state" 2>/dev/null || echo off; }
 
-hotspot_state() {               # pro1x-hotspot's connection: on or off
-    nmcli -t -f NAME connection show --active | grep -qx pro1x-hotspot &&
-        echo on || echo off
+hotspot_ssid() {                # the hotspot's SSID when active, empty when off
+    nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx pro1x-hotspot || return
+    local ssid
+    ssid=$(nmcli -t -f 802-11-wireless.ssid connection show pro1x-hotspot 2>/dev/null)
+    echo "${ssid#*:}"
 }
 
 stream_state() {                # what pro1x-stream is sending, or off
