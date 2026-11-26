@@ -51,10 +51,11 @@ on BlueZ, which keeps the adapter (BLE GATT only, phone-key apps reported workin
 document).  Needs the same-build Bluetooth.apk and libbluetooth_jni.so from a LineageOS 20
 arm64 ROM in the overlay (the JNI patched for BOOTTIME), the HAL built with the Android NDK,
 the daemon with cargo, and its systemd units as Shepherd services.  Not started.
-*** TODO [#B] NFC: validate on the phone
-Listed "Untested" in the README: never checked on this port (kernel driver, nfc0, a tag
-read with neard or libnfc).  waydroid-host-stack forwards host tags to Android (file,
-broadcast), so it depends on this.
+*** DONE [#B] NFC: validate on the phone
+nfc0 at i2c 1-0028 (NXP NCI), modules nfc/nci/nxp_nci loaded, neard running, nfctool poll
+starts (2026-11-26).  TVDD power works with defaults (no extra config).  rfkill shows nfc0
+unblocked.  Tag read not yet tested (needs a tag).  waydroid-host-stack forwards host tags
+to Android (file, broadcast), so it depends on this.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
@@ -160,15 +161,24 @@ Starts with nmcli on channels 149 and 36 (2026-11-18), with the
 the AP's country beacon keeps 5 GHz "no IR"; ath only clears that for
 a user hint, and the client link drops when the hotspot starts.  The
 menu stopped checking beforehand (2ce4e2d); not deployed.
-*** TODO [#C] Hotspot while on a Wi-Fi network: works, to try with a device
-The WCN3990 allows an AP and a client on one channel.  Since 8766b18 the hotspot runs on ap0
-beside a connected Wi-Fi network, on its channel, sharing it (e.g. a 5G phone hotspot as the
-uplink, the car on the Pro1x's own).  Started and stopped by pro1x-hotspot on the phone
-(2026-11-20): ap0 an AP on channel 11, 10.42.0.1, wlan0 still connected.  Not yet tried: a
-device joining and reaching the internet through it.  Keep Wi-Fi option (44de9a5).  A 5 GHz
-uplink: refused, every 5 GHz channel is no IR while wlan0 is a client (measured, rag-notes);
-falls back to wlan0.  Possible lead: a P2P group owner instead of an AP, with
-CFG80211_REG_RELAX_NO_IR (it relaxes GO only), author's decision.
+*** TODO [#B] Hotspot while on a Wi-Fi network (SCC dual AP)
+The WCN3990 allows an AP and a client on one channel (SCC).  Since 8766b18 the hotspot runs
+on ap0 beside a connected Wi-Fi network, on its channel.  pro1x-hotspot sets 80 MHz width
+on 5 GHz SCC (ebaf23e), auto on 2.4 GHz.
+
+Tested (2026-11-26): PC joined the hotspot and reached the internet through Rupert (5 GHz
+source), confirmed SCC with both interfaces on ch36/80 MHz.  iperf3 PC→phone: 3.5 Mbps.
+The phone alone gets 10 Mbps on the same link.  The bottleneck is the two-hop relay on one
+radio (PC→ap0→phone→wlan0→external): expect about a third of the single-link speed.  With a
+strong, close source (5G hotspot, -40 dBm) this should scale to 30-40 Mbps.
+
+The ath country-IE patch (ab00bb5, in the CI kernel) lets the driver accept country from
+AP beacons when the card has an EEPROM country, lifting no-IR on non-DFS 5 GHz channels
+(36-48, 149-165) while associated.  DFS channels still refuse the AP; the hotspot drops to
+wlan0 and notifies the user.
+
+MCC (different channels): ~3 Mbps regardless, 400-900 ms gateway ping.  SCC is always
+better when possible.
 *** TODO [#A] Tesla leaves the hotspot without internet
 2026-11-19: the hotspot had no internet because mobile data never started: the carrier profiles
 had autoconnect off (left so by Phosh's or GNOME's switch), and the one attempt (17:25) came
