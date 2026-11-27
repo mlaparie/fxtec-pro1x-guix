@@ -35,7 +35,7 @@ HOST_ADDR=${HOST_ADDR:-$(cmdline_mac host_addr)}
 DEV_ADDR=${DEV_ADDR:-$(cmdline_mac dev_addr)}
 # The sizes offered to the host, largest first; the first is the default.
 # Multiples of 16, as the encoder likes them (device/stream/README).
-SIZES=${SIZES:-"1600x800 1280x640 960x480"}
+SIZES=${SIZES:-"2160x1080 1600x800 1280x640 960x480"}
 # Frame intervals in 100 ns units: 30, 25, 20, 15 and 10 fps.
 INTERVALS="333333
 400000
@@ -108,6 +108,9 @@ make_gadget() {
 	echo 0x1d6b > idVendor
 	echo 0x0104 > idProduct
 	echo 0x0200 > bcdUSB
+	# High speed: at super speed the link came up but the computer never
+	# configured the device; at high speed it did (2026-11-27).
+	echo high-speed > max_speed
 	echo 0xef > bDeviceClass
 	echo 0x02 > bDeviceSubClass
 	echo 0x01 > bDeviceProtocol
@@ -160,6 +163,33 @@ make_gadget() {
 	ln -s functions/acm.GS0 configs/c.1
 }
 
+# The configfs gadget taken apart in the reverse order of make_gadget, so
+# the next `video' builds it again with the current sizes and settings.
+remove_gadget() {
+	[ -d "$G" ] || return 0
+	cd "$G"
+	[ -n "$(cat UDC)" ] && echo "" > UDC
+	rm -f configs/c.1/uvc.usb0 configs/c.1/ecm.usb0 configs/c.1/acm.GS0
+	rmdir configs/c.1/strings/0x409 configs/c.1 2>/dev/null || true
+	U=functions/uvc.usb0
+	if [ -d $U ]; then
+		rm -f $U/streaming/class/fs/h $U/streaming/class/hs/h $U/streaming/class/ss/h
+		rm -f $U/streaming/header/h/h264 $U/streaming/header/h/m
+		rmdir $U/streaming/header/h 2>/dev/null || true
+		for f in $U/streaming/framebased/h264/* $U/streaming/mjpeg/m/*; do
+			[ -d "$f" ] && rmdir "$f"
+		done
+		rmdir $U/streaming/framebased/h264 $U/streaming/mjpeg/m 2>/dev/null || true
+		rm -f $U/control/class/fs/h $U/control/class/ss/h
+		rmdir $U/control/header/h 2>/dev/null || true
+		rmdir $U
+	fi
+	rmdir functions/ecm.usb0 functions/acm.GS0 2>/dev/null || true
+	rmdir strings/0x409 2>/dev/null || true
+	cd /
+	rmdir "$G"
+}
+
 restart_network() {
 	# usb0 is a new device: pro1x-usb-network sets its address and DHCP
 	# again (it waits for the interface itself).
@@ -185,9 +215,7 @@ network)
 	case $(holder) in
 	g_cdc) echo "already network"; exit 0 ;;
 	esac
-	if [ -e "$G/UDC" ]; then
-		echo "" > "$G/UDC"
-	fi
+	remove_gadget
 	bind_g_cdc
 	restart_network
 	echo "network: g_cdc"

@@ -28,6 +28,9 @@ LOG=$RUN/feed.log
 
 OUTPUT=${PRO1X_STREAM_OUTPUT:-DSI-1}
 MBIT=4
+# MJPEG's rate: ffmpeg's default without one is 200 kbit/s, a blurred
+# picture.  40 Mbit/s is about 5 MB/s, well inside high-speed USB.
+MJPEG_MBIT=40
 GOP=2
 VERBOSE=
 
@@ -70,11 +73,20 @@ start)
 		exit 1
 	fi
 	mkdir -p "$RUN"
+	# wf-recorder scales the buffer before it rotates it to the output's
+	# transform: on a rotated output the scale takes the swapped size, so
+	# the frame comes out at the size the computer asked for.
+	scale="%w:%h"
+	case $(swaymsg -p -t get_outputs 2>/dev/null |
+	       awk -v o="$OUTPUT" '$1 == "Output" { on = ($2 == o) }
+	                           on && /Transform:/ { print $2; exit }') in
+	90|270|flipped-90|flipped-270) scale="%h:%w" ;;
+	esac
 	# The producer, with the size, rate and format the computer commits.
 	# One shell command: pro1x-uvc-feed replaces %w %h %r %f.
 	producer="case %f in \
 h264) exec pro1x-screencast -o $OUTPUT -s %wx%h -r %r -b $(( MBIT * 1000000 )) -g $GOP ;; \
-mjpeg) exec wf-recorder -o $OUTPUT -c mjpeg -m mjpeg -x yuvj420p -r %r -F scale=%w:%h -f pipe:1 ;; \
+mjpeg) exec wf-recorder -o $OUTPUT -c mjpeg -m mjpeg -x yuvj420p -p b=${MJPEG_MBIT}M -r %r -F scale=$scale -f pipe:1 ;; \
 esac"
 	nohup pro1x-uvc-feed $VERBOSE -- /bin/sh -c "$producer" >"$LOG" 2>&1 &
 	echo $! > "$PIDFILE"
