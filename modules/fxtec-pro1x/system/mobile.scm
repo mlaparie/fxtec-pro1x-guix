@@ -88,8 +88,8 @@
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services fingerprint)
              (fxtec-pro1x services waydroid)
-             (fxtec-pro1x services usb-network)
-             ;; (fxtec-pro1x services usb-video))
+             ;; Add (fxtec-pro1x services usb-video) with its service below.
+             (fxtec-pro1x services usb-network))
 
 ;; Keyboard slider in Phosh: landscape while the keyboard is out.  Phosh
 ;; does not know SW_KEYPAD_SLIDE (gpio-keys, /dev/input/pro1x-slider, group
