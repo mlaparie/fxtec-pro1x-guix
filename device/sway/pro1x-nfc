@@ -157,6 +157,11 @@ adapter_power() {               # adapter_power PATH true|false
         >/dev/null 2>&1
 }
 
+start_poll_loop() {
+    gdbus call --system --dest=$NEARD --object-path "$1" \
+        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1
+}
+
 poll_start() {
     local adapter i
     adapter=$(adapter_path) || return 1
@@ -170,8 +175,15 @@ poll_start() {
         done
     fi
     # Mode Initiator finds tags; Dual also listens but we start with read.
-    gdbus call --system --dest=$NEARD --object-path "$adapter" \
-        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1 || { poll_stop; return 1; }
+    # "No such device" with Powered true: rfkill took the controller down
+    # and neard did not notice (Quick Actions' NFC off, then on).  Off,
+    # which neard refuses, then on brings it up again (2026-11-27).
+    if ! start_poll_loop "$adapter"; then
+        adapter_power "$adapter" false
+        adapter_power "$adapter" true
+        : > "$powered_by_scan"
+        start_poll_loop "$adapter" || { poll_stop; return 1; }
+    fi
     feedback polling "$scan_secs"
 }
 
