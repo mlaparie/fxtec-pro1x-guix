@@ -126,6 +126,12 @@ first (it said "Could not start NFC polling": neard answers "No such device" whi
 but no card is read yet.  pro1x-nfc-tvdd.patch: nxp-nci sends nxp,ext-tvdd-cfg (TVDD config 2,
 moWerk's bytes) from a new post_setup hook after CORE_INIT at every power-up; the Pro1X's DTS
 node has the property.  Built by CI, not yet run.
+2026-11-27 later: config 2 alone (generation 286) read no card.  moWerk's whole list sent by
+hand over i2c-dev, driver not loaded (generation 287, module_blacklist=nxp_nci_i2c): a card read
+17 s into the poll (NFC-A, ISO-DEP), no power loss.  pro1x-nfc-init.patch replaces the TVDD-only
+patch: the DT property nxp,init-cmds carries the list, sent from post_setup.  CI build pending.
+Unloading nxp_nci_i2c by rmmod hung again (D state), and the stuck rmmod blocked reboot: needed
+sysrq s then b.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no

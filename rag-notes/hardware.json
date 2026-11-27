@@ -753,12 +753,12 @@
     "source": "/root/nfcgetcfg.sh, /root/nfcrawpoll.sh, /root/nfcrawlisten.sh and their logs on the phone; vendor_a /etc/libnfc-nxp.conf; arch/arm64/boot/dts/qcom in linux 7.3"
    },
    {
-    "title": "PN557 on the Pro¹x: the transmitter needs TVDD config 2 (DC-DC 5 V), not the stock config 1",
+    "title": "PN557 on the Pro¹x reads cards with the stock HAL's whole start-up list: TVDD config 2 and the RF tuning, sent after every power cycle",
     "general": "An NXP NCI controller's antenna supply is a proprietary setting (A0 0E, NXP_EXT_TVDD_CFG_n in libnfc-nxp.conf). If the board wires the transmitter to the DC-DC path, the LDO variant gives a chip that senses fields but sends none. When a controller answers NCI but never emits a field, check which TVDD variant is selected before suspecting the antenna.",
-    "instance": "Reported by moWerk (nfcd-nxp-i2c-plugin bb567df, config/nxp-i2c-init.hex, 2026-11-26): the stock config selects config 1 (internal LDO, 3.3 V), with which the transmitter gets no supply; config 2 (DC-DC 5 V requested by TX_PWR_REQ) gives a field, card reading and emulation (moWerk and memeline 2026-11-25, on stock Android). Command: 20 02 0F 01 A0 0E 0B 11 01 C2 B2 00 B2 1E 1F 00 D0 0C. Here the chip held config 1's bytes (A0 0E = 31 01 01 31 00 00 00 01 00 10 0C, entry above), matching the field never sent. His file also says the controller keeps none of its RF tuning across a power cycle, which the entry above contradicts (values held from Android): not resolved. Not yet tried on this port.",
-    "confidence": "reported (moWerk); not tried here",
+    "instance": "Reported by moWerk (nfcd-nxp-i2c-plugin bb567df, config/nxp-i2c-init.hex, 2026-11-26): the stock config selects config 1 (internal LDO, 3.3 V), with which the transmitter gets no supply; config 2 (DC-DC 5 V requested by TX_PWR_REQ) gives a field, card reading and emulation (moWerk and memeline 2026-11-25, on stock Android). Command: 20 02 0F 01 A0 0E 0B 11 01 C2 B2 00 B2 1E 1F 00 D0 0C. Here the chip held config 1's bytes (A0 0E = 31 01 01 31 00 00 00 01 00 10 0C, entry above), matching the field never sent. His file also says the controller keeps none of its RF tuning across a power cycle, which the entry above contradicts (values held from Android): not resolved. Not yet tried on this port. 2026-11-27: config 2 alone, sent by the driver after CORE_INIT, read no card. The whole list (2F 02 00, A0 07, A0 03 crystal, A0 44, TVDD config 2, RF blocks A0 0D/A0 AF/A0 0B, A0 EC.. block, NCI parameters, A0 62, A0 F3, A0 F1; the GET_CONFIG reads included), then CORE_RESET keeping the configuration and CORE_INIT, RF_DISCOVER_MAP and RF_DISCOVER for A, B, F, V, sent by hand over i2c-dev with nxp_nci_i2c blacklisted (generation 287): every command answered status 00, and a card was activated 17 s into polling (RF_INTF_ACTIVATED_NTF, NFC-A, ISO-DEP). No power loss, unlike the 2026-11-24 runs with config 1.",
+    "confidence": "confirmed (card read 2026-11-27 with the whole list); config 2 alone not enough",
     "date": "2026-11-27",
-    "source": "github.com/moWerk/nfcd-nxp-i2c-plugin bb567df config/nxp-i2c-init.hex and src/nxp_i2c_plugin.c"
+    "source": "github.com/moWerk/nfcd-nxp-i2c-plugin bb567df config/nxp-i2c-init.hex and src/nxp_i2c_plugin.c; /root/nfc-mowerk-test.py run on the phone 2026-11-27 (log deleted)"
    }
   ]
  }
