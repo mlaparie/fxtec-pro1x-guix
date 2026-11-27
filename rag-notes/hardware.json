@@ -633,7 +633,7 @@
    {
     "title": "WCN3990: with the LE duplicates filter on, an advertiser seen once is never reported again, so a pending LE connection never starts",
     "general": "The kernel's passive scan for a pending LE connection waits for an advertising report before it sends LE Create Connection. With the controller's duplicates filter on, a device reported once before is filtered out, and the connection attempt times out. Scan without the duplicates filter while an LE connection is pending.",
-    "instance": "Pro¹x with a car's key beacon: reported once, then not once in 7 attempts over 25 s (btmon, 2026-11-19). Kernel patch of 3e00354, plus CONFIG_BT_DEBUGFS to read the accept and resolving lists.",
+    "instance": "Pro¹x with a car's key beacon: reported once, then not once in 7 attempts over 25 s (btmon, 2026-11-19). Kernel patch of 3e00354, plus CONFIG_BT_DEBUGFS to read the accept and resolving lists. 2026-11-23, kernel with the patch (generation 226, inferred from dev-next's history): the bridge's three LE connects to the car took 10, 7 and 1.5 s and none timed out (waydroid-bt-host.log 09:49-09:50).",
     "confidence": "handover",
     "date": "2026-11-19",
     "source": "3e00354"
@@ -645,6 +645,30 @@
     "confidence": "confirmed",
     "date": "2026-11-23",
     "source": "86ce701; ps on the phone (the two hung bluetoothctl processes)"
+   },
+   {
+    "title": "A GATT value longer than ATT_MTU - 3 must be written in parts over BlueZ; a write command above that size is refused, a long write is not what a Tesla takes",
+    "general": "BlueZ's WriteValue with type \"command\" (bluer's write() default) fails for a value longer than ATT_MTU - 3 (src/shared/att.c encode_pdu: pdu_len > mtu), and a \"request\" of that size becomes a prepared long write (gatt-client.c characteristic_write_value), which servers like the Tesla VCSEC do not implement. A bridge that forwards another stack's writes must pass the write type on and split a long value into consecutive writes of ATT_MTU - 3 bytes, as Tesla's own client does (vehicle-command ble.go Send: blocks of MTU - 3, the message carries its own 2-byte length prefix). The car's ATT MTU with BlueZ was 110.",
+    "instance": "Pro¹x, Tesla app 4.62.5 in Waydroid through waydroid-host-stack d9a316e, at the car 2026-11-23 09:49: connect, subscribe to 00000213 and a 51-byte write to 00000212 worked, then 'gatt write failed len=114 mtu=110' (the add-key message of the pairing) and the app dropped the link 4 s later. Fixed in the channel by waydroid-host-stack-gatt-write-parts.patch; the car's answer to a prepared write is inferred (not in the log), the refusal of the oversized command is BlueZ source.",
+    "confidence": "confirmed",
+    "date": "2026-11-27",
+    "source": "/var/log/waydroid-bt-host.log 2026-11-23 09:49:53 on the phone; bluez-5.79 src/gatt-client.c:1050-1110, src/shared/att.c:341; bluer-0.17.4 src/gatt/mod.rs (WriteOp default Command); teslamotors/vehicle-command pkg/connector/ble/ble.go"
+   },
+   {
+    "title": "BlueZ reports a known advertiser again only when its RSSI moves 8 dBm, unless the discovery filter is non-empty (DuplicateData)",
+    "general": "In an unfiltered discovery bluetoothd emits the RSSI property change of an existing device only when the new value differs by RSSI_THRESHOLD (8 dBm, src/device.c device_set_rssi); advertising data that did not change emits nothing. Anything that turns BlueZ property changes into advertising reports (the Waydroid Bluetooth bridge) therefore never shows a steady advertiser to a scan started after its first report. Any non-empty filter (DuplicateData true is the harmless one) makes the discovery 'filtered' and the RSSI is emitted on every report the controller passes (device_set_rssi_with_delta with delta 0).",
+    "instance": "Pro¹x, 2026-11-23 at the car (-36 dBm, steady): the WCN3990 reported the car's scan response at each scan cycle (22 in 20 min, btmon) but the bridge delivered it to Android 4 times, none inside the Tesla app's 10 s scans, which all ended 'no_peripherals'. Measured 2026-11-27 with bluetoothctl and dbus-monitor on two steady beacons: RSSI changes per device in 40 s, DuplicateData on: 3-4 (LE-only transport), 5-6 (auto); off: about 1 per 18 s or none. The controller's own duplicates filter still bounds it to one report per device per scan restart (the kernel restarts the LE scan every 10.24 s). Fixed in the channel by waydroid-host-stack-scan-duplicate-data.patch.",
+    "confidence": "confirmed",
+    "date": "2026-11-27",
+    "source": "bluez-5.79 src/adapter.c:1852,2211,7351 and src/device.c:6336; /var/log/pro1x-bt-tests/session-20261123-095105 (btmon.txt, logcat.txt) on the phone; dbus-monitor counts 2026-11-27"
+   },
+   {
+    "title": "Tesla phone key over BLE needs no Bluetooth pairing: the phone is the GATT client, security is in the application layer",
+    "general": "The Tesla app and vehicle-command connect as central to the car's VCSEC service 00000211-b2d1-43f0-9b88-960cebf8b91e (write 00000212, subscribe 00000213), find the car by its local name 'S' + hex(sha1(VIN)[:8]) + 'C', and do ECDH P-256 and AES-GCM themselves: no SMP pairing or bonding, no IRK, and the car never connects to the phone. Enrolment is one message (AddKeyToWhitelist with the public key) confirmed by a key card tap on the console. So on Linux a bridge or a native client needs only a GATT client over BlueZ; the pairing agent, bondable state and address resolution are irrelevant to it. The car advertises an Apple iBeacon in ADV_IND and the name in SCAN_RSP, so an active scan is needed to see the name.",
+    "instance": "Pro¹x 2026-11-23: the app's 51-byte request and the car's 12-112-byte indications went through the bridge with no pairing. Native alternative kept in reserve: tesla-control (vehicle-command) uses go-ble on a raw HCI socket and takes the adapter down, so it cannot run beside BlueZ; a BlueZ D-Bus client would be needed (not prototyped).",
+    "confidence": "reported",
+    "date": "2026-11-27",
+    "source": "teslamotors/vehicle-command pkg/connector/ble/ble.go, pkg/protocol/protocol.md, cmd/tesla-control/README.md (read 2026-11-27); btmon 2026-11-23 for the advertising content"
    }
   ],
   "nfc": [

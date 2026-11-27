@@ -60,6 +60,23 @@ discovery, before subscribing to the key's notify characteristic: Android's log 
 Tests > Test 4 logs a session (logcat, btmon, bridge) to /var/log/pro1x-bt-tests/; it failed to
 start (installed read-only), fixed in 5db9b33, not deployed.  The bridge authors' Tesla claims
 are reported, not verified.
+2026-11-27 (branch tesla-key, from the 2026-11-23 logs; bridge d9a316e without the owners patch
+then): the chain went further than noted.  At the car at 09:49 the app connected through the
+bridge in 1.5-10 s (the kernel duplicates patch holds), subscribed to the car's 00000213, wrote
+51 bytes to 00000212 and got indications of 12-112 bytes; then its 114-byte add-key message
+failed, "gatt write failed len=114 mtu=110": the bridge wrote every value as a write command
+(bluer's write() default), which BlueZ refuses above ATT_MTU - 3.  The app dropped the link
+4 s later and went into scan-and-pair retries that all ended "no_peripherals" for 20 min, while
+btmon saw the car at -36 dBm at every cycle: BlueZ emits a known device's RSSI only on an 8 dBm
+move, so the bridge never re-reported the steady car.  Both fixed in waydroid-host-stack
+patches (gatt-write-parts: the guest's write type kept, long values in ATT_MTU - 3 parts as
+vehicle-command does; scan-duplicate-data: DuplicateData on the discovery filters, measured on
+the phone: a steady beacon reported every 7-10 s).  Phone key over BLE needs no Bluetooth
+pairing at all (vehicle-command: GATT client, ECDH in the app), so the agent, bondable and IRK
+questions are closed.  Userspace only: a deploy, no kernel build.
+Next test at the car (one try): Tests > Test 4 (log) first, then Tesla app > Phone key > Set up,
+phone near the console, tap the key card when asked; read session-*/bridge.txt ("sent in
+parts", no "gatt write failed") and logcat-bt.txt (whitelist, no "no_peripherals").
 The image (LineageOS 20, TQ3A.230901.001, GAPPS) has no Bluetooth HAL and no Bluetooth app
 (Waydroid strips it from the btservices apex; "Package not found: com.android.bluetooth").
 Candidate: isyourbrainfoss/waydroid-host-stack (MIT, experimental, largely machine-written;
