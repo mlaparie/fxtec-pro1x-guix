@@ -679,6 +679,14 @@
     "confidence": "confirmed (both units, the logs); the cause (antenna, its contact, or the design) not known",
     "date": "2026-11-24",
     "source": "/root/nfcgetcfg.sh, /root/nfcrawpoll.sh, /root/nfcrawlisten.sh and their logs on the phone; vendor_a /etc/libnfc-nxp.conf; arch/arm64/boot/dts/qcom in linux 7.3"
+   },
+   {
+    "title": "PN557 on the Pro¹x: the transmitter needs TVDD config 2 (DC-DC 5 V), not the stock config 1",
+    "general": "An NXP NCI controller's antenna supply is a proprietary setting (A0 0E, NXP_EXT_TVDD_CFG_n in libnfc-nxp.conf). If the board wires the transmitter to the DC-DC path, the LDO variant gives a chip that senses fields but sends none. When a controller answers NCI but never emits a field, check which TVDD variant is selected before suspecting the antenna.",
+    "instance": "Reported by moWerk (nfcd-nxp-i2c-plugin bb567df, config/nxp-i2c-init.hex, 2026-11-26): the stock config selects config 1 (internal LDO, 3.3 V), with which the transmitter gets no supply; config 2 (DC-DC 5 V requested by TX_PWR_REQ) gives a field, card reading and emulation (moWerk and memeline 2026-11-25, on stock Android). Command: 20 02 0F 01 A0 0E 0B 11 01 C2 B2 00 B2 1E 1F 00 D0 0C. Here the chip held config 1's bytes (A0 0E = 31 01 01 31 00 00 00 01 00 10 0C, entry above), matching the field never sent. His file also says the controller keeps none of its RF tuning across a power cycle, which the entry above contradicts (values held from Android): not resolved. Not yet tried on this port.",
+    "confidence": "reported (moWerk); not tried here",
+    "date": "2026-11-27",
+    "source": "github.com/moWerk/nfcd-nxp-i2c-plugin bb567df config/nxp-i2c-init.hex and src/nxp_i2c_plugin.c"
    }
   ]
  }

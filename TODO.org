@@ -95,6 +95,15 @@ feedback (pro1x-nfc-feedback) is in for later tests.
 no NFC node, no NFC wallet (pro1x-nfc, pro1x-nfc-feedback).  The stock dtbo_b overlays (all
 37) give the same pins (interrupt 70, enable 69, firmware 31).  Back with the first deploy
 from dev-next after the branches were merged.
+2026-11-27, reported by moWerk (nfcd-nxp-i2c-plugin bb567df, config/nxp-i2c-init.hex, BSD):
+the stock libnfc-nxp.conf selects TVDD config 1 (internal LDO, 3.3 V), which leaves the
+transmitter without supply; config 2 (DC-DC 5 V on TX_PWR_REQ) gives a field, card reading
+and emulation (moWerk and memeline, 2026-11-25, confirmed on stock Android).  The command:
+20 02 0F 01 A0 0E 0B 11 01 C2 B2 00 B2 1E 1F 00 D0 0C.  Our chip held config 1's bytes (A0 0E =
+31 01 01 31 ..., rag-notes nfc): the likely cause of no field here.  His file replays the
+whole stock init after every CORE_RESET, saying the chip keeps none of it across a power
+cycle; our 2026-11-24 note says it kept Android's values: to check.  Next: on a kernel with
+the NFC node, write config 2 (and his init list) and poll a card; then send it at each start.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
