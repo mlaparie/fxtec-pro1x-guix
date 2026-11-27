@@ -152,6 +152,27 @@ not seen on screen (locked).  Nuisance found: the launcher's Google feed gets it
 not written yet.  Property restored to false; takes effect at Android's next restart.
 *** DONE [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
 Runs with GAPPS and Google Play (2026-11-20, session and container running).
+*** WAIT [#B] Play Integrity for banking apps in Waydroid (they need DEVICE)
+2026-11-27, agent, all on the phone: the native verdict fails BASIC, DEVICE and STRONG (Play
+Integrity API Checker).  Official Magisk v31.1 runs in the container when set up live the
+way Magisk's =scripts/avd_setup.sh= does (binaries from the release APK, SHA-256
+89cefac0a318afa39fb3880c45c87b036c05bc1ebf02a7a715b7f8d7c26ac6e7, signer CN=John Wu).
+Magisk's own Zygisk never serves zygote here: the daemon wants the peer's SELinux context
+=u:r:zygote:s0= and this kernel has no SELinux (=CONFIG_LSM= without selinux).  ReZygisk
+v1.0.0 (7904649b8dcaf2b060c3432df4fee302aeb1258da199d2b425335e82d49510e6) injects; Play
+Integrity Fork v19 (83b4d5f32743805c5b5a69361d73b8ab9c095325e24f20711afa1abea837b58f) then
+spoofs a Pixel 7a Canary print from its autopif4 (run on the PC: busybox has no DNS in the
+container).  Verdict: still all three failed, also with =spoofVendingSdk=1= (Android <13
+path).  Tricky Store OSS v3.1.0 (f1df8a04d2d020b9c4dda304d22c69ac62be8bdd6187a7bf0a3b94ec2152c9c3,
+default software keybox) aborts: its injector writes an Android context to
+=/proc/self/attr/sockcreate=, EINVAL without SELinux, fatal.  Blocking: (1) no attestation
+layer on this kernel; SELinux in the kernel alone would not fix it (Android's contexts are
+undefined under any host policy), Tricky Store OSS needs a patch to skip that step; (2) with
+it, DEVICE on Android 13+ still needs an unrevoked OEM keybox, ruled out by the author's
+coordinator.  Everything removed from the phone (backup in =/root/wd-integrity-backup-2026-11-27=);
+the spoofed read-only properties stay in memory until Waydroid restarts.  Side finding:
+=stop=/=start= and zygote restarts do not work in the container (cgroups read-only, init
+cannot kill process groups); see rag-notes.
 *** TODO [#B] Measure Android's cost: running, frozen, off (CPU, battery current)
 *** TODO [#C] Freeze when no Android window is shown
 Only if the measurement shows it is worth it.  Android's own "Sleep when unused"

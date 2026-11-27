@@ -659,6 +659,22 @@
         "confidence": "confirmed",
         "date": "2026-11-27",
         "source": "waydroid/android_hardware_waydroid lineage-20 hwcomposer/hwcomposer.cpp (hwc_open, select_mode) and modes/multi-window.cpp, read 2026-11-27; swaymsg -t get_tree on the phone"
+      },
+      {
+        "title": "Android's init cannot kill or restart services inside the Waydroid container: stop/start and zygote restarts hang in 'stopping'",
+        "general": "LXC mounts the container's cgroup tree read-only (lxc.mount.auto = cgroup:ro), so Android's libprocessgroup creates no per-service cgroup and init's kill of a process group reaches nobody. 'stop', 'start', 'setprop ctl.restart' and the onrestart chain of zygote leave the service running and marked 'stopping'. Killing zygote by PID makes init respawn it, but its children (system_server, apps) survive and the new system_server crashes until they are killed by hand; netd must be killed too or the new system_server has no default network. Anything that relies on a zygote restart (Magisk's AVD-style live setup, Zygisk) needs this dance.",
+        "instance": "Pro1x, Waydroid 1.6.3, LineageOS 20 image, Guix kernel 7.2.11 with cgroup v2; observed 2026-11-27 while setting up Magisk live: zygote64 kept PID 79 after 'stop', init.svc.zygote=stopping; after kill -9 it looped every 6 s until the old system_server was killed; 'Active default network: none' until netd was killed and zygote restarted again.",
+        "confidence": "confirmed",
+        "date": "2026-11-27",
+        "source": "session logs; /var/lib/waydroid/lxc/waydroid/config"
+      },
+      {
+        "title": "Play Integrity in Waydroid: Magisk's Zygisk and Tricky Store OSS need SELinux contexts the Guix kernel does not have; no verdict passes",
+        "general": "Magisk's daemon serves Zygisk requests only from a peer whose SELinux context is u:r:zygote:s0 (native/src/core/daemon.rs), and Tricky Store OSS's injector aborts when writing an Android context to /proc/self/attr/sockcreate fails. A kernel without the SELinux LSM gives an empty context and EINVAL, so neither works; compiling SELinux in does not help, since Android's types are undefined under a host policy. ReZygisk checks no peer context and does inject. Even a working Play Integrity Fork then fails all three verdicts on an Android 13 image: since May 2025 Google wants Google-rooted key attestation for BASIC and hardware-backed verified boot for DEVICE, and the Android <13 path (spoofVendingSdk) wants an attestation layer too.",
+        "instance": "Pro1x 2026-11-27, CONFIG_LSM=landlock,lockdown,yama,loadpin,safesetid,ipe,bpf: Magisk v31.1 live, ReZygisk v1.0.0, PIF v19 with a Pixel 7a Canary print (autopif4 run on the PC, busybox has no DNS in the container), Tricky Store OSS v3.1.0 default keybox: checker shows three red crosses before and after, with spoofVendingSdk 0 and 1. All removed; backup /root/wd-integrity-backup-2026-11-27 on the phone.",
+        "confidence": "confirmed",
+        "date": "2026-11-27",
+        "source": "topjohnwu/Magisk native/src/core/daemon.rs; beakthoven/TrickyStoreOSS app/src/main/cpp/inject/utils.cpp; developer.android.com/google/play/integrity/improvements; checker screenshots (deleted)"
       }
     ]
   }
