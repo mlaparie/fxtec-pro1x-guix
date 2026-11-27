@@ -223,6 +223,14 @@
     "confidence": "handover",
     "date": "2026-10-25",
     "source": "commit 4bffec9"
+   },
+   {
+    "title": "The USB controller is SuperSpeed-capable but runs at high speed on the PC cable; the built-in g_cdc can be unbound through the gadget bus to make room for a configfs gadget",
+    "general": "A precomposed gadget built into the kernel (CONFIG_USB_CDC_COMPOSITE=y) holds the only UDC, so no configfs gadget can bind; but since the gadget bus (Linux 5.19+) legacy gadget drivers are bus drivers with sysfs bind and unbind files, so `echo gadget.0 > /sys/bus/gadget/drivers/g_cdc/unbind' frees the UDC without a reboot or a kernel change, and `bind' puts it back. The replacement composite gadget keeps the same usb0 if its ECM function gets the same host_addr and dev_addr. Check the link speed before planning bandwidth: /sys/class/udc/*/current_speed against maximum_speed.",
+    "instance": "Pro1x, Linux 7.3.0, generation 283: /sys/class/udc/4e00000.usb maximum_speed super-speed, current_speed high-speed on the SSH cable to the PC (480 Mbit/s; isochronous at most 3 x 1024 bytes per microframe, about 24 MB/s); /sys/bus/gadget/drivers/g_cdc/ has bind, unbind and gadget.0; configfs (CONFIGFS_FS=y, USB_CONFIGFS=m, usb_f_ncm/ecm/acm/fs available) was not mounted. dmesg: g_cdc 'couldn't find an available UDC' at 0.87 s (dwc3 probe deferred), bound at 962 s; so g_cdc registers without match_existing_only and stays registered for a later bind. The unbind itself was not run (the cable was the live SSH link). Scripted in device/usb-video/pro1x-usb-gadget.",
+    "confidence": "confirmed (sysfs, dmesg, udc/core.c of 7.3); the unbind not yet run: inferred",
+    "date": "2026-11-27",
+    "source": "ssh root@172.16.42.1: /sys/class/udc, /sys/bus/gadget, zcat /proc/config.gz, dmesg; linux-7.3 drivers/usb/gadget/udc/core.c (gadget_bus_type, usb_gadget_register_driver_owner)"
    }
   ],
   "storage_and_fde": [
@@ -349,6 +357,14 @@
     "confidence": "confirmed",
     "date": "2026-11-22",
     "source": "linux-7.3 drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_6_3_sm6115.h, arch/arm64/boot/dts/qcom/sm6115.dtsi (usb_qmpphy, mdss); device/kernel/config.aarch64"
+   },
+   {
+    "title": "A dumb monitor (HDMI, DP, USB-C DP-only, XREAL glasses) cannot be fed from this port by software alone; the chains that can work",
+    "general": "Displays that only take a video signal need either DP Alt Mode (absent on SM6115) or an adapter that turns USB data into HDMI or DP, with a driver on the phone. The GUD gadget side (samcday/gud-gadget, Rust over FunctionFS; the kernel f_gud_drm was never merged) runs on the display side, so it makes the phone a monitor for a computer, not the reverse; as a USB-to-HDMI adapter it needs a Linux board (Raspberry Pi Zero class) running it, with the phone as GUD host (CONFIG_DRM_GUD). Cheaper: a MacroSilicon MS912x USB-to-HDMI dongle with the free out-of-tree DRM driver (rhgndf/ms912x, GPL-2.0, branches per kernel including kernel-7.2; USB IDs 534d:6021, 534d:0821, 345f:9132, 345f:9133; resolutions limited, frames uncompressed, so USB 2 means low rates). Glasses like the XREAL Air take DP Alt Mode over USB-C only; XREAL's HDMI-to-USB-C adapter turns an HDMI source into that, and the XREAL Beam also receives Miracast, which this port already sends (gnome-network-displays). So for such glasses: phone > USB-to-HDMI dongle (driver) > HDMI-to-USB-C adapter > glasses, or phone > Miracast > Beam > glasses, with no cable to the phone.",
+    "instance": "Pro1x: the port has no DP (dpu_6_3_sm6115.h, usb_qmpphy USB-only), no HDMI or MHL node in the device tree (/proc/device-tree/soc@0 has none). CONFIG_DRM_GUD=m and CONFIG_DRM_UDL=m are in pro1x-7.3.fragment (not deployed yet). ms912x not packaged: it would be a linux-module-build-system package against linux-pro1x, built on CI. The author asked for both the UVC path and a dumb-monitor path on 2026-11-27.",
+    "confidence": "confirmed for the SoC (source and device tree); reported for ms912x, gud-gadget and XREAL (their pages, read 2026-11-27); inferred for the chains, none tried",
+    "date": "2026-11-27",
+    "source": "github.com/rhgndf/ms912x; github.com/samcday/gud-gadget; XREAL Beam and Air reviews (Tom's Hardware, GSMArena) and the XREAL shop page on the Beam and the Adapter; /proc/device-tree on the phone"
    }
   ],
   "video": [
@@ -423,6 +439,14 @@
     "confidence": "handover",
     "date": "2026-11-22",
     "source": "c03ae96; README table"
+   },
+   {
+    "title": "The screen out of USB-C with no dongle: a UVC webcam gadget; Linux 7.3's f_uvc has frame-based H.264 and MJPEG, leaves the class requests to userspace, and caps a frame-based buffer at 460800 bytes",
+    "general": "A SoC without DisplayPort can still show its screen on any computer through the port: the USB Video Class needs no driver or install on the host. The kernel gadget function (CONFIG_USB_CONFIGFS_F_UVC, usb_f_uvc.ko) exposes a V4L2 output device; userspace answers PROBE and COMMIT through UVC_EVENT_SETUP/DATA and UVCIOC_SEND_RESPONSE, then queues one frame per buffer (the FID toggles per buffer, EOF at its end). Formats come from configfs: streaming/uncompressed, streaming/mjpeg and streaming/framebased (frame-based, default GUID H.264, since the 2024 series; the host uvcvideo maps that GUID to V4L2_PIX_FMT_H264). Frame-based frames have no dwMaxVideoFrameBufferSize attribute, so the kernel's 460800-byte default sets sizeimage: keep H.264 keyframes under it or split an access unit over two buffers. The hardware encoder's H.264 stream can thus go to the host untouched; isochronous transfers do not retry, so repeat SPS/PPS and keep keyframes frequent. In a composite gadget, link the UVC function first so its interfaces are 0 and 1, which the userspace side assumes when telling control from streaming requests.",
+    "instance": "Pro1x: config.aarch64 has USB_CONFIGFS=m, USB_CONFIGFS_F_FS=y, F_NCM/ECM/ACM/RNDIS, VIDEO_DEV=m, VIDEOBUF2_VMALLOC/DMA_SG=m, but USB_CONFIGFS_F_UVC off (added to device/kernel/pro1x-7.3.fragment, needs a CI build). Venus encoder /dev/video13 gives H264 and HEVC from NV12 (v4l2-ctl --list-formats); pro1x-screencast feeds it with no CPU copy (device/stream). ffmpeg on the phone has kmsgrab and an mjpeg encoder; gst jpegenc is absent. Prototype: device/usb-video (pro1x-usb-gadget, pro1x-uvc-feed, pro1x-usb-video); the feeder's parsing tested on the PC with ffmpeg streams, nothing run on the phone yet.",
+    "confidence": "confirmed (kernel source 7.3: f_uvc.c, uvc_configfs.c, uvc_v4l2.c, uvc_video.c, drivers/media/common/uvc.c; phone sysfs); the gadget itself untested",
+    "date": "2026-11-27",
+    "source": "linux-7.3 drivers/usb/gadget/function/uvc_configfs.c (uvcg_framebased_make, uvcg_frame_attrs2, dw_max_video_frame_buffer_size = 460800), uvc_v4l2.c uvc_v4l2_try_format, Documentation/ABI/testing/configfs-usb-gadget-uvc; device/usb-video/README"
    }
   ],
   "keyboard": [

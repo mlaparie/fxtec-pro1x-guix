@@ -97,6 +97,14 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "/boot/extlinux/extlinux.conf on image 6b37ac4; gnu/bootloader/extlinux.scm; NixOS modules/boot-menu.nix line 20-23"
+      },
+      {
+        "title": "pro1x-usb-video: the UVC gadget as a switch service beside the built-in g_cdc, not a replacement at boot",
+        "general": "When a precomposed gadget is the rescue link, do not replace it in the kernel to add a function: keep it built in, and give Shepherd a service whose start unbinds it through the gadget bus and binds a configfs composite gadget with the same network function (same MACs) plus the new one, and whose stop puts the built-in gadget back. auto-start? off: the switch re-enumerates USB and drops a session on the cable; the network service that waits for usb0 is restarted after the switch. The user's side (capture, encode, feed) stays a session command, since it needs the compositor.",
+        "instance": "modules/fxtec-pro1x/services/usb-video.scm: pro1x-usb-video-service-type (requirement udev, pro1x-usb-network; at-boot? default #f), package pro1x-usb-video (packages/usb-video.scm: pro1x-usb-gadget, pro1x-uvc-feed, pro1x-usb-video; built on the PC for x86_64, its check phase runs the feeder's -t parser). Commented into system/mobile.scm. The kernel symbol CONFIG_USB_CONFIGFS_F_UVC is in pro1x-7.3.fragment; not built by CI nor deployed yet.",
+        "confidence": "confirmed (builds); untested on the phone",
+        "date": "2026-11-27",
+        "source": "branch usb-video; device/usb-video/README"
       }
     ],
     "packaging": [
