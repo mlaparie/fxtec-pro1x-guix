@@ -1,6 +1,8 @@
 # wl-cast's buttons on the Pro¹x (etc/xdg/wl-cast/buttons; a user's own
 # ~/.config/wl-cast/buttons replaces it): the port's on-screen keyboard and
-# menus, at the bottom left after CTRL SUPER ALT LKB (author, 2026-11-22).
+# menus, at the bottom left after CTRL SUPER ALT LKB (author, 2026-11-22),
+# and one sector, PHONE, on the three-finger wheel.
+[group PHONE]
 OSK   pro1x-osk toggle stream
 WIN   pro1x-menu toggle windowswitcher
 QA    pro1x-menu toggle quickactions
