@@ -86,7 +86,7 @@ start)
 	# One shell command: pro1x-uvc-feed replaces %w %h %r %f.
 	producer="case %f in \
 h264) exec pro1x-screencast -o $OUTPUT -s %wx%h -r %r -b $(( MBIT * 1000000 )) -g $GOP ;; \
-mjpeg) exec wf-recorder -o $OUTPUT -c mjpeg -m mjpeg -x yuvj420p -p b=${MJPEG_MBIT}M -r %r -F scale=$scale -f pipe:1 ;; \
+mjpeg) exec wf-recorder -o $OUTPUT -c mjpeg -m mjpeg -x yuvj420p -p b=${MJPEG_MBIT}M -p threads=4 -r %r -F scale=$scale -f pipe:1 ;; \
 esac"
 	nohup pro1x-uvc-feed $VERBOSE -- /bin/sh -c "$producer" >"$LOG" 2>&1 &
 	echo $! > "$PIDFILE"

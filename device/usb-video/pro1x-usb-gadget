@@ -36,12 +36,11 @@ DEV_ADDR=${DEV_ADDR:-$(cmdline_mac dev_addr)}
 # The sizes offered to the host, largest first; the first is the default.
 # Multiples of 16, as the encoder likes them (device/stream/README).
 SIZES=${SIZES:-"2160x1080 1600x800 1280x640 960x480"}
-# Frame intervals in 100 ns units: 30, 25, 20, 15 and 10 fps.
+# Frame intervals in 100 ns units: 30, 25 and 20 fps.  No lower rates: a
+# program that takes the slowest offered gave 10 fps (2026-11-27).
 INTERVALS="333333
 400000
-500000
-666666
-1000000"
+500000"
 
 die() { echo "pro1x-usb-gadget: $*" >&2; exit 1; }
 
@@ -83,7 +82,9 @@ frame() {
 	mkdir -p "$d"
 	echo "$2" > "$d/wWidth"
 	echo "$3" > "$d/wHeight"
-	echo "$INTERVALS" > "$d/dwFrameInterval"
+	# One write: the shell writes line by line, and each write replaces the
+	# list, so only the last rate stayed (10 fps, 2026-11-27).
+	printf '%s\n' $INTERVALS | dd of="$d/dwFrameInterval" bs=4096 2>/dev/null
 	echo 333333 > "$d/dwDefaultFrameInterval"
 	echo 1000000 > "$d/dwMinBitRate"
 	echo 50000000 > "$d/dwMaxBitRate"
