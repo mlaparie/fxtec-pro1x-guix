@@ -1,0 +1,103 @@
+#!/bin/sh
+# pro1x-usb-video: the phone's screen as a USB webcam, for a computer on
+# the cable.  Run in the Sway session (it captures the screen).
+#
+#   pro1x-usb-video start [-o OUTPUT] [-b MBIT] [-g SECONDS] [-v]
+#   pro1x-usb-video stop
+#   pro1x-usb-video status
+#
+# start runs pro1x-uvc-feed on the UVC gadget device in the background.
+# Nothing is captured until a program on the computer opens the camera;
+# then, for H.264, pro1x-screencast encodes the screen on Venus with no
+# CPU copy (device/stream), at the size and rate the computer picked; for
+# MJPEG, wf-recorder encodes on the CPU (slower, hotter: for programs that
+# take no H.264 from a camera).  The gadget itself is switched by root:
+# sudo pro1x-usb-gadget video (and network to go back).
+#
+# -o: the output to capture (default: the first, DSI-1); -b: H.264 bit rate
+# in Mbit/s (default 4; keyframes must stay under 450 KB, see
+# pro1x-uvc-feed); -g: seconds between keyframes (default 2: a lost USB
+# packet costs the computer the picture until the next one).
+#
+# State: written 2026-11-27, not yet run on the phone.
+set -eu
+
+RUN=${XDG_RUNTIME_DIR:-/tmp}/pro1x-usb-video
+PIDFILE=$RUN/feed.pid
+LOG=$RUN/feed.log
+
+OUTPUT=${PRO1X_STREAM_OUTPUT:-DSI-1}
+MBIT=4
+GOP=2
+VERBOSE=
+
+usage() {
+	echo "usage: pro1x-usb-video start [-o OUTPUT] [-b MBIT] [-g SECONDS] [-v] | stop | status" >&2
+	exit 2
+}
+
+running() {
+	[ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+cmd=${1:-status}
+[ $# -gt 0 ] && shift
+case $cmd in
+start)
+	while getopts "o:b:g:v" opt; do
+		case $opt in
+		o) OUTPUT=$OPTARG ;;
+		b) MBIT=$OPTARG ;;
+		g) GOP=$OPTARG ;;
+		v) VERBOSE=-v ;;
+		*) usage ;;
+		esac
+	done
+	if running; then
+		echo "already running (pid $(cat "$PIDFILE"))"
+		exit 0
+	fi
+	if ! pro1x-usb-gadget status 2>/dev/null | grep -q '^UVC gadget'; then
+		echo "no UVC gadget: run 'sudo pro1x-usb-gadget video' first" >&2
+		exit 1
+	fi
+	mkdir -p "$RUN"
+	# The producer, with the size, rate and format the computer commits.
+	# One shell command: pro1x-uvc-feed replaces %w %h %r %f.
+	producer="case %f in \
+h264) exec pro1x-screencast -o $OUTPUT -s %wx%h -r %r -b $(( MBIT * 1000000 )) -g $GOP ;; \
+mjpeg) exec wf-recorder -o $OUTPUT -c mjpeg -m mjpeg -x yuvj420p -r %r -F scale=%w:%h -f pipe:1 ;; \
+esac"
+	nohup pro1x-uvc-feed $VERBOSE -- /bin/sh -c "$producer" >"$LOG" 2>&1 &
+	echo $! > "$PIDFILE"
+	sleep 0.5
+	if running; then
+		echo "serving the screen as a webcam; log: $LOG"
+	else
+		echo "pro1x-uvc-feed did not start:" >&2
+		cat "$LOG" >&2
+		exit 1
+	fi
+	;;
+stop)
+	if running; then
+		kill "$(cat "$PIDFILE")"
+		rm -f "$PIDFILE"
+		echo "stopped"
+	else
+		echo "not running"
+	fi
+	;;
+status)
+	pro1x-usb-gadget status 2>/dev/null || true
+	if running; then
+		echo "pro1x-uvc-feed running (pid $(cat "$PIDFILE"))"
+		tail -n 3 "$LOG" 2>/dev/null || true
+	else
+		echo "pro1x-uvc-feed not running"
+	fi
+	;;
+*)
+	usage
+	;;
+esac

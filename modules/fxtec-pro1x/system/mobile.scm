@@ -88,7 +88,8 @@
              (fxtec-pro1x services sensors)
              (fxtec-pro1x services fingerprint)
              (fxtec-pro1x services waydroid)
-             (fxtec-pro1x services usb-network))
+             (fxtec-pro1x services usb-network)
+             ;; (fxtec-pro1x services usb-video))
 
 ;; Keyboard slider in Phosh: landscape while the keyboard is out.  Phosh
 ;; does not know SW_KEYPAD_SLIDE (gpio-keys, /dev/input/pro1x-slider, group
@@ -676,6 +677,12 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
      (udev-rules-service 'brightnessctl brightnessctl)
 
      (service pro1x-usb-network-service-type)
+     ;; The screen as a USB webcam for a computer on the cable
+     ;; (device/usb-video): `herd start pro1x-usb-video' switches the USB
+     ;; gadget to one with a UVC camera beside the network, then
+     ;; pro1x-usb-video start in the session.  Needs a kernel with
+     ;; CONFIG_USB_CONFIGFS_F_UVC; not yet tested (2026-11-27).
+     ;; (service pro1x-usb-video-service-type)
      (service pro1x-keyboard-service-type
               (pro1x-keyboard-configuration
                (xkb-layout "us")

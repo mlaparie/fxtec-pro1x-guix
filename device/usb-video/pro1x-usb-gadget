@@ -1,0 +1,204 @@
+#!/bin/sh
+# pro1x-usb-gadget: switch the phone's USB gadget between the built-in
+# g_cdc (network + serial, the default) and a configfs composite gadget
+# that adds a UVC webcam (the screen, fed by pro1x-uvc-feed).
+#
+#   pro1x-usb-gadget video     ECM network + ACM serial + UVC webcam
+#   pro1x-usb-gadget network   back to g_cdc (network + serial)
+#   pro1x-usb-gadget status    which gadget holds the controller
+#
+# Both gadgets give usb0 with the same MAC addresses, so the PC keeps its
+# interface name and 172.16.42.1 keeps working; the switch re-enumerates
+# the USB device, which drops an SSH session over the cable for a few
+# seconds.  Run it from Wi-Fi, or expect to reconnect.
+#
+# g_cdc is built into the kernel (CONFIG_USB_CDC_COMPOSITE=y), so it
+# cannot be unloaded; it is unbound from the controller through the gadget
+# bus instead (/sys/bus/gadget/drivers/g_cdc/unbind) and bound again on
+# the way back.  The UVC function needs usb_f_uvc.ko
+# (CONFIG_USB_CONFIGFS_F_UVC, device/kernel/pro1x-7.3.fragment).
+#
+# State: written 2026-11-27, not yet run on the phone (the kernel on it has
+# no usb_f_uvc yet).  Needs root.
+set -eu
+
+CONFIGFS=/sys/kernel/config
+G=$CONFIGFS/usb_gadget/pro1x
+UDC=${UDC:-$(ls /sys/class/udc | head -n 1)}
+# The network's MAC addresses: those g_cdc got from the kernel command line
+# (g_cdc.host_addr=, g_cdc.dev_addr=, set by the system), so the PC keeps
+# its interface name; without them the ECM function picks its own.
+cmdline_mac() {
+	tr ' ' '\n' < /proc/cmdline | sed -n "s/^g_cdc\.$1=//p" | head -n 1
+}
+HOST_ADDR=${HOST_ADDR:-$(cmdline_mac host_addr)}
+DEV_ADDR=${DEV_ADDR:-$(cmdline_mac dev_addr)}
+# The sizes offered to the host, largest first; the first is the default.
+# Multiples of 16, as the encoder likes them (device/stream/README).
+SIZES=${SIZES:-"1600x800 1280x640 960x480"}
+# Frame intervals in 100 ns units: 30, 25, 20, 15 and 10 fps.
+INTERVALS="333333
+400000
+500000
+666666
+1000000"
+
+die() { echo "pro1x-usb-gadget: $*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "run as root"
+[ -n "$UDC" ] || die "no USB device controller in /sys/class/udc"
+
+holder() {
+	# The gadget bound to the controller: g_cdc, configfs, or none.
+	if [ -e /sys/bus/gadget/drivers/g_cdc/gadget.0 ]; then
+		echo g_cdc
+	elif [ -e "$G/UDC" ] && [ -n "$(cat "$G/UDC")" ]; then
+		echo configfs
+	else
+		echo none
+	fi
+}
+
+mount_configfs() {
+	mountpoint -q $CONFIGFS || mount -t configfs none $CONFIGFS
+	[ -d $CONFIGFS/usb_gadget ] || modprobe libcomposite
+	[ -d $CONFIGFS/usb_gadget ] || die "no usb_gadget in configfs (CONFIG_USB_CONFIGFS)"
+}
+
+unbind_g_cdc() {
+	if [ -e /sys/bus/gadget/drivers/g_cdc/gadget.0 ]; then
+		echo gadget.0 > /sys/bus/gadget/drivers/g_cdc/unbind
+	fi
+}
+
+bind_g_cdc() {
+	[ -d /sys/bus/gadget/drivers/g_cdc ] || return 0
+	[ -e /sys/bus/gadget/drivers/g_cdc/gadget.0 ] && return 0
+	echo gadget.0 > /sys/bus/gadget/drivers/g_cdc/bind
+}
+
+# One frame directory of the UVC function: NAME, WIDTH, HEIGHT.
+frame() {
+	d=$1/$2x$3
+	mkdir -p "$d"
+	echo "$2" > "$d/wWidth"
+	echo "$3" > "$d/wHeight"
+	echo "$INTERVALS" > "$d/dwFrameInterval"
+	echo 333333 > "$d/dwDefaultFrameInterval"
+	echo 1000000 > "$d/dwMinBitRate"
+	echo 50000000 > "$d/dwMaxBitRate"
+	# Frame-based (H.264) frames have no dwMaxVideoFrameBufferSize: the
+	# kernel keeps its 460800-byte default for them, so pro1x-uvc-feed
+	# splits a larger access unit over two buffers.  MJPEG frames have it.
+	if [ -e "$d/dwMaxVideoFrameBufferSize" ]; then
+		echo $(( $2 * $3 * 2 )) > "$d/dwMaxVideoFrameBufferSize"
+	fi
+}
+
+make_gadget() {
+	mount_configfs
+	[ -d "$G" ] && return 0
+	modprobe usb_f_uvc 2>/dev/null || die "usb_f_uvc.ko missing: the kernel needs CONFIG_USB_CONFIGFS_F_UVC"
+	modprobe usb_f_ecm 2>/dev/null || true
+	modprobe usb_f_acm 2>/dev/null || true
+
+	mkdir "$G"
+	cd "$G"
+	# Linux Foundation, Multifunction Composite Gadget.
+	echo 0x1d6b > idVendor
+	echo 0x0104 > idProduct
+	echo 0x0200 > bcdUSB
+	echo 0xef > bDeviceClass
+	echo 0x02 > bDeviceSubClass
+	echo 0x01 > bDeviceProtocol
+	mkdir -p strings/0x409
+	echo "F(x)tec" > strings/0x409/manufacturer
+	echo "Pro1x (Guix)" > strings/0x409/product
+	# A fixed string, not the unit's serial.
+	echo "pro1x-guix" > strings/0x409/serialnumber
+
+	mkdir -p configs/c.1/strings/0x409
+	echo "Network, serial, screen" > configs/c.1/strings/0x409/configuration
+	echo 500 > configs/c.1/MaxPower
+
+	# The UVC webcam.  Linked first into the configuration, so its two
+	# interfaces are 0 (control) and 1 (streaming): pro1x-uvc-feed
+	# tells the two apart by the interface number (its -i option).
+	U=functions/uvc.usb0
+	mkdir $U
+	echo "Pro1x screen" > $U/function_name
+	# High speed: 3 x 1024 bytes per 125 us microframe, about 24 MB/s.
+	echo 3072 > $U/streaming_maxpacket
+	echo 1 > $U/streaming_interval
+	mkdir -p $U/control/header/h
+	ln -s $U/control/header/h $U/control/class/fs
+	ln -s $U/control/header/h $U/control/class/ss
+	# H.264, frame-based (the kernel's default GUID for this group), and
+	# MJPEG, for hosts and programs that take no H.264 from a camera.
+	mkdir -p $U/streaming/framebased/h264
+	mkdir -p $U/streaming/mjpeg/m
+	for s in $SIZES; do
+		frame $U/streaming/framebased/h264 "${s%x*}" "${s#*x}"
+		frame $U/streaming/mjpeg/m "${s%x*}" "${s#*x}"
+	done
+	mkdir -p $U/streaming/header/h
+	ln -s $U/streaming/framebased/h264 $U/streaming/header/h
+	ln -s $U/streaming/mjpeg/m $U/streaming/header/h
+	ln -s $U/streaming/header/h $U/streaming/class/fs
+	ln -s $U/streaming/header/h $U/streaming/class/hs
+	ln -s $U/streaming/header/h $U/streaming/class/ss
+	ln -s $U configs/c.1
+
+	# The network, as g_cdc gives it: ECM, the same MAC addresses.
+	mkdir functions/ecm.usb0
+	[ -n "$HOST_ADDR" ] && echo "$HOST_ADDR" > functions/ecm.usb0/host_addr
+	[ -n "$DEV_ADDR" ] && echo "$DEV_ADDR" > functions/ecm.usb0/dev_addr
+	ln -s functions/ecm.usb0 configs/c.1
+
+	# The serial rescue line, ttyGS0 as with g_cdc.
+	mkdir functions/acm.GS0
+	ln -s functions/acm.GS0 configs/c.1
+}
+
+restart_network() {
+	# usb0 is a new device: pro1x-usb-network sets its address and DHCP
+	# again (it waits for the interface itself).
+	if command -v herd >/dev/null 2>&1; then
+		herd restart pro1x-usb-network >/dev/null 2>&1 || true
+	fi
+}
+
+case ${1:-status} in
+video)
+	case $(holder) in
+	configfs) echo "already video"; exit 0 ;;
+	esac
+	make_gadget
+	unbind_g_cdc
+	echo "$UDC" > "$G/UDC"
+	restart_network
+	v=$(for d in /sys/class/video4linux/video*; do
+		[ -e "$d/function_name" ] && echo "/dev/${d##*/}"; done | head -n 1)
+	echo "video: UVC on ${v:-?}, usb0 and ttyGS0 by configfs"
+	;;
+network)
+	case $(holder) in
+	g_cdc) echo "already network"; exit 0 ;;
+	esac
+	if [ -e "$G/UDC" ]; then
+		echo "" > "$G/UDC"
+	fi
+	bind_g_cdc
+	restart_network
+	echo "network: g_cdc"
+	;;
+status)
+	echo "controller $UDC: $(holder), $(cat /sys/class/udc/"$UDC"/current_speed 2>/dev/null)"
+	for d in /sys/class/video4linux/video*; do
+		[ -e "$d/function_name" ] && echo "UVC gadget: /dev/${d##*/} ($(cat "$d/function_name"))"
+	done
+	;;
+*)
+	die "usage: pro1x-usb-gadget video|network|status"
+	;;
+esac

@@ -199,6 +199,19 @@ no retest after the fix.  To verify in a call (the author).
 *** TODO [#B] No noise or echo processing on the uplink (ECNS topology silences it)
 *** WAIT [#B] MMS download helper: notify-send returns without waiting for an answer
 ** Streaming and hotspot
+*** WAIT [#B] The screen out of USB-C as a UVC webcam (author, 2026-11-27)
+No DisplayPort on the SoC, so the only driverless video out of the port is the USB Video Class:
+the phone as a composite gadget (ECM network, ACM serial, UVC camera), the camera fed with the
+screen as H.264 from Venus (pro1x-screencast) or MJPEG (wf-recorder).  Branch =usb-video=:
+device/usb-video (pro1x-usb-gadget, pro1x-uvc-feed, pro1x-usb-video, README with the test),
+package and service (commented in mobile.scm), CONFIG_USB_CONFIGFS_F_UVC=y in
+pro1x-7.3.fragment.  Built on the PC, frame parsing tested with ffmpeg streams; nothing run on
+the phone: its kernel has no usb_f_uvc.  Next: a CI kernel build, deploy with the service, then
+device/usb-video/README's first test (sudo herd start pro1x-usb-video from a Wi-Fi session;
+pro1x-usb-video start in Sway; ffplay -f v4l2 -input_format h264 /dev/videoN on the PC).  Known
+limits: 460800 bytes per H.264 frame-based buffer (the kernel's fixed default; larger access
+units go over two buffers), isochronous packets lost are frames lost (keyframes every 2 s),
+landscape sizes only.  Keep if it works (author).
 *** WAIT [#B] Stream menu end to end: hardware options, Capture rate, Output size
 WebRTC's VP8 delay since the fix; hardware H.264 in LibreWolf
 (=media.gmp-gmpopenh264.enabled=); catt on a Chromecast; Network Displays.
@@ -594,6 +607,14 @@ not to build on kernels >= 6.11).  Plan: package ms912x as a linux-module for li
 (7.3), check its USB ID on the dongle with lsusb, try OTG power (pmi632_vbus) and Sway's
 second DRM device.  The port's USB-C has SuperSpeed lanes (usb_qmpphy in the device tree), so
 a USB 3 dongle can use them: inferred, not measured.
+2026-11-27 (author: also feed dumb monitors, USB-C/DP/HDMI inputs, XREAL glasses, besides UVC):
+no software-only path exists for them (rag-notes display).  XREAL Air glasses take DP Alt Mode
+only; XREAL's HDMI-to-USB-C adapter makes that from HDMI, and the XREAL Beam also receives
+Miracast, which gnome-network-displays already sends (both reported from their pages, not
+tried).  Chains: phone > MS912x USB-to-HDMI (ms912x driver, has a kernel-7.2 branch) > HDMI to
+USB-C adapter > glasses; or phone > Miracast > Beam > glasses, no cable.  Next step when the
+author wants it: package ms912x (linux-module-build-system against linux-pro1x, CI), then a
+dongle to test.  The GUD gadget side (samcday/gud-gadget) is the display's side, not ours.
 *** WAIT [#C] A later port of this channel to the Pro1 (QX1000, MSM8998) (author, 2026-11-22)
 Base: github.com/sampavlovic/qx1000-linux-mainline (Linux 7.3.3, a commit per fix, UEFI and
 systemd-boot instead of U-Boot).  What it shares with ours and what not: rag-notes hardware
