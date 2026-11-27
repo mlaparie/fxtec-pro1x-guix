@@ -141,6 +141,9 @@ feedback() { pro1x-nfc-feedback "$@" >/dev/null 2>&1 || true; }
 # powers it off again after, unless it was already on: a powered NFC
 # controller made fingerprint matches fail.
 powered_by_scan=${XDG_RUNTIME_DIR:-/tmp}/pro1x-nfc-powered-by-scan
+# How long a scan searches: the spot where the antenna reads a card is
+# small, and finding it took 15 to 20 s of moving the card (2026-11-27).
+scan_secs=45
 
 adapter_powered() {
     gdbus call --system --dest=$NEARD --object-path "$1" \
@@ -169,7 +172,7 @@ poll_start() {
     # Mode Initiator finds tags; Dual also listens but we start with read.
     gdbus call --system --dest=$NEARD --object-path "$adapter" \
         --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1 || { poll_stop; return 1; }
-    feedback polling 20
+    feedback polling "$scan_secs"
 }
 
 poll_stop() {
@@ -366,15 +369,17 @@ scan_badge() {
     err=$(nfc_check) || { echo "$err"; pause; return; }
     err=$(neard_check) || { echo "$err"; pause; return; }
 
-    echo "Hold a badge to the back of the phone…"
-    echo "(Wait 15 s to cancel.)"
+    echo "Move a badge slowly over the back of the phone…"
+    echo "The LED blinks blue while it searches, turns yellow with a short"
+    echo "buzz when it finds the badge, green with a strong buzz once read."
+    echo "(Wait $scan_secs s to cancel.)"
     echo
     poll_start || { echo "Could not start NFC polling."; pause; return; }
 
     # The kernel's report of the find (pro1x-nfc-target), not neard's tag:
     # neard drops a card without NDEF data within 0.2 s and has no UID.
     local found tag_path
-    if ! found=$(pro1x-nfc-target 15); then
+    if ! found=$(pro1x-nfc-target "$scan_secs"); then
         echo "No badge found."
         poll_stop
         pause
@@ -398,7 +403,10 @@ scan_badge() {
     TAG_TYPE=${protos:-unknown}
 
     # A tag with NDEF data stays in neard: its records, if it has any.
-    sleep 0.5
+    # The wait also leaves the yellow light on before the green one: the
+    # controller reports a card only once it has its ID, so found and read
+    # come together.
+    sleep 1
     TAG_NDEF_RAW=""
     tag_path=$(gdbus call --system --dest=$NEARD --object-path / \
         --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
