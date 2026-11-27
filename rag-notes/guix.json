@@ -643,6 +643,14 @@
         "confidence": "handover",
         "date": "2026-11-17",
         "source": "30c4bcb"
+      },
+      {
+        "title": "Mesa options for all of Waydroid's Android go through Android properties: mesa.<option> and debug.mesa.<option>",
+        "general": "Mesa on Android reads os_get_option() names from properties: the environment name lower-cased with dots, prefixed mesa. unless it already starts with MESA_, and searched with the prefixes debug., vendor. and none (src/util/os_misc.c). So MESA_EXTENSION_OVERRIDE is mesa.extension.override and FD_MESA_DEBUG is mesa.fd.mesa.debug. Waydroid copies the [properties] of waydroid.cfg into Android's properties when it rebuilds them (waydroid upgrade --offline), so a boot-time service can set them before the container starts; a running Android takes them at once with setprop for processes started afterwards. Per-app settings use wrap.<package> = env VAR=value instead.",
+        "instance": "Pro¹x, Waydroid 1.6.3, Mesa 26.0.8 in the image: pro1x-waydroid-props (waydroid-props Shepherd service) writes mesa.extension.override = -GL_EXT_multisampled_render_to_texture by default (gpu-multisample? #f), mesa.fd.mesa.debug = sysmem for gpu-tiling? #f, wrap.<pkg> for untiled-apps. Verified live with setprop (2026-11-27): Godot in the Tesla app saw no MSAA and ran at 60 Hz. The service itself not yet run on the phone with the new argument.",
+        "confidence": "confirmed",
+        "date": "2026-11-27",
+        "source": "Mesa 26.0.2 src/util/os_misc.c:175 and src/mesa/main/context.c:205; device/waydroid/pro1x-waydroid-props; phone test 2026-11-27"
       }
     ]
   }

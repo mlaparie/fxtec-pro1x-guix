@@ -237,12 +237,14 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                Android's storage seen from the phone, owned by user (#f: not shown),
   ;;                and the phone's folders shown in Android, both sides writing
   ;;                ((SOURCE . TARGET); SOURCE in the user's home or absolute).
-  ;;                Mesa's tiled rendering (#t, its default), or untiled (#f): worth a try
-  ;;                when an Android app with 3D elements is very slow (some 3D elements may
-  ;;                then not be drawn).
+  ;;                Multisampling offered to Android's apps through the GPU's cheap path;
+  ;;                hidden (#f) because the Adreno 610's small tile memory makes such
+  ;;                passes take seconds a frame.  #t shows it again.
+  ;;                (gpu-multisample? #f)
+  ;;                Mesa's tiled rendering (#t, its default), or untiled (#f) for all of
+  ;;                Android: multisampled passes then draw nothing.
   ;;                (gpu-tiling? #t)
-  ;;                Apps (package names) rendered untiled while the rest stays tiled: the
-  ;;                way to speed up one slow 3D app without untiling all of Android.
+  ;;                Apps (package names) rendered untiled while the rest stays tiled.
   ;;                (untiled-apps '())
   ;;                Limits on Android against a runaway app: memory (\"3G\", #f: none), the
   ;;                cores it may use (4: the four slower ones, #f: all), and its CPU priority

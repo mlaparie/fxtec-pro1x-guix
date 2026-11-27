@@ -52,12 +52,17 @@
   ;; the phone (#f: nowhere).
   (user waydroid-user (default "user"))
   (storage-view waydroid-storage-view (default "/mnt/waydroid"))
+  ;; Multisampling (MSAA) offered to Android's apps through the GPU's
+  ;; cheap path, GL_EXT_multisampled_render_to_texture.  #f hides it: the
+  ;; Adreno 610 has 132 KB of tile memory, so a multisampled pass is cut
+  ;; into hundreds of tiles and 3D apps using it take seconds a frame (the
+  ;; Tesla app's car); without it they draw at 60 Hz, with aliased edges.
+  (gpu-multisample? waydroid-gpu-multisample? (default #f))
   ;; Mesa's tiled rendering in Android (#t, its default), or untiled
-  ;; (#f): worth a try when an Android app with 3D elements is very slow;
-  ;; some 3D elements and icons may then not be drawn.
+  ;; (#f): FD_MESA_DEBUG=sysmem for all of Android.  Multisampled passes
+  ;; then draw nothing, and some launcher icons were not drawn either.
   (gpu-tiling? waydroid-gpu-tiling? (default #t))
-  ;; Apps (package names) rendered untiled while the rest stays tiled:
-  ;; the way to speed up one slow 3D app without the side effects.
+  ;; Apps (package names) rendered untiled while the rest stays tiled.
   (untiled-apps waydroid-untiled-apps (default '()))
   ;; Limits on Android, against a runaway app slowing the phone: its memory
   ;; ("3G", or #f: none), the cores it may use (4: the four slower ones,
@@ -130,12 +135,14 @@
    (provision '(waydroid-props))
    (requirement '(file-systems))
    (one-shot? #t)
-   (documentation "Mesa's rendering mode in Waydroid's Android (gpu-tiling?,
-untiled-apps).")
+   (documentation "Mesa's rendering options in Waydroid's Android (gpu-tiling?,
+gpu-multisample?, untiled-apps).")
    (start #~(lambda _
               (zero? (apply system* #$pro1x-waydroid-props-script
                             #$(if (waydroid-gpu-tiling? config)
                                   "tiled" "untiled")
+                            #$(if (waydroid-gpu-multisample? config)
+                                  "msaa" "nomsaa")
                             '#$(waydroid-untiled-apps config)))))))
 
 (define (waydroid-share-arguments config)

@@ -349,6 +349,14 @@
     "confidence": "confirmed",
     "date": "2026-11-22",
     "source": "linux-7.3 drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_6_3_sm6115.h, arch/arm64/boot/dts/qcom/sm6115.dtsi (usb_qmpphy, mdss); device/kernel/config.aarch64"
+   },
+   {
+    "title": "Adreno 610: 132 KB of tile memory makes multisampled render-to-texture passes cost hundreds of tiles; Godot 3D at seconds a frame",
+    "general": "On a tiled GPU with a tiny GMEM every multisampled pass is cut into many more tiles, and the vertex work of every draw that touches a tile runs again per tile. GL_EXT_multisampled_render_to_texture is the cheap MSAA path on big-GMEM Adrenos but a cliff on the small ones. freedreno has no heuristic for it and its sysmem (bypass) path does not implement that extension at all, so FD_MESA_DEBUG=sysmem makes such a scene fast but empty. Hiding the extension (MESA_EXTENSION_OVERRIDE=-GL_EXT_multisampled_render_to_texture) makes engines that probe for it render without MSAA at full speed. Check the kernel's a6xx_catalog.c .gmem for the part before reasoning about tile counts.",
+    "instance": "Pro¹x, Linux 7.3 (a610 .gmem = SZ_128K + SZ_4K), Waydroid LineageOS 20 image with Mesa 26.0.8 inside Android (the host's Mesa 26.0.2 only composes). Tesla app 4.62.x, Godot 3.2.2 GLES2 (upgrade_to_gles3 context), 4x MSAA via glFramebufferTexture2DMultisampleEXT. Logcat with FD_MESA_DEBUG=perf,msgs: Godot's 1048x1032 target at 4 samples; 111 frames in 64 s, mean 0.57 s, p90 1.1 s, max 11.2 s; GPU pinned at 950 MHz; no CPU stall or software fallback warnings. Android's hwui multisampled a 3816x2092 layer in the same process: 7920 bins of 32x32 a pass. With the extension hidden: Godot logs 'MSAA not supported on this hardware', 3147 frames in 73 s, median 16 ms, p90 42 ms, bins at most 49; same through Android properties only (mesa.extension.override, 3413 frames, median 16 ms). Screen was locked and off during the runs: the picture itself was not seen.",
+    "confidence": "confirmed",
+    "date": "2026-11-27",
+    "source": "phone logcat runs 2026-11-27 02:33-02:46 (not in git); torvalds/linux v7.3 drivers/gpu/drm/msm/adreno/a6xx_catalog.c; Mesa 26.0.2 src/gallium/drivers/freedreno/freedreno_autotune.c (ms-rtt forces GMEM), freedreno_gmem.c; godot 3.2.2-stable drivers/gles2/rasterizer_storage_gles2.cpp:4777-4819,5934"
    }
   ],
   "video": [
