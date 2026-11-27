@@ -29,7 +29,7 @@ assume NixOS and systemd and have to be translated, not copied.
 | Fallback on the device | previous Guix system generations, in the U-Boot extlinux menu (hold volume-down at power-on; needs the author's hands) |
 | Build host | x86_64 with QEMU binfmt for aarch64 (`--system=aarch64-linux`); GitHub Actions builds natively on aarch64 |
 | Where findings are written | `rag-notes/` in this repository (format in `rag-notes/README.md`) |
-| Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed; moWerk's SailfishOS mainline port and sailfish-rag (§4) |
+| Hardware reference | NixOS port, cloned to `/tmp/fxtec-pro1x-nixos` when needed; moWerk's SailfishOS mainline port, sailfish-rag and droid-config-qx1050 (§4) |
 | Terminal layout | tmux session `1`, see below |
 | Standing permissions | see below |
 
@@ -141,8 +141,11 @@ The agent uses the password itself (sudo over ssh) instead of handing commands b
    do not copy.
    Also check, regularly and for any hardware feature, moWerk's SailfishOS port of the same
    phone on a mainline kernel, github.com/moWerk/sailfishos-pro1x-mainline, and its findings
-   corpus github.com/moWerk/sailfish-rag (`Mainline/`). They have working fixes the other ports
-   lack (for example double-tap to wake/unlock, RTC alarm wake from power-off). Both are
+   corpus github.com/moWerk/sailfish-rag (`Mainline/`), plus its device configuration
+   github.com/moWerk/droid-config-qx1050 (its userspace, under `sparse/`: udev rules, systemd
+   units, modprobe.d and sysctl.d, ALSA and PulseAudio, sensorfw, mce, usb-moded, helper
+   scripts). They have working fixes the other ports
+   lack (for example double-tap to wake/unlock, RTC alarm wake from power-off). All are
    LLM-driven and SailfishOS-specific: treat what they say as `reported`, verify it on this
    device, keep only what is distribution-neutral, and redo it the Guix way under this file's
    rules (licences, no vendor/halium pieces, no unreviewed upstream submissions).
