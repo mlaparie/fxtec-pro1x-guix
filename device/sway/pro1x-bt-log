@@ -4,6 +4,8 @@
 # from the stream menu's TESTS.  No argument but the command.
 #
 #   start    a new session in /var/log/pro1x-bt-tests/session-DATE/:
+#              logcat-before.txt  what Android's buffers held at the start
+#                             (an attempt made before the session is in it)
 #              logcat.txt     Android's log, all buffers (waydroid shell)
 #              logcat-bt.txt  the same, Tesla, Bluetooth and GATT lines
 #                             (waydroid-host-stack's diag filters)
@@ -16,7 +18,9 @@
 #   stop     ends the session, adds state at the end
 #   status   the session running, if any
 #
-# State: written 2026-11-20, not yet run.
+# State: ran 2026-11-20 and 2026-11-23 (the second at the car); the Android
+# log of an attempt made before the start was lost to logcat -c, hence
+# logcat-before.txt instead of clearing.
 set -u
 PATH=/run/current-system/profile/bin:/run/setuid-programs:$PATH
 root=/var/log/pro1x-bt-tests
@@ -53,8 +57,8 @@ case "${1:-}" in
         echo "$dir" > "$run/dir"
         : > "$run/pids"
         state > "$dir/state.txt" 2>&1
-        timeout 25 waydroid shell -- logcat -c 2>/dev/null
-        setsid sh -c 'waydroid shell -- logcat -b all -v threadtime 2>&1 | tee "$1/logcat.txt" |
+        timeout 25 waydroid shell -- logcat -b all -v threadtime -d > "$dir/logcat-before.txt" 2>/dev/null
+        setsid sh -c 'waydroid shell -- logcat -b all -v threadtime -T 1 2>&1 | tee "$1/logcat.txt" |
             grep --line-buffered -iE "tesla|vcsec|BLEVehicle|whitelist|keycard|phonekey|phone key|BluetoothGatt|GattService|bt_gatt|bt_stack|bt_btm|bt_l2cap|bt_hci|Soft HCI|bt_hci_waydroid|AdapterState|BluetoothManager|avc:" > "$1/logcat-bt.txt"' \
             _ "$dir" </dev/null >/dev/null 2>&1 &
         echo $! >> "$run/pids"
