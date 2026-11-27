@@ -1,0 +1,125 @@
+waydroid-host-stack: a GATT write longer than ATT_MTU - 3 goes out in parts.
+
+The bridge wrote every guest value with bluer's write(), a write command
+(type "command"), whatever the guest asked.  BlueZ refuses a command
+longer than ATT_MTU - 3 (att.c encode_pdu), and turns a request of that
+size into a prepared long write, which the Tesla VCSEC does not take.
+Seen on the Pro1x with a Tesla's phone key, 2026-11-23: "gatt write
+failed len=114 mtu=110", the add-key message of the pairing; the
+51-byte writes before it went through.  Now the guest's write type is
+passed on (request or command) and a value longer than ATT_MTU - 3 is
+written in consecutive parts of that size, as a client that negotiated
+this MTU writes it; the car reassembles by its own length prefix
+(teslamotors/vehicle-command, ble.go Send).  Tests: cargo test
+(discovery::gatt_write_chunks_fit_and_split); not yet at the car.  Ours
+(fxtec-pro1x-guix, 2026-11-27), on d9a316e (MIT), after
+waydroid-host-stack-shared-link-owners.patch.
+
+--- a/host/src/bluez/mod.rs	2026-11-27 02:31:46.567040251 +0100
++++ b/host/src/bluez/mod.rs	2026-11-27 02:34:10.395857128 +0100
+@@ -8,7 +8,8 @@
+ 
+ use anyhow::{anyhow, Context, Result};
+ use bluer::agent::{Agent, AgentHandle};
+-use bluer::gatt::remote::{Characteristic, Service};
++use bluer::gatt::remote::{Characteristic, CharacteristicWriteRequest, Service};
++use bluer::gatt::WriteOp;
+ use bluer::{Adapter, AdapterEvent, Address, AddressType, Device, DiscoveryTransport, Session};
+ use futures::{pin_mut, StreamExt};
+ use tokio::sync::{broadcast, Mutex, RwLock};
+@@ -20,8 +21,8 @@
+ 
+ use crate::discovery::{
+     connect_retry_delay, connect_scan_budget_from, connect_scan_transport,
+-    guest_pair_discovery_transport, is_retryable_connect_error, peer_presence,
+-    DiscoveryTransportName, PeerPresence, CONNECT_SCAN_SECS_ENV,
++    gatt_write_chunks, guest_pair_discovery_transport, is_retryable_connect_error,
++    peer_presence, DiscoveryTransportName, PeerPresence, CONNECT_SCAN_SECS_ENV,
+ };
+ use crate::policy::{PowerPolicy, ScanPolicy};
+ 
+@@ -636,16 +637,35 @@
+         service_uuid: Option<&str>,
+         char_uuid: &str,
+         value: &[u8],
+-        _without_response: bool,
++        without_response: bool,
+     ) -> Result<()> {
+         let ch = self
+             .find_characteristic(device_id, service_uuid, char_uuid)
+             .await?;
+         let mtu = ch.mtu().await.unwrap_or(0);
+-        if mtu != 0 && value.len() + 3 > mtu as usize {
+-            debug!(%device_id, %char_uuid, len = value.len(), mtu, "write exceeds ATT MTU — BlueZ uses long (prepared) write");
++        // The guest's write type, as a real controller would carry it.
++        // bluer's write() defaults to a command (write without response),
++        // which BlueZ refuses above ATT_MTU - 3; and a request above that
++        // size becomes a prepared long write, which some servers reject.
++        // So a value longer than ATT_MTU - 3 goes out as consecutive
++        // writes of at most that size, the way a client that negotiated
++        // this MTU would send it (a Tesla's VCSEC reassembles them by its
++        // own length prefix; its 114-byte add-key message failed at MTU
++        // 110 on the Pro1x, 2026-11-23).
++        let req = CharacteristicWriteRequest {
++            op_type: if without_response { WriteOp::Command } else { WriteOp::Request },
++            ..Default::default()
++        };
++        let chunks = gatt_write_chunks(value.len(), mtu);
++        if chunks.len() > 1 {
++            info!(%device_id, %char_uuid, len = value.len(), mtu, parts = chunks.len(),
++                  "gatt write longer than ATT MTU - 3: sent in parts");
++        }
++        for (start, end) in chunks {
++            ch.write_ext(&value[start..end], &req)
++                .await
++                .context("gatt write")?;
+         }
+-        ch.write(value).await.context("gatt write")?;
+         debug!(%device_id, %char_uuid, mtu, "gatt write done");
+         Ok(())
+     }
+--- a/host/src/discovery.rs	2026-11-27 02:31:46.567040251 +0100
++++ b/host/src/discovery.rs	2026-11-27 02:37:24.052177988 +0100
+@@ -145,11 +145,42 @@
+     Some(pause)
+ }
+ 
++/// How a GATT value of `len` bytes goes out on a link whose ATT MTU is
++/// `mtu`: one write when it fits (or the MTU is unknown, 0), else
++/// consecutive writes of at most ATT_MTU - 3 bytes, as `(start, end)`
++/// ranges.  BlueZ refuses a write command above that size and turns a
++/// write request into a prepared long write, which the Tesla VCSEC does
++/// not take; a client that negotiated this MTU would write in parts.
++pub fn gatt_write_chunks(len: usize, mtu: usize) -> Vec<(usize, usize)> {
++    let part = mtu.saturating_sub(3);
++    if len == 0 || part == 0 || len <= part {
++        return vec![(0, len)];
++    }
++    (0..len)
++        .step_by(part)
++        .map(|start| (start, (start + part).min(len)))
++        .collect()
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     #[test]
++    fn gatt_write_chunks_fit_and_split() {
++        assert_eq!(gatt_write_chunks(0, 23), vec![(0, 0)]);
++        assert_eq!(gatt_write_chunks(20, 23), vec![(0, 20)]);
++        assert_eq!(gatt_write_chunks(51, 110), vec![(0, 51)]);
++        // Unknown MTU: one write, BlueZ decides.
++        assert_eq!(gatt_write_chunks(114, 0), vec![(0, 114)]);
++        // The Tesla add-key message at the car's MTU.
++        assert_eq!(gatt_write_chunks(114, 110), vec![(0, 107), (107, 114)]);
++        assert_eq!(gatt_write_chunks(214, 110), vec![(0, 107), (107, 214)]);
++        assert_eq!(gatt_write_chunks(215, 110), vec![(0, 107), (107, 214), (214, 215)]);
++        assert_eq!(gatt_write_chunks(60, 23), vec![(0, 20), (20, 40), (40, 60)]);
++    }
++
++    #[test]
+     fn connect_scan_budget_default_env_and_cap() {
+         use std::time::Duration;
+         let t30 = Duration::from_secs(30);

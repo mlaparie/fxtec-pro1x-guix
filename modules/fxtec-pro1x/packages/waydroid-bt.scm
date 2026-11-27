@@ -52,16 +52,28 @@
   (package
     (name "waydroid-host-stack")
     (version (git-version "0.1.0" "0" waydroid-host-stack-commit))
-    ;; An LE link shared by several guest clients is dropped only when the
-    ;; last one goes (the Tesla phone key's link went 2 s after a reuse).
+    ;; Our patches, in order (each says what it saw at the car):
+    ;;   shared-link-owners   an LE link shared by several guest clients is
+    ;;                        dropped only when the last one goes (the Tesla
+    ;;                        phone key's link went 2 s after a reuse)
+    ;;   gatt-write-parts     the guest's write type is kept, and a value
+    ;;                        longer than ATT_MTU - 3 is written in parts
+    ;;                        (the Tesla add-key message, 114 bytes at MTU
+    ;;                        110, failed as one write)
+    ;;   scan-duplicate-data  BlueZ reports a steady advertiser on every
+    ;;                        scan cycle, not only when its RSSI moves 8 dBm
+    ;;                        (the parked car never reached the app's scans)
     (source
      (origin
        (inherit waydroid-host-stack-source)
        (patches
-        (list
-         (local-file
-          (repository-file "device/patches/waydroid-host-stack-shared-link-owners.patch")
-          "waydroid-host-stack-shared-link-owners.patch")))))
+        (map (lambda (name)
+               (local-file
+                (repository-file (string-append "device/patches/" name))
+                name))
+             '("waydroid-host-stack-shared-link-owners.patch"
+               "waydroid-host-stack-gatt-write-parts.patch"
+               "waydroid-host-stack-scan-duplicate-data.patch")))))
     (build-system cargo-build-system)
     (arguments
      (list
