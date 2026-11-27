@@ -1,0 +1,145 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] nfc: nxp-nci: a sysfs path to send one raw NCI command
+
+Badge replay (card emulation) needs the controller put into listen mode as
+an ISO 14443-A target presenting a chosen LA_NFCID1, so a reader that checks
+only the UID opens.  The kernel's NCI core has no card-emulation (HCE) path
+and its RF_DISCOVER builder emits only poll modes (plus NFC-DEP listen); the
+NFC netlink API exposes no way to set LA_NFCID1.  So there is no user-space
+route to configure listen and present a UID.
+
+Add a write-only sysfs attribute, nci_cmd, on the nxp-nci i2c device.  A
+write is parsed as one NCI control command (GID/OID, length, payload; spaces
+and ':' ignored) and sent through nci_core_cmd(), the same path the
+device-tree init-cmds use (pro1x-nfc-init.patch).  Only command packets
+(MT=CMD) are accepted, so data frames cannot be injected.  Reading back
+gives the NCI status of the last write.  With it, user space can send
+CORE_SET_CONFIG (LA_NFCID1 0x33, LA_SEL_INFO 0x32, LA_BIT_FRAME_SDD 0x30,
+LA_PLATFORM_CONFIG 0x31), then a single listen-A RF_DISCOVER (tech/mode
+0x80), then RF_DEACTIVATE to stop.  The controller answers the UID during
+ISO 14443-3 anticollision, before any higher-layer protocol, so a UID-only
+reader is satisfied even though the kernel cannot complete ISO-DEP listen.
+
+The attribute is created by the driver core (dev_groups); a udev rule gives
+the radio group (netdev) write access, as for rfkill.  pro1x-nfc-listen
+drives the sequence from the NFC wallet (pro1x-nfc).
+
+NCI config parameter IDs for Listen A are confirmed from the Pro1X's stock
+Android HAL start-up capture (moWerk, nfcd-nxp-i2c-plugin): 30 01 08 (SDD),
+31 01 03 (platform), 32 01 60 (SEL_INFO), 33 04 01 02 03 04 (NFCID1).
+
+Ours (fxtec-pro1x-guix, 2026-11-27).  Build-tested only; the listen sequence
+is not yet verified on the device (no card-emulation seen on mainline NCI
+for this chip anywhere).
+
+---
+--- a/drivers/nfc/nxp-nci/i2c.c
++++ b/drivers/nfc/nxp-nci/i2c.c
+@@ -40,6 +40,8 @@
+ 			 * < 0 if hardware error occurred (e.g. i2c err)
+ 			 * and prevents normal operation.
+ 			 */
++
++	int last_nci_status;	/* NCI status of the last nci_cmd write */
+ };
+ 
+ static int nxp_nci_i2c_set_mode(void *phy_id,
+@@ -263,6 +265,90 @@
+ 	{ }
+ };
+ 
++/*
++ * nci_cmd: a write-only path for one raw NCI control command, so user space
++ * can configure listen (card-emulation) parameters the NFC netlink API does
++ * not expose -- LA_NFCID1 and LA_SEL_INFO via CORE_SET_CONFIG, then a
++ * single listen-A RF_DISCOVER -- to present a saved badge's UID to a reader.
++ * The kernel's NCI core has no card-emulation (HCE) path, but the UID is
++ * answered by the controller during ISO 14443-3 anticollision, before any
++ * higher-layer protocol, so a UID-only reader is satisfied.
++ *
++ * Input is a hex string of one NCI control command (GID/OID, length, then
++ * the payload); spaces and ':' are ignored.  Only command packets (MT=CMD)
++ * are accepted, so this cannot inject data frames.  The command goes through
++ * nci_core_cmd(), like the device-tree init-cmds; reading back gives the
++ * NCI status of the last write (0 = success, <0 = errno, >0 = NCI status).
++ * Needs the adapter powered (RF idle: no poll loop running).
++ */
++#define NXP_NCI_CMD_MAX		(3 + 255)
++
++static ssize_t nci_cmd_store(struct device *dev,
++			     struct device_attribute *attr,
++			     const char *buf, size_t count)
++{
++	struct nxp_nci_i2c_phy *phy = dev_get_drvdata(dev);
++	u8 cmd[NXP_NCI_CMD_MAX];
++	size_t len = 0, i;
++	int hi = -1, r;
++
++	if (!phy || !phy->ndev)
++		return -ENODEV;
++
++	for (i = 0; i < count; i++) {
++		char c = buf[i];
++		int v;
++
++		if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ':')
++			continue;
++		if (c >= '0' && c <= '9')
++			v = c - '0';
++		else if (c >= 'a' && c <= 'f')
++			v = c - 'a' + 10;
++		else if (c >= 'A' && c <= 'F')
++			v = c - 'A' + 10;
++		else
++			return -EINVAL;
++		if (hi < 0) {
++			hi = v;
++		} else {
++			if (len >= sizeof(cmd))
++				return -EINVAL;
++			cmd[len++] = (hi << 4) | v;
++			hi = -1;
++		}
++	}
++	if (hi >= 0)			/* an odd number of hex digits */
++		return -EINVAL;
++	if (len < 3 || (cmd[0] & 0xe0) != 0x20 || len != (size_t)3 + cmd[2])
++		return -EINVAL;
++
++	r = nci_core_cmd(phy->ndev,
++			 nci_opcode_pack(cmd[0] & 0x0f, cmd[1] & 0x3f),
++			 cmd[2], cmd + 3);
++	phy->last_nci_status = r;
++	if (r < 0)
++		return r;
++	return count;
++}
++
++static ssize_t nci_cmd_show(struct device *dev,
++			    struct device_attribute *attr, char *buf)
++{
++	struct nxp_nci_i2c_phy *phy = dev_get_drvdata(dev);
++
++	if (!phy)
++		return -ENODEV;
++	return sysfs_emit(buf, "%d\n", phy->last_nci_status);
++}
++static DEVICE_ATTR_RW(nci_cmd);
++
++static struct attribute *nxp_nci_i2c_attrs[] = {
++	&dev_attr_nci_cmd.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(nxp_nci_i2c);
++
+ static int nxp_nci_i2c_probe(struct i2c_client *client)
+ {
+ 	struct device *dev = &client->dev;
+@@ -348,6 +434,7 @@
+ 		   .name = NXP_NCI_I2C_DRIVER_NAME,
+ 		   .acpi_match_table = ACPI_PTR(acpi_id),
+ 		   .of_match_table = of_nxp_nci_i2c_match,
++		   .dev_groups = nxp_nci_i2c_groups,
+ 		  },
+ 	.probe = nxp_nci_i2c_probe,
+ 	.id_table = nxp_nci_i2c_id_table,

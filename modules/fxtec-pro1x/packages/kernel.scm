@@ -72,12 +72,16 @@
         ;; The NFC controller (NXP, NCI 2.0) on I2C1, for nxp-nci, and the
         ;; stock start-up settings it loses at each power cycle (clock,
         ;; antenna supply TVDD config 2, RF tuning; moWerk's capture).
+        ;; A sysfs node to send one raw NCI command, so user space can set
+        ;; LA_NFCID1 and enter listen mode to replay a badge's UID
+        ;; (pro1x-nfc-listen; nci_cmd not exposed by the NFC netlink API).
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
-          "bt-le-conn-nodup" "ath-country-ie-no-ir" "nfc" "nfc-init"))))
+          "bt-le-conn-nodup" "ath-country-ie-no-ir"
+          "nfc" "nfc-init" "nfc-replay"))))
 
 (define-public linux-pro1x
   (package

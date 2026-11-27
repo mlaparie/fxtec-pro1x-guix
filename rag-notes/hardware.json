@@ -759,6 +759,14 @@
     "confidence": "confirmed (card read 2026-11-27 with the whole list); config 2 alone not enough",
     "date": "2026-11-27",
     "source": "github.com/moWerk/nfcd-nxp-i2c-plugin bb567df config/nxp-i2c-init.hex and src/nxp_i2c_plugin.c; /root/nfc-mowerk-test.py run on the phone 2026-11-27 (log deleted)"
+   },
+   {
+    "title": "NFC card emulation (badge replay) on mainline: no HCE in the kernel, but a UID-only badge can be presented via a raw NCI listen-A path",
+    "general": "The mainline Linux NCI core has no host card-emulation (ISO-DEP listen / HCE) path: net/nfc/nci/ntf.c calls nfc_tm_activated only for NFC-DEP, and an ISO-DEP listen activation returns NCI_STATUS_RF_PROTOCOL_ERROR. The NFC netlink API also exposes no way to set LA_NFCID1. So neard/the core cannot emulate a card. But a reader that checks only the UID is satisfied during the ISO 14443-3 anticollision, which the controller answers autonomously from its Listen-A config before any higher-layer protocol. Presenting a chosen UID therefore needs only: CORE_SET_CONFIG with LA_NFCID1 (0x33) + LA_SEL_INFO (0x32) + LA_BIT_FRAME_SDD (0x30) + LA_PLATFORM_CONFIG (0x31), then one RF_DISCOVER entry with tech/mode NCI_NFC_A_PASSIVE_LISTEN_MODE (0x80), then RF_DEACTIVATE to stop. Since the driver holds the I2C bus, user space cannot do this over i2c-dev; the only route is a driver hook (vendor cmd or a sysfs raw-NCI node). A PN557 under NCI 2.0 rejects a whole RF_DISCOVER that lists the RFU active modes 0x05/0x85, so emit only the modes you need (moWerk). Crypto readers (DESFire, Mifare Classic with keys) are not fooled: only the UID is answered.",
+    "instance": "Pro¹x PN557, linux-pro1x 7.3. Param IDs confirmed from the stock HAL capture (moWerk nfcd-nxp-i2c-plugin, config/nxp-i2c-init.hex): 30 01 08, 31 01 03, 32 01 60, 33 04 01 02 03 04. Implemented as pro1x-nfc-replay.patch (sysfs nci_cmd on the nxp-nci i2c device -> nci_core_cmd, the init-cmds path) plus pro1x-nfc-listen (builds the sequence) and replay_badge() in pro1x-nfc. Build-tested only: the listen sequence is NOT verified on the device, and whether the PN557 presents a custom NFCID1 in listen mode is unconfirmed on any port (moWerk have no card-emulation captured).",
+    "confidence": "confirmed (source, for the kernel's lack of HCE and the param IDs); inferred (that anticollision presents the UID); untested (on the device)",
+    "date": "2026-11-27",
+    "source": "net/nfc/nci/ntf.c nci_rf_intf_activated_ntf_packet and include/net/nfc/nci.h (torvalds/linux); github.com/moWerk/nfcd-nxp-i2c-plugin config/nxp-i2c-init.hex; device/kernel/patches/pro1x-nfc-replay.patch; device/sway/pro1x-nfc-listen"
    }
   ]
  }
