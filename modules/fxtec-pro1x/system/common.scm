@@ -153,6 +153,9 @@ symbol exported by MODULE, a list of symbols, returns."
   ;;                (wake-on '(calls sms))
   ;;                Switch the USB controller off while unplugged, to draw less power in suspend.
   ;;                (usb-runtime-pm? #t)
+  ;;                Turn Bluetooth off after this many minutes with no connected devices
+  ;;                (#f: never); quick actions overrides until reboot.
+  ;;                (bt-auto-off #f)
   ;;                Torch off after this many seconds (#f: never).
   ;;                (torch-timeout 60)
   ;;                Shaking twice: 'torch, or a shell command (a string).

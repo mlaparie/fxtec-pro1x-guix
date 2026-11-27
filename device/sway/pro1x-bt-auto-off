@@ -1,0 +1,30 @@
+#!/bin/sh
+# pro1x-bt-auto-off — Bluetooth auto-off delay
+#
+#   pro1x-bt-auto-off get   print the delay in force (minutes, or off)
+#
+# config.scm's bt-auto-off is the delay for good (/etc/pro1x/bt.conf);
+# quick actions overrides it until the next reboot (a file in each user's
+# XDG_RUNTIME_DIR, which /run's emptying at boot drops).
+#
+# The timer itself runs in pro1x-cpu-mode's watch loop (every 10 s, no
+# extra process): when Bluetooth is on and no device is connected, it
+# counts idle ticks and rfkills bluetooth when the delay runs out.
+
+PATH=/run/current-system/profile/bin:$PATH
+BT_AUTO_OFF=
+[ -r /etc/pro1x/bt.conf ] && . /etc/pro1x/bt.conf
+
+delay() {
+    # An override in any user's runtime dir (there is one user on a phone).
+    for f in /run/user/*/pro1x-bt-auto-off; do
+        [ -f "$f" ] && { cat "$f"; return; }
+    done
+    if [ -n "$BT_AUTO_OFF" ]; then echo "$BT_AUTO_OFF"
+    else echo off; fi
+}
+
+case "${1:-get}" in
+    get) delay ;;
+    *) echo "usage: pro1x-bt-auto-off get" >&2; exit 1 ;;
+esac

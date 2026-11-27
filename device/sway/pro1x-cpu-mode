@@ -89,6 +89,16 @@ case "${1:-get}" in
         # Apply the mode in force, then follow auto while it is chosen.
         set_mode "$(current)"
         last=
+        bt_idle=0
+        # Bluetooth auto-off: the delay from an override or config.scm.
+        BT_AUTO_OFF=
+        [ -r /etc/pro1x/bt.conf ] && . /etc/pro1x/bt.conf
+        bt_delay() {
+            for f in /run/user/*/pro1x-bt-auto-off; do
+                [ -f "$f" ] && { cat "$f"; return; }
+            done
+            echo "${BT_AUTO_OFF:-off}"
+        }
         while :; do
             if [ "$(current)" = auto ]; then
                 t=$(auto_target)
@@ -97,6 +107,26 @@ case "${1:-get}" in
             else
                 last=
             fi
+
+            # Bluetooth auto-off: rfkill after bt-auto-off minutes idle.
+            d=$(bt_delay)
+            if [ "$d" != off ] && [ "$d" != 0 ] && [ -n "$d" ] &&
+               rfkill -n -o SOFT list bluetooth 2>/dev/null | grep -q unblocked; then
+                if bluetoothctl devices Connected 2>/dev/null | grep -q .; then
+                    bt_idle=0
+                else
+                    bt_idle=$((bt_idle + 1))
+                    if [ $bt_idle -ge $((d * 6)) ]; then
+                        rfkill block bluetooth
+                        logger -t pro1x-cpu-mode \
+                            "Bluetooth off after ${d} min with no connections"
+                        bt_idle=0
+                    fi
+                fi
+            else
+                bt_idle=0
+            fi
+
             sleep 10
         done ;;
     get) current ;;

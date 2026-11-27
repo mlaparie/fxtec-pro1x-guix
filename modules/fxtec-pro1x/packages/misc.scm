@@ -1902,6 +1902,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-hotspot                  Wi-Fi hotspot: name, password, QR code
 ;;;   bin/pro1x-hotspot-admin            its root part: expel, ban (sudoers)
 ;;;   bin/pro1x-wifi-powersave           Wi-Fi power saving, off while streaming (sudoers)
+;;;   bin/pro1x-bt-auto-off              Bluetooth off after a delay with no connections
 ;;;   bin/pro1x-stream-output            the output the screen-cast portal captures
 ;;;   bin/pro1x-stream-cert              the stream's HTTPS name on the hotspot (root)
 ;;;   bin/pro1x-stream-dns-porkbun       its DNS records through Porkbun's API
@@ -2019,6 +2020,7 @@ window opened by a sway key binding.")
           ("pro1x-portrait-ua.xpi" "share/pro1x-sway/")
           ("pro1x-sleep" "bin/")
           ("pro1x-cpu-mode" "bin/")
+          ("pro1x-bt-auto-off" "bin/")
           ("pro1x-charge-limit" "bin/")
           ("pro1x-sov" "bin/")
           ("pro1x-osk" "bin/")

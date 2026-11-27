@@ -597,6 +597,27 @@ app_remove() {
     } > "$apps_file.new" && mv "$apps_file.new" "$apps_file"
 }
 
+bt_autooff_pick() {
+    btstate=${XDG_RUNTIME_DIR:-/tmp}/pro1x-bt-auto-off
+    cur=$(cat "$btstate" 2>/dev/null || echo default)
+    BT_AUTO_OFF=; . /etc/pro1x/bt.conf 2>/dev/null
+    d=${BT_AUTO_OFF:-off}
+    pick=$({ printf 'back\t← back\n'
+             { printf 'default\tconfig.scm: %s\n' "$([ "$d" = off ] || [ -z "$d" ] && echo off || echo "$d min")"
+               printf 'off\toff\n'
+               for m in 5 15 30 60; do printf '%s\t%s min\n' "$m" "$m"; done
+               for h in 2 4 8; do printf '%s\t%s h\n' "$((h * 60))" "$h"; done; } |
+                 awk -F'\t' -v cur="$cur" '{ print $1 "\t" ($1 == cur ? "● " : "  ") $2 }'; } |
+           fzf --listen="$asksock" --delimiter='\t' --with-nth=2 --prompt="auto-off > " \
+               --layout=reverse-list --no-info --cycle --margin=1,2 --color=16,gutter:-1 \
+               --bind='load:pos(2)' --bind='left:abort' --bind='right:accept' | cut -f1)
+    case "$pick" in
+        ""|back) ;;
+        default) rm -f "$btstate" ;;
+        *) echo "$pick" > "$btstate" ;;
+    esac
+}
+
 choose() {
     # The line, kept: the charge entry's `set --' replaces $1, and the
     # choice was then applied to no line at all (2026-11-02).
@@ -675,6 +696,15 @@ choose() {
                        ps=$(iw dev wlan0 get power_save 2>/dev/null | awk '{ print $3 }')
                        [ -n "$ps" ] && printf 'powersave\tpower saving: %s (turn %s)\n' \
                            "$ps" "$([ "$ps" = on ] && echo off || echo on)"
+                   fi
+                   if [ "$1" = bluetooth ]; then
+                       d=$(pro1x-bt-auto-off get 2>/dev/null)
+                       ov=
+                       [ -f "${XDG_RUNTIME_DIR:-/tmp}/pro1x-bt-auto-off" ] && ov=' (until reboot)'
+                       if [ "$d" = off ]; then shown=off
+                       elif [ "$d" -ge 120 ] 2>/dev/null; then shown="$((d / 60)) h"
+                       else shown="$d min"; fi
+                       printf 'btautooff\tauto-off: %s%s\n' "$shown" "$ov"
                    fi) ;;
         sim)
             title=SIM
@@ -809,6 +839,9 @@ choose() {
                 to=$([ "$ps" = on ] && echo off || echo on)
                 confirm wifi "power saving $to" \
                         sudo -n /run/current-system/profile/bin/pro1x-wifi-powersave "$to"
+            elif [ "$pick" = btautooff ]; then
+                bt_autooff_pick
+                choose bluetooth
             elif [ "$pick" = tool ]; then
                 # Its networks or devices need it on (author, 2026-11-02).
                 [ "$(state_of "$line")" = on ] || set_to "$line" on

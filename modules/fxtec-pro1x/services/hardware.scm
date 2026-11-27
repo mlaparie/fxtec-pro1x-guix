@@ -172,6 +172,9 @@
   ;; Switch the USB controller off while unplugged, to draw less power in
   ;; suspend (moWerk: 29-32 mA instead of 40-42).
   (usb-runtime-pm?    pro1x-hardware-usb-runtime-pm?    (default #t))
+  ;; Turn Bluetooth off after this many minutes with no connected devices;
+  ;; #f: never.  Quick actions overrides it until reboot.
+  (bt-auto-off        pro1x-hardware-bt-auto-off        (default #f))
   ;; Shaking the phone twice (pro1x-shake-torch) runs shake-action,
   ;; locked or not: 'torch toggles the torch (torch-timeout still applies),
   ;; a string is a shell command run in the Sway session through pro1x-open
@@ -1268,6 +1271,16 @@ under the file names stevia looks for.")
                         "SLEEP_LED='" (if led (led-intensity (car led)) "")
                         "'\nSLEEP_LEVEL="
                         (if led (number->string (cadr led)) "0") "\n")))))
+      ;; /etc/pro1x/bt.conf: Bluetooth auto-off delay, for pro1x-bt-auto-off
+      ;; (quick actions overrides it until reboot).
+      ("pro1x/bt.conf"
+       ,(plain-file "bt.conf"
+                    (string-append
+                     "# Written by pro1x-hardware-service-type (config.scm).\n"
+                     "BT_AUTO_OFF="
+                     (let ((d (pro1x-hardware-bt-auto-off config)))
+                       (if d (number->string d) ""))
+                     "\n")))
       ;; /etc/pro1x/cpu.conf: the CPU mode for good, for pro1x-cpu-mode
       ;; (quick actions override it until reboot).
       ("pro1x/cpu.conf"
