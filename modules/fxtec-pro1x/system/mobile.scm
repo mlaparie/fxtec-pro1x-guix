@@ -648,8 +648,11 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               "/run/current-system/profile/bin/pro1x-hotspot-admin, "
                               ;; Wi-Fi power saving: quick actions, streams.
                               "/run/current-system/profile/bin/pro1x-wifi-powersave, "
-                              ;; The stream's HTTPS name on the hotspot.
+                              ;; The stream's HTTPS name on the hotspot:
+                              ;; the browser streams', and wl-cast's, which
+                              ;; `wl-cast start' runs itself.
                               "/run/current-system/profile/bin/pro1x-stream-cert, "
+                              "/run/current-system/profile/bin/wl-cast-cert, "
                               ;; Quick actions' Waydroid: its image.
                               "/run/current-system/profile/bin/pro1x-waydroid-admin, "
                               ;; The stream menu's TESTS: Bluetooth logs.
