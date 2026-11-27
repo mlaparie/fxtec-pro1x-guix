@@ -667,6 +667,14 @@
     "confidence": "confirmed",
     "date": "2026-11-06",
     "source": "vendor drivers/misc/qseecom.c (qseecom_parse_dt, __qseecom_get_fw_data, __qseecom_alloc_coherent_buf) and bengal.dtsi of LineageOS android_kernel_fxtec_sm6115; stock firmware archive listing and rawprogram*.xml (author, 2026-11-06); phone dmesg and partition reads 2026-11-06"
+   },
+   {
+    "title": "An NFC controller left powered without its driver ruins fingerprint matching on the Pro¹x",
+    "general": "When a kernel lacks the NFC controller's device-tree node, nothing drives its enable line; on the Pro¹x GPIO 69 then floats high (pull-up), the PN557 stays powered on whatever settings it last had, and the capacitive fingerprint sensor's matches fail although every capture succeeds. If fingerprint matching drops after a kernel change, check that the NFC driver holds the controller off (or hold its enable line low) before suspecting the fingerprint stack.",
+    "instance": "Generation 283 (kernel from the dev branch, without c469f7d): 0 of 27 matches over two days, with the current and the previous pro1x-fpd alike; generations up to 281 (kernel with the NFC node): about 45% (52 of 116, the author's varied finger placement). With GPIO 69 held low by gpioset -c gpiochip2 69=0 on the same kernel: 5 of 11 (2026-11-27 03:54). Fixed by deploying dev-next's kernel (generation 284), whose nxp-nci driver keeps the controller off while NFC is off.",
+    "confidence": "confirmed",
+    "date": "2026-11-27",
+    "source": "/var/log/pro1x-fpd.log on the phone (attempt lines only); /sys/kernel/debug/gpio"
    }
   ],
   "bluetooth": [
