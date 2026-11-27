@@ -944,7 +944,11 @@ Dracula palette, no kernel messages over the greeter.")
                  ;; Saved connections stay where earlier images put them.
                  `("connections.conf"
                    ,(plain-file "nm-connections.conf"
-                                "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))))))
+                                "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))
+                 ;; Wi-Fi power saving on by default for new networks.
+                 `("wifi-powersave.conf"
+                   ,(plain-file "nm-wifi-powersave.conf"
+                                "[connection]\nwifi.powersave=3\n"))))))
      (service wpa-supplicant-service-type)
 
      ;; NTP — no hardware RTC; -g allows stepping the clock from 1970
