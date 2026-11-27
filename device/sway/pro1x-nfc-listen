@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+# pro1x-nfc-listen: put the NXP controller into ISO 14443-A listen mode
+# presenting a chosen UID (LA_NFCID1), so a reader that checks only the UID
+# sees the saved badge.  Used by pro1x-nfc (the NFC wallet) to replay a badge.
+#
+#   pro1x-nfc-listen start UID [SAK]   present UID (4 or 7 bytes, hex) until
+#                                      stop; SAK is the SEL_RES byte, hex,
+#                                      default 00
+#   pro1x-nfc-listen stop              leave listen mode (RF_DEACTIVATE)
+#
+# It writes raw NCI control commands to the driver's nci_cmd sysfs node
+# (pro1x-nfc-replay.patch): CORE_SET_CONFIG with the Listen-A parameters,
+# then a single listen-A RF_DISCOVER; stop sends RF_DEACTIVATE.  The kernel
+# NCI core has no card-emulation (HCE) path, so only the UID is answered, in
+# the ISO 14443-3 anticollision the controller handles itself -- enough for a
+# UID-only reader, not for one that reads encrypted sectors or runs a crypto
+# challenge (DESFire, Mifare Classic with keys).  The adapter must be powered
+# and not polling (pro1x-nfc stops the poll loop first).
+#
+# NCI config parameter IDs (NCI 2.0, RF Communication; the Pro1X's stock HAL
+# sets the same four, moWerk's nfcd-nxp-i2c-plugin capture):
+#   0x30 LA_BIT_FRAME_SDD   0x31 LA_PLATFORM_CONFIG
+#   0x32 LA_SEL_INFO        0x33 LA_NFCID1
+#
+# State: written 2026-11-27, untested (needs the CI kernel with the nci_cmd
+# patch).  Whether the PN557 presents a custom NFCID1 in listen mode is not
+# confirmed on any port.
+import glob
+import sys
+
+# NCI control commands (GID, OID, then a length byte and payload).
+SET_CONFIG = (0x20, 0x02)        # CORE_SET_CONFIG_CMD
+RF_DISCOVER = (0x21, 0x03)       # RF_DISCOVER_CMD
+RF_DEACTIVATE = (0x21, 0x06)     # RF_DEACTIVATE_CMD
+LA_BIT_FRAME_SDD, LA_PLATFORM_CONFIG, LA_SEL_INFO, LA_NFCID1 = 0x30, 0x31, 0x32, 0x33
+NCI_NFC_A_PASSIVE_LISTEN_MODE = 0x80
+
+
+def node():
+    for n in glob.glob("/sys/class/nfc/nfc*/device/nci_cmd"):
+        return n
+    sys.exit("pro1x-nfc-listen: no nci_cmd node "
+             "(kernel without pro1x-nfc-replay.patch, or NFC off)")
+
+
+def unhex(s):
+    s = "".join(c for c in s if c not in " :\t")
+    if len(s) % 2:
+        sys.exit("pro1x-nfc-listen: odd hex string %r" % s)
+    try:
+        return bytes.fromhex(s)
+    except ValueError:
+        sys.exit("pro1x-nfc-listen: not hex: %r" % s)
+
+
+def cmd(gid_oid, payload):
+    gid, oid = gid_oid
+    return bytes((gid, oid, len(payload))) + bytes(payload)
+
+
+def send(path, frame, tolerant=False):
+    # Write one command; a transport failure (nci_core_cmd < 0) surfaces as
+    # an OSError on write.  The NCI status of the command is then read back
+    # (0 = success, >0 = an NCI status code, <0 = -errno).  tolerant=True
+    # returns None instead of exiting, for a best-effort deactivate.
+    try:
+        with open(path, "w") as f:
+            f.write(frame.hex())
+        with open(path) as f:
+            return int(f.read().strip() or "0")
+    except PermissionError as e:
+        sys.exit("pro1x-nfc-listen: %s: %s (not in the netdev group?)" % (path, e))
+    except OSError as e:
+        if tolerant:
+            return None
+        sys.exit("pro1x-nfc-listen: %s: %s" % (path, e))
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    path = node()
+    action = sys.argv[1]
+
+    if action == "stop":
+        send(path, cmd(RF_DEACTIVATE, (0x00,)), tolerant=True)   # to idle
+        return
+
+    if action != "start" or len(sys.argv) < 3:
+        sys.exit("usage: pro1x-nfc-listen start UID [SAK] | stop")
+
+    uid = unhex(sys.argv[2])
+    if len(uid) not in (4, 7):
+        sys.exit("pro1x-nfc-listen: UID must be 4 or 7 bytes, got %d" % len(uid))
+    sak = unhex(sys.argv[3])[0] if len(sys.argv) > 3 and sys.argv[3] else 0x00
+
+    # Leave any previous listen first; ignore its status (idle already).
+    send(path, cmd(RF_DEACTIVATE, (0x00,)), tolerant=True)
+
+    # CORE_SET_CONFIG: the four Listen-A parameters.  LA_BIT_FRAME_SDD 0x08
+    # and LA_PLATFORM_CONFIG 0x03 are the stock values; the cascade length
+    # (single/double) follows the LA_NFCID1 length the controller is given.
+    params = bytearray([4])      # number of parameters
+    params += bytes((LA_BIT_FRAME_SDD, 1, 0x08))
+    params += bytes((LA_PLATFORM_CONFIG, 1, 0x03))
+    params += bytes((LA_SEL_INFO, 1, sak))
+    params += bytes((LA_NFCID1, len(uid))) + uid
+    st = send(path, cmd(SET_CONFIG, params))
+    if st != 0:
+        sys.exit("pro1x-nfc-listen: CORE_SET_CONFIG rejected (NCI status %d)" % st)
+
+    # RF_DISCOVER with one entry: listen-A, discovery frequency 1.  Only this
+    # mode, to avoid the RFU active modes (0x05/0x85) a PN557 rejects wholesale
+    # under NCI 2.0 (moWerk).
+    disc = (1, NCI_NFC_A_PASSIVE_LISTEN_MODE, 1)
+    st = send(path, cmd(RF_DISCOVER, disc))
+    if st != 0:
+        sys.exit("pro1x-nfc-listen: RF_DISCOVER rejected (NCI status %d)" % st)
+
+
+if __name__ == "__main__":
+    main()

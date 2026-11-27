@@ -488,6 +488,18 @@ colours from the system configuration.")
                         #$(file-append coreutils "/bin/chmod")
                         " 0444 /sys%p/eeprom\"\n")
                        port)
+              ;; The NFC controller's nci_cmd node (pro1x-nfc-replay.patch):
+              ;; writable by the radio group (netdev), as rfkill is, so
+              ;; pro1x-nfc-listen can set LA_NFCID1 and enter listen mode to
+              ;; replay a badge's UID.  The group, then the mode.
+              (display (string-append
+                        "ACTION==\"bind\", SUBSYSTEM==\"i2c\","
+                        " DRIVER==\"nxp-nci_i2c\", KERNEL==\"1-0028\", RUN+=\""
+                        #$(file-append coreutils "/bin/chgrp")
+                        " netdev /sys%p/nci_cmd\", RUN+=\""
+                        #$(file-append coreutils "/bin/chmod")
+                        " 0660 /sys%p/nci_cmd\"\n")
+                       port)
               (display #$extra port))))))
   (define base
     (local-file (repository-file "device/udev/60-pro1x.rules")

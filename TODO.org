@@ -132,6 +132,21 @@ hand over i2c-dev, driver not loaded (generation 287, module_blacklist=nxp_nci_i
 patch: the DT property nxp,init-cmds carries the list, sent from post_setup.  CI build pending.
 Unloading nxp_nci_i2c by rmmod hung again (D state), and the stuck rmmod blocked reboot: needed
 sysrq s then b.
+2026-11-27: badge replay (listen mode) built.  Confirmed from source: the mainline NCI core has
+no card-emulation (HCE) path (net/nfc/nci/ntf.c signals tm only for NFC-DEP; ISO-DEP listen is
+NCI_STATUS_RF_PROTOCOL_ERROR) and no netlink way to set LA_NFCID1, so a driver change is needed;
+there is no pure-user-space route (the driver holds the I2C bus).  pro1x-nfc-replay.patch adds a
+write-only sysfs node, nci_cmd, on the nxp-nci i2c device that forwards one raw NCI control
+command to nci_core_cmd (the init-cmds path).  pro1x-nfc-listen writes CORE_SET_CONFIG
+(LA_NFCID1 0x33 = UID, LA_SEL_INFO 0x32 = SAK, LA_BIT_FRAME_SDD 0x30, LA_PLATFORM_CONFIG 0x31)
+then a single listen-A RF_DISCOVER (0x80; only this mode, to dodge the RFU 0x05/0x85 a PN557
+rejects, moWerk); stop sends RF_DEACTIVATE.  The UID is answered in ISO 14443-3 anticollision
+before any higher protocol, so UID-only readers open; crypto readers (DESFire, Mifare Classic
+with keys) do not.  A udev rule gives netdev write on the node (as rfkill).  replay_badge() in
+pro1x-nfc reworked off its old nfctool/sysfs guesses.  Build-tested only (C -Wall clean, patch
+applies, shell/python/scheme checked); NOT verified on device, and whether the PN557 presents a
+custom NFCID1 in listen mode is unconfirmed on any port.  Next: CI kernel, then the on-device
+test plan (set LA_NFCID1, listen-A, present to a reader; sniff the anticollision for the UID).
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no

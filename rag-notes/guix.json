@@ -691,6 +691,14 @@
         "confidence": "confirmed",
         "date": "2026-11-27",
         "source": "phone: /var/log/pro1x-stream-cert.log, ~user/.local/state/tesla-stream.log, nft list ruleset, /etc/sudoers; device/sway/pro1x-stream send_wlcast; wl-cast a98d5cd 679de13; fdca01a 89e2e38"
+      },
+      {
+        "title": "A driver sysfs attribute the Sway session must write needs a udev RUN chmod/chgrp rule (no logind uaccess on this port)",
+        "general": "Without systemd-logind there is no TAG+=\"uaccess\" and no per-seat ACLs, so a sysfs attribute the session user must write cannot be granted that way. udev GROUP=/MODE= apply to device nodes, not to sysfs attributes. The working pattern is a RUN+= chgrp/chmod on the device's bind event (ACTION==\"bind\"), as the port already does for the camera EEPROM; driver dev_groups attributes exist by the time the BIND uevent fires. Put the radio-control group (netdev, the same the port uses for rfkill) on it. Also: there is no pure-user-space route to raw NCI while the kernel driver is bound, so a feature like card-emulation needs a driver node first.",
+        "instance": "pro1x-nfc badge replay: pro1x-nfc-replay.patch exposes nci_cmd on the nxp-nci i2c device (1-0028, DRIVER nxp-nci_i2c); pro1x-udev-rules (modules/fxtec-pro1x/services/hardware.scm) adds ACTION==\"bind\" ... RUN+=chgrp netdev, RUN+=chmod 0660 on /sys%p/nci_cmd, mirroring the at24 eeprom rule. pro1x-nfc-listen (packaged in misc.scm beside pro1x-nfc-target) writes it. Build-tested only.",
+        "confidence": "confirmed (the eeprom RUN rule is the working precedent); untested (the nci_cmd rule not yet run)",
+        "date": "2026-11-27",
+        "source": "modules/fxtec-pro1x/services/hardware.scm pro1x-udev-rules; device/udev/60-pro1x.rules (rfkill netdev); device/kernel/patches/pro1x-nfc-replay.patch"
       }
     ]
   }

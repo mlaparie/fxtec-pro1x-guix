@@ -15,15 +15,22 @@
 # cards mostly carry no NDEF records at all, so this will usually miss them,
 # not refuse them; do not rely on it for that.
 #
-# Needs: the kernel with nxp-nci (pro1x-nfc.patch), neard running, nfctool.
-# The LED and the motor show polling, a badge found and a badge read
-# (pro1x-nfc-feedback).
-# Replay needs NCI 2.0 LA_NFCID1 support from the NXP firmware — untested.
+# Needs: the kernel with nxp-nci (pro1x-nfc.patch), neard running, and for
+# replay the nci_cmd driver node (pro1x-nfc-replay.patch) driven through
+# pro1x-nfc-listen.  The LED and the motor show polling, a badge found and a
+# badge read (pro1x-nfc-feedback).
+#
+# Replay sets the controller's LA_NFCID1 to the saved UID and enters NCI
+# listen mode (card emulation).  The kernel NCI core has no HCE path, so only
+# the UID is answered, in the ISO 14443-3 anticollision the controller
+# handles itself: a reader that checks only the UID is fooled, one that runs
+# a crypto challenge is not.  Untested on this firmware.
 #
 # Opened by Enter or Right on the NFC line of sway-quick-actions (Left there
 # turns the radio on or off); a line of the wallet does too.
 #
-# State: written 2026-11-23, untested (needs the CI kernel with nxp-nci).
+# State: written 2026-11-23, replay reworked 2026-11-27; untested (needs the
+# CI kernel with nxp-nci and the nci_cmd patch).
 
 set -u
 
@@ -493,68 +500,63 @@ replay_badge() {
             echo ;;
     esac
 
-    echo "⚠ Replay uses NCI 2.0 LA_NFCID1 — this is untested on this firmware."
-    echo "  If it does not work, the chip or firmware may not support it."
+    echo "⚠ Replay presents the saved UID to the reader (NCI listen mode)."
+    echo "  It works only if the reader checks nothing but the UID; one that"
+    echo "  runs a crypto challenge will not accept it.  Untested on this"
+    echo "  firmware: card emulation has not been seen on this chip anywhere."
     echo
 
     local err
     err=$(nfc_check) || { echo "$err"; pause; return; }
     err=$(neard_check) || { echo "$err"; pause; return; }
 
-    # Set LA_NFCID1 (the NCI listen-mode UID config parameter, ID 0x10) and
-    # enter listen mode.  neard exposes no API for this.  The two attempts
-    # below are guesses, not confirmed mechanisms: nfctool's --set-param
-    # flag and the sysfs node are not documented or seen working anywhere;
-    # setting LA_NFCID1 properly needs a raw NCI CORE_SET_CONFIG command,
-    # which would mean talking to /dev/nfcX directly or a vendor debugfs
-    # node, neither tried here.  Expect this to simply fail cleanly below.
-
-    local dev
-    dev=$(nfc_dev) || { echo "No NFC device."; pause; return; }
-
-    # Format the UID as the chip expects (bytes, no separators).
-    local uid_hex
-    uid_hex=$(printf '%s' "$B_UID" | tr -d ':' | tr '[:lower:]' '[:upper:]')
-
-    # Try the kernel's NFC_CMD_SET_PARAMS via nfctool or the sysfs path.
-    local ok=false
-
-    # Attempt 1: sysfs (some NXP drivers expose a listen_uid parameter).
-    if [ -w "/sys/class/nfc/$dev/device/listen_uid" ]; then
-        echo "$uid_hex" > "/sys/class/nfc/$dev/device/listen_uid" 2>/dev/null && ok=true
+    # The controller must be powered (dev up) and idle to take the listen
+    # config.  Power it if needed, with the same marker a scan uses so it is
+    # powered off after, and stop any poll loop so it is not polling as a
+    # reader (which would keep the NFCC out of the idle state SET_CONFIG
+    # needs).
+    local adapter
+    adapter=$(adapter_path) || { echo "No NFC adapter."; pause; return; }
+    [ -n "$adapter" ] || { echo "No NFC adapter."; pause; return; }
+    if ! adapter_powered "$adapter"; then
+        adapter_power "$adapter" true ||
+            { echo "Could not power the adapter."; pause; return; }
+        : > "$powered_by_scan"
+        local i=0
+        while ! adapter_powered "$adapter" && [ $i -lt 20 ]; do
+            sleep 0.1; i=$((i + 1))
+        done
     fi
+    gdbus call --system --dest=$NEARD --object-path "$adapter" \
+        --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
 
-    # Attempt 2: nfctool with listen-mode parameters (depends on kernel support).
-    if ! $ok && command -v nfctool >/dev/null 2>&1; then
-        nfctool -d "$dev" --set-param la_nfcid1="$uid_hex" 2>/dev/null && ok=true
-    fi
-
-    if ! $ok; then
-        echo "Could not set the listen-mode UID."
-        echo "The kernel or firmware may not expose LA_NFCID1 yet."
-        echo "This feature needs testing with the new nxp-nci kernel."
+    # Set LA_NFCID1 to the badge's UID and enter listen-A through the driver's
+    # nci_cmd node (pro1x-nfc-replay.patch); pro1x-nfc-listen builds the NCI
+    # commands.  neard has no API for listen mode.
+    local out
+    if ! out=$(pro1x-nfc-listen start "$B_UID" "$B_SAK" 2>&1); then
+        echo "Could not enter listen mode:"
+        echo "  $out"
+        echo
+        echo "The kernel may lack pro1x-nfc-replay.patch, or the firmware may"
+        echo "not present a custom UID in listen mode."
+        [ -e "$powered_by_scan" ] &&
+            { adapter_power "$adapter" false; rm -f "$powered_by_scan"; }
         pause
         return
     fi
 
-    echo "UID set to $B_UID.  Starting listen mode…"
-    echo "Hold the phone to the reader."
+    echo "Presenting UID $B_UID.  Hold the phone to the reader."
     echo
+    feedback listening 3600
+    # Until the line is chosen.
+    pick "stop	■ Stop replaying" >/dev/null
+    feedback stop
 
-    # Start a Dual poll loop (initiator + target/listen).
-    local adapter
-    adapter=$(adapter_path)
-    if [ -n "$adapter" ]; then
-        gdbus call --system --dest=$NEARD --object-path "$adapter" \
-            --method org.neard.Adapter.StartPollLoop Dual >/dev/null 2>&1
-        feedback listening 3600
-        # Until the line is chosen.
-        pick "stop	■ Stop replaying" >/dev/null
-        feedback stop
-        gdbus call --system --dest=$NEARD --object-path "$adapter" \
-            --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
-    else
-        echo "No NFC adapter found."
+    pro1x-nfc-listen stop >/dev/null 2>&1
+    if [ -e "$powered_by_scan" ]; then
+        adapter_power "$adapter" false
+        rm -f "$powered_by_scan"
     fi
     pause
 }
