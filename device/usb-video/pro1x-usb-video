@@ -40,6 +40,14 @@ running() {
 	[ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
 
+# The UVC gadget's V4L2 node, read from sysfs: pro1x-usb-gadget needs root.
+uvc_node() {
+	for d in /sys/class/video4linux/video*; do
+		[ -e "$d/function_name" ] && { echo "/dev/${d##*/}"; return 0; }
+	done
+	return 1
+}
+
 cmd=${1:-status}
 [ $# -gt 0 ] && shift
 case $cmd in
@@ -57,7 +65,7 @@ start)
 		echo "already running (pid $(cat "$PIDFILE"))"
 		exit 0
 	fi
-	if ! pro1x-usb-gadget status 2>/dev/null | grep -q '^UVC gadget'; then
+	if ! uvc_node >/dev/null; then
 		echo "no UVC gadget: run 'sudo pro1x-usb-gadget video' first" >&2
 		exit 1
 	fi
@@ -89,7 +97,7 @@ stop)
 	fi
 	;;
 status)
-	pro1x-usb-gadget status 2>/dev/null || true
+	if node=$(uvc_node); then echo "UVC gadget: $node"; else echo "no UVC gadget"; fi
 	if running; then
 		echo "pro1x-uvc-feed running (pid $(cat "$PIDFILE"))"
 		tail -n 3 "$LOG" 2>/dev/null || true
