@@ -307,6 +307,21 @@ the phone's Tailscale address), not UDP to 10.42.0.1.  Screen of its own 1600x12
 delay 180-490 ms (110-220 ms on the panel just before), 4-6 frames/s encoded, 0-5 shown,
 frame age up to 1.8 s, RTT 3-350 ms, audio buffer 0.9-1.7 s, 60-65 °C.  To find: why no UDP
 pair (server-side ICE log), and why encoding the larger screen takes twice as long.
+*** NEXT [#A] The car's HTTPS name with wl-cast: deploy branch car-wheel, bump the wl-cast pin, try in the car
+Found 2026-11-27 (phone, generation 283): the car automation starts `pro1x-stream --wlcast',
+which never ran a certificate script; /var/lib/wl-cast did not exist, so wl-cast served its
+self-signed certificate; no nft redirect after the reboot; no sudoers line for wl-cast-cert;
+the wl-cast package wrapped neither certbot nor nft.  The legacy chain was fine (certificate
+until 2027-02-17, A record 240.3.3.4, no AAAA).  Done on branch car-wheel (port) and wl-cast
+car-wheel (a98d5cd, 679de13, c9991ca): wl-cast start runs sudo -n wl-cast-cert when
+~/.config/wl-cast/https.conf names a domain and the hotspot is up, the redirect goes to the
+ingress interface's address (wlan0 or ap0) with `redirect to :8443', offline keeps the
+certificate; here: certbot and nft wrapped into wl-cast-cert, sudoers, the menu's settings file
+moved to wl-cast's (one file for both streams), [group PHONE] on the port's buttons.
+To ship: move the wl-cast pin to the car-wheel commits, deploy, then in the car with the
+hotspot up: open the https://NAME/ link (the key box, or the link with ?k=), check
+/var/log/wl-cast-cert.log and `nft list table ip wl_cast' first.  Only the car shows whether
+its browser follows the 443 redirect and trusts the chain, as it did with the legacy stream.
 *** TODO [#B] wl-cast "max perf" mode, from Tesor's settings (author, 2026-11-25)
 The author finds Tesor (Android, Tesla browser) much smoother and more direct than wl-cast.
 Its settings (screenshots 2026-11-25): HEVC on, 10 Mbps (default 5), dynamic FPS up to 15
