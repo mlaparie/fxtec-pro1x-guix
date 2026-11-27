@@ -8,19 +8,24 @@
 # It is a NetworkManager connection in shared mode.  It runs on wlan0 and
 # shares mobile data, dropping a Wi-Fi network in use.  With Keep Wi-Fi on,
 # it runs on a second interface, ap0, so that wlan0 can join networks: beside
-# one, on its own band and a channel other than the network's, sharing that
+# one, on that network's channel (SCC), or on a channel of its own where no
+# access point may start on the network's (radar channels), sharing that
 # network; with none, sharing mobile data until one is joined (place, below).
 #
 # State: on and off, the name and password confirmed by the author 2026-11-09.
-# A 5 GHz hotspot starts (channel 149, 2026-11-18).  While the phone is a
-# Wi-Fi client, the access point's country beacon closes every 5 GHz channel
-# ("no IR"), so the band can only be checked once the client link is dropped.
+# A 5 GHz hotspot starts (channel 149, 2026-11-18).  With the ath country-IE
+# patch and an EEPROM country (FR), non-DFS 5 GHz channels (36–48, 149–165)
+# lose "no IR" and an AP can run beside a client on the same channel (SCC).
+# DFS channels (52–144) still have "no IR": beside a network there, the
+# hotspot takes a channel of its own (MCC).
 # The device list, expel, ban, band, hidden, auto-off and data used are not yet
-# run on the phone.  Beside a Wi-Fi network: ap0 on 5 GHz channel 36 beside
-# a 5 GHz network on channel 112 gave a laptop that network's internet
-# (2026-11-24).  On the network's own channel 36 it carried no data (once,
-# not retried); ap0 on 2.4 GHz channel 6 beside that network worked two
-# minutes, then frames to the laptop failed (cause not found).
+# run on the phone.  Beside a Wi-Fi network: ap0 on the network's channel 36
+# at 80 MHz (SCC) gave a laptop 3.5 Mbps at -61 dBm, a third of the phone's own
+# 10 Mbps (2026-11-26).  ap0 on 5 GHz channel 36 beside a network on channel
+# 112 (MCC) gave a laptop that network's internet, pings 245-1135 ms
+# (2026-11-24).  ap0 on 2.4 GHz channel 6 beside that network worked two
+# minutes, then frames to the laptop failed (cause not found).  The merged
+# placement (SCC, else MCC) is not yet run on the phone.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -77,7 +82,8 @@ menu_lines() {
         toggle "Hotspot:    $s" \
         name "Name:       $(ssid)" \
         password "Password:   $(psk)" \
-        band "Band:       $(ghz "$(own_band)")" \
+        band "Band:       $(ghz "$(own_band)")$(on_ap0 && [ "$(band)" != "$(own_band)" ] &&
+                                 echo " ($(ghz "$(band)") now, the Wi-Fi's channel)")" \
         keep "Keep Wi-Fi: $(keep_line)" \
         hidden "Hidden:     $(if [ "$(hidden)" = yes ]; then echo yes; else echo no; fi)" \
         idle "Auto-off:   $(if [ "$(idle_minutes)" = 0 ]; then echo never; else echo "$(idle_minutes) min idle"; fi)" \
@@ -163,11 +169,13 @@ client_freq() {
 # interface, ap0: the WCN3990 allows an access point beside a client, on
 # the same channel or on two ("#{ managed } <= 2, #{ AP } <= 1, #channels
 # <= 2").  So the Wi-Fi stays up, e.g. a phone's 5G hotspot as the uplink,
-# and the car on the Pro1x's own (author, 2026-11-20).  On the network's
-# own channel the access point carried no data on 5 GHz, and no access
-# point may start on a radar channel (52-144), so ap0 takes another channel
-# on the hotspot's own band, away from the network's 80 MHz block.  The
-# radio shares its time between the two: a laptop's pings through it took
+# and the car on the Pro1x's own (author, 2026-11-20).  ap0 takes the
+# network's band and channel (SCC), 80 MHz wide on 5 GHz: one radio on one
+# channel, the hotspot gets about a third of the phone's own speed
+# (2026-11-26).  No access point may start on a radar channel (52-144):
+# beside a network there, ap0 takes another channel on the hotspot's own
+# band, away from the network's 80 MHz block (MCC).  The radio then shares
+# its time between the two channels: a laptop's pings through it took
 # 250-1100 ms, the phone's own about 65 ms (2026-11-24).  ap0 needs an
 # address of its own: wlan0's (already a random local one) made both fail
 # ("Name not unique on network").  Otherwise wlan0 itself, on the owner's
@@ -195,14 +203,23 @@ place() {
     # With Keep Wi-Fi, always on ap0, even with no network joined yet: on
     # wlan0 the hotspot would keep the phone off any network until it stops
     # (author, 2026-11-24: none could be joined while it ran).  Beside a
-    # network, on a channel of its own; with none, on its own channel.
+    # network, on its channel (SCC), or on a channel of its own when the
+    # network is on one where no access point may start (MCC); with none,
+    # on its own channel.
     ap=; [ "$(keep_wifi)" = yes ] && ap=yes
+    w=auto
     if [ -n "$ap" ]; then
         f=$(client_freq)
         [ -f "$saved_band" ] ||
             echo "$(band) $(nmcli -e no -g 802-11-wireless.channel connection show "$con")" > "$saved_band"
         read -r b ch < "$saved_band"
-        [ -n "$f" ] && ch=$(away "$b" "$ch" "$f")
+        if [ -n "$f" ] && ! no_ir "$f"; then
+            if [ "$f" = 2484 ]; then b=bg ch=14
+            elif [ "$f" -lt 3000 ]; then b=bg ch=$(( (f - 2407) / 5 ))
+            else b=a ch=$(( (f - 5000) / 5 )) w=80mhz; fi
+        elif [ -n "$f" ]; then
+            ch=$(away "$b" "$ch" "$f")
+        fi
         if [ "$b" = a ]; then af=$((5000 + 5 * ch)); else af=$((2407 + 5 * ch)); fi
         if [ "${ch:-0}" != 0 ] && no_ir "$af"; then
             if [ -n "$f" ]; then
@@ -220,13 +237,15 @@ place() {
         iface=ap0
         nmcli connection modify "$con" connection.interface-name ap0 \
               802-11-wireless.band "$b" 802-11-wireless.channel "${ch:-0}" \
+              802-11-wireless.channel-width "$w" \
               802-11-wireless.cloned-mac-address "$(cat /sys/class/net/ap0/address)"
     else
         iface=wlan0
         $admin ap-down
         if [ -f "$saved_band" ]; then
             read -r b ch < "$saved_band"
-            nmcli connection modify "$con" 802-11-wireless.band "$b" 802-11-wireless.channel "${ch:-0}"
+            nmcli connection modify "$con" 802-11-wireless.band "$b" \
+                  802-11-wireless.channel "${ch:-0}" 802-11-wireless.channel-width auto
             rm -f "$saved_band"
         fi
         nmcli connection modify "$con" connection.interface-name wlan0 \
@@ -335,10 +354,10 @@ info() {                        # info WHAT KEY
         band:a)
             echo "5 GHz: faster and less crowded, shorter reach; some older devices (and some cars) lack it.  Channel 36."
             echo
-            echo "Beside a Wi-Fi network on channels 36-64 the hotspot takes channel 149 (less power allowed there)." ;;
+            echo "Beside a Wi-Fi network the hotspot takes that network's band and channel (one radio, one channel for both).  On a radar channel (52–144, common on home routers) none may start: it keeps its own band, on channel 36, or 149 beside a network on 36–64." ;;
         keep:no) echo "Starting the hotspot drops the Wi-Fi network in use; devices get the mobile data." ;;
         keep:yes)
-            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot keeps its band, on a channel away from the network's: the radio shares its time between the two, so both are slower."
+            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot takes the network's channel: about a third of its speed.  Beside a network on a radar channel it takes one of its own, and the radio shares its time between the two: slower, with longer delays."
             echo
             echo "Without a network, mobile data, and Wi-Fi stays free to join one meanwhile." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;

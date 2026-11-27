@@ -91,6 +91,10 @@ every stock setting written (one entry per frame: large frames stall the I2C bus
 Pro¹x reads no card either and is not read by another phone: hardware (antenna, its contact)
 or the design suspected; parked until NFC is seen working on any Pro¹x.  The LED and motor
 feedback (pro1x-nfc-feedback) is in for later tests.
+2026-11-27: generations 282 and 283 were deployed from the dev branch, which lacked c469f7d:
+no NFC node, no NFC wallet (pro1x-nfc, pro1x-nfc-feedback).  The stock dtbo_b overlays (all
+37) give the same pins (interrupt 70, enable 69, firmware 31).  Back with the first deploy
+from dev-next after the branches were merged.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
@@ -249,8 +253,16 @@ network on 112 (a radar channel, where no hotspot may start) gave the laptop int
 the home network, but slowly (pings 245-1135 ms; the radio alternates between the channels).
 pro1x-hotspot now puts ap0 on its own band, away from the network's channel (36, or 149 beside
 36-64; on 2.4 GHz five channels away).  Not yet deployed or run by the script itself.
+2026-11-26 (dev branch, generation 283): the same channel works.  ap0 on the network's
+channel 36 at 80 MHz (SCC, a third-party 5 GHz hotspot at -61 dBm): the author's PC reached
+the internet through it, iperf3 3.5 Mbps; the phone alone gets 10 Mbps on that link.  The two
+hops share one radio (PC to ap0, then wlan0 to the network): about a third of the phone's own
+speed; a closer, stronger uplink should give more (inferred, not measured).  Two channels
+(MCC, 108+36, 108+48, 149+36): 1.8-3.5 Mbps, gateway pings 400-900 ms.  pro1x-hotspot (merged
+2026-11-27): SCC on the network's channel, 80 MHz on 5 GHz; beside a radar channel, a channel
+of its own as above.  The merged placement is not yet run on the phone.
 Missing:
-- the same 5 GHz channel on fresh firmware (beside a network on 36-48): faster if it works;
+- the merged placement run by the script, SCC and the radar-channel fallback;
 - GNU on 2.4 GHz beside a 5 GHz network: worked two minutes, then frames to the laptop failed;
 - 2.4 GHz beside a 2.4 GHz network, with a device;
 - the home Livebox's 5 GHz on 36-48 (author's choice) would allow the same channel there.

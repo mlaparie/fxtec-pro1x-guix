@@ -269,12 +269,28 @@
     "source": "/tmp/reg-test.log, /var/log/messages on the phone; linux-7.3 net/wireless/chan.c cfg80211_ir_permissive_chan"
    },
    {
-    "title": "WCN3990 (ath10k): an access point beside a 5 GHz client carries data on another channel, not on the client's",
+    "title": "WCN3990 (ath10k): an access point beside a 5 GHz client carries data on another channel too (MCC)",
     "general": "The radio's second interface combination allows an AP beside a client on two channels (#{ managed } <= 2, #{ AP, P2P-GO } <= 1, #channels <= 2), not only on one. On the client's own 5 GHz channel the AP started (with NO_IR lifted) and devices got a lease, but no data passed, and after the client dropped the firmware failed to load the beacon ('bcn tmpl tx status' 2 or 3: dropped, filtered); an 80 MHz AP to match the client was worse (no beacon at all). On another channel the AP works, even beside a client on a radar channel where no AP may start, at the cost of latency: the radio alternates between the channels. A Wi-Fi Direct group owner instead of an AP is not usable under NetworkManager, which removes a group it did not start (RemoveInterface on wpa_supplicant's D-Bus), even with the P2P device unmanaged.",
-    "instance": "Pro1x, kernel 7.3 with pro1x-ath-country-ie-no-ir, generation 259, firmware WLAN.HL.3.2.4-00982. Same channel: wlan0 on a third-party 5 GHz hotspot (36, 80 MHz), ap0 on 36 (20 MHz): laptop lease, 8 of 25 frames to it failed, reassociation every 30-60 s, no ping; tried once before a reboot, not retried on fresh firmware. Two channels: wlan0 on the home network (112, 80 MHz, radar), ap0 on 36: laptop pings 9.9.9.9 in 245-1135 ms through the home network; from the phone, 43-86 ms to 9.9.9.9 and 4-238 ms to the laptop, 1% frames failed. ap0 on 2.4 GHz channel 6 beside the same network: the laptop worked two minutes, then frames to it failed (183) and pings were lost; cause not found (2026-11-24).",
-    "confidence": "confirmed (iw station dump, dmesg, D-Bus monitor, the author's laptop); same channel tried once; the 2.4 GHz stall not traced",
+    "instance": "Pro1x, kernel 7.3 with pro1x-ath-country-ie-no-ir, generation 259, firmware WLAN.HL.3.2.4-00982. Same channel: wlan0 on a third-party 5 GHz hotspot (36, 80 MHz), ap0 on 36 (20 MHz): laptop lease, 8 of 25 frames to it failed, reassociation every 30-60 s, no ping; tried once before a reboot, not retried on fresh firmware. Two channels: wlan0 on the home network (112, 80 MHz, radar), ap0 on 36: laptop pings 9.9.9.9 in 245-1135 ms through the home network; from the phone, 43-86 ms to 9.9.9.9 and 4-238 ms to the laptop, 1% frames failed. ap0 on 2.4 GHz channel 6 beside the same network: the laptop worked two minutes, then frames to it failed (183) and pings were lost; cause not found (2026-11-24). Corrected 2026-11-26: on the client's own channel it did carry data (SCC, ch 36 at 80 MHz, 3.5 Mbps to a laptop; entry below); the same-channel failure here, tried once, was not seen again.",
+    "confidence": "confirmed (iw station dump, dmesg, D-Bus monitor, the author's laptop); same channel tried once; the 2.4 GHz stall not traced; the same-channel failure contradicted by the 2026-11-26 SCC test",
     "date": "2026-11-24",
     "source": "dmesg, /var/log/messages and test logs on the phone (local); linux-7.3 ath10k wmi-tlv.c (beacon tx status)"
+   },
+   {
+    "title": "WCN3990 (ath10k): 5 GHz AP beside a client needs the ath country-IE patch for non-DFS channels",
+    "general": "One radio allows AP+STA on a single channel (SCC). Without a country, all 5 GHz channels are NO_IR while associated. With an EEPROM country (ath: 'Country alpha2 being used'), non-DFS channels (36-48, 149-165 in EU) lose NO_IR and an AP can start there on a secondary interface. DFS channels (52-144) keep NO_IR and radar detection: the firmware will not start an AP on them. The ath country-IE patch (pro1x-ath-country-ie-no-ir.patch) makes the driver accept a country from the AP's beacon when the card has an EEPROM country, extending this to foreign networks.",
+    "instance": "Pro1x, kernel 7.3, country FR from EEPROM. Previously (2026-11-20): all 5 GHz NO_IR while associated, AP refused. With EEPROM country active (2026-11-26): channels 36-48 and 149-165 have no NO_IR, AP starts on ap0. DFS channels 52-144 still NO_IR. SCC confirmed on ch149 (Rupert) and ch48 (home router). The ath patch (pro1x-ath-country-ie-no-ir, running since generation 259) also takes the country from a foreign network's beacon.",
+    "confidence": "confirmed",
+    "date": "2026-11-26",
+    "source": "iw phy on the phone, nmcli connection up pro1x-hotspot on ch149 and ch48; pro1x-ath-country-ie-no-ir.patch in device/kernel/patches/"
+   },
+   {
+    "title": "WCN3990 single radio: SCC gives ~1/3 of station-only speed, MCC gives ~3 Mbps regardless",
+    "general": "The WCN3990 has one radio. When the AP and client are on the same channel (SCC), the hotspot gets about a third of the station-only throughput. When they are on different channels (MCC), the radio time-multiplexes and both links drop to about 3 Mbps regardless of band or signal. Any two-channel operation triggers MCC: 5+2.4, different 5 GHz channels, or anything else. SCC is the only way to run a usable hotspot beside a Wi-Fi client.",
+    "instance": "Pro1x, kernel 7.3. MCC (ch108+ch36, ch108+ch48, ch149+ch36): 1.8-3.5 Mbps on each link, 400-900ms gateway ping. SCC ch36/80 MHz (Rupert, -61 dBm): phone baseline 10 Mbps (one link), PC through hotspot (iperf3) 3.5 Mbps (two air hops on one radio, the radio alternates). LAN ping PC-to-phone on SCC: 20-330ms avg 142ms. 80 MHz confirmed on both interfaces initially, ap0 may drop to 20 MHz under load (firmware behavior). The two-hop relay (PC→ap0→phone→wlan0→external) is the fundamental bottleneck: expect about a third of the single-link speed. With a strong source (close 5G hotspot, -40 dBm) this should scale to 30-40 Mbps.",
+    "confidence": "confirmed",
+    "date": "2026-11-26",
+    "source": "speed tests with curl proof.ovh.net through the hotspot; iw dev wlan0/ap0 info confirming same channel"
    },
    {
     "title": "WCN3990 firmware WLAN.HL.1.0 crashes on pairwise key deletion and on TXBF after vdev down; HL.3.2.4 (Pro¹x) does not need the fixes",

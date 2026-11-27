@@ -24,7 +24,7 @@ trap 'rm -f "$rt/pro1x-tool.done"' EXIT
 
 err=0
 picked=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
-    --color yes device wifi list --rescan yes \
+    --color yes device wifi list ifname wlan0 --rescan yes \
     | sed -E 's/^(BSSID +)IN-USE  /\1  /;
               s/^(\x1b\[[0-9;]*m[^\x1b]*\x1b\[0m  \x1b\[[0-9;]*m.\x1b\[0m) {6}/\1/;
               s/ Mbit\/s/ Mb\/s  /
@@ -44,10 +44,10 @@ picked=$(nmcli -f 'bssid,in-use,ssid,signal,bars,freq,rate,security' \
 ssid=${picked##*$'\n'}
 case "$ssid" in ""|back) exit ;; esac
 echo "Please wait while connecting to network $ssid…"
-nmcli device wifi connect ${ssid} 2> /dev/null || err=1
+nmcli device wifi connect ${ssid} ifname wlan0 2> /dev/null || err=1
 if [[ "$err" = 1 ]]; then
   printf "SSID "
-  nmcli -a device wifi connect ${ssid}
+  nmcli -a device wifi connect ${ssid} ifname wlan0
 fi
 : > "$rt/pro1x-tool.done"
 printf "Press any key to go back.\n" && read -n1
