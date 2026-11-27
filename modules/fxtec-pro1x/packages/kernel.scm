@@ -77,13 +77,16 @@
         ;; (pro1x-nfc-listen; nci_cmd not exposed by the NFC netlink API).
         ;; nfc-data adds /dev/nxp-nci, a DATA path for Type-4 card emulation
         ;; (pro1x-nfc-emulate); EXPERIMENTAL, never run, needs its own CI build.
+        ;; nfc-robust makes power-up a real VEN reset and self-heals a chip
+        ;; that stopped answering I2C (which hung the driver in D state on an
+        ;; unbind/rebind); EXPERIMENTAL, never run, needs its own CI build.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
           "bt-le-conn-nodup" "ath-country-ie-no-ir"
-          "nfc" "nfc-init" "nfc-replay" "nfc-data"))))
+          "nfc" "nfc-init" "nfc-replay" "nfc-data" "nfc-robust"))))
 
 (define-public linux-pro1x
   (package

@@ -146,6 +146,17 @@ trusting it (bypasses the core's credit/fragmentation handling).  (c) Cloning a 
 (DESFire AES, Mifare Classic crypto1) is IMPOSSIBLE from a read: the keys are not in the UID or
 anything a reader exposes, so the two saved badges can never be replayed past the UID.  Only a
 live relay (two radios, card present) could, which this is not.
+2026-11-27: crypto1/Classic verdict and a driver-robustness patch.  MIFARE Classic (the
+FZero_detect_reader badge) cannot be cracked or emulated on the PN557: every crypto1 attack and
+Classic card emulation needs bit-level custom-parity + microsecond timing (Flipper's
+tx_with_custom_parity + software crypto1; Proxmark's FPGA), which an NCI reader/front-end does
+not expose; a dictionary read as a reader is all the firmware allows.  The badge name shows the
+keys were already recovered on the Flipper (detect reader -> mfkey32); emulation belongs on the
+Flipper, not the phone.  DESFire stays impossible (AES keys unrecoverable).  No code for Classic.
+pro1x-nfc-robust.patch (SEPARATE, experimental, never run, own CI build): power-up does a real
+VEN reset pulse with a generous boot settle, and nxp_nci_i2c_write cold-cycles VEN and resends
+(bounded) when the chip NAKs, so a drifted chip self-heals on the next open instead of needing
+the unbind/rebind that hung in D state tonight.  Does not fix an SoC-level I2C bus hang.
 2026-11-27: badge replay (listen mode) built.  Confirmed from source: the mainline NCI core has
 no card-emulation (HCE) path (net/nfc/nci/ntf.c signals tm only for NFC-DEP; ISO-DEP listen is
 NCI_STATUS_RF_PROTOCOL_ERROR) and no netlink way to set LA_NFCID1, so a driver change is needed;

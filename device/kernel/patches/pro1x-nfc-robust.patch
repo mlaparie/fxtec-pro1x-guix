@@ -1,0 +1,119 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] nfc: nxp-nci: robust power-up and self-heal a wedged chip
+
+EXPERIMENTAL, build-tested only, never run.  Needs its own CI kernel build.
+Separate from the nci_cmd and /dev/nxp-nci patches, which are frozen.
+
+A chip reset by unbind/rebind hung the driver in D state and blocked reboot:
+the PN557 had stopped answering I2C ("NFC: Error -6 on I2C send", then the
+NCI core's "__nci_request: ... timeout failed 0"), and nothing brought it
+back.  Error -6 (no I2C ACK) after a VEN cycle is the controller not yet
+ready: the mainline power-up only raises VEN and waits 10-15 ms, and on a
+drifted or hot chip that is not a clean reset.
+
+Make power-up a real reset and let it self-heal, so recovery does not need
+the hang-prone unbind/rebind:
+
+ - nxp_nci_i2c_set_mode() now drives VEN low, waits, then high with a
+   generous boot settle (a true reset pulse) when powering up, instead of
+   only raising VEN.  A controller left in a bad state comes back clean on
+   the next open.
+
+ - nxp_nci_i2c_write(), after its existing standby retry, cold-cycles VEN and
+   resends a bounded number of times.  The common failure -- the power-up
+   CORE_RESET NAKing -- then recovers in place rather than leaving the device
+   dead until an unbind/rebind.  Bounded, so a truly absent chip still fails
+   cleanly (and the NCI core's own request timeout still applies).
+
+Timings are conservative (VEN low >= 10 ms, boot settle ~20 ms); no sourced
+PN557 datasheet value was available, so these are headroom over the existing
+10-15 ms, not a spec figure -- adjust if a datasheet value is found.  This
+does not fix an SoC-level I2C bus/controller hang (out of the driver); it
+removes the driver-level wedge and the need to unbind/rebind to recover.
+
+Applies on top of pro1x-nfc-replay.patch and pro1x-nfc-data.patch (same
+file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
+
+---
+--- a/drivers/nfc/nxp-nci/i2c.c
++++ b/drivers/nfc/nxp-nci/i2c.c
+@@ -33,6 +33,11 @@
+
+ #define NXP_NCI_I2C_MAX_PAYLOAD	32
+
++/* Power-up robustness (pro1x-nfc-robust.patch). */
++#define NXP_NCI_RESET_LOW_US	10000	/* VEN low to reset the controller */
++#define NXP_NCI_BOOT_US		20000	/* settle after VEN high, before I2C */
++#define NXP_NCI_RESET_RETRIES	2	/* VEN cold-cycles on a stuck chip */
++
+ struct nxp_nci_i2c_phy {
+ 	struct i2c_client *i2c_dev;
+ 	struct nci_dev *ndev;
+@@ -58,24 +63,43 @@
+ 	bool emu_on;
+ };
+
++/*
++ * A VEN cold-reset pulse (low, then high) with a generous boot settle, so a
++ * controller left in a bad state after a glitch or heat comes back clean
++ * instead of NAKing its I2C address ("Error -6").  Clears the hard fault so
++ * I/O is re-enabled on the fresh boot.
++ */
++static void nxp_nci_i2c_reset(struct nxp_nci_i2c_phy *phy)
++{
++	gpiod_set_value(phy->gpiod_en, 0);
++	usleep_range(NXP_NCI_RESET_LOW_US, NXP_NCI_RESET_LOW_US + 2000);
++	gpiod_set_value(phy->gpiod_en, 1);
++	usleep_range(NXP_NCI_BOOT_US, NXP_NCI_BOOT_US + 3000);
++	phy->hard_fault = 0;
++}
++
+ static int nxp_nci_i2c_set_mode(void *phy_id,
+ 				    enum nxp_nci_mode mode)
+ {
+ 	struct nxp_nci_i2c_phy *phy = (struct nxp_nci_i2c_phy *) phy_id;
+
+ 	gpiod_set_value(phy->gpiod_fw, (mode == NXP_NCI_MODE_FW) ? 1 : 0);
+-	gpiod_set_value(phy->gpiod_en, (mode != NXP_NCI_MODE_COLD) ? 1 : 0);
+-	usleep_range(10000, 15000);
+
+-	if (mode == NXP_NCI_MODE_COLD)
++	if (mode == NXP_NCI_MODE_COLD) {
++		gpiod_set_value(phy->gpiod_en, 0);
++		usleep_range(NXP_NCI_RESET_LOW_US, NXP_NCI_RESET_LOW_US + 2000);
+ 		phy->hard_fault = 0;
++	} else {
++		/* Power up (NCI or FW) with a real reset pulse. */
++		nxp_nci_i2c_reset(phy);
++	}
+
+ 	return 0;
+ }
+
+ static int nxp_nci_i2c_write(void *phy_id, struct sk_buff *skb)
+ {
+-	int r;
++	int r, i;
+ 	struct nxp_nci_i2c_phy *phy = phy_id;
+ 	struct i2c_client *client = phy->i2c_dev;
+
+@@ -89,6 +113,19 @@
+ 		r = i2c_master_send(client, skb->data, skb->len);
+ 	}
+
++	/*
++	 * Still NAKing: the controller may have drifted into a bad state.
++	 * Cold-cycle VEN and resend a few times so it self-heals, rather than
++	 * staying wedged until an unbind/rebind (which has hung the driver in
++	 * D state and blocked reboot).  Bounded.  This resets the chip, so it
++	 * recovers the power-up CORE_RESET in place; a later command sent to a
++	 * just-reset chip simply fails again and is handled below.
++	 */
++	for (i = 0; r < 0 && i < NXP_NCI_RESET_RETRIES; i++) {
++		nxp_nci_i2c_reset(phy);
++		r = i2c_master_send(client, skb->data, skb->len);
++	}
++
+ 	if (r < 0) {
+ 		nfc_err(&client->dev, "Error %d on I2C send\n", r);
+ 	} else if (r != skb->len) {
