@@ -109,6 +109,30 @@ The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, aut
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no
 GNSS HAL and gets only network location, hence the poor accuracy.  Next: waydroid-host-stack's
 forwarder (host position into Android test providers), with the Bluetooth work.
+*** WAIT [#A] Tesla app's 3D car: seconds a frame tiled, not drawn untiled
+2026-11-27: cause found on the phone (logcat, FD_MESA_DEBUG=msgs).  Godot 3.2 (GLES2) renders
+the car with 4x MSAA through GL_EXT_multisampled_render_to_texture; the Adreno 610 has 132 KB
+of tile memory (kernel a6xx_catalog.c), so the multisampled pass is 289 tiles instead of 81 and
+every tile replays the car's vertex work: 0.57 s a frame on average, 11 s at worst, GPU pinned
+at 950 MHz.  Untiled (sysmem) freedreno does not implement that extension at all, hence the
+missing car.  Fix: hide the extension from Android (mesa.extension.override, new
+=gpu-multisample?= default #f, pro1x-waydroid-props): Godot reports "MSAA not supported" and
+drew 3147 frames in 73 s, median 16 ms.  Tested with setprop on the running Android, screen
+locked and off (the picture not seen); the service not yet deployed.  Author: drop
+=untiled-apps= from config.scm, deploy, look at the car (edges will be aliased), and check
+Android's own UI for regressions.  Not redone: the launcher icons missing in untiled mode.
+*** WAIT [#B] One window per app opens one app at a time in the same window (author)
+2026-11-27, phone: with =persist.waydroid.multi_windows= true and Android restarted, two apps
+started with =waydroid app launch= (Settings, and another agent's app) had two Sway toplevels
+side by side, app_id =waydroid.PACKAGE=: Waydroid's multi-window works here.  Its hwcomposer
+reads the property once at container start (hwcomposer.cpp hwc_open) and composes one window
+per Android task only when =waydroid.active_apps= is a package name; =waydroid show-full-ui=
+sets it to "Waydroid" and gives one window with the home screen, where apps open inside, as on
+a phone.  Likely what the author saw: Show Android, then apps from Android's launcher.  The
+menu line now says the windows come from Apps….  Not reproduced with the author's exact steps;
+not seen on screen (locked).  Nuisance found: the launcher's Google feed gets its own toplevel
+(=waydroid.GoogleDiscoverWindow#NNN=), not blacklisted by Waydroid; a Sway rule to hide it is
+not written yet.  Property restored to false; takes effect at Android's next restart.
 *** DONE [#A] Waydroid 1.6.3: first start, the quick-actions menu, Freeze and Resume
 Runs with GAPPS and Google Play (2026-11-20, session and container running).
 *** TODO [#B] Measure Android's cost: running, frozen, off (CPU, battery current)
