@@ -381,24 +381,29 @@ scan_badge() {
     err=$(nfc_check) || { echo "$err"; pause; return; }
     err=$(neard_check) || { echo "$err"; pause; return; }
 
-    echo "Move a badge slowly over the back of the phone…"
-    echo "The LED blinks blue while it searches, turns yellow with a short"
-    echo "buzz when it finds the badge, green with a strong buzz once read."
-    echo "(Wait $scan_secs s to cancel.)"
-    echo
+    echo "Scanning — move a badge slowly over the back."
+    dim "LED: blue search · yellow found · green read.  Any key cancels."; echo
     poll_start || { echo "Could not start NFC polling."; pause; return; }
 
     # The kernel's report of the find (pro1x-nfc-target), not neard's tag:
     # neard drops a card without NDEF data within 0.2 s and has no UID.
-    local found tag_path
-    if ! found=$(pro1x-nfc-target "$scan_secs"); then
+    # Run it in the background so a key press can cancel the wait.
+    local found tag_path tmp rc helper
+    tmp=$(mktemp)
+    pro1x-nfc-target "$scan_secs" >"$tmp" 2>/dev/null &
+    helper=$!
+    while kill -0 "$helper" 2>/dev/null; do
+        if IFS= read -r -t 0.3 -n 1 _ 2>/dev/null; then
+            kill "$helper" 2>/dev/null; wait "$helper" 2>/dev/null
+            poll_stop; rm -f "$tmp"; return
+        fi
+    done
+    wait "$helper"; rc=$?
+    found=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+    if [ "${rc:-1}" -ne 0 ]; then
         echo "No badge found."
-        poll_stop
-        pause
-        return
+        poll_stop; pause; return
     fi
-    echo "Badge found."
-    echo
     feedback detected
     TAG_UID=$(printf '%s\n' "$found" | sed -n 's/^UID=//p')
     TAG_ATQA=$(printf '%s\n' "$found" | sed -n 's/^ATQA=//p')
@@ -427,27 +432,21 @@ scan_badge() {
     poll_stop
     [ -n "$TAG_UID" ] && feedback read
 
-    echo "  Type:     ${TAG_TYPE:-unknown}"
-    echo "  Protocol: ${TAG_PROTOCOL:-unknown}"
-    echo "  UID:      ${TAG_UID:-(not read)}"
-    [ -n "$TAG_ATQA" ] && echo "  ATQA:     $TAG_ATQA"
-    [ -n "$TAG_SAK" ]  && echo "  SAK:      $TAG_SAK"
-    echo
+    local sum="Found ${TAG_PROTOCOL:-?}: UID ${TAG_UID:-(not read)}"
+    [ -n "$TAG_ATQA" ] && sum="$sum  ATQA $TAG_ATQA"
+    [ -n "$TAG_SAK" ]  && sum="$sum  SAK $TAG_SAK"
+    echo "$sum"
 
     if ! classify_badge; then
-        # Payment card: refuse.
-        echo "  ⚠ $BADGE_REPLAY_NOTE"
-        echo
+        echo "⚠ $BADGE_REPLAY_NOTE"          # payment card: refuse
         pause
         return
     fi
-
     case "$BADGE_CAN_REPLAY" in
-        yes)   echo "  ✓ Replay: likely ($BADGE_REPLAY_NOTE)" ;;
-        maybe) echo "  ? Replay: uncertain ($BADGE_REPLAY_NOTE)" ;;
-        no)    echo "  ✗ Replay: not possible ($BADGE_REPLAY_NOTE)" ;;
+        yes)   echo "✓ Replay likely: $BADGE_REPLAY_NOTE" ;;
+        maybe) echo "? Replay uncertain: $BADGE_REPLAY_NOTE" ;;
+        no)    echo "✗ Replay not possible: $BADGE_REPLAY_NOTE" ;;
     esac
-    echo
 
     if [ -z "$TAG_UID" ]; then
         echo "No UID was read; the badge cannot be saved."

@@ -189,6 +189,9 @@ case "${1:-}" in
         # Hiding quick actions aborts its lists one after another while this
         # runs (pro1x-menu close-sub), back to the root.
         echo $$ > "$rt/pro1x-quick-actions-sub.pid"
+        # Clear whatever the last tool left (an NFC read, a scan): otherwise
+        # the next tool draws over it and it shows through (author, 2026-11-27).
+        printf '\033[H\033[2J\033[3J'
         # The system's, not this resident copy's own: it stays from login,
         # and a deploy's new tool would otherwise wait for the next one.
         case "$2" in
