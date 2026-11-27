@@ -66,14 +66,22 @@ webrtc_port=8081
 # the user's own name when one is set up (HTTPS line, pro1x-stream-cert).
 tls_port=8443
 tls_dir=/var/lib/pro1x/stream-tls
-https_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-https.conf
+# The HTTPS name's settings: wl-cast's own file, which `wl-cast start' gives
+# to wl-cast-cert, read by pro1x-stream-cert too, so that one file serves
+# both streams.  The file from before is moved there once.
+https_file=${XDG_CONFIG_HOME:-$HOME/.config}/wl-cast/https.conf
+old_https_file=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-https.conf
+if [ -e "$old_https_file" ] && [ ! -e "$https_file" ]; then
+    mkdir -p "${https_file%/*}" && mv "$old_https_file" "$https_file"
+fi
 # The user's hook, if executable (an add-on, not the port's):
 # `stream-hook url ADDRESS PORT' may print another link to show, and
 # `stream-hook started PID KIND' runs once a stream is up (KIND: webrtc or
 # interactive); a hook that fails is ignored.
 hook=${XDG_CONFIG_HOME:-$HOME/.config}/pro1x/stream-hook
 tls_url() {
-    name=$(cat "$tls_dir/name" 2>/dev/null)
+    # The name wl-cast-cert set, or pro1x-stream-cert: the same settings.
+    name=$(cat /var/lib/wl-cast/tls/name "$tls_dir/name" 2>/dev/null | head -n 1)
     if [ -x "$hook" ] && u=$("$hook" url "$1" "$tls_port" 2>/dev/null) && [ -n "$u" ]
     then echo "$u"
     elif [ "$1" = 10.42.0.1 ] && [ -n "$name" ]; then echo "https://$name/"
@@ -259,7 +267,8 @@ funnel_stop() {
 https_setup() {
     mkdir -p "${https_file%/*}"
     [ -e "$https_file" ] || (umask 077; cat > "$https_file" <<'EOF'
-# The stream's HTTPS name on the phone's hotspot (pro1x-stream-cert).
+# The stream's HTTPS name on the phone's hotspot (pro1x-stream-cert for the
+# browser streams, wl-cast-cert for wl-cast's: ~/.config/wl-cast/https.conf).
 #
 # What for: browsers that refuse plain HTTP, self-signed certificates and
 # local addresses, and resolve names through their own DNS, as some car
@@ -276,7 +285,7 @@ https_setup() {
 # then opens https://STREAM_DOMAIN/.  Other networks: not this way.
 #
 # Checked when this file is saved from the menu and when a stream starts
-# on the hotspot; a first certificate takes about two minutes.  This file
+# with the hotspot up; a first certificate takes about two minutes.  This file
 # holds API keys: it stays readable by you only; scripts/backup-phone.sh
 # saves it.
 
@@ -1146,6 +1155,8 @@ catt_wlcast() {                 # catt_wlcast ADDRESS NAME
 # settings (key, approval, visibility, screen mode, rate), the screen
 # dimmed rather than blanked by the power key (-d) with the panel's touch
 # off (-T), and the port's buttons, gestures and hook (etc/xdg/wl-cast).
+# The HTTPS name on the hotspot: wl-cast start runs wl-cast-cert itself
+# (sudo without a password, mobile.scm) from the same settings file.
 # Its pid in pid_file, so that the bar, pocket mode, the call watcher and
 # this menu see it as a stream.  view: watching only (-n).
 send_wlcast() {                 # send_wlcast interactive|view

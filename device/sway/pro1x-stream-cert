@@ -17,9 +17,10 @@
 # (nftables, until the next reboot).  Only on the phone's own hotspot: on another network
 # nothing sends that address to the phone.
 #
-# The settings are the user's (~/.config/pro1x/stream-https.conf, mode 600,
-# written from the stream menu's HTTPS line; a link or another owner's
-# file is refused):
+# The settings are the user's (~/.config/wl-cast/https.conf, shared with
+# wl-cast-cert, mode 600, written from the stream menu's HTTPS line; the
+# file from before, ~/.config/pro1x/stream-https.conf, is read until the
+# menu moves it; a link or another owner's file is refused):
 #   STREAM_DOMAIN=stream.example.com   the name; empty or absent: nothing
 #   STREAM_ADDRESS=240.3.3.4           its A record
 #   DNS_PROVIDER=porkbun               pro1x-stream-dns-PROVIDER: its API
@@ -45,7 +46,8 @@ export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 if [ -n "${SUDO_USER:-}" ]; then
     # /etc/passwd itself: getent is not in the system's profile.
     home=$(awk -F: -v u="$SUDO_USER" '$1 == u { print $6 }' /etc/passwd)
-    settings=$home/.config/pro1x/stream-https.conf
+    settings=$home/.config/wl-cast/https.conf
+    [ -e "$settings" ] || settings=$home/.config/pro1x/stream-https.conf
     if [ -L "$settings" ] ||
            { [ -e "$settings" ] && [ "$(stat -c %U "$settings")" != "$SUDO_USER" ]; }; then
         echo "$settings: not the user's own file" >&2
