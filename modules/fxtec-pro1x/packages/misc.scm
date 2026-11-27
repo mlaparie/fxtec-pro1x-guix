@@ -1913,6 +1913,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-timezone-admin           its root part (sudoers)
 ;;;   bin/pro1x-nfc                      NFC wallet: read, save, replay badges
 ;;;   bin/pro1x-nfc-feedback             NFC on the LED and the motor (feedbackd)
+;;;   bin/pro1x-nfc-target               the kernel's report of a found card (UID)
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
 ;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
 ;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
@@ -2002,6 +2003,7 @@ window opened by a sway key binding.")
           ("pro1x-timezone-admin" "bin/")
           ("pro1x-nfc" "bin/")
           ("pro1x-nfc-feedback" "bin/")
+          ("pro1x-nfc-target" "bin/")
           ("pro1x-fingerprint" "bin/")
           ("pro1x-waydroid" "bin/")
           ("pro1x-waydroid-admin" "bin/")
@@ -2137,14 +2139,21 @@ window opened by a sway key binding.")
                               (string-append (assoc-ref inputs p) "/bin"))
                             '("coreutils" "evtest" "jq" "procps" "sed")))))
                 ;; gdbus, for neard (the session's PATH has none; nfctool
-                ;; and rfkill come from the system profile).
+                ;; and rfkill come from the system profile);
+                ;; pro1x-nfc-target from $output.
                 (let ((nfc (string-append #$output "/bin/pro1x-nfc")))
                   (chmod nfc #o755)
                   (wrap-program nfc
                     `("PATH" ":" prefix
-                      ,(map (lambda (p)
-                              (string-append (assoc-ref inputs p) "/bin"))
-                            '("coreutils" "fzf" "glib" "sed")))))
+                      (,(string-append #$output "/bin")
+                       ,@(map (lambda (p)
+                                (string-append (assoc-ref inputs p) "/bin"))
+                              '("coreutils" "fzf" "glib" "sed"))))))
+                (let ((t (string-append #$output "/bin/pro1x-nfc-target")))
+                  (chmod t #o755)
+                  (substitute* t
+                    (("^#!/usr/bin/env python3")
+                     (string-append "#!" (search-input-file inputs "/bin/python3")))))
                 ;; fbcli comes from the system profile.
                 (let ((fb (string-append #$output "/bin/pro1x-nfc-feedback")))
                   (chmod fb #o755)

@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# pro1x-nfc-target: wait for the kernel to find an NFC target and print
+# what it reports about it, as KEY=VALUE lines (UID, ATQA, SAK, ATS,
+# PROTOCOLS).
+#
+#   pro1x-nfc-target [SECONDS]      default 15; exits 1 if none is found
+#
+# neard holds a card that carries no NDEF data (bank, transit, most
+# badges) for about 0.2 s, then drops it, and its Tag object has no UID:
+# pro1x-nfc missed such cards (2026-11-27).  The kernel's NFC netlink
+# family announces each find on its "events" group and answers
+# NFC_CMD_GET_TARGET with the UID, ATQA and SAK; neither needs root.  Run
+# it while neard polls (pro1x-nfc starts the poll loop).
+#
+# State: tested on the phone 2026-11-27 with an NFC-A ISO-DEP card.
+import os, socket, struct, sys, time
+
+NETLINK_GENERIC = 16
+GENL_ID_CTRL = 0x10
+CTRL_CMD_GETFAMILY = 3
+CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, CTRL_ATTR_MCAST_GROUPS = 1, 2, 7
+CTRL_ATTR_MCAST_GRP_NAME, CTRL_ATTR_MCAST_GRP_ID = 1, 2
+NLM_F_REQUEST, NLM_F_ACK, NLM_F_DUMP = 1, 4, 0x300
+NLMSG_ERROR, NLMSG_DONE = 2, 3
+SOL_NETLINK, NETLINK_ADD_MEMBERSHIP = 270, 1
+
+# include/uapi/linux/nfc.h
+NFC_CMD_GET_TARGET, NFC_EVENT_TARGETS_FOUND = 8, 9
+(NFC_ATTR_DEVICE_INDEX, NFC_ATTR_PROTOCOLS, NFC_ATTR_TARGET_SENS_RES,
+ NFC_ATTR_TARGET_SEL_RES, NFC_ATTR_TARGET_NFCID1) = 1, 3, 5, 6, 7
+NFC_ATTR_TARGET_ISO15693_UID, NFC_ATTR_TARGET_ATS = 27, 32
+PROTOCOLS = {1: "Jewel", 2: "MIFARE", 3: "Felica", 4: "ISO-DEP",
+             5: "NFC-DEP", 6: "ISO14443-B", 7: "ISO15693"}
+
+
+def attrs(data):
+    out, i = {}, 0
+    while i + 4 <= len(data):
+        n, t = struct.unpack_from("HH", data, i)
+        if n < 4:
+            break
+        out[t & 0x3fff] = data[i + 4:i + n]
+        i += (n + 3) & ~3
+    return out
+
+
+def attr(t, payload):
+    n = 4 + len(payload)
+    return struct.pack("HH", n, t) + payload + b"\0" * ((-n) & 3)
+
+
+def messages(data):
+    i = 0
+    while i + 16 <= len(data):
+        n, kind, flags, seq, pid = struct.unpack_from("IHHII", data, i)
+        if n < 16:
+            break
+        yield kind, data[i + 16:i + n]
+        i += (n + 3) & ~3
+
+
+class Genl:
+    def __init__(self):
+        self.s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_GENERIC)
+        self.s.bind((0, 0))
+        self.seq = 0
+
+    def send(self, family, cmd, flags, payload=b""):
+        self.seq += 1
+        body = struct.pack("BBH", cmd, 1, 0) + payload
+        self.s.send(struct.pack("IHHII", 16 + len(body), family,
+                                flags | NLM_F_REQUEST, self.seq, 0) + body)
+
+    def replies(self):
+        # Messages of one request, up to its end (DONE, an error or an ack).
+        while True:
+            for kind, body in messages(self.s.recv(65536)):
+                if kind == NLMSG_DONE:
+                    return
+                if kind == NLMSG_ERROR:
+                    err = struct.unpack_from("i", body)[0]
+                    if err:
+                        raise OSError(-err, os.strerror(-err))
+                    return
+                yield kind, body
+
+
+def main():
+    timeout = float(sys.argv[1]) if len(sys.argv) > 1 else 15
+    g = Genl()
+    g.send(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, NLM_F_ACK,
+           attr(CTRL_ATTR_FAMILY_NAME, b"nfc\0"))
+    family = group = None
+    for _, body in g.replies():
+        a = attrs(body[4:])
+        family = struct.unpack("H", a[CTRL_ATTR_FAMILY_ID][:2])[0]
+        grps = a.get(CTRL_ATTR_MCAST_GROUPS, b"")
+        for grp in attrs(grps).values():
+            ga = attrs(grp)
+            if ga.get(CTRL_ATTR_MCAST_GRP_NAME, b"").rstrip(b"\0") == b"events":
+                group = struct.unpack("I", ga[CTRL_ATTR_MCAST_GRP_ID][:4])[0]
+    if family is None or group is None:
+        sys.exit("pro1x-nfc-target: no nfc netlink family (NFC not in the kernel?)")
+
+    ev = Genl()
+    ev.s.setsockopt(SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, group)
+    ev.s.settimeout(0.5)
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            data = ev.s.recv(65536)
+        except socket.timeout:
+            continue
+        for kind, body in messages(data):
+            if kind != family or body[0] != NFC_EVENT_TARGETS_FOUND:
+                continue
+            dev = attrs(body[4:]).get(NFC_ATTR_DEVICE_INDEX)
+            if dev is None:
+                continue
+            g.send(family, NFC_CMD_GET_TARGET, NLM_F_DUMP,
+                   attr(NFC_ATTR_DEVICE_INDEX, dev))
+            try:
+                targets = [attrs(b[4:]) for _, b in g.replies()]
+            except OSError:
+                continue  # dropped before we asked; wait for the next find
+            if targets:
+                show(targets[0])
+                return
+    sys.exit(1)
+
+
+def show(t):
+    uid = t.get(NFC_ATTR_TARGET_NFCID1) or t.get(NFC_ATTR_TARGET_ISO15693_UID)
+    if uid:
+        print("UID=" + uid.hex().upper())
+    if NFC_ATTR_TARGET_SENS_RES in t:
+        # SENS_RES is the ATQA, stored as a host-order u16.
+        print("ATQA=%04X" % struct.unpack("H", t[NFC_ATTR_TARGET_SENS_RES][:2])[0])
+    if NFC_ATTR_TARGET_SEL_RES in t:
+        print("SAK=%02X" % t[NFC_ATTR_TARGET_SEL_RES][0])
+    if NFC_ATTR_TARGET_ATS in t:
+        print("ATS=" + t[NFC_ATTR_TARGET_ATS].hex().upper())
+    if NFC_ATTR_PROTOCOLS in t:
+        mask = struct.unpack("I", t[NFC_ATTR_PROTOCOLS][:4])[0]
+        print("PROTOCOLS=" + ",".join(n for b, n in PROTOCOLS.items() if mask >> b & 1))
+
+
+if __name__ == "__main__":
+    main()

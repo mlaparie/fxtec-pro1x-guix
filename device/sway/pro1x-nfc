@@ -184,68 +184,26 @@ poll_stop() {
     fi
 }
 
-# Wait for a tag to appear (neard creates /org/neard/nfc0/tag0).
-# Returns the tag's object path, or fails after a timeout.
-#
-# This polls GetManagedObjects every 0.5 s rather than waiting on neard's
-# InterfacesAdded signal, to keep this simple.  A badge tapped and pulled
-# away inside one 0.5 s window can be missed; hold it steady until "Badge
-# found" prints.
-wait_for_tag() {
-    local timeout=${1:-15} elapsed=0 tag
-    while [ "$elapsed" -lt "$((timeout * 2))" ]; do
-        tag=$(gdbus call --system --dest=$NEARD --object-path / \
-            --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
-            grep -o "/org/neard/nfc[0-9]*/tag[0-9]*" | head -1)
-        [ -n "$tag" ] && { printf '%s' "$tag"; return 0; }
-        sleep 0.5
-        elapsed=$((elapsed + 1))
-        printf '\r\033[K  %s s…' "$((elapsed / 2))"
-    done
-    return 1
-}
-
 # prop_val PROPS NAME: pull one string property out of a GetAll dump
 # ("'NAME': <'value'>", GVariant text form).
 prop_val() {
     printf '%s' "$1" | sed -n "s/.*'$2': <'\\([^']*\\)'>.*/\\1/p" | head -1
 }
 
-# Read all properties of a tag object.  Sets global variables:
-# TAG_TYPE, TAG_PROTOCOL, TAG_UID, TAG_ATQA, TAG_SAK, TAG_NDEF_RAW
-# Returns 1 if the tag's properties could not be read (it may already have
-# been pulled away; neard's object vanishes with it).
+# Read neard's view of a tag object: adds its Type to TAG_TYPE, sets
+# TAG_NDEF_RAW.  Returns 1 if the tag's properties could not be read (it
+# may already have been pulled away; neard's object vanishes with it).
 read_tag_props() {
-    local tag_path="$1" props dev
+    local tag_path="$1" props
     props=$(gdbus call --system --dest=$NEARD --object-path "$tag_path" \
         --method org.freedesktop.DBus.Properties.GetAll org.neard.Tag 2>&1) || {
         TAG_READ_ERR="$props"
         return 1
     }
 
-    TAG_TYPE=$(prop_val "$props" Type)
-    TAG_PROTOCOL=$(prop_val "$props" Protocol)
-
-    # neard's Tag interface has no UID property at all; nfctool is the only
-    # source of it here, with sysfs as a last resort on some NXP drivers.
-    TAG_UID=""
-    TAG_ATQA=""
-    TAG_SAK=""
-    dev=$(nfc_dev) || dev=""
-    if [ -n "$dev" ] && command -v nfctool >/dev/null 2>&1; then
-        local nft
-        nft=$(nfctool -d "$dev" -l 2>/dev/null)
-        TAG_UID=$(printf '%s' "$nft" | grep -i 'UID\|NFCID' | head -1 |
-                  sed 's/.*: *//; s/ //g' | tr '[:lower:]' '[:upper:]')
-        TAG_ATQA=$(printf '%s' "$nft" | grep -i 'ATQA' | head -1 | sed 's/.*: *//; s/ //g')
-        TAG_SAK=$(printf '%s' "$nft" | grep -i 'SAK' | head -1 | sed 's/.*: *//; s/ //g')
-    fi
-    if [ -z "$TAG_UID" ] && [ -n "$dev" ] && [ -f "/sys/class/nfc/$dev/device/uid" ]; then
-        TAG_UID=$(tr '[:lower:]' '[:upper:]' < "/sys/class/nfc/$dev/device/uid")
-    fi
-    # Normalise: upper case, no 0x prefix (classify_badge matches on this).
-    TAG_SAK=$(printf '%s' "$TAG_SAK" | tr '[:lower:]' '[:upper:]' | sed 's/^0X//')
-    TAG_ATQA=$(printf '%s' "$TAG_ATQA" | tr '[:lower:]' '[:upper:]' | sed 's/^0X//')
+    # neard's Type ("Type 4"); the UID, ATQA and SAK come from
+    # pro1x-nfc-target, since neard's Tag interface has none.
+    TAG_TYPE="$(prop_val "$props" Type) ($TAG_TYPE)"
 
     # NDEF records: list record sub-objects.
     TAG_NDEF_RAW=""
@@ -413,23 +371,39 @@ scan_badge() {
     echo
     poll_start || { echo "Could not start NFC polling."; pause; return; }
 
-    local tag_path
-    if ! tag_path=$(wait_for_tag 15); then
-        printf '\r\033[KNo badge found.\n'
+    # The kernel's report of the find (pro1x-nfc-target), not neard's tag:
+    # neard drops a card without NDEF data within 0.2 s and has no UID.
+    local found tag_path
+    if ! found=$(pro1x-nfc-target 15); then
+        echo "No badge found."
         poll_stop
         pause
         return
     fi
-    printf '\r\033[KBadge found.\n\n'
+    echo "Badge found."
+    echo
     feedback detected
+    TAG_UID=$(printf '%s\n' "$found" | sed -n 's/^UID=//p')
+    TAG_ATQA=$(printf '%s\n' "$found" | sed -n 's/^ATQA=//p')
+    TAG_SAK=$(printf '%s\n' "$found" | sed -n 's/^SAK=//p')
+    local protos
+    protos=$(printf '%s\n' "$found" | sed -n 's/^PROTOCOLS=//p')
+    # classify_badge's names for the RF technology.
+    case $protos in
+        *ISO14443-B*) TAG_PROTOCOL=NFC-B ;;
+        *ISO15693*)   TAG_PROTOCOL=NFC-V ;;
+        *Felica*)     TAG_PROTOCOL=NFC-F ;;
+        *)            TAG_PROTOCOL=NFC-A ;;
+    esac
+    TAG_TYPE=${protos:-unknown}
 
-    if ! read_tag_props "$tag_path"; then
-        poll_stop
-        echo "Could not read the badge; it may have been pulled away too soon."
-        echo "  $TAG_READ_ERR"
-        pause
-        return
-    fi
+    # A tag with NDEF data stays in neard: its records, if it has any.
+    sleep 0.5
+    TAG_NDEF_RAW=""
+    tag_path=$(gdbus call --system --dest=$NEARD --object-path / \
+        --method org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null |
+        grep -o "/org/neard/nfc[0-9]*/tag[0-9]*" | head -1)
+    [ -n "$tag_path" ] && read_tag_props "$tag_path" || true
     poll_stop
     [ -n "$TAG_UID" ] && feedback read
 
