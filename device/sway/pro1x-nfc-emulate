@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+# pro1x-nfc-emulate: present a stored NDEF message as an NFC Forum Type-4 tag,
+# so a reader (or another phone) reads it from the phone.  Unlike UID replay
+# (pro1x-nfc-listen), this answers the reader's ISO 14443-4 APDUs.
+#
+#   pro1x-nfc-emulate NDEFFILE [--uid HEX] [--sak HEX]
+#
+# NDEFFILE is a raw NDEF message (the bytes of the records, no NLEN prefix).
+#
+# How it works, and why it needs the kernel patch:
+#   The mainline NCI core has no card-emulation (HCE) path, so the APDU
+#   exchange cannot go through neard or the NFC netlink API.  Listen is set up
+#   with the nci_cmd control node (pro1x-nfc-replay.patch): RF_DISCOVER_MAP
+#   maps listen ISO-DEP to the FRAME interface, so the controller hands the
+#   reader's frames up as raw NCI DATA packets, and RF_DISCOVER listen-A puts
+#   it in listen.  The DATA frames are then exchanged through /dev/nxp-nci
+#   (pro1x-nfc-data.patch): the reader's RATS and APDUs are read(), responses
+#   are write()n.  This script is the ISO 14443-4 / Type-4 responder on top.
+#
+# State: written 2026-11-27.  EXPERIMENTAL and UNTESTED end to end: it needs
+# the CI kernel with BOTH pro1x-nfc-replay.patch and pro1x-nfc-data.patch
+# (the latter unbuilt), and card emulation has not been seen on this chip.
+# The APDU/ISO-DEP logic below is unit-tested in isolation only.
+import glob
+import os
+import sys
+
+# --- NCI control setup, through the nci_cmd sysfs node ----------------------
+
+def nci_node():
+    for n in glob.glob("/sys/class/nfc/nfc*/device/nci_cmd"):
+        return n
+    sys.exit("pro1x-nfc-emulate: no nci_cmd node (kernel without the patches)")
+
+
+def nci_cmd(path, frame):
+    try:
+        with open(path, "w") as f:
+            f.write(bytes(frame).hex())
+        with open(path) as f:
+            return int(f.read().strip() or "0")
+    except OSError as e:
+        sys.exit("pro1x-nfc-emulate: %s: %s" % (path, e))
+
+
+def setup_listen(path, uid, sak):
+    # CORE_SET_CONFIG: Listen-A params, SEL_INFO with the ISO-DEP bit (0x20).
+    params = bytearray([4])
+    params += bytes((0x30, 1, 0x08))          # LA_BIT_FRAME_SDD
+    params += bytes((0x31, 1, 0x03))          # LA_PLATFORM_CONFIG
+    params += bytes((0x32, 1, sak | 0x20))    # LA_SEL_INFO: ISO-DEP
+    params += bytes((0x33, len(uid))) + uid   # LA_NFCID1
+    for name, frame in (
+        ("CORE_SET_CONFIG", bytes((0x20, 0x02, len(params))) + bytes(params)),
+        # RF_DISCOVER_MAP: ISO-DEP (0x04), listen (0x02), FRAME interface (0x01)
+        ("RF_DISCOVER_MAP", bytes((0x21, 0x00, 0x04, 0x01, 0x04, 0x02, 0x01))),
+        # RF_DISCOVER: one entry, listen-A (0x80), frequency 1
+        ("RF_DISCOVER", bytes((0x21, 0x03, 0x03, 0x01, 0x80, 0x01))),
+    ):
+        st = nci_cmd(path, frame)
+        if st != 0:
+            sys.exit("pro1x-nfc-emulate: %s rejected (NCI status %d)" % (name, st))
+
+
+def stop_listen(path):
+    nci_cmd(path, bytes((0x21, 0x06, 0x00)))   # RF_DEACTIVATE idle
+
+
+# --- Type-4 tag model -------------------------------------------------------
+
+AID = bytes.fromhex("D2760000850101")   # NFC Forum NDEF Tag Application
+CC_FILE_ID = bytes.fromhex("E103")
+NDEF_FILE_ID = bytes.fromhex("E104")
+SW_OK = bytes((0x90, 0x00))
+SW_NOT_FOUND = bytes((0x6A, 0x82))
+SW_WRONG_P1P2 = bytes((0x6A, 0x86))
+SW_CLA = bytes((0x6E, 0x00))
+
+
+class Type4Tag:
+    """A read-only NFC Forum Type-4 tag holding one NDEF message."""
+
+    def __init__(self, ndef_message):
+        ndef_file = len(ndef_message).to_bytes(2, "big") + ndef_message
+        self.ndef_file = ndef_file
+        nmax = max(len(ndef_file), 0x000F)
+        # Capability Container: CCLEN, mapping 2.0, MLe, MLc, NDEF-file ctrl TLV
+        self.cc_file = (
+            (0x000F).to_bytes(2, "big") + b"\x20" +
+            (0x003B).to_bytes(2, "big") + (0x0034).to_bytes(2, "big") +
+            b"\x04\x06" + NDEF_FILE_ID + nmax.to_bytes(2, "big") +
+            b"\x00\xff"          # read allowed, write denied
+        )
+        self.selected = None
+
+    def _read(self, data, offset, length):
+        chunk = data[offset:offset + length]
+        return chunk + SW_OK
+
+    def apdu(self, a):
+        """Answer one C-APDU with its R-APDU (bytes)."""
+        if len(a) < 4:
+            return SW_WRONG_P1P2
+        cla, ins, p1, p2 = a[0], a[1], a[2], a[3]
+        if cla != 0x00:
+            return SW_CLA
+        if ins == 0xA4:                                   # SELECT
+            lc = a[4] if len(a) > 4 else 0
+            data = a[5:5 + lc]
+            if p1 == 0x04 and data == AID:
+                self.selected = "app"
+                return SW_OK
+            if p1 == 0x00 and p2 == 0x0C and lc == 2:
+                if data == CC_FILE_ID:
+                    self.selected = "cc"; return SW_OK
+                if data == NDEF_FILE_ID:
+                    self.selected = "ndef"; return SW_OK
+                return SW_NOT_FOUND
+            return SW_WRONG_P1P2
+        if ins == 0xB0:                                   # READ BINARY
+            offset = (p1 << 8) | p2
+            le = a[4] if len(a) > 4 else 0
+            if self.selected == "cc":
+                return self._read(self.cc_file, offset, le)
+            if self.selected == "ndef":
+                return self._read(self.ndef_file, offset, le)
+            return SW_NOT_FOUND
+        return bytes((0x6D, 0x00))                         # INS not supported
+
+
+# --- ISO 14443-4 (ISO-DEP) block layer, FRAME interface ---------------------
+
+# A minimal ATS: TL, T0 (no interface bytes), then nothing.  FSCI default.
+ATS = bytes((0x05, 0x78, 0x80, 0x02, 0x00))
+
+
+def iso_dep_response(frame, tag):
+    """Given one RF frame from the reader, return the RF frame to send back,
+    or None if nothing should be sent.  frame/返回 are the bytes after the
+    NCI DATA header."""
+    if not frame:
+        return None
+    pcb = frame[0]
+    if pcb == 0xE0:                        # RATS
+        return ATS
+    if (pcb & 0xE2) == 0x02:              # I-block (no CID/NAD)
+        resp = tag.apdu(frame[1:])
+        return bytes((pcb,)) + resp       # keep the block number
+    if (pcb & 0xE6) == 0x22:             # R-block: ACK/NAK -> R(ACK)
+        return bytes((pcb | 0x20,))       # best effort; no chaining here
+    if (pcb & 0xC7) == 0xC2:             # S(WTX) request -> echo as response
+        return frame
+    if (pcb & 0xC7) == 0xC0:             # S(DESELECT)
+        return bytes((0xC0,))
+    return None
+
+
+# --- main loop --------------------------------------------------------------
+
+def nci_data(rf):
+    return bytes((0x00, 0x00, len(rf))) + rf     # conn 0, rfu 0, len
+
+
+def run(dev, tag):
+    fd = os.open(dev, os.O_RDWR)
+    try:
+        while True:
+            pkt = os.read(fd, 300)
+            if not pkt or len(pkt) < 3:
+                continue
+            plen = pkt[2]
+            rf = pkt[3:3 + plen]
+            resp = iso_dep_response(rf, tag)
+            if resp is not None:
+                os.write(fd, nci_data(resp))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        os.close(fd)
+
+
+def main():
+    args = sys.argv[1:]
+    uid = bytes((0x08, 0x01, 0x02, 0x03))        # random-UID prefix (0x08)
+    sak = 0x20
+    ndef_path = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--uid" and i + 1 < len(args):
+            uid = bytes.fromhex(args[i + 1].replace(":", "")); i += 2
+        elif args[i] == "--sak" and i + 1 < len(args):
+            sak = bytes.fromhex(args[i + 1])[0]; i += 2
+        else:
+            ndef_path = args[i]; i += 1
+    if not ndef_path:
+        sys.exit("usage: pro1x-nfc-emulate NDEFFILE [--uid HEX] [--sak HEX]")
+    if len(uid) not in (4, 7):
+        sys.exit("pro1x-nfc-emulate: UID must be 4 or 7 bytes")
+
+    with open(ndef_path, "rb") as f:
+        ndef = f.read()
+    tag = Type4Tag(ndef)
+
+    node = nci_node()
+    setup_listen(node, uid, sak)
+    try:
+        run("/dev/nxp-nci", tag)
+    finally:
+        stop_listen(node)
+
+
+if __name__ == "__main__":
+    main()

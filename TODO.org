@@ -132,6 +132,20 @@ hand over i2c-dev, driver not loaded (generation 287, module_blacklist=nxp_nci_i
 patch: the DT property nxp,init-cmds carries the list, sent from post_setup.  CI build pending.
 Unloading nxp_nci_i2c by rmmod hung again (D state), and the stuck rmmod blocked reboot: needed
 sysrq s then b.
+2026-11-27: beyond-UID feasibility.  (a) 7-byte UID: done (pro1x-nfc-listen builds LA_NFCID1 at
+4 or 7 bytes; replay passes the saved UID; the 7-byte frame 33 07 ... is unit-tested).  (b) Type-4
+NDEF/ISO-DEP tag emulation (phone answers SELECT AID/ReadBinary): needs kernel DATA support the
+mainline core lacks (no HCE; tm RX is LLCP-only, gated on dep_link_up; ISO-DEP listen activation
+is rejected in ntf.c; AF_NFC sockets are initiator-only or read-only; nci_cmd is control-only).
+Designed and built as a SEPARATE experimental patch pro1x-nfc-data.patch: /dev/nxp-nci, a DATA
+tee in the driver that, while open, hands incoming NCI DATA packets to user space and sends
+writes straight to the chip, around the core; setup still uses nci_cmd (RF_DISCOVER_MAP listen
+ISO-DEP -> FRAME, RF_DISCOVER listen-A).  pro1x-nfc-emulate is the Type-4 responder on top
+(APDU/ISO-DEP logic unit-tested).  NEVER RUN; needs its own CI kernel build and a review before
+trusting it (bypasses the core's credit/fragmentation handling).  (c) Cloning a crypto card
+(DESFire AES, Mifare Classic crypto1) is IMPOSSIBLE from a read: the keys are not in the UID or
+anything a reader exposes, so the two saved badges can never be replayed past the UID.  Only a
+live relay (two radios, card present) could, which this is not.
 2026-11-27: badge replay (listen mode) built.  Confirmed from source: the mainline NCI core has
 no card-emulation (HCE) path (net/nfc/nci/ntf.c signals tm only for NFC-DEP; ISO-DEP listen is
 NCI_STATUS_RF_PROTOCOL_ERROR) and no netlink way to set LA_NFCID1, so a driver change is needed;
