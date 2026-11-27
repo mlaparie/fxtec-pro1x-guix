@@ -665,7 +665,9 @@ of scripts/flash.sh, plain or encrypted: it finds out which from the disk
                               ;; Its CPU mode line.
                               "/run/current-system/profile/bin/pro1x-cpu-mode, "
                               ;; Quick actions' charge limit.
-                              "/run/current-system/profile/bin/pro1x-charge-limit\n")))
+                              "/run/current-system/profile/bin/pro1x-charge-limit, "
+                              ;; The NFC wallet's chip reset.
+                              "/run/current-system/profile/bin/pro1x-nfc-admin\n")))
 
   ;; ── Services ──────────────────────────────────────────────────────────────
   (services

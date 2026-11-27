@@ -1,0 +1,32 @@
+#!/bin/sh
+# pro1x-nfc-admin — the root part of the NFC wallet (sudoers): reset the NFC
+# controller.  Over a session of repeated scans the PN557 drifts into a
+# weak-RF state (power cycles, heat) and cards stop reading until a cold
+# start (author, 2026-11-27).  A reset unbinds then rebinds the nxp-nci I2C
+# driver: that drives VEN low and high (a cold power cycle) and re-runs the
+# driver's init list (clock, antenna supply, RF tuning), without a reboot.
+# neard is stopped first so the controller is idle (an unbind while it polls
+# can hang in D state); it is started again after.
+#
+# State: written 2026-11-27.  Run as root (pro1x-nfc calls it through sudo).
+set -u
+export PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+drv=/sys/bus/i2c/drivers/nxp-nci_i2c
+
+case "${1:-}" in
+reset)
+	dev=$(ls "$drv" 2>/dev/null | grep -E '^[0-9]+-00' | head -n 1)
+	[ -n "$dev" ] || { echo "no NFC device bound to nxp-nci_i2c" >&2; exit 1; }
+	herd stop neard >/dev/null 2>&1 || true
+	echo "$dev" > "$drv/unbind" 2>/dev/null || true
+	sleep 1
+	echo "$dev" > "$drv/bind" 2>/dev/null || { echo "rebind failed" >&2; exit 1; }
+	sleep 1
+	herd start neard >/dev/null 2>&1 || true
+	echo "NFC controller reset"
+	;;
+*)
+	echo "usage: pro1x-nfc-admin reset" >&2
+	exit 2
+	;;
+esac

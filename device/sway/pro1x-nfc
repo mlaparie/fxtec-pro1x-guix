@@ -402,7 +402,16 @@ scan_badge() {
     found=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
     if [ "${rc:-1}" -ne 0 ]; then
         echo "No badge found."
-        poll_stop; pause; return
+        poll_stop
+        # The controller drifts into a weak-RF state over a session; a reset
+        # (cold power cycle + re-init, no reboot) brings reads back.
+        if yes_no "Reset the NFC chip and scan again?" no; then
+            echo "Resetting…"
+            sudo pro1x-nfc-admin reset >/dev/null 2>&1
+            scan_badge
+            return
+        fi
+        pause; return
     fi
     feedback detected
     TAG_UID=$(printf '%s\n' "$found" | sed -n 's/^UID=//p')

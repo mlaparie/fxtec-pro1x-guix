@@ -1914,6 +1914,7 @@ window opened by a sway key binding.")
 ;;;   bin/pro1x-nfc                      NFC wallet: read, save, replay badges
 ;;;   bin/pro1x-nfc-feedback             NFC on the LED and the motor (feedbackd)
 ;;;   bin/pro1x-nfc-target               the kernel's report of a found card (UID)
+;;;   bin/pro1x-nfc-admin                reset the NFC controller (sudoers)
 ;;;   bin/pro1x-fingerprint              enrolled fingers: add, rename, remove
 ;;;   bin/pro1x-waydroid                 Android: start, freeze, stop, apps
 ;;;   bin/pro1x-waydroid-admin           its root part: image, Google ID (sudoers)
@@ -2004,6 +2005,7 @@ window opened by a sway key binding.")
           ("pro1x-nfc" "bin/")
           ("pro1x-nfc-feedback" "bin/")
           ("pro1x-nfc-target" "bin/")
+          ("pro1x-nfc-admin" "bin/")
           ("pro1x-fingerprint" "bin/")
           ("pro1x-waydroid" "bin/")
           ("pro1x-waydroid-admin" "bin/")
@@ -2154,6 +2156,7 @@ window opened by a sway key binding.")
                   (substitute* t
                     (("^#!/usr/bin/env python3")
                      (string-append "#!" (search-input-file inputs "/bin/python3")))))
+                (chmod (string-append #$output "/bin/pro1x-nfc-admin") #o755)
                 ;; fbcli comes from the system profile.
                 (let ((fb (string-append #$output "/bin/pro1x-nfc-feedback")))
                   (chmod fb #o755)
