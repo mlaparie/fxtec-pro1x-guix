@@ -103,6 +103,24 @@ suspend, deep sleep, charging (it goes above the charge limit).
   a window per app.  config.scm's `autostart?` starts it at login.
 - Waydroid's menu also mutes Android's notifications (kept across
   reboots): none shows, wakes the screen or lights the LED.
+- Banking apps and Play Integrity (experimental, not working; this entry
+  goes away if it stays so).  Play Integrity has three levels, BASIC,
+  DEVICE and STRONG.  Since May 2025, on Android 13 and later, Google
+  wants hardware-backed key attestation for all three (DEVICE: a locked
+  bootloader proven by it), so Waydroid's software keystore fails them
+  all and apps that require DEVICE refuse to log in.  Tried on
+  2026-11-27, nothing of it stays installed: official Magisk v31.1 set up
+  live the way its own AVD script does (no boot image), ReZygisk v1.0.0
+  (Magisk's built-in Zygisk refuses a kernel without SELinux), Play
+  Integrity Fork v19 with a current Pixel fingerprint from Google's pages,
+  Tricky Store OSS v3.1.0 with its default software keybox, no leaked
+  keybox.  Result: all three verdicts still fail, with and without PIF's
+  `spoofVendingSdk`.  Tricky Store cannot inject into keystore2 on this
+  kernel (no SELinux at all), and even working it would give DEVICE only
+  with an unrevoked OEM keybox, which gets revoked and which the port does
+  not ship.  Undo: all of it lived in Android's tmpfs and `/data/adb`,
+  both cleaned; a Waydroid restart clears the remaining spoofed
+  properties.  Details in TODO.org and `rag-notes/guix.json`.
 - The camera app (pro1x-camera-app): photos in 16:9, 4:3 or 1:1, full or
   half size (48 MP with a later kernel), shown as such in the viewfinder;
   tap to focus and expose there, or manual focus with a slider; flash off,
