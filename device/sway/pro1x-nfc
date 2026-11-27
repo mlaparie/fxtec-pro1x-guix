@@ -136,12 +136,39 @@ adapter_path() {
 # The radio's state on the LED and the motor (pro1x-nfc-feedback).
 feedback() { pro1x-nfc-feedback "$@" >/dev/null 2>&1 || true; }
 
+# The adapter is off after boot, and neard answers StartPollLoop with "No
+# such device" until it is powered (2026-11-27).  A scan powers it and
+# powers it off again after, unless it was already on: a powered NFC
+# controller made fingerprint matches fail.
+powered_by_scan=${XDG_RUNTIME_DIR:-/tmp}/pro1x-nfc-powered-by-scan
+
+adapter_powered() {
+    gdbus call --system --dest=$NEARD --object-path "$1" \
+        --method org.freedesktop.DBus.Properties.Get org.neard.Adapter Powered 2>/dev/null |
+        grep -q true
+}
+
+adapter_power() {               # adapter_power PATH true|false
+    gdbus call --system --dest=$NEARD --object-path "$1" \
+        --method org.freedesktop.DBus.Properties.Set org.neard.Adapter Powered "<$2>" \
+        >/dev/null 2>&1
+}
+
 poll_start() {
-    local adapter
+    local adapter i
     adapter=$(adapter_path) || return 1
+    [ -n "$adapter" ] || return 1
+    if ! adapter_powered "$adapter"; then
+        adapter_power "$adapter" true || return 1
+        : > "$powered_by_scan"
+        i=0
+        while ! adapter_powered "$adapter" && [ $i -lt 20 ]; do
+            sleep 0.1; i=$((i + 1))
+        done
+    fi
     # Mode Initiator finds tags; Dual also listens but we start with read.
     gdbus call --system --dest=$NEARD --object-path "$adapter" \
-        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1 || return 1
+        --method org.neard.Adapter.StartPollLoop Initiator >/dev/null 2>&1 || { poll_stop; return 1; }
     feedback polling 20
 }
 
@@ -151,6 +178,10 @@ poll_stop() {
     adapter=$(adapter_path) 2>/dev/null || return 0
     gdbus call --system --dest=$NEARD --object-path "$adapter" \
         --method org.neard.Adapter.StopPollLoop >/dev/null 2>&1
+    if [ -e "$powered_by_scan" ]; then
+        adapter_power "$adapter" false
+        rm -f "$powered_by_scan"
+    fi
 }
 
 # Wait for a tag to appear (neard creates /org/neard/nfc0/tag0).
