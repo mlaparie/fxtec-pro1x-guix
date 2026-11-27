@@ -36,3 +36,8 @@ CONFIG_PSTORE_CONSOLE=y
 # old DisplayLink USB 2.0 adapters (DL-1x5).  Modules, loaded on plug-in.
 CONFIG_DRM_GUD=m
 CONFIG_DRM_UDL=m
+# The phone's screen as a USB webcam (device/usb-video): the UVC gadget
+# function, usb_f_uvc.ko (USB_F_UVC itself has no prompt).  The configfs
+# gadget it joins (ECM, ACM, UVC) is made at run time by pro1x-usb-gadget;
+# g_cdc stays built in as the default and the rescue link.
+CONFIG_USB_CONFIGFS_F_UVC=y
