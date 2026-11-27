@@ -18,7 +18,14 @@
 # Settings are Android properties, so they are read and set only while the
 # session runs, and apply at its next start; this menu restarts it, which
 # closes Android's apps, and their lines say so.
-#   one window per app   persist.waydroid.multi_windows
+#   one window per app   persist.waydroid.multi_windows, read by Waydroid's
+#                        hwcomposer when the container starts.  Apps opened
+#                        from the Apps menu (waydroid app launch) each get a
+#                        Sway window (app_id waydroid.PACKAGE), several at
+#                        once; seen 2026-11-27 with two apps side by side.
+#                        Show Android (waydroid show-full-ui) is always one
+#                        window holding Android's home screen, and apps
+#                        opened inside it stay in it: use the Apps menu.
 #   sleep when unused    persist.waydroid.suspend: the container freezes
 #                        after Android's screen timeout with no app shown
 # Orientation has no setting of its own: Android follows the shape of its
@@ -310,7 +317,7 @@ while :; do
                 printf 'install\tInstall an APK…\n'
                 printf 'freeze\tFreeze\n'
                 printf 'stop\tStop Android\n'
-                printf 'multi\tOne window per app: %s   (restarts Android)\n' "$(onoff "$multi")"
+                printf 'multi\tOne window per app (opened from Apps…): %s   (restarts Android)\n' "$(onoff "$multi")"
                 printf 'idle\tSleep when unused: %s   (restarts Android)\n' "$(onoff "$idle")"
                 notif_line
                 limits_line

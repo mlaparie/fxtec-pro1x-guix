@@ -651,6 +651,14 @@
         "confidence": "confirmed",
         "date": "2026-11-27",
         "source": "Mesa 26.0.2 src/util/os_misc.c:175 and src/mesa/main/context.c:205; device/waydroid/pro1x-waydroid-props; phone test 2026-11-27"
+      },
+      {
+        "title": "Waydroid's one window per app: only apps started with waydroid app launch get their own window; show-full-ui is always one window",
+        "general": "Waydroid's hwcomposer reads persist.waydroid.multi_windows once, when the container starts, and picks its mode from waydroid.active_apps on every frame: 'none' no window, 'Waydroid' (set by show-full-ui) one window with the whole Android UI, a package name one window per Android task when multi_windows is on. So a user who turns the option on and then opens the full UI still gets one window, with apps opening inside it; separate windows come from the desktop side (waydroid app launch, desktop entries). The toplevels have app_id waydroid.<package> and the app's label as title; the launcher is blacklisted but its Google feed window (GoogleDiscoverWindow#NNN) is not and gets a toplevel of its own.",
+        "instance": "Pro¹x, Waydroid 1.6.3, LineageOS 20 GAPPS image, Sway: Settings and a second app launched with waydroid app launch had two toplevels side by side (528x520 each) while the property was true (2026-11-27, screen locked; tree read with swaymsg). The quick-actions menu's Show Android uses show-full-ui, its Apps menu uses app launch.",
+        "confidence": "confirmed",
+        "date": "2026-11-27",
+        "source": "waydroid/android_hardware_waydroid lineage-20 hwcomposer/hwcomposer.cpp (hwc_open, select_mode) and modes/multi-window.cpp, read 2026-11-27; swaymsg -t get_tree on the phone"
       }
     ]
   }
