@@ -927,9 +927,19 @@ Dracula palette, no kernel messages over the greeter.")
      ;; phone key: the kernel's LE auto-connect list) scan 30 ms every
      ;; 1.28 s, as Android does, instead of 30 ms every 60 ms: values from
      ;; waydroid-host-stack (docs/tesla-passive-autoconnect.md).
+     ;; The phone key gives up about 3.3 s after it asks for the car, and
+     ;; Waydroid hears of the link only once BlueZ has read the car's
+     ;; services: 3.4 s on 2026-11-27, the car forgotten 30 s after it was
+     ;; last seen (a new scan, its cached services gone) and 16 round trips
+     ;; at the 45 ms interval.  So devices seen stay known (their services
+     ;; cached: GATT Cache is "always"; until bluetoothd restarts, in memory
+     ;; only), and LE links run at 11.25 to 15 ms, Android's high priority.
      (service bluetooth-service-type
               (bluetooth-configuration
                (auto-enable? #t)
+               (temporary-timeout 0)
+               (min-connection-interval 9)
+               (max-connection-interval 12)
                (scan-interval-auto-connect #x0800)
                (scan-window-auto-connect #x0030)))
 
