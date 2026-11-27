@@ -25,7 +25,9 @@
 # 112 (MCC) gave a laptop that network's internet, pings 245-1135 ms
 # (2026-11-24).  ap0 on 2.4 GHz channel 6 beside that network worked two
 # minutes, then frames to the laptop failed (cause not found).  The merged
-# placement (SCC, else MCC) is not yet run on the phone.
+# placement (SCC, else MCC) is not yet run on the phone; its ap0 placement
+# beside a 2.4 GHz network was run by hand (2026-11-27).  Power saving off
+# while on ap0 (start) is not yet measured with a device on the hotspot.
 
 case "${FZF_DEFAULT_OPTS:-}" in
     *--with-shell=*) ;;
@@ -46,6 +48,7 @@ keep_file="$statedir/hotspot-keep-wifi" # yes: the Wi-Fi in use stays the uplink
 watch_pid="$rt/pro1x-hotspot-watch.pid"
 data_base="$rt/pro1x-hotspot-data"      # the byte count when it started
 admin="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-hotspot-admin"
+powersave="/run/privileged/bin/sudo -n /run/current-system/profile/bin/pro1x-wifi-powersave"
 
 state() { nmcli -g GENERAL.STATE connection show "$con" 2>/dev/null; }
 exists() { nmcli -t -f NAME connection show | grep -qx "$con"; }
@@ -255,8 +258,15 @@ place() {
 
 start() {
     place || { notify-send -u critical Hotspot "Could not make its interface beside the Wi-Fi"; return 1; }
+    # Beside a network, wlan0's power saving off while the hotspot runs: the
+    # WCN3990 firmware does not support a client in power save next to an
+    # access point (ath10k refuses to turn it on while ap0 runs), yet a client
+    # already in it when ap0 starts stays so, with the network's replies
+    # held back until it wakes (2026-11-27; pro1x-wifi-powersave).  Off
+    # before ap0 starts, back as it was when the hotspot stops.
+    [ "$iface" = ap0 ] && $powersave hold hotspot
     nmcli connection up "$con" || {
-        [ "$iface" = ap0 ] && $admin ap-down
+        [ "$iface" = ap0 ] && { $admin ap-down; $powersave release hotspot; }
         if [ "$iface" = ap0 ]; then
             notify-send -u critical Hotspot \
                 "Could not start beside the Wi-Fi network (on its channel); disconnect it to use another"
@@ -294,6 +304,7 @@ watch_idle() {
 stop() {
     nmcli connection down "$con"
     [ -e /sys/class/net/ap0 ] && $admin ap-down
+    $powersave release hotspot
     notify-send Hotspot Off
 }
 
@@ -357,7 +368,7 @@ info() {                        # info WHAT KEY
             echo "Beside a Wi-Fi network the hotspot takes that network's band and channel (one radio, one channel for both).  On a radar channel (52–144, common on home routers) none may start: it keeps its own band, on channel 36, or 149 beside a network on 36–64." ;;
         keep:no) echo "Starting the hotspot drops the Wi-Fi network in use; devices get the mobile data." ;;
         keep:yes)
-            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot takes the network's channel: about a third of its speed.  Beside a network on a radar channel it takes one of its own, and the radio shares its time between the two: slower, with longer delays."
+            echo "A Wi-Fi network in use stays up, and devices get its internet (e.g. a phone's hotspot as the uplink, the car on the Pro¹x's).  The hotspot takes the network's channel: about a third of its speed.  Beside a network on a radar channel it takes one of its own, and the radio shares its time between the two: slower, with longer delays.  Wi-Fi power saving is off while it runs."
             echo
             echo "Without a network, mobile data, and Wi-Fi stays free to join one meanwhile." ;;
         hidden:no) echo "The name is broadcast: devices list the hotspot." ;;

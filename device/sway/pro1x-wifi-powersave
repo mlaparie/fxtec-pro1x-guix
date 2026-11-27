@@ -2,24 +2,37 @@
 # pro1x-wifi-powersave — Wi-Fi power saving, as root (sudoers in
 # system/mobile.scm; reading it needs no root: iw dev wlan0 get power_save).
 #
-#   on | off   set it now, and for the connected network from then on
-#              (NetworkManager's powersave; quick actions' Wi-Fi line)
-#   hold       off for now, what it was kept (pro1x-stream-webrtc, while a
-#              stream runs)
-#   release    back to what it was before hold
+#   on | off        set it now, and for the connected network from then on
+#                   (NetworkManager's powersave; quick actions' Wi-Fi line);
+#                   drops every hold
+#   hold [NAME]     off while NAME holds it; what it was is kept from the
+#                   first hold (pro1x-stream-webrtc while a stream runs,
+#                   pro1x-hotspot while the hotspot runs beside a network)
+#   release [NAME]  NAME lets go; back to what it was once no one holds it
+#
+# NAME is "stream" when left out.  Holds are files in /run/pro1x, so they
+# survive the holder and end at boot.
 #
 # Power saving delays and drops what the phone sends: during a stream, pings
 # to the router took 640 ms on average with it on (2026-11-19), and the
-# viewer lost frames.  Without power saving the Wi-Fi uses more battery.
+# viewer lost frames.  Beside the hotspot's ap0 it is worse: the WCN3990
+# firmware does not support a client in power save next to an access point
+# (ath10k refuses to turn it on then: "refusing to enable ps on vdev 0: not
+# supported by fw"), but a client already in power save when ap0 starts stays
+# in it, since the driver only looks again at the next change (2026-11-27).
+# Without power saving the Wi-Fi uses more battery.
 #
-# State: hold, release and get used on the phone (2026-11-19).
+# State: hold, release and get used on the phone (2026-11-19); named holds
+# not yet run there.
 
 PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
 iface=wlan0
-held=/run/pro1x/wifi-powersave-held
+holds=/run/pro1x/wifi-powersave-holds   # one file per holder
+was=/run/pro1x/wifi-powersave-held      # on or off, before the first hold
 
 now() { iw dev "$iface" get power_save 2>/dev/null | awk '{ print $3 }'; }
 set_now() { iw dev "$iface" set power_save "$1" 2>/dev/null; }
+name() { printf '%s' "${1:-stream}" | tr -c 'A-Za-z0-9_-' _; }
 
 case "${1:-}" in
     on|off)
@@ -29,15 +42,18 @@ case "${1:-}" in
         [ -n "$con" ] &&
             nmcli connection modify "$con" 802-11-wireless.powersave \
                   "$([ "$1" = on ] && echo 3 || echo 2)"
-        rm -f "$held" ;;
+        rm -rf "$holds" "$was" ;;
     hold)
-        mkdir -p "${held%/*}"
-        [ -e "$held" ] || now > "$held"
+        mkdir -p "$holds"
+        [ -e "$was" ] || now > "$was"
+        : > "$holds/$(name "$2")"
         set_now off ;;
     release)
-        [ -e "$held" ] || exit 0
-        [ "$(cat "$held")" = on ] && set_now on
-        rm -f "$held" ;;
-    *) echo "usage: pro1x-wifi-powersave on|off|hold|release" >&2; exit 2 ;;
+        rm -f "$holds/$(name "$2")"
+        [ -e "$was" ] || exit 0
+        [ -n "$(ls -A "$holds" 2>/dev/null)" ] && exit 0
+        [ "$(cat "$was")" = on ] && set_now on
+        rm -f "$was" ;;
+    *) echo "usage: pro1x-wifi-powersave on|off|hold [NAME]|release [NAME]" >&2; exit 2 ;;
 esac
 exit 0

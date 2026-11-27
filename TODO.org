@@ -294,7 +294,21 @@ speed; a closer, stronger uplink should give more (inferred, not measured).  Two
 (MCC, 108+36, 108+48, 149+36): 1.8-3.5 Mbps, gateway pings 400-900 ms.  pro1x-hotspot (merged
 2026-11-27): SCC on the network's channel, 80 MHz on 5 GHz; beside a radar channel, a channel
 of its own as above.  The merged placement is not yet run on the phone.
+2026-11-27 (dual-ap branch): the author's 4-5 Mbps, 300 ms loaded and 600 ms idle pings
+through the hotspot.  Found in the driver and in dmesg: the WCN3990 firmware has no power save
+for a client beside an access point (ath10k: "refusing to enable ps on vdev 0: not supported by
+fw"), but a client already in power save when ap0 starts stays in it, unsupported, until the
+next change; power saving was on by default, so every Keep Wi-Fi hotspot ran so.  Fix:
+pro1x-hotspot holds wlan0's power saving off while on ap0 (pro1x-wifi-powersave, named holds
+so a stream's release does not undo it).  Ruled out: CPU mode (USB pings 0.75 ms in battery vs
+0.97 ms in performance), forwarding path, queues (mac80211 fq_codel on both interfaces).  Not
+tunable through NetworkManager: ap0's beacon interval and DTIM (wpa_supplicant's defaults).
+The gain is not measured yet (the home 2.4 GHz link was too noisy that night: gateway pings
+median 130 ms with and without power save): scripts/hotspot-ab-test.sh, with a laptop on the
+hotspot.  rag-notes hardware wifi.
 Missing:
+- scripts/hotspot-ab-test.sh with the laptop: pings and iperf3 with the old state (power save
+  on when ap0 starts) and the new (off); expected: idle spikes gone in the off phases;
 - the merged placement run by the script, SCC and the radar-channel fallback;
 - GNU on 2.4 GHz beside a 5 GHz network: worked two minutes, then frames to the laptop failed;
 - 2.4 GHz beside a 2.4 GHz network, with a device;

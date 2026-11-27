@@ -946,6 +946,11 @@ Dracula palette, no kernel messages over the greeter.")
                    ,(plain-file "nm-connections.conf"
                                 "[keyfile]\npath=/var/lib/NetworkManager/system-connections\n"))
                  ;; Wi-Fi power saving on by default for new networks.
+                 ;; Streams and the hotspot beside a network turn it off
+                 ;; while they run (pro1x-wifi-powersave hold): the WCN3990
+                 ;; firmware does not support a client in power save next
+                 ;; to ap0.  Harmless on ap0 itself (an access point has no
+                 ;; power save to set).
                  `("wifi-powersave.conf"
                    ,(plain-file "nm-wifi-powersave.conf"
                                 "[connection]\nwifi.powersave=3\n"))))))
@@ -1099,6 +1104,8 @@ Dracula palette, no kernel messages over the greeter.")
      bluez
      libqmi libqrtr-glib
      iw ntp usbutils vim git font-terminus
+     ;; iperf3: the hotspot's speed tests (scripts/hotspot-ab-test.sh).
+     iperf
      gsettings-desktop-schemas pro1x-gsettings-defaults
      ;; Phosh requires these schemas at runtime: gnome-settings-daemon for
      ;; org.gnome.settings-daemon.plugins.power (phosh-pro1x compiles them in).
