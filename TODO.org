@@ -121,6 +121,11 @@ and emulation (moWerk and memeline, 2026-11-25, confirmed on stock Android).  Th
 whole stock init after every CORE_RESET, saying the chip keeps none of it across a power
 cycle; our 2026-11-24 note says it kept Android's values: to check.  Next: on a kernel with
 the NFC node, write config 2 (and his init list) and poll a card; then send it at each start.
+2026-11-27: generation 284 has the NFC node again (nfc0); the menu's Scan powers the adapter
+first (it said "Could not start NFC polling": neard answers "No such device" while unpowered),
+but no card is read yet.  pro1x-nfc-tvdd.patch: nxp-nci sends nxp,ext-tvdd-cfg (TVDD config 2,
+moWerk's bytes) from a new post_setup hook after CORE_INIT at every power-up; the Pro1X's DTS
+node has the property.  Built by CI, not yet run.
 *** TODO [#A] Location in Waydroid
 The host's GPS works (pro1x-gnss-unlock, 93a9b7f; Satellite sees satellites, author); a test
 indoors (2026-11-18) got no sentences, as expected without sky.  Android in Waydroid has no

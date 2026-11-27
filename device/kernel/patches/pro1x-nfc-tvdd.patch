@@ -1,0 +1,116 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] nfc: nxp-nci: send the board's TVDD configuration after CORE_INIT
+
+NXP NCI controllers take their antenna supply setting (TVDD, the
+proprietary parameter A0 0E, NXP_EXT_TVDD_CFG_n in NXP's libnfc-nxp.conf)
+from the host at every start; the Android HAL sends it after CORE_INIT.
+nxp-nci never sends it, so a board whose transmitter is fed from another
+source than the chip's current setting gets no RF field: the controller
+senses a reader's field but cannot read a card.
+
+A new device-tree property, nxp,ext-tvdd-cfg (11 bytes), is sent as a
+CORE_SET_CONFIG from a post_setup hook, after CORE_INIT on every power-up.
+
+The F(x)tec Pro1X's stock libnfc-nxp.conf selects TVDD config 1 (internal
+LDO, 3.3 V), with which its PN557's transmitter gets no supply; config 2
+(DC-DC 5 V on TX_PWR_REQ) gives a field, card reading and emulation.
+Reported by moWerk (github.com/moWerk/nfcd-nxp-i2c-plugin bb567df,
+config/nxp-i2c-init.hex, BSD; confirmed on stock Android with memeline,
+2026-11-25); the bytes are his capture of the stock HAL.  The Pro1X's chip
+here held config 1's bytes and never sent a field (2026-11-24).
+
+Ours (fxtec-pro1x-guix, 2026-11-27).  Not yet built or run.
+
+---
+--- a/drivers/nfc/nxp-nci/core.c
++++ b/drivers/nfc/nxp-nci/core.c
+@@ -13,6 +13,7 @@
+ #include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/nfc.h>
++#include <linux/property.h>
+ 
+ #include <net/nfc/nci_core.h>
+ 
+@@ -123,11 +124,34 @@
+ 	},
+ };
+ 
++static int nxp_nci_post_setup(struct nci_dev *ndev)
++{
++	struct nxp_nci_info *info = nci_get_drvdata(ndev);
++	u8 cmd[4 + NXP_NCI_TVDD_CFG_LEN];
++	int r;
++
++	if (!info->has_tvdd_cfg)
++		return 0;
++
++	/* CORE_SET_CONFIG: one parameter, A0 0E (proprietary TVDD), its bytes. */
++	cmd[0] = 1;
++	cmd[1] = 0xa0;
++	cmd[2] = 0x0e;
++	cmd[3] = NXP_NCI_TVDD_CFG_LEN;
++	memcpy(&cmd[4], info->tvdd_cfg, NXP_NCI_TVDD_CFG_LEN);
++
++	r = nci_core_cmd(ndev, NCI_OP_CORE_SET_CONFIG_CMD, sizeof(cmd), cmd);
++	if (r)
++		nfc_err(&ndev->nfc_dev->dev, "TVDD configuration failed: %d\n", r);
++	return r;
++}
++
+ static const struct nci_ops nxp_nci_ops = {
+ 	.open = nxp_nci_open,
+ 	.close = nxp_nci_close,
+ 	.send = nxp_nci_send,
+ 	.fw_download = nxp_nci_fw_download,
++	.post_setup = nxp_nci_post_setup,
+ 	.core_ops = nxp_nci_core_ops,
+ 	.n_core_ops = ARRAY_SIZE(nxp_nci_core_ops),
+ };
+@@ -152,6 +176,15 @@
+ 	init_completion(&info->fw_info.cmd_completion);
+ 	mutex_init(&info->info_lock);
+ 
++	/*
++	 * Boards whose transmitter is fed from another TVDD source than the
++	 * chip's default give its configuration in the device tree.
++	 */
++	if (!device_property_read_u8_array(pdev, "nxp,ext-tvdd-cfg",
++					   info->tvdd_cfg,
++					   NXP_NCI_TVDD_CFG_LEN))
++		info->has_tvdd_cfg = true;
++
+ 	if (info->phy_ops->set_mode) {
+ 		r = info->phy_ops->set_mode(info->phy_id, NXP_NCI_MODE_COLD);
+ 		if (r < 0)
+--- a/drivers/nfc/nxp-nci/nxp-nci.h
++++ b/drivers/nfc/nxp-nci/nxp-nci.h
+@@ -49,6 +49,8 @@
+ 	int cmd_result;
+ };
+ 
++#define NXP_NCI_TVDD_CFG_LEN 11
++
+ struct nxp_nci_info {
+ 	struct nci_dev *ndev;
+ 	void *phy_id;
+@@ -62,6 +64,10 @@
+ 	struct mutex info_lock;
+ 
+ 	struct nxp_nci_fw_info fw_info;
++
++	/* NXP_EXT_TVDD_CFG_n of the board (A0 0E), sent after CORE_INIT. */
++	u8 tvdd_cfg[NXP_NCI_TVDD_CFG_LEN];
++	bool has_tvdd_cfg;
+ };
+ 
+ int nxp_nci_fw_download(struct nci_dev *ndev, const char *firmware_name);
+--- a/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
++++ b/arch/arm64/boot/dts/qcom/sm6115-fxtec-pro1x.dts
+@@ -359,4 +359,6 @@
+ 		interrupts = <70 IRQ_TYPE_EDGE_RISING>;
+ 		enable-gpios = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+ 		firmware-gpios = <&tlmm 31 GPIO_ACTIVE_HIGH>;
++		/* TVDD config 2 (DC-DC 5 V on TX_PWR_REQ): config 1 gives no field */
++		nxp,ext-tvdd-cfg = /bits/ 8 <0x11 0x01 0xc2 0xb2 0x00 0xb2 0x1e 0x1f 0x00 0xd0 0x0c>;
+ 	};
