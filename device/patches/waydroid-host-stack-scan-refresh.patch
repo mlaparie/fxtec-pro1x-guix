@@ -1,0 +1,82 @@
+waydroid-host-stack: devices heard in the discovery announced every second.
+
+The discovery loop seeds the guest with BlueZ's known devices only when
+discovery starts; after that it forwards a device only on DeviceAdded,
+which discover_devices_with_changes emits on property changes.  A guest
+scan that starts while discovery already runs gets no seed, and a steady
+advertiser changes nothing: the controller filters duplicates until its
+LE scan restarts (about every 34 s in BlueZ's dual discovery on the
+Pro1x's WCN3990) and BlueZ emits no RSSI equal to the last one.  The
+parked car reached Android once every 34 s, none inside the Tesla app's
+10 s scans, "no_peripherals" (Pro1x, 2026-11-27).  Each second, every
+device with an RSSI (BlueZ keeps one only for devices heard in the
+current discovery and clears them when it stops) goes again to the
+matching sessions.  Ours (fxtec-pro1x-guix, 2026-11-27), on d9a316e
+(MIT), after waydroid-host-stack-scan-duplicate-data.patch.
+
+--- a/host/src/bluez/mod.rs	2026-11-27 20:31:00.942644579 +0100
++++ b/host/src/bluez/mod.rs	2026-11-27 20:31:20.003463549 +0100
+@@ -989,6 +989,34 @@
+     }
+ }
+ 
++/// Emit every device heard in the current discovery (BlueZ keeps an RSSI
++/// only for those; it clears them all when discovery stops).
++async fn emit_heard_devices(
++    bluez: &BlueZ,
++    tx: &tokio::sync::mpsc::Sender<(u32, AdvSnapshot)>,
++    scan_policy: &ScanPolicy,
++) -> bool {
++    let Ok(adapter) = bluez.adapter().await else {
++        return true;
++    };
++    let Ok(addrs) = adapter.device_addresses().await else {
++        return true;
++    };
++    for addr in addrs {
++        if scan_policy.is_empty() {
++            break;
++        }
++        let heard = match adapter.device(addr) {
++            Ok(d) => d.rssi().await.ok().flatten().is_some(),
++            Err(_) => false,
++        };
++        if heard && !emit_adv_to_sessions(bluez, addr, tx, scan_policy).await {
++            return false;
++        }
++    }
++    true
++}
++
+ /// Run discovery while scan sessions exist; emit filtered advertisements.
+ pub async fn discovery_loop(
+     bluez: BlueZ,
+@@ -1037,6 +1065,16 @@
+             }
+         }
+ 
++        // A guest scan that starts while discovery already runs gets no
++        // seed, and BlueZ signals a known device again only when a property
++        // changes: the controller filters duplicates until its LE scan
++        // restarts, and BlueZ drops RSSI moves equal to the last one.  So a
++        // parked car reached the Tesla app's 10 s scans once every 34 s and
++        // the app gave up, "no_peripherals" (Pro1x, 2026-11-27).  Devices
++        // heard in this discovery are announced again every second.
++        let mut refresh = tokio::time::interval(Duration::from_secs(1));
++        refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
++
+         loop {
+             if scan_policy.is_empty() || *stop.borrow() {
+                 info!("dual discovery stopping (no sessions or stop)");
+@@ -1048,6 +1086,11 @@
+                         break;
+                     }
+                 }
++                _ = refresh.tick() => {
++                    if !emit_heard_devices(&bluez, &tx, &scan_policy).await {
++                        return;
++                    }
++                }
+                 ev = stream.next() => {
+                     match ev {
+                         // DeviceAdded (and re-emits from discover_devices_with_changes on

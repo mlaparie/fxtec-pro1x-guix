@@ -63,6 +63,8 @@
     ;;   scan-duplicate-data  BlueZ reports a steady advertiser on every
     ;;                        scan cycle, not only when its RSSI moves 8 dBm
     ;;                        (the parked car never reached the app's scans)
+    ;;   scan-refresh         devices heard in the discovery go to guest scans
+    ;;                        every second (the car reached them once in 34 s)
     (source
      (origin
        (inherit waydroid-host-stack-source)
@@ -73,7 +75,8 @@
                 name))
              '("waydroid-host-stack-shared-link-owners.patch"
                "waydroid-host-stack-gatt-write-parts.patch"
-               "waydroid-host-stack-scan-duplicate-data.patch")))))
+               "waydroid-host-stack-scan-duplicate-data.patch"
+               "waydroid-host-stack-scan-refresh.patch")))))
     (build-system cargo-build-system)
     (arguments
      (list
