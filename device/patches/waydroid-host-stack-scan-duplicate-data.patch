@@ -1,0 +1,49 @@
+waydroid-host-stack: DuplicateData on the discovery filters.
+
+Without it BlueZ (src/device.c device_set_rssi, RSSI_THRESHOLD 8)
+reports a known device again only when its RSSI moved by 8 dBm or its
+advertising data changed, and the bridge turns only those property
+changes into AdvReports for the guest.  A steady advertiser seen once,
+a parked car at -36 dBm, was reported by the controller at every scan
+cycle (btmon, 22 reports in 20 min) but reached Android 4 times, none
+inside the Tesla app's 10 s scans, which ended with "no_peripherals"
+(Pro1x, 2026-11-23).  With DuplicateData BlueZ treats the discovery as
+filtered and emits RSSI on every report the controller passes (about
+one per device every 7-10 s on the Pro1x's WCN3990, measured with
+bluetoothctl and dbus-monitor, 2026-11-27).  Ours (fxtec-pro1x-guix,
+2026-11-27), on d9a316e (MIT), after
+waydroid-host-stack-gatt-write-parts.patch.
+
+--- a/host/src/bluez/mod.rs	2026-11-27 02:34:10.395857128 +0100
++++ b/host/src/bluez/mod.rs	2026-11-27 02:33:17.554295624 +0100
+@@ -221,14 +221,21 @@
+         // Dual (auto): BR/EDR inquiry + LE so guest Settings Inquiry can see
+         // classic devices (e.g. Xbox) while LE (Hue) still works.
+         let transport_name = guest_pair_discovery_transport();
++        // DuplicateData: without it BlueZ reports a device again only when
++        // its RSSI moved by 8 dBm or its data changed, so a steady
++        // advertiser seen once (a parked car) never reaches a guest scan
++        // started later.  With it, every report the controller passes
++        // becomes a property change (RSSI, data) and so an AdvReport.
+         let filter = bluer::DiscoveryFilter {
+             transport: bluer_transport(transport_name),
++            duplicate_data: true,
+             ..Default::default()
+         };
+         info!(
+             transport = transport_name.as_bluez_str(),
+             classic = transport_name.includes_classic(),
+             le = transport_name.includes_le(),
++            duplicate_data = true,
+             "setting discovery filter for guest pair scan"
+         );
+         adapter
+@@ -518,6 +525,8 @@
+         );
+         let filter = bluer::DiscoveryFilter {
+             transport: bluer_transport(transport_name),
++            // Every report, not only RSSI moves (see open_discovery_stream).
++            duplicate_data: true,
+             ..Default::default()
+         };
+         // Fails with DiscoveryActive while a guest scan runs; we then simply
