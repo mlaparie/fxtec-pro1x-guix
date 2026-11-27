@@ -13,11 +13,14 @@
 ;;;
 ;;; Tested state: built for aarch64 from the author's private channel and
 ;;; used on the Pro¹x from the user profile (2026-11-22); not yet from here.
+;;; The root tools in wl-cast-cert's PATH (certbot, nft): not yet built.
 
 (define-module (fxtec-pro1x packages wl-cast)
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages curl)
+  #:use-module (gnu packages gawk)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gl)
   #:use-module (gnu packages glib)
@@ -100,8 +103,19 @@
                   (for-each (lambda (f)
                               (wrap-program (string-append bin "/" f)
                                 `("PATH" ":" prefix ,path)))
-                            '("wl-cast" "wl-cast-screen" "wl-cast-output"
-                              "wl-cast-cert" "wl-cast-dns-cloudflare"
+                            '("wl-cast" "wl-cast-screen" "wl-cast-output"))
+                  ;; wl-cast-cert and the DNS scripts run as root through
+                  ;; sudo, with a bare environment: certbot and nft are in
+                  ;; no profile of the system, curl and openssl neither.
+                  (for-each (lambda (f)
+                              (wrap-program (string-append bin "/" f)
+                                `("PATH" ":" prefix
+                                  ,(cons* (string-append (assoc-ref inputs "nftables")
+                                                         "/sbin")
+                                          (in "/bin" '("certbot" "curl" "openssl"
+                                                       "coreutils" "gawk" "grep"
+                                                       "sed"))))))
+                            '("wl-cast-cert" "wl-cast-dns-cloudflare"
                               "wl-cast-dns-desec" "wl-cast-dns-porkbun")))))
             (add-after 'wrap 'install-examples
               (lambda _
@@ -110,10 +124,11 @@
                  (string-append #$output "/share/doc/wl-cast/examples")))))))
       (native-inputs (list pkg-config wayland-protocols wlr-protocols))
       (inputs
-       (list bash-minimal brightnessctl curl glib gobject-introspection gst-plugins-bad
-             gst-plugins-base gst-plugins-good gstreamer iproute iw jq libdrm
-             libnice mesa openssl pipewire procps python python-evdev
-             pulseaudio python-pygobject wayland wf-recorder wl-mirror))
+       (list bash-minimal brightnessctl certbot coreutils curl gawk glib
+             gobject-introspection grep gst-plugins-bad gst-plugins-base
+             gst-plugins-good gstreamer iproute iw jq libdrm libnice mesa
+             nftables openssl pipewire procps python python-evdev pulseaudio
+             python-pygobject sed wayland wf-recorder wl-mirror))
       (home-page "https://codeberg.org/mlaparie/wl-cast")
       (synopsis "Use a Wayland screen from a browser, with touch and sound")
       (description "wl-cast streams a wlroots output to a web browser by

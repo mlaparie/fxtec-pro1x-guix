@@ -675,6 +675,14 @@
         "confidence": "confirmed",
         "date": "2026-11-27",
         "source": "topjohnwu/Magisk native/src/core/daemon.rs; beakthoven/TrickyStoreOSS app/src/main/cpp/inject/utils.cpp; developer.android.com/google/play/integrity/improvements; checker screenshots (deleted)"
+      },
+      {
+        "title": "wl-cast's HTTPS name in the car: the certificate, the redirect and the sudo rule all have to exist for wl-cast itself",
+        "general": "A second stream server beside a legacy one inherits nothing from it: the certificate directory it reads, the nftables redirect for the public address, the settings file and the sudoers line are all its own. Before a car test, check them as the new server sees them: its /var/lib tls dir, the nft table, the sudoers entry, and the tools (certbot, nft) on the root script's wrapped PATH, since the system profile has neither.",
+        "instance": "Pro¹x, generation 283 (2026-11-27 inspection): the car automation ran `pro1x-stream --wlcast', whose send_wlcast never calls https_check; /var/lib/wl-cast did not exist, so wl-cast-server served its self-signed certificate on 8443 (the Tesla refuses it); no nft table after the reboot (both scripts set it until reboot only); sudoers listed pro1x-stream-cert only; the wl-cast package wrapped neither certbot nor nftables. The legacy side was fine: /var/lib/pro1x/stream-tls had the name's certificate until 2027-02-17, the A record resolved to 240.3.3.4, no AAAA. Fixed by wl-cast a98d5cd, 679de13 (start runs sudo -n wl-cast-cert; redirect to :8443 on the ingress interface, wlan0 or ap0) and here fdca01a, 89e2e38. Not yet deployed nor tried in the car.",
+        "confidence": "confirmed",
+        "date": "2026-11-27",
+        "source": "phone: /var/log/pro1x-stream-cert.log, ~user/.local/state/tesla-stream.log, nft list ruleset, /etc/sudoers; device/sway/pro1x-stream send_wlcast; wl-cast a98d5cd 679de13; fdca01a 89e2e38"
       }
     ]
   }
