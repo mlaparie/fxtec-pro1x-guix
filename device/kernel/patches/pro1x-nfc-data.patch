@@ -1,0 +1,240 @@
+From: fxtec-pro1x-guix
+Subject: [PATCH] nfc: nxp-nci: /dev/nxp-nci DATA path for card emulation
+
+EXPERIMENTAL, build-tested only, never run.  Needs a second CI kernel build
+and a review before trusting it; keep it separate from pro1x-nfc-replay.patch
+(the nci_cmd control path, which is frozen for the current build).
+
+UID-only replay is answered by the controller in anticollision and needs no
+DATA path.  Emulating a Type-4 (ISO-DEP / NDEF) tag, where the phone answers
+the reader's ISO 14443-4 APDUs, needs the reader's frames delivered to user
+space and responses sent back.  The mainline NCI core cannot do this: it has
+no HCE path, and target-mode RX (nfc_tm_data_received) is gated on
+dep_link_up, set only for NFC-DEP (LLCP); an ISO-DEP listen activation is
+rejected in ntf.c and creates no connection, so DATA is dropped.  The AF_NFC
+sockets are initiator-only (SEQPACKET) or a read-only monitor (SOCK_RAW), and
+nci_cmd sends control packets only.
+
+Add a misc character device, /dev/nxp-nci, that tees the DATA path around the
+core.  Listen is set up with the existing nci_cmd control path (RF_DISCOVER_MAP
+mapping listen ISO-DEP to the FRAME interface, then RF_DISCOVER listen-A), so
+the controller passes the reader's frames up as NCI DATA packets.  While the
+node is open, incoming DATA packets (MT bits 000) are queued for read()
+instead of nci_recv_frame, and a write() is sent straight to the controller
+through the i2c phy; control packets (RSP/NTF) still reach the core.  Closing
+the node restores normal operation, so a closed node changes nothing.
+
+Limits (documented, not worked around): this bypasses the core's credit and
+fragmentation handling, so it is one request/response frame at a time, each
+within the I2C payload limit; a direct phy write can in principle race the
+core's own TX, which does not run during emulation.  pro1x-nfc-emulate drives
+the Type-4 APDU exchange in user space.
+
+Depends on pro1x-nfc-replay.patch (applied first; shares struct
+nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
+
+---
+--- a/drivers/nfc/nxp-nci/i2c.c
++++ b/drivers/nfc/nxp-nci/i2c.c
+@@ -20,6 +20,10 @@
+ #include <linux/nfc.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/unaligned.h>
++#include <linux/miscdevice.h>
++#include <linux/poll.h>
++#include <linux/uaccess.h>
++#include <linux/wait.h>
+
+ #include <net/nfc/nfc.h>
+
+@@ -42,6 +46,16 @@
+ 			 */
+
+ 	int last_nci_status;	/* NCI status of the last nci_cmd write */
++
++	/*
++	 * Card-emulation DATA tee (pro1x-nfc-data.patch): while /dev/nxp-nci is
++	 * open, incoming NCI DATA packets go to user space instead of the NCI
++	 * core, and frames written there go straight to the controller.
++	 */
++	struct miscdevice emu_miscdev;
++	struct sk_buff_head emu_rx;
++	wait_queue_head_t emu_wait;
++	bool emu_on;
+ };
+
+ static int nxp_nci_i2c_set_mode(void *phy_id,
+@@ -239,7 +253,18 @@
+
+ 	switch (info->mode) {
+ 	case NXP_NCI_MODE_NCI:
+-		nci_recv_frame(phy->ndev, skb);
++		/*
++		 * In card emulation the reader's APDUs arrive as NCI DATA
++		 * packets (MT bits 000); hand those to /dev/nxp-nci while it
++		 * is open, and keep control packets (RSP/NTF) for the core.
++		 */
++		if (phy->emu_on && skb->len > 0 &&
++		    (skb->data[0] & 0xe0) == 0x00) {
++			skb_queue_tail(&phy->emu_rx, skb);
++			wake_up_interruptible(&phy->emu_wait);
++		} else {
++			nci_recv_frame(phy->ndev, skb);
++		}
+ 		break;
+ 	case NXP_NCI_MODE_FW:
+ 		nxp_nci_fw_recv_frame(phy->ndev, skb);
+@@ -349,6 +374,114 @@
+ };
+ ATTRIBUTE_GROUPS(nxp_nci_i2c);
+
++/*
++ * /dev/nxp-nci: a DATA path for card emulation (Type-4 / ISO-DEP listen),
++ * which the NCI core cannot route (it has no HCE path, and target-mode RX is
++ * LLCP-only).  Set up listen with the nci_cmd control path (RF_DISCOVER_MAP
++ * listen ISO-DEP -> FRAME, then RF_DISCOVER listen-A), then open this node:
++ * while it is open, incoming NCI DATA packets (the reader's APDUs) are read
++ * here instead of reaching the core, and frames written here are sent
++ * straight to the controller.  Closing it restores normal operation.
++ *
++ * EXPERIMENTAL: card emulation has not been seen on this chip, and this
++ * bypasses the core's credit and fragmentation handling -- one request and
++ * response frame at a time, each within the I2C payload limit.
++ * pro1x-nfc-emulate drives it.
++ */
++static struct nxp_nci_i2c_phy *emu_phy(struct file *filp)
++{
++	return container_of(filp->private_data, struct nxp_nci_i2c_phy,
++			    emu_miscdev);
++}
++
++static int nxp_nci_emu_open(struct inode *inode, struct file *filp)
++{
++	struct nxp_nci_i2c_phy *phy = emu_phy(filp);
++
++	skb_queue_purge(&phy->emu_rx);
++	phy->emu_on = true;
++	return 0;
++}
++
++static int nxp_nci_emu_release(struct inode *inode, struct file *filp)
++{
++	struct nxp_nci_i2c_phy *phy = emu_phy(filp);
++
++	phy->emu_on = false;
++	skb_queue_purge(&phy->emu_rx);
++	return 0;
++}
++
++static ssize_t nxp_nci_emu_read(struct file *filp, char __user *buf,
++				size_t count, loff_t *ppos)
++{
++	struct nxp_nci_i2c_phy *phy = emu_phy(filp);
++	struct sk_buff *skb;
++	ssize_t r;
++
++	skb = skb_dequeue(&phy->emu_rx);
++	while (!skb) {
++		if (filp->f_flags & O_NONBLOCK)
++			return -EAGAIN;
++		if (wait_event_interruptible(phy->emu_wait,
++					     !skb_queue_empty(&phy->emu_rx)))
++			return -ERESTARTSYS;
++		skb = skb_dequeue(&phy->emu_rx);
++	}
++	if (skb->len > count) {
++		skb_queue_head(&phy->emu_rx, skb);
++		return -EMSGSIZE;
++	}
++	r = skb->len;
++	if (copy_to_user(buf, skb->data, r))
++		r = -EFAULT;
++	kfree_skb(skb);
++	return r;
++}
++
++static ssize_t nxp_nci_emu_write(struct file *filp, const char __user *buf,
++				 size_t count, loff_t *ppos)
++{
++	struct nxp_nci_i2c_phy *phy = emu_phy(filp);
++	struct sk_buff *skb;
++	int r;
++
++	if (count < 3 || count > NXP_NCI_I2C_MAX_PAYLOAD)	/* NCI header + data */
++		return -EINVAL;
++	skb = alloc_skb(count, GFP_KERNEL);
++	if (!skb)
++		return -ENOMEM;
++	if (copy_from_user(skb_put(skb, count), buf, count)) {
++		kfree_skb(skb);
++		return -EFAULT;
++	}
++	/* DATA packets only (MT bits 000); control goes through nci_cmd. */
++	if ((skb->data[0] & 0xe0) != 0x00) {
++		kfree_skb(skb);
++		return -EINVAL;
++	}
++	r = nxp_nci_i2c_write(phy, skb);
++	kfree_skb(skb);
++	return r < 0 ? r : (ssize_t)count;
++}
++
++static __poll_t nxp_nci_emu_poll(struct file *filp, poll_table *wait)
++{
++	struct nxp_nci_i2c_phy *phy = emu_phy(filp);
++
++	poll_wait(filp, &phy->emu_wait, wait);
++	return skb_queue_empty(&phy->emu_rx) ? 0 : (EPOLLIN | EPOLLRDNORM);
++}
++
++static const struct file_operations nxp_nci_emu_fops = {
++	.owner = THIS_MODULE,
++	.open = nxp_nci_emu_open,
++	.release = nxp_nci_emu_release,
++	.read = nxp_nci_emu_read,
++	.write = nxp_nci_emu_write,
++	.poll = nxp_nci_emu_poll,
++};
++
+ static int nxp_nci_i2c_probe(struct i2c_client *client)
+ {
+ 	struct device *dev = &client->dev;
+@@ -389,22 +522,36 @@
+ 	if (r < 0)
+ 		return r;
+
++	skb_queue_head_init(&phy->emu_rx);
++	init_waitqueue_head(&phy->emu_wait);
++
+ 	r = request_threaded_irq(client->irq, NULL,
+ 				 nxp_nci_i2c_irq_thread_fn,
+ 				 IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+ 				 NXP_NCI_I2C_DRIVER_NAME, phy);
+-	if (r < 0)
++	if (r < 0) {
+ 		nfc_err(&client->dev, "Unable to register IRQ handler\n");
++		return r;
++	}
+
+-	return r;
++	phy->emu_miscdev.minor = MISC_DYNAMIC_MINOR;
++	phy->emu_miscdev.name = "nxp-nci";
++	phy->emu_miscdev.fops = &nxp_nci_emu_fops;
++	phy->emu_miscdev.parent = &client->dev;
++	if (misc_register(&phy->emu_miscdev) < 0)
++		nfc_err(&client->dev, "Unable to register /dev/nxp-nci\n");
++
++	return 0;
+ }
+
+ static void nxp_nci_i2c_remove(struct i2c_client *client)
+ {
+ 	struct nxp_nci_i2c_phy *phy = i2c_get_clientdata(client);
+
++	misc_deregister(&phy->emu_miscdev);
+ 	nxp_nci_remove(phy->ndev);
+ 	free_irq(client->irq, phy);
++	skb_queue_purge(&phy->emu_rx);
+ }
+
+ static const struct i2c_device_id nxp_nci_i2c_id_table[] = {

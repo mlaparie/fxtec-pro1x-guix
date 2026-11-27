@@ -75,13 +75,15 @@
         ;; A sysfs node to send one raw NCI command, so user space can set
         ;; LA_NFCID1 and enter listen mode to replay a badge's UID
         ;; (pro1x-nfc-listen; nci_cmd not exposed by the NFC netlink API).
+        ;; nfc-data adds /dev/nxp-nci, a DATA path for Type-4 card emulation
+        ;; (pro1x-nfc-emulate); EXPERIMENTAL, never run, needs its own CI build.
         '("panelgap" "dpugap" "qrtr-modem-wake" "charger-awake-switch"
           "kbd-backlight-on" "qseecom-tee" "tzmem-bridge-errno"
           "qseecom-listener-rounds" "qseecom-inout" "imx582-4x3" "imx582-48mp"
           "camera-eeprom" "dw9800-ramp" "sleepstate-hibernate"
           "hibernate-debug" "adreno-zap-hibernate"
           "bt-le-conn-nodup" "ath-country-ie-no-ir"
-          "nfc" "nfc-init" "nfc-replay"))))
+          "nfc" "nfc-init" "nfc-replay" "nfc-data"))))
 
 (define-public linux-pro1x
   (package
