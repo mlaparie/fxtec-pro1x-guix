@@ -83,6 +83,22 @@ in_android() {
 
 booted() { [ "$(in_android 'getprop sys.boot_completed' | tr -d '\r\n ')" = 1 ]; }
 
+# The soft HCI HAL exits when waydroid-bt-host goes away (bluetoothd
+# restarted) and init does not start it again: Android's Bluetooth then
+# crashed in a loop, "Unable to get a Bluetooth service after 500ms", and
+# the Tesla app could not turn it on (2026-11-27).  This service restarts
+# with the bridge, so at its start the HAL is started again, and
+# Bluetooth with it if it was on.  By its process: init.svc says
+# "stopped" for a HAL that runs.
+hal() {
+    in_android '
+pidof android.hardware.bluetooth@1.0-service.waydroid >/dev/null && exit 0
+start bluetooth-1-0-waydroid
+sleep 3
+[ "$(settings get global bluetooth_on)" = 1 ] && cmd bluetooth_manager enable
+echo started' | grep -q started && log "Bluetooth HAL started again in Android"
+}
+
 grant() {
     in_android '
 P=com.android.bluetooth
@@ -147,6 +163,7 @@ watch() {
         if [ "$id" != "$last" ]; then
             booted || continue
             last=$id on=
+            hal
             grant
         fi
         [ -n "$gps" ] || continue
