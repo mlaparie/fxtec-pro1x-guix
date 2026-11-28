@@ -9,31 +9,61 @@
 #   pro1x-nfc-listen stop              leave listen mode (RF_DEACTIVATE)
 #
 # It writes raw NCI control commands to the driver's nci_cmd sysfs node
-# (pro1x-nfc-replay.patch): CORE_SET_CONFIG with the Listen-A parameters,
-# then a single listen-A RF_DISCOVER; stop sends RF_DEACTIVATE.  The kernel
-# NCI core has no card-emulation (HCE) path, so only the UID is answered, in
-# the ISO 14443-3 anticollision the controller handles itself -- enough for a
-# UID-only reader, not for one that reads encrypted sectors or runs a crypto
-# challenge (DESFire, Mifare Classic with keys).  The adapter must be powered
-# and not polling (pro1x-nfc stops the poll loop first).
+# (pro1x-nfc-replay.patch), in RFST_IDLE: CORE_SET_CONFIG with the Listen-A
+# parameters, RF_SET_LISTEN_MODE_ROUTING (NFC-A -> Device Host),
+# RF_DISCOVER_MAP (ISO-DEP listen -> ISO_DEP interface), then a listen-A
+# RF_DISCOVER; stop sends RF_DEACTIVATE.
+#
+# Why ISO-DEP: the PN557 only card-emulates ISO-DEP (Type-4) and NFC-DEP, not
+# Type-2.  Without a routing entry and a mapped listen interface the chip
+# senses the reader's field but never activates (confirmed on the device
+# 2026-11-28).  Presenting with the ISO-DEP SEL_INFO bit (0x20) is the only
+# way it engages at all; the controller then answers anticollision (the UID)
+# and RATS itself, which is enough for a UID-only reader.  A reader that
+# checks the exact SAK, reads tag memory, or runs a crypto challenge (DESFire,
+# Mifare Classic) will not be fooled.  A genuine Type-2 badge (SAK 0x00, e.g.
+# the RR badge) cannot be emulated as a tag on this chip.
+#
+# nci_cmd returns the NCI status for commands the kernel NCI core handles
+# (CORE_SET_CONFIG, RF_DISCOVER, RF_DEACTIVATE).  It has no response handler
+# for RF_SET_LISTEN_MODE_ROUTING or RF_DISCOVER_MAP, so those writes block for
+# the command timeout and fail with ETIMEDOUT even though the controller
+# accepted them; we ignore that and judge success from the RF_DISCOVER status.
 #
 # NCI config parameter IDs (NCI 2.0, RF Communication; the Pro1X's stock HAL
 # sets the same four, moWerk's nfcd-nxp-i2c-plugin capture):
 #   0x30 LA_BIT_FRAME_SDD   0x31 LA_PLATFORM_CONFIG
 #   0x32 LA_SEL_INFO        0x33 LA_NFCID1
 #
-# State: written 2026-11-27, untested (needs the CI kernel with the nci_cmd
-# patch).  Whether the PN557 presents a custom NFCID1 in listen mode is not
-# confirmed on any port.
+# State: 2026-11-28, listen engagement confirmed on the device (gen 297):
+# RF_INTF_ACTIVATED_NTF on a reader tap with routing + ISO-DEP map.  The
+# adapter must be powered and not polling (pro1x-nfc stops the poll loop).
 import glob
 import sys
 
 # NCI control commands (GID, OID, then a length byte and payload).
 SET_CONFIG = (0x20, 0x02)        # CORE_SET_CONFIG_CMD
+SET_ROUTING = (0x21, 0x01)       # RF_SET_LISTEN_MODE_ROUTING_CMD
+DISCOVER_MAP = (0x21, 0x00)      # RF_DISCOVER_MAP_CMD
 RF_DISCOVER = (0x21, 0x03)       # RF_DISCOVER_CMD
 RF_DEACTIVATE = (0x21, 0x06)     # RF_DEACTIVATE_CMD
 LA_BIT_FRAME_SDD, LA_PLATFORM_CONFIG, LA_SEL_INFO, LA_NFCID1 = 0x30, 0x31, 0x32, 0x33
+LA_SEL_INFO_ISO_DEP = 0x20
 NCI_NFC_A_PASSIVE_LISTEN_MODE = 0x80
+NCI_RF_TECH_NFC_A = 0x00
+NCI_RF_PROTOCOL_ISO_DEP = 0x04
+NCI_DISC_MAP_MODE_LISTEN = 0x02
+NCI_RF_INTERFACE_ISO_DEP = 0x02
+NFCEE_ID_DH = 0x00
+NCI_ROUTE_TECH = 0x00
+POWER_SWITCHED_ON = 0x01
+
+# Route NFC-A to the Device Host: more=0, 1 entry, [tech, len 3, DH, power, A].
+ROUTING = (0x00, 0x01, NCI_ROUTE_TECH, 0x03,
+           NFCEE_ID_DH, POWER_SWITCHED_ON, NCI_RF_TECH_NFC_A)
+# Map ISO-DEP listen to the ISO_DEP interface: 1 config, [proto, mode, iface].
+MAP = (0x01, NCI_RF_PROTOCOL_ISO_DEP, NCI_DISC_MAP_MODE_LISTEN,
+       NCI_RF_INTERFACE_ISO_DEP)
 
 
 def node():
@@ -59,10 +89,11 @@ def cmd(gid_oid, payload):
 
 
 def send(path, frame, tolerant=False):
-    # Write one command; a transport failure (nci_core_cmd < 0) surfaces as
-    # an OSError on write.  The NCI status of the command is then read back
-    # (0 = success, >0 = an NCI status code, <0 = -errno).  tolerant=True
-    # returns None instead of exiting, for a best-effort deactivate.
+    # Write one command and read back the NCI status (0 = success, >0 = an NCI
+    # status code, <0 = -errno).  tolerant=True returns None instead of
+    # exiting: used for RF_DEACTIVATE (idle already) and for the routing/map
+    # commands, whose writes time out (-110) because the kernel NCI core has
+    # no response handler for them, though the controller did accept them.
     try:
         with open(path, "w") as f:
             f.write(frame.hex())
@@ -93,8 +124,12 @@ def main():
     if len(uid) not in (4, 7):
         sys.exit("pro1x-nfc-listen: UID must be 4 or 7 bytes, got %d" % len(uid))
     sak = unhex(sys.argv[3])[0] if len(sys.argv) > 3 and sys.argv[3] else 0x00
+    # Force the ISO-DEP bit so the PN557 engages (its only listen protocol).
+    sak |= LA_SEL_INFO_ISO_DEP
 
-    # Leave any previous listen first; ignore its status (idle already).
+    # Everything below runs in RFST_IDLE: deactivate first (ignore the status,
+    # it is semantic-error 0x06 when already idle), then configure and route
+    # before RF_DISCOVER.
     send(path, cmd(RF_DEACTIVATE, (0x00,)), tolerant=True)
 
     # CORE_SET_CONFIG: the four Listen-A parameters.  LA_BIT_FRAME_SDD 0x08
@@ -107,15 +142,21 @@ def main():
     params += bytes((LA_NFCID1, len(uid))) + uid
     st = send(path, cmd(SET_CONFIG, params))
     if st != 0:
-        sys.exit("pro1x-nfc-listen: CORE_SET_CONFIG rejected (NCI status %d)" % st)
+        sys.exit("pro1x-nfc-listen: CORE_SET_CONFIG rejected (NCI status %s)" % st)
+
+    # Route NFC-A to the host and map ISO-DEP listen to the ISO_DEP interface.
+    # These writes time out (-110); the controller still applied them.
+    send(path, cmd(SET_ROUTING, ROUTING), tolerant=True)
+    send(path, cmd(DISCOVER_MAP, MAP), tolerant=True)
 
     # RF_DISCOVER with one entry: listen-A, discovery frequency 1.  Only this
     # mode, to avoid the RFU active modes (0x05/0x85) a PN557 rejects wholesale
-    # under NCI 2.0 (moWerk).
+    # under NCI 2.0 (moWerk).  Its status tells us the routing/map took.
     disc = (1, NCI_NFC_A_PASSIVE_LISTEN_MODE, 1)
     st = send(path, cmd(RF_DISCOVER, disc))
     if st != 0:
-        sys.exit("pro1x-nfc-listen: RF_DISCOVER rejected (NCI status %d)" % st)
+        sys.exit("pro1x-nfc-listen: RF_DISCOVER rejected (NCI status %s); "
+                 "the controller may not support listen for this badge" % st)
 
 
 if __name__ == "__main__":

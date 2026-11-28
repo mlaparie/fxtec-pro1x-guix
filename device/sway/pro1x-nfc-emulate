@@ -7,25 +7,46 @@
 #
 # NDEFFILE is a raw NDEF message (the bytes of the records, no NLEN prefix).
 #
-# How it works, and why it needs the kernel patch:
-#   The mainline NCI core has no card-emulation (HCE) path, so the APDU
-#   exchange cannot go through neard or the NFC netlink API.  Listen is set up
-#   with the nci_cmd control node (pro1x-nfc-replay.patch): RF_DISCOVER_MAP
-#   maps listen ISO-DEP to the FRAME interface, so the controller hands the
-#   reader's frames up as raw NCI DATA packets, and RF_DISCOVER listen-A puts
-#   it in listen.  The DATA frames are then exchanged through /dev/nxp-nci
-#   (pro1x-nfc-data.patch): the reader's RATS and APDUs are read(), responses
-#   are write()n.  This script is the ISO 14443-4 / Type-4 responder on top.
+# How it works (confirmed engaging on the device 2026-11-28):
+#   Listen is set up through the nci_cmd control node (pro1x-nfc-replay.patch),
+#   in RFST_IDLE: CORE_SET_CONFIG (SEL_INFO with the ISO-DEP bit),
+#   RF_SET_LISTEN_MODE_ROUTING (NFC-A -> Device Host), RF_DISCOVER_MAP
+#   (ISO-DEP listen -> the ISO_DEP interface), RF_DISCOVER listen-A.  The
+#   controller then does anticollision and RATS/ATS itself and, once the
+#   reader activates ISO-DEP, delivers the reader's APDUs to the host as NCI
+#   DATA packets through /dev/nxp-nci (pro1x-nfc-data.patch); this script
+#   answers them (SELECT NDEF app, SELECT CC/NDEF file, ReadBinary) and the
+#   controller frames the responses back to the reader.  Because the ISO_DEP
+#   interface handles the ISO-DEP layer, the APDUs arrive and leave BARE (no
+#   RATS, no I-block PCB, no CRC -- the controller adds those and handles the
+#   frame-waiting-time extension).
 #
-# State: written 2026-11-27.  EXPERIMENTAL and UNTESTED end to end: it needs
-# the CI kernel with BOTH pro1x-nfc-replay.patch and pro1x-nfc-data.patch
-# (the latter unbuilt), and card emulation has not been seen on this chip.
-# The APDU/ISO-DEP logic below is unit-tested in isolation only.
+# Scope: Type-4 / ISO-DEP (NDEF) tags only.  The PN557 cannot emulate Type-2
+# (e.g. a Mifare Ultralight / the RR badge, SAK 0x00) or any crypto card.
+#
+# State: 2026-11-28.  Setup + engagement (RF_INTF_ACTIVATED on a reader tap,
+# the reader's SELECT APDU delivered to the host) confirmed on gen 297; the
+# full NDEF answer loop is not yet confirmed end to end.  Needs the CI kernel
+# with pro1x-nfc-replay.patch and pro1x-nfc-data.patch.  The APDU logic is
+# unit-tested in isolation.
 import glob
 import os
 import sys
 
 # --- NCI control setup, through the nci_cmd sysfs node ----------------------
+
+SET_CONFIG = (0x20, 0x02)
+SET_ROUTING = (0x21, 0x01)
+DISCOVER_MAP = (0x21, 0x00)
+RF_DISCOVER = (0x21, 0x03)
+RF_DEACTIVATE = (0x21, 0x06)
+# Route NFC-A to the Device Host (more=0, 1 entry: tech, len3, DH, power, A).
+ROUTING = (0x00, 0x01, 0x00, 0x03, 0x00, 0x01, 0x00)
+# Map ISO-DEP listen (proto 0x04, mode 0x02) to the ISO_DEP interface (0x02).
+MAP = (0x01, 0x04, 0x02, 0x02)
+# RF_DISCOVER: 1 entry, listen NFC-A passive (0x80), frequency 1.
+DISCOVER = (0x01, 0x80, 0x01)
+
 
 def nci_node():
     for n in glob.glob("/sys/class/nfc/nfc*/device/nci_cmd"):
@@ -33,37 +54,41 @@ def nci_node():
     sys.exit("pro1x-nfc-emulate: no nci_cmd node (kernel without the patches)")
 
 
-def nci_cmd(path, frame):
+def nci_cmd(path, gid_oid, payload, tolerant=False):
+    gid, oid = gid_oid
+    frame = bytes((gid, oid, len(payload))) + bytes(payload)
     try:
         with open(path, "w") as f:
-            f.write(bytes(frame).hex())
+            f.write(frame.hex())
         with open(path) as f:
             return int(f.read().strip() or "0")
     except OSError as e:
+        # Routing and map have no kernel rsp handler, so their writes time out
+        # (-110) though the controller accepted them; tolerate that.
+        if tolerant:
+            return None
         sys.exit("pro1x-nfc-emulate: %s: %s" % (path, e))
 
 
 def setup_listen(path, uid, sak):
-    # CORE_SET_CONFIG: Listen-A params, SEL_INFO with the ISO-DEP bit (0x20).
     params = bytearray([4])
     params += bytes((0x30, 1, 0x08))          # LA_BIT_FRAME_SDD
     params += bytes((0x31, 1, 0x03))          # LA_PLATFORM_CONFIG
     params += bytes((0x32, 1, sak | 0x20))    # LA_SEL_INFO: ISO-DEP
     params += bytes((0x33, len(uid))) + uid   # LA_NFCID1
-    for name, frame in (
-        ("CORE_SET_CONFIG", bytes((0x20, 0x02, len(params))) + bytes(params)),
-        # RF_DISCOVER_MAP: ISO-DEP (0x04), listen (0x02), FRAME interface (0x01)
-        ("RF_DISCOVER_MAP", bytes((0x21, 0x00, 0x04, 0x01, 0x04, 0x02, 0x01))),
-        # RF_DISCOVER: one entry, listen-A (0x80), frequency 1
-        ("RF_DISCOVER", bytes((0x21, 0x03, 0x03, 0x01, 0x80, 0x01))),
-    ):
-        st = nci_cmd(path, frame)
-        if st != 0:
-            sys.exit("pro1x-nfc-emulate: %s rejected (NCI status %d)" % (name, st))
+    nci_cmd(path, RF_DEACTIVATE, (0x00,), tolerant=True)   # ensure idle
+    st = nci_cmd(path, SET_CONFIG, params)
+    if st != 0:
+        sys.exit("pro1x-nfc-emulate: CORE_SET_CONFIG rejected (status %s)" % st)
+    nci_cmd(path, SET_ROUTING, ROUTING, tolerant=True)
+    nci_cmd(path, DISCOVER_MAP, MAP, tolerant=True)
+    st = nci_cmd(path, RF_DISCOVER, DISCOVER)
+    if st != 0:
+        sys.exit("pro1x-nfc-emulate: RF_DISCOVER rejected (status %s)" % st)
 
 
 def stop_listen(path):
-    nci_cmd(path, bytes((0x21, 0x06, 0x00)))   # RF_DEACTIVATE idle
+    nci_cmd(path, RF_DEACTIVATE, (0x00,), tolerant=True)   # to idle
 
 
 # --- Type-4 tag model -------------------------------------------------------
@@ -94,11 +119,10 @@ class Type4Tag:
         self.selected = None
 
     def _read(self, data, offset, length):
-        chunk = data[offset:offset + length]
-        return chunk + SW_OK
+        return data[offset:offset + length] + SW_OK
 
     def apdu(self, a):
-        """Answer one C-APDU with its R-APDU (bytes)."""
+        """Answer one bare C-APDU with its R-APDU (bytes)."""
         if len(a) < 4:
             return SW_WRONG_P1P2
         cla, ins, p1, p2 = a[0], a[1], a[2], a[3]
@@ -107,10 +131,9 @@ class Type4Tag:
         if ins == 0xA4:                                   # SELECT
             lc = a[4] if len(a) > 4 else 0
             data = a[5:5 + lc]
-            if p1 == 0x04 and data == AID:
-                self.selected = "app"
-                return SW_OK
-            if p1 == 0x00 and p2 == 0x0C and lc == 2:
+            if p1 == 0x04:                                # by name (AID)
+                return SW_OK if data == AID else SW_NOT_FOUND
+            if p1 == 0x00 and p2 == 0x0C and lc == 2:     # by file id
                 if data == CC_FILE_ID:
                     self.selected = "cc"; return SW_OK
                 if data == NDEF_FILE_ID:
@@ -128,51 +151,23 @@ class Type4Tag:
         return bytes((0x6D, 0x00))                         # INS not supported
 
 
-# --- ISO 14443-4 (ISO-DEP) block layer, FRAME interface ---------------------
-
-# A minimal ATS: TL, T0 (no interface bytes), then nothing.  FSCI default.
-ATS = bytes((0x05, 0x78, 0x80, 0x02, 0x00))
-
-
-def iso_dep_response(frame, tag):
-    """Given one RF frame from the reader, return the RF frame to send back,
-    or None if nothing should be sent.  frame/返回 are the bytes after the
-    NCI DATA header."""
-    if not frame:
-        return None
-    pcb = frame[0]
-    if pcb == 0xE0:                        # RATS
-        return ATS
-    if (pcb & 0xE2) == 0x02:              # I-block (no CID/NAD)
-        resp = tag.apdu(frame[1:])
-        return bytes((pcb,)) + resp       # keep the block number
-    if (pcb & 0xE6) == 0x22:             # R-block: ACK/NAK -> R(ACK)
-        return bytes((pcb | 0x20,))       # best effort; no chaining here
-    if (pcb & 0xC7) == 0xC2:             # S(WTX) request -> echo as response
-        return frame
-    if (pcb & 0xC7) == 0xC0:             # S(DESELECT)
-        return bytes((0xC0,))
-    return None
-
-
 # --- main loop --------------------------------------------------------------
 
-def nci_data(rf):
-    return bytes((0x00, 0x00, len(rf))) + rf     # conn 0, rfu 0, len
-
-
 def run(dev, tag):
+    # With the ISO_DEP interface, each NCI DATA packet carries a bare C-APDU
+    # after the 3-byte header; the response goes back the same way, on the
+    # packet's connection id.  The controller does the ISO-DEP framing.
     fd = os.open(dev, os.O_RDWR)
     try:
         while True:
             pkt = os.read(fd, 300)
             if not pkt or len(pkt) < 3:
                 continue
+            conn = pkt[0] & 0x0f
             plen = pkt[2]
-            rf = pkt[3:3 + plen]
-            resp = iso_dep_response(rf, tag)
-            if resp is not None:
-                os.write(fd, nci_data(resp))
+            apdu = pkt[3:3 + plen]
+            resp = tag.apdu(apdu)
+            os.write(fd, bytes((conn, 0x00, len(resp))) + resp)
     except KeyboardInterrupt:
         pass
     finally:
@@ -203,6 +198,9 @@ def main():
 
     node = nci_node()
     setup_listen(node, uid, sak)
+    sys.stderr.write("pro1x-nfc-emulate: listening as a Type-4 NDEF tag; "
+                     "tap a reader (Ctrl-C to stop)\n")
+    sys.stderr.flush()
     try:
         run("/dev/nxp-nci", tag)
     finally:

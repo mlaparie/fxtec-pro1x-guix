@@ -146,6 +146,38 @@ trusting it (bypasses the core's credit/fragmentation handling).  (c) Cloning a 
 (DESFire AES, Mifare Classic crypto1) is IMPOSSIBLE from a read: the keys are not in the UID or
 anything a reader exposes, so the two saved badges can never be replayed past the UID.  Only a
 live relay (two radios, card present) could, which this is not.
+2026-11-28: first on-device listen test (gen 297, replay+data+robust) FAILED as flagged, cause
+found.  pro1x-nfc-listen of the RR badge was accepted by the chip (CORE_SET_CONFIG -> status 0
+with the custom 7-byte UID; RF_DISCOVER listen-A -> status 0), but a Flipper reader got no
+response and the host saw no RF_INTF_ACTIVATED_NTF (61 05).  Cause (inferred): NCI listen answers
+no reader without a listen-mode routing table entry to the Device Host, and pro1x-nfc-listen
+sends no RF_SET_LISTEN_MODE_ROUTING (0x21 0x01) nor RF_DISCOVER_MAP (0x21 0x00).  All three are
+control commands, so this is testable live through the nci_cmd node and the fix is USER SPACE
+only (no kernel change): prepend, in idle, RF_SET_LISTEN_MODE_ROUTING (tech NFC-A -> DH:
+21 01 07 00 01 00 03 00 01 00) and optionally RF_DISCOVER_MAP listen (21 00 07 02 02 02 01 04 02
+01) before RF_DISCOVER.  Milestone 1 is engagement (a
+61 05), separate from memory emulation; a Flipper "Read" of a Type-2 badge also wants READ (0x30)
+which the Type-4 emulator does not answer.
+2026-11-28 part 2: routing must be sent in IDLE (rejected 0x06 during discovery).  Routing-only +
+listen-A -> chip detects the reader's field (61 07 flood) but NEVER activates (no 61 05).  Adding
+a T2T-listen->FRAME map made RF_DISCOVER get rejected (41 03 01 01): the sign PN557 has no Type-2
+card emulation.  So the RR Type-2/UID badge probably cannot be tag-emulated on this chip.  NEXT,
+decisive test: present ISO-DEP (SAK 0x20) + map ISO-DEP listen->ISO_DEP (21 00 04 01 04 02 02) +
+RF_DISCOVER listen-A, tap -> if 61 05 appears, PN557 host-CE works for Type-4 (the NDEF emulator
+path is viable) and only Type-2 badges are out; if not, host-CE is unreachable on this chip.
+Note: nci_cmd write of 21 00/21 01 returns -110 (core has no rsp handler); judge by the sniffer
+and by the 21 03 RF_DISCOVER status, which the core does report.
+2026-11-28 part 3: IT ENGAGES.  The ISO-DEP sequence (SET_CONFIG SAK=0x20 + routing NFC-A->DH +
+map ISO-DEP listen->ISO_DEP + RF_DISCOVER listen-A) made the chip raise RF_INTF_ACTIVATED_NTF
+(61 05, iface ISO_DEP) on a Flipper tap and deliver the reader's SELECT APDU to the host as a
+bare NCI DATA packet.  So PN557 host card emulation works for Type-4/ISO-DEP.  Wired into
+pro1x-nfc-listen (forces the ISO-DEP SEL_INFO bit so any badge engages; UID-only replay) and
+pro1x-nfc-emulate (reworked for the ISO_DEP interface: answers bare Type-4 NDEF APDUs over
+/dev/nxp-nci; the controller does RATS/framing).  Build-checked (py_compile, frames match the
+confirmed trace, APDU logic unit-tested).  NEXT: on-device NDEF read with pro1x-nfc-emulate
+running before the tap, an NDEF-reading app as the reader (not a payment terminal: those select
+PPSE, which we answer 6A82).  Scope now honest in the helper headers: Type-4 only; Type-2 (RR
+badge, SAK 00) and crypto badges cannot be emulated on this chip.
 2026-11-27: crypto1/Classic verdict and a driver-robustness patch.  MIFARE Classic (the
 FZero_detect_reader badge) cannot be cracked or emulated on the PN557: every crypto1 attack and
 Classic card emulation needs bit-level custom-parity + microsecond timing (Flipper's
