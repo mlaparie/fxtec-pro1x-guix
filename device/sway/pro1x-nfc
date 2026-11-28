@@ -501,9 +501,9 @@ replay_badge() {
     esac
 
     echo "⚠ Replay presents the saved UID to the reader (NCI listen mode)."
-    echo "  It works only if the reader checks nothing but the UID; one that"
-    echo "  runs a crypto challenge will not accept it.  Untested on this"
-    echo "  firmware: card emulation has not been seen on this chip anywhere."
+    echo "  The chip does engage a reader (confirmed on this phone), but only"
+    echo "  the UID is answered: a reader that checks just the UID accepts it;"
+    echo "  one that runs a crypto challenge, or reads tag memory, will not."
     echo
 
     local err
