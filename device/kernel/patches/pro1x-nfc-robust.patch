@@ -25,19 +25,22 @@ the hang-prone unbind/rebind:
    dead until an unbind/rebind.  Bounded, so a truly absent chip still fails
    cleanly (and the NCI core's own request timeout still applies).
 
-Timings are conservative (VEN low >= 10 ms, boot settle ~20 ms); no sourced
-PN557 datasheet value was available, so these are headroom over the existing
-10-15 ms, not a spec figure -- adjust if a datasheet value is found.  This
-does not fix an SoC-level I2C bus/controller hang (out of the driver); it
-removes the driver-level wedge and the need to unbind/rebind to recover.
+The VEN/FW GPIOs may sleep, so the reset helper and set_mode use
+gpiod_set_value_cansleep (as the 7.3 driver does).  Timings are conservative
+(VEN low >= 10 ms, boot settle ~20 ms); no sourced PN557 datasheet value was
+available, so these are headroom over the existing 10-15 ms, not a spec
+figure -- adjust if a datasheet value is found.  This does not fix an
+SoC-level I2C bus/controller hang (out of the driver); it removes the
+driver-level wedge and the need to unbind/rebind to recover.
 
 Applies on top of pro1x-nfc-replay.patch and pro1x-nfc-data.patch (same
-file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
+file; untouched regions).  Rebased against the kernel 7.3 source.
+Ours (fxtec-pro1x-guix, 2026-11-28).
 
 ---
 --- a/drivers/nfc/nxp-nci/i2c.c
 +++ b/drivers/nfc/nxp-nci/i2c.c
-@@ -33,6 +33,11 @@
+@@ -34,6 +34,11 @@
 
  #define NXP_NCI_I2C_MAX_PAYLOAD	32
 
@@ -49,7 +52,7 @@ file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
  struct nxp_nci_i2c_phy {
  	struct i2c_client *i2c_dev;
  	struct nci_dev *ndev;
-@@ -58,24 +63,43 @@
+@@ -59,24 +64,43 @@
  	bool emu_on;
  };
 
@@ -57,13 +60,13 @@ file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
 + * A VEN cold-reset pulse (low, then high) with a generous boot settle, so a
 + * controller left in a bad state after a glitch or heat comes back clean
 + * instead of NAKing its I2C address ("Error -6").  Clears the hard fault so
-+ * I/O is re-enabled on the fresh boot.
++ * I/O is re-enabled on the fresh boot.  The GPIOs may sleep (cansleep).
 + */
 +static void nxp_nci_i2c_reset(struct nxp_nci_i2c_phy *phy)
 +{
-+	gpiod_set_value(phy->gpiod_en, 0);
++	gpiod_set_value_cansleep(phy->gpiod_en, 0);
 +	usleep_range(NXP_NCI_RESET_LOW_US, NXP_NCI_RESET_LOW_US + 2000);
-+	gpiod_set_value(phy->gpiod_en, 1);
++	gpiod_set_value_cansleep(phy->gpiod_en, 1);
 +	usleep_range(NXP_NCI_BOOT_US, NXP_NCI_BOOT_US + 3000);
 +	phy->hard_fault = 0;
 +}
@@ -73,13 +76,13 @@ file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
  {
  	struct nxp_nci_i2c_phy *phy = (struct nxp_nci_i2c_phy *) phy_id;
 
- 	gpiod_set_value(phy->gpiod_fw, (mode == NXP_NCI_MODE_FW) ? 1 : 0);
--	gpiod_set_value(phy->gpiod_en, (mode != NXP_NCI_MODE_COLD) ? 1 : 0);
+ 	gpiod_set_value_cansleep(phy->gpiod_fw, (mode == NXP_NCI_MODE_FW) ? 1 : 0);
+-	gpiod_set_value_cansleep(phy->gpiod_en, (mode != NXP_NCI_MODE_COLD) ? 1 : 0);
 -	usleep_range(10000, 15000);
 
 -	if (mode == NXP_NCI_MODE_COLD)
 +	if (mode == NXP_NCI_MODE_COLD) {
-+		gpiod_set_value(phy->gpiod_en, 0);
++		gpiod_set_value_cansleep(phy->gpiod_en, 0);
 +		usleep_range(NXP_NCI_RESET_LOW_US, NXP_NCI_RESET_LOW_US + 2000);
  		phy->hard_fault = 0;
 +	} else {
@@ -97,7 +100,7 @@ file; untouched regions).  Ours (fxtec-pro1x-guix, 2026-11-27).
  	struct nxp_nci_i2c_phy *phy = phy_id;
  	struct i2c_client *client = phy->i2c_dev;
 
-@@ -89,6 +113,19 @@
+@@ -90,6 +114,19 @@
  		r = i2c_master_send(client, skb->data, skb->len);
  	}
 

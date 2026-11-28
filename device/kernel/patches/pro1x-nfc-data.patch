@@ -31,12 +31,14 @@ core's own TX, which does not run during emulation.  pro1x-nfc-emulate drives
 the Type-4 APDU exchange in user space.
 
 Depends on pro1x-nfc-replay.patch (applied first; shares struct
-nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
+nxp_nci_i2c_phy).  Rebased against the kernel 7.3 source (keeps 7.3's
+irqflags IRQ setup and its nxp_nci_remove-on-IRQ-failure path).
+Ours (fxtec-pro1x-guix, 2026-11-28).
 
 ---
 --- a/drivers/nfc/nxp-nci/i2c.c
 +++ b/drivers/nfc/nxp-nci/i2c.c
-@@ -20,6 +20,10 @@
+@@ -21,6 +21,10 @@
  #include <linux/nfc.h>
  #include <linux/gpio/consumer.h>
  #include <linux/unaligned.h>
@@ -47,7 +49,7 @@ nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
 
  #include <net/nfc/nfc.h>
 
-@@ -42,6 +46,16 @@
+@@ -43,6 +47,16 @@
  			 */
 
  	int last_nci_status;	/* NCI status of the last nci_cmd write */
@@ -64,7 +66,7 @@ nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
  };
 
  static int nxp_nci_i2c_set_mode(void *phy_id,
-@@ -239,7 +253,18 @@
+@@ -248,7 +262,18 @@
 
  	switch (info->mode) {
  	case NXP_NCI_MODE_NCI:
@@ -84,7 +86,7 @@ nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
  		break;
  	case NXP_NCI_MODE_FW:
  		nxp_nci_fw_recv_frame(phy->ndev, skb);
-@@ -349,6 +374,114 @@
+@@ -358,6 +383,114 @@
  };
  ATTRIBUTE_GROUPS(nxp_nci_i2c);
 
@@ -199,24 +201,23 @@ nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
  static int nxp_nci_i2c_probe(struct i2c_client *client)
  {
  	struct device *dev = &client->dev;
-@@ -389,22 +522,36 @@
+@@ -399,6 +532,9 @@
  	if (r < 0)
  		return r;
 
 +	skb_queue_head_init(&phy->emu_rx);
 +	init_waitqueue_head(&phy->emu_wait);
 +
- 	r = request_threaded_irq(client->irq, NULL,
- 				 nxp_nci_i2c_irq_thread_fn,
- 				 IRQF_TRIGGER_RISING | IRQF_ONESHOT,
- 				 NXP_NCI_I2C_DRIVER_NAME, phy);
--	if (r < 0)
-+	if (r < 0) {
+ 	/*
+ 	 * ACPI platforms may report incorrect IRQ trigger types
+ 	 * (e.g. level-high), which can lead to interrupt storms.
+@@ -423,8 +559,16 @@
+ 	if (r < 0) {
  		nfc_err(&client->dev, "Unable to register IRQ handler\n");
+ 		nxp_nci_remove(phy->ndev);
 +		return r;
-+	}
+ 	}
 
--	return r;
 +	phy->emu_miscdev.minor = MISC_DYNAMIC_MINOR;
 +	phy->emu_miscdev.name = "nxp-nci";
 +	phy->emu_miscdev.fops = &nxp_nci_emu_fops;
@@ -224,10 +225,10 @@ nxp_nci_i2c_phy).  Ours (fxtec-pro1x-guix, 2026-11-27).
 +	if (misc_register(&phy->emu_miscdev) < 0)
 +		nfc_err(&client->dev, "Unable to register /dev/nxp-nci\n");
 +
-+	return 0;
+ 	return r;
  }
 
- static void nxp_nci_i2c_remove(struct i2c_client *client)
+@@ -432,8 +576,10 @@
  {
  	struct nxp_nci_i2c_phy *phy = i2c_get_clientdata(client);
 
